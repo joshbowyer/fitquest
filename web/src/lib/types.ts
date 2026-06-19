@@ -1,7 +1,7 @@
 export type ClassName =
   | 'JUGGERNAUT'
   | 'PHANTOM'
-  | 'FORGE'
+  | 'MARATHONER'
   | 'BERSERKER'
   | 'ORACLE';
 
@@ -79,12 +79,21 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
 
 import type { FrameArchetype } from './frame';
 
+export type PrimaryAspect = 'STRENGTH' | 'CONSTITUTION' | 'AGILITY' | 'MIND';
+
+export const PRIMARY_ASPECT_LABEL: Record<PrimaryAspect, string> = {
+  STRENGTH: 'Strength',
+  CONSTITUTION: 'Constitution',
+  AGILITY: 'Agility',
+  MIND: 'Mind',
+};
+
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
   JUGGERNAUT: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'POWERLIFT_TOTAL'],
-  PHANTOM: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD'],
-  FORGE: ['BENCH_1RM', 'BICEP', 'VO2_MAX', 'WEIGHT'],
-  BERSERKER: ['BENCH_1RM', 'SQUAT_1RM', 'PULLUP_1RM'],
-  ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS'],
+  PHANTOM: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD', 'FIVE_K_TIME'],
+  MARATHONER: ['VO2_MAX', 'FIVE_K_TIME', 'RESTING_HR', 'HRV'],
+  BERSERKER: ['BENCH_1RM', 'SQUAT_1RM', 'PULLUP_1RM', 'PLANK_HOLD'],
+  ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS', 'SLEEP_QUALITY'],
 };
 
 export const CLASS_META: Record<string, {
@@ -92,6 +101,7 @@ export const CLASS_META: Record<string, {
   color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
   tagline: string;
   description: string;
+  primary: PrimaryAspect;
   // Which archetypes qualify for this class. Empty = available to all.
   eligibility: FrameArchetype[];
 }> = {
@@ -99,36 +109,46 @@ export const CLASS_META: Record<string, {
     label: 'Juggernaut',
     color: 'amber',
     tagline: 'Heavy hits, big gains',
-    description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP.',
-    eligibility: ['GOLEM', 'BEHEMOTH', 'BEAR'],
+    description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP. Powerlifter / bodybuilder.',
+    primary: 'STRENGTH',
+    // STRENGTH primary requires solid or large-balanced build
+    eligibility: ['DRAKE', 'FORGE', 'GOLEM', 'BEAR', 'BEHEMOTH'],
   },
   PHANTOM: {
     label: 'Phantom',
     color: 'magenta',
     tagline: 'Agile, lean, bodyweight mastery',
-    description: 'Bodyweight and agility. Calisthenics, mobility, and total-body control. PRs come from skill, not weight on the bar.',
-    eligibility: ['WISP', 'STRIKER', 'SPRITE'],
+    description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar. Endurance secondary for cardio conditioning.',
+    primary: 'AGILITY',
+    // AGILITY primary is universal — anyone can train bodyweight
+    eligibility: [],
   },
-  FORGE: {
-    label: 'Forge',
+  MARATHONER: {
+    label: 'Marathoner',
     color: 'lime',
-    tagline: 'Balanced generalist',
-    description: 'The classic balanced physique. Room to grow in any direction. Train everything; nothing is off-limits.',
-    eligibility: ['FORGE', 'BEAR', 'GOLEM'],
+    tagline: 'Long, steady, sustained',
+    description: 'Endurance athlete. Zone 2 cardio, long runs, cycling, swimming. Build the aerobic base. Recovery and consistency are the work.',
+    primary: 'CONSTITUTION',
+    // CONSTITUTION primary is universal
+    eligibility: [],
   },
   BERSERKER: {
     label: 'Berserker',
     color: 'magenta',
     tagline: 'All-out, no days off',
-    description: 'High volume, high intensity. No metagame — just train hard. Available to all frames because intensity is a choice, not a build.',
-    eligibility: [], // available to all
+    description: 'High volume, high intensity. HIIT, tabata, all-out efforts. No metagame — just train hard. Intensity is a choice, not a build.',
+    primary: 'CONSTITUTION',
+    // CONSTITUTION primary is universal
+    eligibility: [],
   },
   ORACLE: {
     label: 'Oracle',
     color: 'cyan',
-    tagline: 'Recovery, mindfulness, consistency',
-    description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity.',
-    eligibility: [], // available to all
+    tagline: 'Recovery, mindfulness, ritual',
+    description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity. Yoga, pilates, meditation.',
+    primary: 'MIND',
+    // MIND primary is universal
+    eligibility: [],
   },
 };
 

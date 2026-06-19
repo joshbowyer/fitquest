@@ -35,24 +35,17 @@ export const SKILL_TREES: Record<ClassName, SkillDef[]> = {
   PHANTOM: [
     { className: 'PHANTOM', tier: 'TIER_1', name: 'Static Holds', description: '+10% XP from calisthenics sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CALISTHENICS' }] },
     { className: 'PHANTOM', tier: 'TIER_1', name: 'Body Awareness', description: '+5% XP from mobility work.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'MOBILITY' }] },
-    { className: 'PHANTOM', tier: 'TIER_2', name: 'Dynamic Skills', description: '+10% gold from calisthenics.', cost: 2, prerequisites: ['Static Holds'], position: 2, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'CALISTHENICS' }] },
+    { className: 'PHANTOM', tier: 'TIER_2', name: 'Aerobic Engine', description: '+10% XP from cardio sessions.', cost: 2, prerequisites: ['Static Holds'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'CARDIO' }] },
     { className: 'PHANTOM', tier: 'TIER_2', name: 'One-Arm Path', description: '+15% pull-up genetic max.', cost: 2, prerequisites: ['Body Awareness'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'PULLUP_1RM', value: 0.15 }] },
-    { className: 'PHANTOM', tier: 'TIER_3', name: 'Skill Mastery', description: '+20% raid damage from calisthenics PRs.', cost: 3, prerequisites: ['Dynamic Skills', 'One-Arm Path'], position: 4, effects: [{ type: 'raid_damage_multiplier', value: 1.20 }] },
+    { className: 'PHANTOM', tier: 'TIER_3', name: 'Skill Mastery', description: '+20% raid damage from calisthenics PRs.', cost: 3, prerequisites: ['Aerobic Engine', 'One-Arm Path'], position: 4, effects: [{ type: 'raid_damage_multiplier', value: 1.20 }] },
   ],
 
-  FORGE: [
-    { className: 'FORGE', tier: 'TIER_1', name: 'Adaptation', description: '+5% XP from all workouts.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'ALL' }] },
-    { className: 'FORGE', tier: 'TIER_1', name: 'Recovery', description: '+10% gold from all sessions.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
-    { className: 'FORGE', tier: 'TIER_2', name: 'Jack-of-All', description: '+5% raid damage.', cost: 2, prerequisites: ['Adaptation'], position: 2, effects: [{ type: 'raid_damage_multiplier', value: 1.05 }] },
-    { className: 'FORGE', tier: 'TIER_2', name: 'Generalist', description: '+1% to all strength genetic maxes.', cost: 2, prerequisites: ['Recovery'], position: 3, effects: [
-      { type: 'measurement_bonus', metric: 'BENCH_1RM', value: 0.01 },
-      { type: 'measurement_bonus', metric: 'SQUAT_1RM', value: 0.01 },
-      { type: 'measurement_bonus', metric: 'DEADLIFT_1RM', value: 0.01 },
-    ] },
-    { className: 'FORGE', tier: 'TIER_3', name: 'Master of None, Better Than One', description: '+15% XP and gold from all workouts.', cost: 3, prerequisites: ['Jack-of-All', 'Generalist'], position: 4, effects: [
-      { type: 'xp_multiplier', value: 1.15, appliesTo: 'ALL' },
-      { type: 'gold_multiplier', value: 1.15, appliesTo: 'ALL' },
-    ] },
+  MARATHONER: [
+    { className: 'MARATHONER', tier: 'TIER_1', name: 'Zone 2 Foundation', description: '+10% XP from cardio sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CARDIO' }] },
+    { className: 'MARATHONER', tier: 'TIER_1', name: 'Aerobic Base', description: '+5% gold from cardio.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.05, appliesTo: 'CARDIO' }] },
+    { className: 'MARATHONER', tier: 'TIER_2', name: 'Lactate Threshold', description: '+10% XP from cardio PRs.', cost: 2, prerequisites: ['Zone 2 Foundation'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'CARDIO' }] },
+    { className: 'MARATHONER', tier: 'TIER_2', name: 'HRV Reader', description: '+1 HRV genetic max.', cost: 2, prerequisites: ['Aerobic Base'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'HRV', value: 1 }] },
+    { className: 'MARATHONER', tier: 'TIER_3', name: 'VO2 Peak', description: '+1 VO2 max genetic ceiling.', cost: 3, prerequisites: ['Lactate Threshold', 'HRV Reader'], position: 4, effects: [{ type: 'measurement_bonus', metric: 'VO2_MAX', value: 1 }] },
   ],
 
   BERSERKER: [

@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { CLASS_META, isClassEligible, type ClassName } from '@/lib/types';
+import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import {
@@ -22,7 +22,7 @@ import {
   type HeightCategory,
 } from '@/lib/frame';
 
-const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'FORGE', 'BERSERKER', 'ORACLE'];
+const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'MARATHONER', 'BERSERKER', 'ORACLE'];
 
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
 function previewMax(metric: string, wristCm: number | null, ankleCm: number | null, heightCm: number | null): number | null {
@@ -431,12 +431,21 @@ export function ProfilePage() {
                       <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">PICKED</span>
                     )}
                   </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-[9px] font-mono uppercase tracking-widest ${eligible ? `neon-text-${m.color}` : 'text-ink-500'}`}>
+                      {PRIMARY_ASPECT_LABEL[m.primary]}
+                    </span>
+                    <span className="text-ink-500 text-[9px]">·</span>
+                    <span className={`text-[9px] font-mono ${eligible ? 'text-ink-400' : 'text-ink-500'}`}>
+                      +{m.primary === 'STRENGTH' ? 'Power' : m.primary === 'AGILITY' ? 'Endurance' : m.primary === 'CONSTITUTION' ? (c === 'BERSERKER' ? 'Intensity' : 'Endurance') : 'Recovery'}
+                    </span>
+                  </div>
                   <div className={`text-[10px] font-mono mt-1 ${eligible ? 'text-ink-300' : 'text-ink-500'}`}>
                     {m.tagline}
                   </div>
                   {!eligible && previewArchetype && (
                     <div className="text-[9px] font-mono text-neon-magenta mt-1 italic">
-                      Not for {ARCHETYPE_META[previewArchetype].label}s.
+                      Not for {ARCHETYPE_META[previewArchetype].label}s — needs {PRIMARY_ASPECT_LABEL[m.primary]}.
                     </div>
                   )}
                 </button>
@@ -451,6 +460,11 @@ export function ProfilePage() {
                   {CLASS_META[c].label}
                 </span>
               ))}
+            </div>
+          )}
+          {previewArchetype && (
+            <div className="text-[10px] text-ink-400 font-mono italic mt-1">
+              Tier 1 (primary aspect) drives the gating. Side-trains (e.g. cardio as a Juggernaut) still earn XP — the class shapes the focus, not the menu.
             </div>
           )}
         </Panel>

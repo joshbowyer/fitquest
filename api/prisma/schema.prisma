@@ -11,7 +11,7 @@ datasource db {
 enum ClassName {
   JUGGERNAUT
   PHANTOM
-  FORGE
+  MARATHONER
   BERSERKER
   ORACLE
 }
