@@ -159,6 +159,7 @@ model User {
   achievements     UserAchievement[]
   skills           UserSkill[]
   classChangedAt   DateTime?
+  soulstones       Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }

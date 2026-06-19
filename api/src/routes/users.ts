@@ -28,6 +28,7 @@ export async function userRoutes(app: FastifyInstance) {
       level: user.level,
       xp: user.xp,
       gold: user.gold,
+      soulstones: user.soulstones,
       class: user.class,
       units: user.units,
       heightCm: user.heightCm,
@@ -38,7 +39,7 @@ export async function userRoutes(app: FastifyInstance) {
       birthDate: user.birthDate,
       createdAt: user.createdAt,
       classChangedAt: user.classChangedAt,
-      classLock: getClassLockStatus(user.class, user.classChangedAt),
+      classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
       progress: progressInLevel(user.xp, user.level),
     };
   });
@@ -47,23 +48,28 @@ export async function userRoutes(app: FastifyInstance) {
     const me = await requireUser(req);
     const body = ProfileSchema.parse(req.body);
 
-    // Class lock check. If the user is mid-cooldown and trying to change
-    // to a different class, reject with 423 and the lock status so the
-    // UI can show "wait N days".
+    // Class lock check. If the user is mid-cooldown, allow the change
+    // only if they have a Soulstone to spend. assertCanChangeClass
+    // returns { useSoulstone: true } in that case.
+    let soulstoneConsumed = false;
     if (body.class !== undefined && body.class !== me.class) {
-      assertCanChangeClass(me, body.class);
+      const verdict = assertCanChangeClass(me, body.class);
+      soulstoneConsumed = verdict.useSoulstone;
     }
 
     const updated = await prisma.user.update({
       where: { id: me.id },
       data: {
         class: body.class ?? undefined,
-        // Stamp classChangedAt only when the class actually changes (and
-        // isn't null). The first pick counts as a change, so we also
-        // stamp when going from null to a class.
+        // Stamp classChangedAt only when the class actually changes. The
+        // first pick counts as a change, so we also stamp when going
+        // from null to a class. If a Soulstone was used, we still stamp
+        // the change (so the next unlock is another year away).
         ...(body.class !== undefined && body.class !== me.class
           ? { classChangedAt: new Date() }
           : {}),
+        // Decrement Soulstone if one was used.
+        ...(soulstoneConsumed ? { soulstones: { decrement: 1 } } : {}),
         units: (body as any).units ?? undefined,
         heightCm: body.heightCm === undefined ? undefined : body.heightCm,
         wristCm: body.wristCm === undefined ? undefined : body.wristCm,
@@ -95,7 +101,7 @@ export async function userRoutes(app: FastifyInstance) {
       });
     }
 
-    return { ok: true };
+    return { ok: true, soulstoneConsumed, soulstones: updated.soulstones };
   });
 
   app.get('/me/stats', async (req) => {
@@ -104,6 +110,7 @@ export async function userRoutes(app: FastifyInstance) {
       level: me.level,
       xp: me.xp,
       gold: me.gold,
+      soulstones: me.soulstones,
       progress: progressInLevel(me.xp, me.level),
       nextLevel: levelFromXp(me.xp + 1) > me.level ? me.level + 1 : me.level,
     };

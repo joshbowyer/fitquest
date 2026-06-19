@@ -208,6 +208,8 @@ export async function workoutRoutes(app: FastifyInstance) {
               _sum: { damage: true },
             });
             const total = totalAgg._sum.damage ?? raidDamage.total;
+            // Same Soulstone drop rate as manual contribute.
+            const SOULSTONE_CHANCE = 0.08;
             for (const m of members) {
               const myAgg = await prisma.raidContribution.aggregate({
                 where: { raidId: raid.id, userId: m.userId },
@@ -217,11 +219,13 @@ export async function workoutRoutes(app: FastifyInstance) {
               const share = Math.round((my / total) * 200) + 50;
               const u = await prisma.user.findUnique({ where: { id: m.userId } });
               if (!u) continue;
+              const soulstoneDropped = Math.random() < SOULSTONE_CHANCE;
               await prisma.user.update({
                 where: { id: m.userId },
                 data: {
                   xp: u.xp + share,
                   gold: u.gold + Math.floor(share / 4),
+                  ...(soulstoneDropped ? { soulstones: u.soulstones + 1 } : {}),
                 },
               });
               await checkAchievements(m.userId);

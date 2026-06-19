@@ -424,15 +424,41 @@ export function ProfilePage() {
             Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
           </div>
           {user.classLock?.locked && (
-            <div className="mb-3 border border-neon-amber/40 bg-neon-amber/5 p-2 text-[10px] font-mono">
-              <span className="neon-text-amber">⚠ CLASS LOCKED</span> · You picked{' '}
-              <span className="text-ink-100">{CLASS_META[user.class!]?.label}</span>{' '}
-              and can't change it for{' '}
-              <span className="neon-text-amber">{user.classLock.remainingLabel}</span>
-              {user.classLock.unlockAt && (
-                <span className="text-ink-300"> (unlocks {new Date(user.classLock.unlockAt).toLocaleString()})</span>
-              )}
-              . Soulstone drops from raid victories can unlock early.
+            <div className="mb-3 border border-neon-amber/40 bg-neon-amber/5 p-3 text-[10px] font-mono space-y-1">
+              <div>
+                <span className="neon-text-amber">⚠ CLASS LOCKED</span> · You picked{' '}
+                <span className="text-ink-100">{CLASS_META[user.class!]?.label}</span>{' '}
+                and can change it again in{' '}
+                <span className="neon-text-amber">{user.classLock.remainingLabel}</span>
+                {user.classLock.birthdayUnlock && user.classLock.unlockAt && (
+                  <span className="text-ink-300"> (on your birthday, {new Date(user.classLock.unlockAt).toLocaleDateString()})</span>
+                )}
+                {!user.classLock.birthdayUnlock && user.classLock.unlockAt && (
+                  <span className="text-ink-300"> (unlocks {new Date(user.classLock.unlockAt).toLocaleDateString()})</span>
+                )}
+                .
+              </div>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-ink-300">
+                  💎 Soulstones: <span className="text-ink-100 font-bold">{user.soulstones ?? 0}</span>
+                </span>
+                {user.classLock.canUseSoulstone && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Open the confirmation modal with a flag that
+                      // we're spending a soulstone.
+                      const firstEligible = CLASS_OPTIONS.find(
+                        (c) => c !== user.class && isClassEligible(c, previewArchetype),
+                      );
+                      if (firstEligible) setPendingClass(firstEligible);
+                    }}
+                    className="text-[10px] font-mono px-2 py-1 border border-neon-magenta/60 text-neon-magenta bg-neon-magenta/5 hover:bg-neon-magenta/10"
+                  >
+                    💎 Use 1 Soulstone to change class
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -574,12 +600,21 @@ export function ProfilePage() {
                   .
                 </p>
               )}
-              {user.class && (
-                <div className="border border-neon-amber/40 bg-neon-amber/5 p-3">
-                  <p className="text-neon-amber mb-1">⚠ This locks for 7 days.</p>
+              {user.class && user.classLock?.locked && user.classLock.canUseSoulstone && (
+                <div className="border border-neon-magenta/40 bg-neon-magenta/5 p-3">
+                  <p className="neon-text-magenta mb-1">💎 Spending 1 Soulstone to bypass the lock.</p>
                   <p className="text-ink-300 text-[10px]">
-                    Once you confirm, you can't switch classes again until the lock expires.
-                    Soulstone drops from raid victories can unlock early.
+                    After this change, your new class will lock until your next birthday
+                    (or another Soulstone).
+                  </p>
+                </div>
+              )}
+              {user.class && (!user.classLock?.locked || !user.classLock.canUseSoulstone) && (
+                <div className="border border-neon-amber/40 bg-neon-amber/5 p-3">
+                  <p className="text-neon-amber mb-1">⚠ Class locks for a year (unlocks on your birthday).</p>
+                  <p className="text-ink-300 text-[10px]">
+                    You can change your class once per year, on (or after) your birthday.
+                    Soulstone drops from raid victories let you bypass the lock.
                   </p>
                 </div>
               )}
@@ -605,9 +640,13 @@ export function ProfilePage() {
                   setClassChoice(null);
                   saveM.run({ targetClass: target });
                 }}
-                className="btn-neon-magenta flex-1"
+                className={`flex-1 ${user.classLock?.locked && user.classLock.canUseSoulstone ? 'btn-neon-magenta' : 'btn-neon-magenta'}`}
               >
-                {user.class ? 'I understand, switch to ' : 'Pick '}
+                {user.class
+                  ? user.classLock?.locked && user.classLock.canUseSoulstone
+                    ? '💎 Use Soulstone · Switch to '
+                    : 'Switch to '
+                  : 'Pick '}
                 {CLASS_META[pendingClass].label}
               </button>
             </div>

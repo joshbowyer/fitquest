@@ -98,6 +98,10 @@ export async function raidRoutes(app: FastifyInstance) {
         _sum: { damage: true },
       });
       const total = totalDamage._sum.damage ?? body.damage;
+      // Soulstone drop: ~8% chance per member per victory. Stays rare.
+      // (We roll once per member rather than once per raid so a 4-person
+      // party isn't 4x more likely to drop than a solo raid.)
+      const SOULSTONE_CHANCE = 0.08;
       for (const m of members) {
         const myContribs = await prisma.raidContribution.aggregate({
           where: { raidId: id, userId: m.userId },
@@ -107,9 +111,14 @@ export async function raidRoutes(app: FastifyInstance) {
         const share = Math.round((my / total) * 200) + 50; // 50 base + share
         const u = await prisma.user.findUnique({ where: { id: m.userId } });
         if (!u) continue;
+        const soulstoneDropped = Math.random() < SOULSTONE_CHANCE;
         await prisma.user.update({
           where: { id: m.userId },
-          data: { xp: u.xp + share, gold: u.gold + Math.floor(share / 4) },
+          data: {
+            xp: u.xp + share,
+            gold: u.gold + Math.floor(share / 4),
+            ...(soulstoneDropped ? { soulstones: u.soulstones + 1 } : {}),
+          },
         });
         await checkAchievements(m.userId);
       }

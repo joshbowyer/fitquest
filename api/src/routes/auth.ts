@@ -38,7 +38,7 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = await hashPassword(body.password);
     const user = await prisma.user.create({
       data: { email: body.email, username: body.username, passwordHash },
-      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true, createdAt: true, classChangedAt: true },
+      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true, createdAt: true, classChangedAt: true, soulstones: true, birthDate: true },
     });
     const { session } = await createSessionAndFetchUser(user.id, req);
     await setSessionCookie(reply, session.token);
@@ -63,11 +63,12 @@ export async function authRoutes(app: FastifyInstance) {
         level: user.level,
         xp: user.xp,
         gold: user.gold,
+        soulstones: user.soulstones,
         class: user.class,
         units: user.units,
         createdAt: user.createdAt,
         classChangedAt: user.classChangedAt,
-        classLock: getClassLockStatus(user.class, user.classChangedAt),
+        classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
       },
     });
   });
@@ -94,6 +95,7 @@ export async function authRoutes(app: FastifyInstance) {
         level: user.level,
         xp: user.xp,
         gold: user.gold,
+        soulstones: user.soulstones,
         class: user.class,
         units: user.units,
         heightCm: user.heightCm,
@@ -104,7 +106,7 @@ export async function authRoutes(app: FastifyInstance) {
         birthDate: user.birthDate,
         createdAt: user.createdAt,
         classChangedAt: user.classChangedAt,
-        classLock: getClassLockStatus(user.class, user.classChangedAt),
+        classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
       },
     });
   });

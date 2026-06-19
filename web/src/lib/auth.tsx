@@ -10,6 +10,9 @@ export type ClassLockStatus = {
   remainingMs: number;
   unlockAt: string | null;
   remainingLabel: string;
+  canUseSoulstone: boolean;
+  birthdayUnlock: boolean;
+  nextBirthdayAt: string | null;
 };
 
 export type User = {
@@ -19,6 +22,7 @@ export type User = {
   level: number;
   xp: number;
   gold: number;
+  soulstones: number;
   class: ClassName | null;
   units: UnitSystem;
   heightCm: number | null;
