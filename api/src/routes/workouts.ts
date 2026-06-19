@@ -12,7 +12,8 @@ const SetInput = z.object({
   reps: z.number().int().min(0).max(1000),
   weight: z.number().min(0).max(2000).optional().nullable(),
   duration: z.number().int().min(0).max(60 * 60 * 6).optional().nullable(),
-  rpe: z.number().min(1).max(10).optional().nullable(),
+  // 0 means "not specified" — don't reject on min(1).
+  rpe: z.number().min(0).max(10).optional().nullable(),
   completed: z.boolean().default(true),
   order: z.number().int().min(0).default(0),
 });
@@ -21,6 +22,9 @@ const ExerciseInput = z.object({
   name: z.string().min(1).max(100),
   notes: z.string().max(500).optional(),
   order: z.number().int().min(0).default(0),
+  // musclesWorked is set client-side from the name; we trust it
+  // because it comes from the same static rule list the user sees.
+  musclesWorked: z.array(z.string()).optional(),
   sets: z.array(SetInput).min(1),
 });
 
@@ -91,6 +95,7 @@ export async function workoutRoutes(app: FastifyInstance) {
               name: ex.name,
               order: ex.order,
               notes: ex.notes,
+              musclesWorked: (ex.musclesWorked ?? []) as any,
               sets: { create: ex.sets.map((s) => ({ ...s })) },
             })),
           },
