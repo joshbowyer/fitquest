@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Modal } from '@/components/Modal';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -71,6 +72,7 @@ export function ProfilePage() {
     kind: 'idle',
     message: '',
   });
+  const [pendingClass, setPendingClass] = useState<ClassName | null>(null);
 
   const NUMERIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'weightKg', 'bodyFatPct'] as const;
   const FRAME_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'weightKg', 'bodyFatPct'] as const;
@@ -198,7 +200,16 @@ export function ProfilePage() {
       }
       setTimeout(() => setSaveResult({ kind: 'idle', message: '' }), 4000);
     },
-    onError: (e) => setSaveResult({ kind: 'error', message: e instanceof Error ? e.message : 'Save failed' }),
+    onError: (e: any) => {
+      // 423 = class locked
+      if (e?.status === 423) {
+        setSaveResult({ kind: 'error', message: e.message || 'Class is locked.' });
+        // Refresh so the lock status banner re-evaluates
+        refresh();
+      } else {
+        setSaveResult({ kind: 'error', message: e instanceof Error ? e.message : 'Save failed' });
+      }
+    },
   }, 1500);
 
   if (!user) return null;
@@ -401,43 +412,65 @@ export function ProfilePage() {
             Your class determines which skill tree you can unlock and which stats get the most XP from training.
             Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
           </div>
+          {user.classLock?.locked && (
+            <div className="mb-3 border border-neon-amber/40 bg-neon-amber/5 p-2 text-[10px] font-mono">
+              <span className="neon-text-amber">⚠ CLASS LOCKED</span> · You picked{' '}
+              <span className="text-ink-100">{CLASS_META[user.class!]?.label}</span>{' '}
+              and can't change it for{' '}
+              <span className="neon-text-amber">{user.classLock.remainingLabel}</span>
+              {user.classLock.unlockAt && (
+                <span className="text-ink-300"> (unlocks {new Date(user.classLock.unlockAt).toLocaleString()})</span>
+              )}
+              . Soulstone drops from raid victories can unlock early.
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {CLASS_OPTIONS.map((c) => {
               const m = CLASS_META[c];
               const selected = (classChoice ?? user.class) === c;
               const eligible = isClassEligible(c, previewArchetype);
+              const disabled = !eligible || (user.classLock?.locked ?? false);
               return (
                 <button
                   key={c}
                   type="button"
-                  onClick={() => eligible && setClassChoice(c)}
-                  disabled={!eligible}
-                  title={eligible ? m.description : `Locked: your ${previewArchetype ? ARCHETYPE_META[previewArchetype].label.toLowerCase() : 'frame'} build can't take this path`}
+                  onClick={() => eligible && !user.classLock?.locked && setClassChoice(c)}
+                  disabled={disabled}
+                  title={
+                    user.classLock?.locked
+                      ? `Locked for ${user.classLock.remainingLabel}`
+                      : eligible
+                      ? m.description
+                      : `Not for ${previewArchetype ? ARCHETYPE_META[previewArchetype].label.toLowerCase() : 'frame'} build`
+                  }
                   className={classNames(
                     'p-3 border-2 text-left transition-all relative',
-                    selected && eligible
+                    selected && eligible && !user.classLock?.locked
                       ? `border-neon-${m.color}/80 bg-neon-${m.color}/10`
-                      : !eligible
+                      : disabled
                       ? 'border-ink-500/30 bg-bg-700/40 opacity-50 cursor-not-allowed'
                       : 'border-ink-500/40 hover:border-ink-300'
                   )}
                 >
                   <div className="flex items-baseline justify-between">
-                    <div className={`font-display tracking-wider text-sm ${selected && eligible ? `neon-text-${m.color}` : !eligible ? 'text-ink-400' : 'text-ink-200'}`}>
+                    <div className={`font-display tracking-wider text-sm ${selected && eligible && !user.classLock?.locked ? `neon-text-${m.color}` : !eligible || user.classLock?.locked ? 'text-ink-400' : 'text-ink-200'}`}>
                       {m.label}
                     </div>
                     {!eligible && (
                       <span className="text-[9px] font-mono text-ink-400 uppercase tracking-widest">LOCKED</span>
                     )}
-                    {eligible && !selected && (
+                    {eligible && !selected && !user.classLock?.locked && (
                       <span className="text-[9px] font-mono neon-text-lime uppercase tracking-widest">OPEN</span>
                     )}
-                    {selected && eligible && (
+                    {selected && eligible && !user.classLock?.locked && (
                       <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">PICKED</span>
+                    )}
+                    {eligible && user.classLock?.locked && user.class !== c && (
+                      <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">FROZEN</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[9px] font-mono uppercase tracking-widest ${eligible ? `neon-text-${m.color}` : 'text-ink-500'}`}>
+                    <span className={`text-[9px] font-mono uppercase tracking-widest ${eligible && !user.classLock?.locked ? `neon-text-${m.color}` : 'text-ink-500'}`}>
                       {PRIMARY_ASPECT_LABEL[m.primary]}
                     </span>
                     <span className="text-ink-500 text-[9px]">·</span>
@@ -445,17 +478,17 @@ export function ProfilePage() {
                       {m.ability.tag}
                     </span>
                   </div>
-                  <div className={`text-[10px] font-mono mt-1 ${eligible ? 'text-ink-300' : 'text-ink-500'}`}>
+                  <div className={`text-[10px] font-mono mt-1 ${eligible && !user.classLock?.locked ? 'text-ink-300' : 'text-ink-500'}`}>
                     {m.tagline}
                   </div>
                   <div
                     className={classNames(
                       'inline-block mt-1.5 px-1.5 py-0.5 text-[9px] font-mono tracking-widest uppercase border',
-                      eligible
+                      eligible && !user.classLock?.locked
                         ? `border-neon-${m.color}/60 text-neon-${m.color} bg-neon-${m.color}/5`
                         : 'border-ink-500/30 text-ink-500 bg-ink-500/5'
                     )}
-                    style={eligible ? { textShadow: `0 0 4px currentColor` } : undefined}
+                    style={eligible && !user.classLock?.locked ? { textShadow: `0 0 4px currentColor` } : undefined}
                   >
                     ⚡ {m.ability.tag} · {m.ability.label}
                   </div>
@@ -468,6 +501,15 @@ export function ProfilePage() {
               );
             })}
           </div>
+          {user.class && !user.classLock?.locked && classChoice && classChoice !== user.class && (
+            <button
+              type="button"
+              onClick={() => setPendingClass(classChoice)}
+              className="mt-3 btn-neon-magenta text-[10px]"
+            >
+              ⚠ Switch to {CLASS_META[classChoice].label} (locks for 7 days)
+            </button>
+          )}
           {previewArchetype && (
             <div className="mt-3 text-[10px] font-mono text-ink-300 border-t border-ink-500/30 pt-2">
               <span className="text-ink-50">{ARCHETYPE_META[previewArchetype].label}</span> opens:{' '}
@@ -484,6 +526,60 @@ export function ProfilePage() {
             </div>
           )}
         </Panel>
+
+        {/* Class change confirmation dialog */}
+        {pendingClass && user.class && (
+          <Modal
+            open={!!pendingClass}
+            onClose={() => setPendingClass(null)}
+            title="⚠ Confirm class change"
+          >
+            <div className="text-xs font-mono text-ink-200 space-y-3">
+              <p>
+                You're switching from{' '}
+                <span className={`neon-text-${CLASS_META[user.class].color}`}>
+                  {CLASS_META[user.class].label}
+                </span>{' '}
+                to{' '}
+                <span className={`neon-text-${CLASS_META[pendingClass].color}`}>
+                  {CLASS_META[pendingClass].label}
+                </span>
+                .
+              </p>
+              <div className="border border-neon-amber/40 bg-neon-amber/5 p-3">
+                <p className="text-neon-amber mb-1">⚠ This locks for 7 days.</p>
+                <p className="text-ink-300 text-[10px]">
+                  Once you confirm, you can't switch classes again until the lock expires.
+                  Soulstone drops from raid victories can unlock early.
+                </p>
+              </div>
+              <p className="text-ink-300 text-[10px]">
+                Your new class: <span className="text-ink-100 font-bold">{CLASS_META[pendingClass].label}</span> ({CLASS_META[pendingClass].tagline})
+              </p>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setPendingClass(null)}
+                className="btn-ghost flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setClassChoice(null);
+                  setPendingClass(null);
+                  // Trigger the save with the new class
+                  saveM.run();
+                }}
+                className="btn-neon-magenta flex-1"
+              >
+                I understand, switch to {CLASS_META[pendingClass].label}
+              </button>
+            </div>
+          </Modal>
+        )}
 
         {/* IDENTITY */}
         <Panel variant="cyan" title="Identity">

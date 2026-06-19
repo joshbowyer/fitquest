@@ -12,6 +12,7 @@ import {
   requireUser,
 } from '../lib/auth.js';
 import { config } from '../lib/config.js';
+import { getClassLockStatus } from '../lib/classLock.js';
 
 const RegisterSchema = z.object({
   email: z.string().email().max(120),
@@ -37,7 +38,7 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = await hashPassword(body.password);
     const user = await prisma.user.create({
       data: { email: body.email, username: body.username, passwordHash },
-      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true, createdAt: true },
+      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true, createdAt: true, classChangedAt: true },
     });
     const { session } = await createSessionAndFetchUser(user.id, req);
     await setSessionCookie(reply, session.token);
@@ -65,6 +66,8 @@ export async function authRoutes(app: FastifyInstance) {
         class: user.class,
         units: user.units,
         createdAt: user.createdAt,
+        classChangedAt: user.classChangedAt,
+        classLock: getClassLockStatus(user.class, user.classChangedAt),
       },
     });
   });
@@ -99,6 +102,9 @@ export async function authRoutes(app: FastifyInstance) {
         weightKg: user.weightKg,
         bodyFatPct: user.bodyFatPct,
         birthDate: user.birthDate,
+        createdAt: user.createdAt,
+        classChangedAt: user.classChangedAt,
+        classLock: getClassLockStatus(user.class, user.classChangedAt),
       },
     });
   });

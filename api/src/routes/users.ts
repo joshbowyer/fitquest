@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeAllGeneticMaxes } from '../lib/geneticMax.js';
 import { levelFromXp, progressInLevel } from '../lib/xp.js';
+import { assertCanChangeClass, getClassLockStatus } from '../lib/classLock.js';
 
 const ProfileSchema = z.object({
   class: z.nativeEnum(ClassName).optional(),
@@ -36,6 +37,8 @@ export async function userRoutes(app: FastifyInstance) {
       bodyFatPct: user.bodyFatPct,
       birthDate: user.birthDate,
       createdAt: user.createdAt,
+      classChangedAt: user.classChangedAt,
+      classLock: getClassLockStatus(user.class, user.classChangedAt),
       progress: progressInLevel(user.xp, user.level),
     };
   });
@@ -43,10 +46,24 @@ export async function userRoutes(app: FastifyInstance) {
   app.patch('/me', async (req) => {
     const me = await requireUser(req);
     const body = ProfileSchema.parse(req.body);
+
+    // Class lock check. If the user is mid-cooldown and trying to change
+    // to a different class, reject with 423 and the lock status so the
+    // UI can show "wait N days".
+    if (body.class !== undefined && body.class !== me.class) {
+      assertCanChangeClass(me, body.class);
+    }
+
     const updated = await prisma.user.update({
       where: { id: me.id },
       data: {
         class: body.class ?? undefined,
+        // Stamp classChangedAt only when the class actually changes (and
+        // isn't null). The first pick counts as a change, so we also
+        // stamp when going from null to a class.
+        ...(body.class !== undefined && body.class !== me.class
+          ? { classChangedAt: new Date() }
+          : {}),
         units: (body as any).units ?? undefined,
         heightCm: body.heightCm === undefined ? undefined : body.heightCm,
         wristCm: body.wristCm === undefined ? undefined : body.wristCm,

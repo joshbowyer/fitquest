@@ -54,6 +54,12 @@ async function build() {
     if ((err as any).statusCode === 401) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }
+    if ((err as any).statusCode === 423) {
+      return reply.code(423).send({
+        error: (err as any).message,
+        classLock: (err as any).classLock,
+      });
+    }
     return reply.code(500).send({ error: 'Internal server error' });
   });
 

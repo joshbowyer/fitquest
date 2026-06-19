@@ -5,6 +5,13 @@ import type { UnitSystem } from './units';
 
 export type { ClassName, UnitSystem };
 
+export type ClassLockStatus = {
+  locked: boolean;
+  remainingMs: number;
+  unlockAt: string | null;
+  remainingLabel: string;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -21,6 +28,8 @@ export type User = {
   bodyFatPct: number | null;
   birthDate: string | null;
   createdAt: string;
+  classChangedAt: string | null;
+  classLock: ClassLockStatus;
   progress?: { current: number; needed: number; pct: number };
 };
 
