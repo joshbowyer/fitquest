@@ -16,14 +16,18 @@ type ApiInit = Omit<RequestInit, 'body' | 'credentials'> & {
 
 export async function api<T = unknown>(path: string, init: ApiInit = {}): Promise<T> {
   const { body, headers, ...rest } = init;
+  const hasBody = body !== undefined;
   const res = await fetch(`${API_BASE}${path}`, {
     ...rest,
     credentials: 'include',
     headers: {
-      'content-type': 'application/json',
+      // Only set Content-Type when there's a body. Fastify will try to
+      // JSON.parse an empty body when Content-Type is application/json
+      // and return 400 Bad Request, which breaks no-body POSTs.
+      ...(hasBody ? { 'content-type': 'application/json' } : {}),
       ...(headers || {}),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: hasBody ? JSON.stringify(body) : undefined,
   });
   const ct = res.headers.get('content-type') || '';
   const data = ct.includes('application/json') ? await res.json() : await res.text();
