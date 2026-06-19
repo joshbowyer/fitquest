@@ -23,12 +23,18 @@ import {
 import { formatRelative, formatSeconds } from '@/lib/format';
 import { Link } from 'react-router-dom';
 
-const CATEGORY_LABELS = {
-  HYPERTROPHY: { label: 'HYPERTROPHY', variant: 'magenta' as const, color: 'magenta' as const },
-  STRENGTH: { label: 'STRENGTH', variant: 'cyan' as const, color: 'cyan' as const },
-  BODY_COMP: { label: 'BODY COMP', variant: 'lime' as const, color: 'lime' as const },
-  CARDIO: { label: 'CARDIO', variant: 'amber' as const, color: 'amber' as const },
-  CALISTHENICS: { label: 'CALISTHENICS', variant: 'violet' as const, color: 'violet' as const },
+// Categories displayed as gauges on the stat sheet. New habit categories
+// (SLEEP/NUTRITION/WELLNESS) are surfaced in TodayHabitsPanel instead.
+const STAT_SHEET_CATEGORIES: Array<keyof typeof METRICS_BY_CATEGORY> = [
+  'HYPERTROPHY', 'STRENGTH', 'BODY_COMP', 'CARDIO', 'CALISTHENICS',
+];
+
+const CATEGORY_LABELS: Record<string, { label: string; variant: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'; color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' }> = {
+  HYPERTROPHY: { label: 'HYPERTROPHY', variant: 'magenta', color: 'magenta' },
+  STRENGTH: { label: 'STRENGTH', variant: 'cyan', color: 'cyan' },
+  BODY_COMP: { label: 'BODY COMP', variant: 'lime', color: 'lime' },
+  CARDIO: { label: 'CARDIO', variant: 'amber', color: 'amber' },
+  CALISTHENICS: { label: 'CALISTHENICS', variant: 'violet', color: 'violet' },
 };
 
 export function DashboardPage() {
@@ -160,8 +166,10 @@ export function DashboardPage() {
       </div>
 
       {/* Stat sheet by category */}
-      {Object.entries(METRICS_BY_CATEGORY).map(([cat, metrics]) => {
-        const cfg = CATEGORY_LABELS[cat as keyof typeof CATEGORY_LABELS];
+      {STAT_SHEET_CATEGORIES.map((cat) => {
+        const metrics = METRICS_BY_CATEGORY[cat];
+        const cfg = CATEGORY_LABELS[cat];
+        if (!cfg) return null;
         return (
           <Panel
             key={cat}
