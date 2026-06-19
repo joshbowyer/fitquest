@@ -544,24 +544,34 @@ export function ProfilePage() {
         </Panel>
 
         {/* Class change confirmation dialog */}
-        {pendingClass && user.class && (
-          <Modal
-            open={!!pendingClass}
-            onClose={() => setPendingClass(null)}
-            title="⚠ Confirm class change"
-          >
-            <div className="text-xs font-mono text-ink-200 space-y-3">
+        <Modal
+          open={!!pendingClass}
+          onClose={() => setPendingClass(null)}
+          title={user.class ? "⚠ Confirm class change" : "Confirm your class pick"}
+        >
+          <div className="text-xs font-mono text-ink-200 space-y-3">
+            {user.class ? (
               <p>
                 You're switching from{' '}
                 <span className={`neon-text-${CLASS_META[user.class].color}`}>
                   {CLASS_META[user.class].label}
                 </span>{' '}
                 to{' '}
-                <span className={`neon-text-${CLASS_META[pendingClass].color}`}>
-                  {CLASS_META[pendingClass].label}
+                <span className={`neon-text-${CLASS_META[pendingClass!].color}`}>
+                  {CLASS_META[pendingClass!].label}
                 </span>
                 .
               </p>
+            ) : (
+              <p>
+                You're starting your journey as{' '}
+                <span className={`neon-text-${CLASS_META[pendingClass!].color}`}>
+                  {CLASS_META[pendingClass!].label}
+                </span>
+                .
+              </p>
+            )}
+            {user.class && (
               <div className="border border-neon-amber/40 bg-neon-amber/5 p-3">
                 <p className="text-neon-amber mb-1">⚠ This locks for 7 days.</p>
                 <p className="text-ink-300 text-[10px]">
@@ -569,34 +579,36 @@ export function ProfilePage() {
                   Soulstone drops from raid victories can unlock early.
                 </p>
               </div>
-              <p className="text-ink-300 text-[10px]">
-                Your new class: <span className="text-ink-100 font-bold">{CLASS_META[pendingClass].label}</span> ({CLASS_META[pendingClass].tagline})
-              </p>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setPendingClass(null)}
-                className="btn-ghost flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = pendingClass;
-                  setPendingClass(null);
-                  setClassChoice(null);
-                  // Trigger the save with the target class
-                  saveM.run({ targetClass: target });
-                }}
-                className="btn-neon-magenta flex-1"
-              >
-                I understand, switch to {CLASS_META[pendingClass].label}
-              </button>
-            </div>
-          </Modal>
-        )}
+            )}
+            <p className="text-ink-300 text-[10px]">
+              Your new class:{' '}
+              <span className="text-ink-100 font-bold">{CLASS_META[pendingClass!].label}</span>{' '}
+              ({CLASS_META[pendingClass!].tagline})
+            </p>
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => setPendingClass(null)}
+              className="btn-ghost flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = pendingClass;
+                setPendingClass(null);
+                setClassChoice(null);
+                saveM.run({ targetClass: target });
+              }}
+              className="btn-neon-magenta flex-1"
+            >
+              {user.class ? 'I understand, switch to ' : 'Pick '}
+              {CLASS_META[pendingClass!].label}
+            </button>
+          </div>
+        </Modal>
 
         {/* IDENTITY */}
         <Panel variant="cyan" title="Identity">

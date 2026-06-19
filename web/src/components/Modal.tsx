@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { classNames } from '@/lib/format';
 
 export function Modal({
@@ -25,9 +26,9 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
@@ -43,6 +44,7 @@ export function Modal({
         </h2>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
