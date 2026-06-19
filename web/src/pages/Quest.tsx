@@ -228,37 +228,45 @@ function OverworldMap({
   // Color lookup by worldId
   const colorByWorld = new Map(portals.map((p) => [p.world.id, p.world.color]));
 
+  const cellSize = 44;
+  const cellStyle: React.CSSProperties = {
+    width: cellSize,
+    height: cellSize,
+    minWidth: cellSize,
+    minHeight: cellSize,
+    flexShrink: 0,
+  };
+
   return (
     <div
-      className="grid gap-px bg-bg-700 border border-neon-cyan/15"
       style={{
-        gridTemplateColumns: `repeat(${MAP_TILES_X}, minmax(0, 1fr))`,
+        display: 'grid',
+        gridTemplateColumns: `repeat(${MAP_TILES_X}, ${cellSize}px)`,
+        gridTemplateRows: `repeat(${MAP_TILES_Y}, ${cellSize}px)`,
+        gap: '1px',
+        background: '#1a1c26',
+        border: '1px solid rgba(20,214,232,0.3)',
+        padding: '4px',
         width: 'fit-content',
-        maxWidth: '100%',
         margin: '0 auto',
       }}
     >
       {grid.flatMap((row, y) =>
         row.map((cell, x) => {
-          const cellStyle: React.CSSProperties = {
-            width: 'clamp(28px, 4.5vw, 48px)',
-            height: 'clamp(28px, 4.5vw, 48px)',
-            minWidth: 0,
-          };
           if (cell.kind === 'home') {
-            // Show the user's avatar sprite at the home base. The
-            // sprite is small enough to fit (clamped cell size up to
-            // 48px) and we use image-rendering: pixelated so the
-            // pixels stay crisp.
             const spriteFile = spriteForArchetype(archetype);
             return (
               <div
                 key={`${x}-${y}`}
-                className="relative flex items-center justify-center overflow-hidden"
                 style={{
                   ...cellStyle,
-                  background: 'radial-gradient(circle at center, rgba(255,195,77,0.3), rgba(255,195,77,0.05) 60%, transparent 95%)',
-                  boxShadow: 'inset 0 0 0 1px rgba(255, 195, 77, 0.55)',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  background: '#ffc34d',
+                  boxShadow: 'inset 0 0 0 2px #ffe4a8',
                 }}
                 title="Home Base"
               >
@@ -266,10 +274,10 @@ function OverworldMap({
                   src={`/sprites/${spriteFile}.png`}
                   alt="You"
                   style={{
-                    width: '85%',
-                    height: '85%',
+                    width: '90%',
+                    height: '90%',
                     imageRendering: 'pixelated',
-                    filter: `drop-shadow(0 0 4px ${accentColor})`,
+                    filter: `drop-shadow(0 0 3px ${accentColor})`,
                   }}
                 />
                 {classStripe && (
@@ -277,8 +285,8 @@ function OverworldMap({
                     style={{
                       position: 'absolute',
                       bottom: 2,
-                      left: '15%',
-                      right: '15%',
+                      left: '20%',
+                      right: '20%',
                       height: 2,
                       background: classStripe,
                       boxShadow: `0 0 4px ${classStripe}`,
@@ -296,8 +304,9 @@ function OverworldMap({
                 key={`${x}-${y}`}
                 style={{
                   ...cellStyle,
-                  background: `linear-gradient(${hex}44, ${hex}88)`,
-                  boxShadow: `inset 0 0 0 1px ${hex}66`,
+                  background: hex,
+                  opacity: 0.85,
+                  boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.3)`,
                 }}
               />
             );
@@ -311,39 +320,49 @@ function OverworldMap({
             return (
               <button
                 key={`${x}-${y}`}
-                onClick={() => onSelect(portal.world.id)}
+                onClick={() => unlocked && onSelect(portal.world.id)}
                 disabled={!unlocked}
-                className={classNames(
-                  'flex items-center justify-center transition-all',
-                  unlocked
-                    ? 'hover:scale-110 cursor-pointer'
-                    : 'opacity-40 cursor-not-allowed',
-                )}
                 style={{
                   ...cellStyle,
-                  background: `radial-gradient(circle at center, ${hex}aa, ${hex}33 50%, transparent 80%)`,
-                  boxShadow: unlocked ? `0 0 12px ${hex}, inset 0 0 0 2px ${hex}` : `inset 0 0 0 1px ${hex}55`,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: unlocked ? 'pointer' : 'not-allowed',
+                  opacity: unlocked ? 1 : 0.35,
+                  background: '#0e0f1a',
+                  boxShadow: `inset 0 0 0 3px ${hex}, 0 0 12px ${hex}`,
+                  transition: 'transform 0.15s',
+                  border: 'none',
+                  padding: 0,
                 }}
                 title={unlocked ? `${portal.world.name} (${completed}/${portal.world.levels.length})` : `Unlocks at Lvl ${portal.world.levelRequired}`}
+                onMouseEnter={(e) => { if (unlocked) e.currentTarget.style.transform = 'scale(1.15)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 <span
-                  className="text-lg font-bold"
-                  style={{ color: hex, textShadow: `0 0 6px ${hex}` }}
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 'bold',
+                    color: hex,
+                    textShadow: `0 0 6px ${hex}`,
+                  }}
                 >
                   {portal.world.icon}
                 </span>
               </button>
             );
           }
-          // empty: subtle dot
+          // empty
           return (
             <div
               key={`${x}-${y}`}
               style={{
                 ...cellStyle,
-                background: 'rgba(20, 25, 35, 0.6)',
-                backgroundImage: 'radial-gradient(circle, rgba(20, 214, 232, 0.12) 1px, transparent 1px)',
-                backgroundSize: '50% 50%',
+                background: '#1f2230',
+                backgroundImage:
+                  'radial-gradient(circle, rgba(20,214,232,0.18) 1px, transparent 1px)',
+                backgroundSize: '12px 12px',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
               }}

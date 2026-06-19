@@ -17,158 +17,255 @@ export type AvatarProps = {
 };
 
 /**
- * Pixel avatar backed by Antifarea's CC-BY 3.0 character sprite set
- * (https://opengameart.org/content/twelve-16x18-rpg-character-sprites-including-npcs-and-elementals).
+ * Tron identity-disc style avatar.
  *
- * Each archetype maps to one of the 12 characters in the set. The
- * hair/skin/shirt/pants customisations from the Avatar DB row are
- * retained as a neon class-color stripe down the torso — that lets
- * the user see their class colour without us having to recolour the
- * pixel art (which would require per-pixel quantisation).
+ * Each archetype is represented as a glowing circular disc with a
+ * stylized humanoid silhouette inside. The silhouette's proportions
+ * match the somatotype (lean = thin lines, solid = thicker shapes,
+ * tall = elongated, etc.).
  *
- * The sprites are 16×18 pixel art scaled with `image-rendering: pixelated`
- * so the pixels stay crisp at any size.
+ * - 40×40 viewBox at default size 160 (4× scale, chunky pixels)
+ * - Outer ring: archetype color + class stripe
+ * - Inner figure: simple Tron-style humanoid in the class color
+ * - Glow filter on the ring
+ * - Background grid pattern hinting at the digital world
+ *
+ * The Avatar DB row keeps the hair/skin/shirt/pants customizations
+ * for forward-compat (we can overlay hair later), but they don't
+ * affect the disc rendering.
  */
 export function Avatar({
   archetype,
-  hairColor,
-  accentColor,
   size = 160,
   className,
+  accentColor,
   classStripe,
 }: AvatarProps) {
-  const sprite = archetypeToSprite(archetype);
-  // ~5x scale: 16x18 -> 80x90 px at size=160
-  const scale = Math.max(2, Math.round(size / 80));
-  const w = 16 * scale;
-  const h = 18 * scale;
+  const ringColor = classStripe ?? accentColor ?? '#14d6e8';
+  const innerColor = archetypeTint(archetype);
 
-  // Pick a neon tint for the sprite based on the archetype's archetype
-  // accent. This adds visual differentiation on top of the sprite
-  // design itself.
-  const tint = archetypeTint(archetype, accentColor);
+  const fig = figurePath(archetype);
+  const w = 40;
+  const h = 40;
+  const cx = w / 2;
 
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${w} ${h}`}
-      width={w}
-      height={h}
+      width={size}
+      height={size}
       shapeRendering="crispEdges"
       className={className}
       aria-label={`${archetype} avatar`}
     >
       <defs>
-        <filter id={`tint-${archetype}`} x="0" y="0" width="100%" height="100%">
-          {/* Tint the sprite with the user's accent colour. The
-              feColorMatrix rebalances RGB so the original sprite's
-              shading comes through but with a clear color shift. */}
-          <feColorMatrix
-            type="matrix"
-            values="0.7 0.15 0.15 0 0
-                    0.15 0.7 0.15 0 0
-                    0.15 0.15 0.7 0 0
-                    0 0 0 1 0"
-          />
-          <feFlood floodColor={tint} result="flood" />
-          <feComposite in="flood" in2="SourceGraphic" operator="in" result="masked" />
+        <filter id={`disc-glow-${archetype}`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1.2" result="blur" />
           <feMerge>
+            <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
-            <feMergeNode in="masked" />
           </feMerge>
         </filter>
+        <pattern id={`disc-grid-${archetype}`} x="0" y="0" width="4" height="4" patternUnits="userSpaceOnUse">
+          <path d="M 4 0 L 0 0 0 4" fill="none" stroke={innerColor} strokeWidth="0.3" opacity="0.25" />
+        </pattern>
       </defs>
 
-      {/* Glow halo behind the sprite */}
-      <ellipse
-        cx={w / 2}
-        cy={h - 6 * scale}
-        rx={w * 0.4}
-        ry={3 * scale}
-        fill={tint}
-        opacity={0.25}
-        filter="blur(4px)"
+      {/* Background dark fill (the disc surface) */}
+      <circle cx={cx} cy={h / 2} r={18} fill="#0e0f1a" />
+
+      {/* Inner grid pattern */}
+      <circle cx={cx} cy={h / 2} r={16} fill={`url(#disc-grid-${archetype})`} />
+
+      {/* Outer ring (glowing) */}
+      <circle
+        cx={cx}
+        cy={h / 2}
+        r={18}
+        fill="none"
+        stroke={ringColor}
+        strokeWidth="2"
+        filter={`url(#disc-glow-${archetype})`}
+      />
+      {/* Inner ring (thinner, slightly inset) */}
+      <circle
+        cx={cx}
+        cy={h / 2}
+        r={15}
+        fill="none"
+        stroke={ringColor}
+        strokeWidth="0.5"
+        opacity={0.5}
       />
 
-      {/* The actual sprite — top-down 2x (or more) with NEAREST */}
-      <image
-        href={`/sprites/${sprite}.png`}
-        x={0}
-        y={0}
-        width={w}
-        height={h}
-        preserveAspectRatio="xMidYMid meet"
-        style={{ imageRendering: 'pixelated' }}
-        filter={`url(#tint-${archetype})`}
-      />
+      {/* Archetype silhouette — abstract humanoid */}
+      <g
+        fill={innerColor}
+        filter={`url(#disc-glow-${archetype})`}
+        transform={`translate(${cx}, ${h / 2})`}
+      >
+        {fig}
+      </g>
 
-      {/* Class-color stripe down the torso (centered, vertical) */}
+      {/* Class stripe accent: a thin radial line on the disc */}
       {classStripe && (
-        <rect
-          x={Math.floor(w / 2) - scale}
-          y={Math.floor(h * 0.55)}
-          width={scale * 2}
-          height={Math.floor(h * 0.25)}
-          fill={classStripe}
-          opacity={0.85}
-          style={{ mixBlendMode: 'screen' }}
+        <line
+          x1={cx}
+          y1={h / 2 - 18}
+          x2={cx}
+          y2={h / 2 + 18}
+          stroke={classStripe}
+          strokeWidth="0.8"
+          opacity={0.5}
         />
       )}
 
-      {/* Glow trim along the bottom (subtle scanline) */}
-      <rect
-        x={0}
-        y={h - scale}
-        width={w}
-        height={scale}
-        fill={tint}
-        opacity={0.15}
-      />
+      {/* Tick marks at cardinal points (Tron identifier) */}
+      <g stroke={ringColor} strokeWidth="0.6" opacity={0.7}>
+        <line x1={cx - 18} y1={h / 2} x2={cx - 16} y2={h / 2} />
+        <line x1={cx + 16} y1={h / 2} x2={cx + 18} y2={h / 2} />
+        <line x1={cx} y1={h / 2 - 18} x2={cx} y2={h / 2 - 16} />
+        <line x1={cx} y1={h / 2 + 16} x2={cx} y2={h / 2 + 18} />
+      </g>
     </svg>
   );
 }
 
 /**
- * Map archetype → sprite file. Picked so the character's silhouette
- * matches the somatotype:
- * - LEAN: thin, lithe characters (Nun, Wind)
- * - BALANCED: medium builds (Merchant, Priest, Earth)
- * - SOLID: heavy, broad (Captain, Cultist)
- * - HEIGHT: short chars go with short archetypes, etc.
+ * Abstract humanoid silhouette per archetype.
+ * Each is a small set of <rect> shapes centered on (0, 0).
+ * Coordinates are relative to the center.
+ *
+ *   - HEAD: small square top
+ *   - TORSO: medium rectangle middle
+ *   - ARMS: 2 small rectangles beside torso
+ *   - LEGS: 2 rectangles below torso
  */
-function archetypeToSprite(a: FrameArchetype): string {
+function figurePath(a: FrameArchetype): JSX.Element {
   switch (a) {
-    case 'WISP':     return 'nun';      // short, lean, white-hooded
-    case 'SPRITE':   return 'merchant'; // short, balanced, small hat
-    case 'DRAKE':    return 'cultist';  // short, solid, hooded
-    case 'STRIKER':  return 'wind';     // medium, lean, blue/green
-    case 'FORGE':    return 'priest';   // medium, balanced, dark gray
-    case 'GOLEM':    return 'captain';  // medium, solid, broad
-    case 'WIRED':    return 'light';    // tall, lean, white/gold
-    case 'BEAR':     return 'earth';    // tall, balanced, brown
-    case 'BEHEMOTH': return 'pirate';   // tall, solid, red-hooded
+    case 'WISP':
+      // Short lean — small head, narrow torso, short limbs
+      return (
+        <g>
+          <rect x={-1.5} y={-8} width={3} height={3} />
+          <rect x={-2} y={-5} width={4} height={5} />
+          <rect x={-4} y={-4} width={1.5} height={4} />
+          <rect x={2.5} y={-4} width={1.5} height={4} />
+          <rect x={-2} y={0} width={1.5} height={6} />
+          <rect x={0.5} y={0} width={1.5} height={6} />
+        </g>
+      );
+    case 'SPRITE':
+      // Short balanced
+      return (
+        <g>
+          <rect x={-2} y={-9} width={4} height={3} />
+          <rect x={-3} y={-6} width={6} height={5} />
+          <rect x={-5} y={-5} width={2} height={4} />
+          <rect x={3} y={-5} width={2} height={4} />
+          <rect x={-3} y={-1} width={2} height={6} />
+          <rect x={1} y={-1} width={2} height={6} />
+        </g>
+      );
+    case 'DRAKE':
+      // Short solid — wide torso, short limbs
+      return (
+        <g>
+          <rect x={-2} y={-9} width={4} height={3} />
+          <rect x={-4} y={-6} width={8} height={5} />
+          <rect x={-6} y={-5} width={2} height={3} />
+          <rect x={4} y={-5} width={2} height={3} />
+          <rect x={-3} y={-1} width={2.5} height={6} />
+          <rect x={0.5} y={-1} width={2.5} height={6} />
+        </g>
+      );
+    case 'STRIKER':
+      // Medium lean
+      return (
+        <g>
+          <rect x={-2} y={-10} width={4} height={3} />
+          <rect x={-2.5} y={-7} width={5} height={6} />
+          <rect x={-4.5} y={-6} width={2} height={5} />
+          <rect x={2.5} y={-6} width={2} height={5} />
+          <rect x={-2.5} y={-1} width={2} height={7} />
+          <rect x={0.5} y={-1} width={2} height={7} />
+        </g>
+      );
+    case 'FORGE':
+      // Medium balanced — the default "classic" silhouette
+      return (
+        <g>
+          <rect x={-2} y={-10} width={4} height={3} />
+          <rect x={-3} y={-7} width={6} height={6} />
+          <rect x={-5} y={-6} width={2} height={5} />
+          <rect x={3} y={-6} width={2} height={5} />
+          <rect x={-3} y={-1} width={2.5} height={7} />
+          <rect x={0.5} y={-1} width={2.5} height={7} />
+        </g>
+      );
+    case 'GOLEM':
+      // Medium solid — wide shoulders
+      return (
+        <g>
+          <rect x={-2} y={-10} width={4} height={3} />
+          <rect x={-4} y={-7} width={8} height={6} />
+          <rect x={-6} y={-6} width={2} height={4} />
+          <rect x={4} y={-6} width={2} height={4} />
+          <rect x={-4} y={-1} width={3} height={7} />
+          <rect x={1} y={-1} width={3} height={7} />
+        </g>
+      );
+    case 'WIRED':
+      // Tall lean — elongated
+      return (
+        <g>
+          <rect x={-1.5} y={-12} width={3} height={3} />
+          <rect x={-2} y={-9} width={4} height={7} />
+          <rect x={-4} y={-8} width={1.5} height={6} />
+          <rect x={2.5} y={-8} width={1.5} height={6} />
+          <rect x={-2} y={-2} width={1.5} height={9} />
+          <rect x={0.5} y={-2} width={1.5} height={9} />
+        </g>
+      );
+    case 'BEAR':
+      // Tall balanced
+      return (
+        <g>
+          <rect x={-2} y={-12} width={4} height={3} />
+          <rect x={-3} y={-9} width={6} height={7} />
+          <rect x={-5} y={-8} width={2} height={6} />
+          <rect x={3} y={-8} width={2} height={6} />
+          <rect x={-3} y={-2} width={2.5} height={9} />
+          <rect x={0.5} y={-2} width={2.5} height={9} />
+        </g>
+      );
+    case 'BEHEMOTH':
+      // Tall solid — biggest silhouette
+      return (
+        <g>
+          <rect x={-2.5} y={-12} width={5} height={3} />
+          <rect x={-4} y={-9} width={8} height={7} />
+          <rect x={-6} y={-8} width={2} height={5} />
+          <rect x={4} y={-8} width={2} height={5} />
+          <rect x={-4} y={-2} width={3} height={9} />
+          <rect x={1} y={-2} width={3} height={9} />
+        </g>
+      );
   }
 }
 
-/** Pick a tint color that fits the archetype's vibe. */
-function archetypeTint(a: FrameArchetype, accent: string): string {
-  // Use the user's accent color but pull toward a per-archetype
-  // family so similar archetypes don't look identical.
+function archetypeTint(a: FrameArchetype): string {
   const bias: Record<FrameArchetype, string> = {
-    WISP:     '#9bff5c', // lime
-    SPRITE:   '#14d6e8', // cyan
-    DRAKE:    '#ffc34d', // goldenrod
+    WISP:     '#9bff5c',
+    SPRITE:   '#14d6e8',
+    DRAKE:    '#ffc34d',
     STRIKER:  '#14d6e8',
     FORGE:    '#14d6e8',
-    GOLEM:    '#f55cc4', // magenta
+    GOLEM:    '#f55cc4',
     WIRED:    '#9bff5c',
     BEAR:     '#14d6e8',
     BEHEMOTH: '#f55cc4',
   };
-  // Blend 60% bias, 40% user accent
   return bias[a];
 }
-
-// Backwards-compat — old Avatar props used these. We accept them but
-// don't render them; kept so the call sites don't break.
-export const _hairColor = (h: string): string => h;
