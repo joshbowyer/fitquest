@@ -28,6 +28,8 @@ export type User = {
   heightCm: number | null;
   wristCm: number | null;
   ankleCm: number | null;
+  forearmLengthCm: number | null;
+  neckCircCm: number | null;
   weightKg: number | null;
   bodyFatPct: number | null;
   birthDate: string | null;

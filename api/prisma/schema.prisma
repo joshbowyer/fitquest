@@ -135,10 +135,13 @@ model User {
   xp           Int      @default(0)
   gold         Int      @default(0)
   units        UnitSystem @default(METRIC)
-  // Body metrics used by genetic-max formulas
-  heightCm     Float?
-  wristCm      Float?
-  ankleCm      Float?
+  // Static frame inputs (rarely change). Used by genetic-max formulas.
+  heightCm        Float?
+  wristCm         Float?
+  ankleCm         Float?
+  forearmLengthCm Float?
+  neckCircCm      Float?
+  // Dynamic body metrics (change over time). Used by formulas + tracked.
   weightKg     Float?
   bodyFatPct   Float?
   birthDate    DateTime?

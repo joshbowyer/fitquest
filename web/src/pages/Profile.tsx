@@ -26,16 +26,23 @@ import {
 const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'ORACLE'];
 
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
-function previewMax(metric: string, wristCm: number | null, ankleCm: number | null, heightCm: number | null): number | null {
+function previewMax(
+  metric: string,
+  wristCm: number | null,
+  ankleCm: number | null,
+  heightCm: number | null,
+  neckCircCm: number | null = null,
+): number | null {
   const w = wristCm;
   const a = ankleCm;
   const h = heightCm;
+  const n = neckCircCm;
   switch (metric) {
     case 'BICEP':      return w ? w * 2.7 : (h ? h * 0.228 : null);
     case 'FOREARM':    return w ? w * 2.3 : (h ? h * 0.195 : null);
     case 'CHEST':      return w ? w * 7.5 : (h ? h * 0.634 : null);
     case 'SHOULDER':   return w ? w * 8.5 : (h ? h * 0.718 : null);
-    case 'NECK':       return w ? w * 2.9 : (h ? h * 0.245 : null);
+    case 'NECK':       return n ? n : (w ? w * 2.9 : (h ? h * 0.245 : null));
     case 'QUAD':       return a ? a * 2.85 : (h ? h * 0.352 : null);
     case 'CALF':       return a ? a * 1.9 : (h ? h * 0.234 : null);
     case 'WAIST':      return h ? h * 0.161 : (w ? w * 1.9 : null);
@@ -46,15 +53,20 @@ function previewMax(metric: string, wristCm: number | null, ankleCm: number | nu
 
 const PREVIEW_METRICS = [
   { key: 'BICEP', label: 'Bicep', unit: 'cm' },
+  { key: 'FOREARM', label: 'Forearm', unit: 'cm' },
   { key: 'CHEST', label: 'Chest', unit: 'cm' },
   { key: 'SHOULDER', label: 'Shoulder', unit: 'cm' },
+  { key: 'NECK', label: 'Neck', unit: 'cm' },
   { key: 'QUAD', label: 'Quad', unit: 'cm' },
+  { key: 'CALF', label: 'Calf', unit: 'cm' },
 ] as const;
 
 function storageUnitForKey(key: string): string {
   if (key === 'heightCm') return 'cm';
   if (key === 'wristCm') return 'cm';
   if (key === 'ankleCm') return 'cm';
+  if (key === 'forearmLengthCm') return 'cm';
+  if (key === 'neckCircCm') return 'cm';
   if (key === 'weightKg') return 'kg';
   return '';
 }
@@ -74,14 +86,19 @@ export function ProfilePage() {
   });
   const [pendingClass, setPendingClass] = useState<ClassName | null>(null);
 
-  const NUMERIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'weightKg', 'bodyFatPct'] as const;
-  const FRAME_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'weightKg', 'bodyFatPct'] as const;
+  // Split frame inputs by volatility. Static = bone structure (rarely
+  // changes, drives Casey Butt genetic maxes). Dynamic = body comp
+  // (changes with training, drives FFMI + lean mass). birthDate lives
+  // with the static set since it changes ~never.
+  const STATIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'birthDate'] as const;
+  const DYNAMIC_KEYS = ['weightKg', 'bodyFatPct'] as const;
+  const FRAME_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'weightKg', 'bodyFatPct'] as const;
 
   // Initialize draft + class + birthdate from user on mount/unit change
   useEffect(() => {
     if (!user) return;
     const next: Record<string, string> = {};
-    for (const key of NUMERIC_KEYS) {
+    for (const key of FRAME_KEYS) {
       const v = (user as any)[key] as number | null | undefined;
       if (v == null) {
         next[key] = '';
@@ -166,7 +183,7 @@ export function ProfilePage() {
       } else if (classChoice) {
         body.class = classChoice;
       }
-      for (const key of NUMERIC_KEYS) {
+      for (const key of FRAME_KEYS) {
         const raw = draft[key];
         if (raw === '' || raw == null) {
           body[key] = null;
@@ -230,9 +247,10 @@ export function ProfilePage() {
   if (!previewWrist) missing.push('wrist');
   if (!previewAnkle) missing.push('ankle');
   const frameIncomplete = missing.length > 0;
+  const previewNeck = numFromDraft('neckCircCm');
   const previewValues = PREVIEW_METRICS.map((m) => ({
     ...m,
-    value: previewMax(m.key, previewWrist, previewAnkle, previewHeight),
+    value: previewMax(m.key, previewWrist, previewAnkle, previewHeight, previewNeck),
   }));
   const previewsValid = previewValues.every((v) => v.value != null);
 
@@ -293,38 +311,94 @@ export function ProfilePage() {
               )}
             </div>
 
-            {/* Frame inputs */}
-            <div className="grid grid-cols-3 gap-3">
-              <FrameField
-                label="Height"
-                storageKey="heightCm"
-                value={draft.heightCm ?? ''}
-                onChange={(v) => setDraftField('heightCm', v)}
-                system={system}
-                step={inImperial ? 0.5 : 0.1}
-                required
-                present={!!previewHeight}
-              />
-              <FrameField
-                label="Wrist"
-                storageKey="wristCm"
-                value={draft.wristCm ?? ''}
-                onChange={(v) => setDraftField('wristCm', v)}
-                system={system}
-                step={inImperial ? 0.25 : 0.1}
-                required
-                present={!!previewWrist}
-              />
-              <FrameField
-                label="Ankle"
-                storageKey="ankleCm"
-                value={draft.ankleCm ?? ''}
-                onChange={(v) => setDraftField('ankleCm', v)}
-                system={system}
-                step={inImperial ? 0.25 : 0.1}
-                required
-                present={!!previewAnkle}
-              />
+            {/* Frame inputs — split into Static (rarely changes) and
+                Dynamic (changes with training). Static drives the
+                Casey Butt genetic maxes; Dynamic drives FFMI/lean mass. */}
+            <div className="space-y-3">
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
+                  Static · bone structure
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <FrameField
+                    label="Height"
+                    storageKey="heightCm"
+                    value={draft.heightCm ?? ''}
+                    onChange={(v) => setDraftField('heightCm', v)}
+                    system={system}
+                    step={inImperial ? 0.5 : 0.1}
+                    required
+                    present={!!previewHeight}
+                  />
+                  <FrameField
+                    label="Wrist"
+                    storageKey="wristCm"
+                    value={draft.wristCm ?? ''}
+                    onChange={(v) => setDraftField('wristCm', v)}
+                    system={system}
+                    step={inImperial ? 0.25 : 0.1}
+                    required
+                    present={!!previewWrist}
+                  />
+                  <FrameField
+                    label="Ankle"
+                    storageKey="ankleCm"
+                    value={draft.ankleCm ?? ''}
+                    onChange={(v) => setDraftField('ankleCm', v)}
+                    system={system}
+                    step={inImperial ? 0.25 : 0.1}
+                    required
+                    present={!!previewAnkle}
+                  />
+                  <FrameField
+                    label="Forearm"
+                    storageKey="forearmLengthCm"
+                    value={draft.forearmLengthCm ?? ''}
+                    onChange={(v) => setDraftField('forearmLengthCm', v)}
+                    system={system}
+                    step={inImperial ? 0.25 : 0.1}
+                  />
+                  <FrameField
+                    label="Neck"
+                    storageKey="neckCircCm"
+                    value={draft.neckCircCm ?? ''}
+                    onChange={(v) => setDraftField('neckCircCm', v)}
+                    system={system}
+                    step={inImperial ? 0.25 : 0.1}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
+                  Dynamic · body comp
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                      Weight ({displayUnit('kg', system)})
+                    </label>
+                    <input
+                      className="input-neon"
+                      type="number"
+                      step={inImperial ? 1 : 0.1}
+                      value={draft.weightKg ?? ''}
+                      onChange={(e) => setDraftField('weightKg', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                      Body Fat (%)
+                    </label>
+                    <input
+                      className="input-neon"
+                      type="number"
+                      step="0.1"
+                      value={draft.bodyFatPct ?? ''}
+                      onChange={(e) => setDraftField('bodyFatPct', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Preview maxes */}
@@ -351,43 +425,28 @@ export function ProfilePage() {
               )}
             </div>
 
-            {/* Body composition */}
-            <div className="border-t border-ink-500/30 pt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-                  Weight ({displayUnit('kg', system)})
-                </label>
-                <input
-                  className="input-neon"
-                  type="number"
-                  step={inImperial ? 1 : 0.1}
-                  value={draft.weightKg ?? ''}
-                  onChange={(e) => setDraftField('weightKg', e.target.value)}
-                />
+            {/* Birth Date — sits with the static frame fields since it
+                changes ~never. Drives the class-lock birthday window. */}
+            <div className="border-t border-ink-500/30 pt-3">
+              <div className="text-[9px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
+                Static · identity
               </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-                  Body Fat (%)
-                </label>
-                <input
-                  className="input-neon"
-                  type="number"
-                  step="0.1"
-                  value={draft.bodyFatPct ?? ''}
-                  onChange={(e) => setDraftField('bodyFatPct', e.target.value)}
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+                    Birth Date
+                  </label>
+                  <input
+                    className="input-neon"
+                    type="date"
+                    value={birthDate ? new Date(birthDate).toISOString().slice(0, 10) : ''}
+                    onChange={(e) => setBirthDate(e.target.value ? new Date(e.target.value).toISOString() : null)}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-                  Birth Date
-                </label>
-                <input
-                  className="input-neon"
-                  type="date"
-                  value={birthDate ? new Date(birthDate).toISOString().slice(0, 10) : ''}
-                  onChange={(e) => setBirthDate(e.target.value ? new Date(e.target.value).toISOString() : null)}
-                />
-              </div>
+              <p className="text-[10px] text-ink-400 font-mono mt-2 italic">
+                Birthday is used to unlock your class once a year. No birthday = fallback to 365-day cooldown.
+              </p>
             </div>
 
             {/* Save button + feedback */}
@@ -681,8 +740,8 @@ function FrameField({
   onChange,
   system,
   step,
-  required,
-  present,
+  required = false,
+  present = true,
 }: {
   label: string;
   storageKey: string;
@@ -690,8 +749,8 @@ function FrameField({
   onChange: (v: string) => void;
   system: UnitSystem;
   step: number;
-  required: boolean;
-  present: boolean;
+  required?: boolean;
+  present?: boolean;
 }) {
   const displayU = displayUnit(storageUnitForKey(storageKey), system);
   return (

@@ -5,6 +5,8 @@ type Inputs = {
   heightCm?: number | null;
   wristCm?: number | null;
   ankleCm?: number | null;
+  forearmLengthCm?: number | null;
+  neckCircCm?: number | null;
   weightKg?: number | null;
   bodyFatPct?: number | null;
   birthDate?: Date | null;
@@ -24,7 +26,7 @@ function age(birthDate?: Date | null): number | null {
  * natural ceiling, age-adjusted VO2 max norms, strength-to-bodyweight norms.
  */
 export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | null {
-  const { heightCm, wristCm, ankleCm, weightKg, bodyFatPct, birthDate, sex } = inputs;
+  const { heightCm, wristCm, ankleCm, forearmLengthCm, neckCircCm, weightKg, bodyFatPct, birthDate, sex } = inputs;
 
   switch (metric) {
     // Casey Butt–calibrated formulas. All ratios are derived from the
@@ -59,7 +61,10 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       return null;
     }
     case 'NECK': {
-      // Casey Butt range: 17-18" (2.8-3.0x wrist), midpoint ~2.9x.
+      // Prefer the actual measured neck circumference when on file —
+      // direct measurement beats a wrist-derived estimate. Fall back to
+      // the Casey Butt ratio (2.9x wrist) if not.
+      if (neckCircCm) return round1(neckCircCm);
       if (wristCm) return round1(wristCm * 2.9);
       if (heightCm) return round1(heightCm * 0.245);
       return null;
