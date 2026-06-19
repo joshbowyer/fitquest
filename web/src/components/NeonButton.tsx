@@ -18,6 +18,8 @@ type Props = {
   variant?: Variant;
   disabled?: boolean;
   loading?: boolean;
+  loadingText?: string;
+  icon?: ReactNode;
   className?: string;
   fullWidth?: boolean;
 };
@@ -37,6 +39,8 @@ export function NeonButton({
   variant = 'cyan',
   disabled,
   loading,
+  loadingText,
+  icon,
   className,
   fullWidth,
 }: Props) {
@@ -52,7 +56,18 @@ export function NeonButton({
         className
       )}
     >
-      {children}
+      {icon != null && (
+        <span
+          className={classNames(
+            'inline-block align-baseline',
+            loading ? 'animate-spin mr-2' : 'mr-2'
+          )}
+          aria-hidden
+        >
+          {icon}
+        </span>
+      )}
+      {loading && loadingText ? loadingText : children}
     </button>
   );
 }

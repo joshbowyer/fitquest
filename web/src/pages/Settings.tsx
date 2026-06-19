@@ -46,9 +46,12 @@ export function SettingsPage() {
     setIsRecomputing(true);
     setRecomputeResult(null);
     setRecomputeSummary(null);
-    const minDelay = new Promise((r) => setTimeout(r, 1200));
     try {
-      const r = await Promise.all([recomputeM.mutateAsync(), minDelay]).then(([res]) => res);
+      const r = await recomputeM.mutateAsync();
+      // Explicitly hold the loading state for at least 2s so the user
+      // actually sees the animation + spinner (API returns in <100ms
+      // locally).
+      await new Promise((res) => setTimeout(res, 2000));
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['insights'] });
@@ -170,8 +173,10 @@ export function SettingsPage() {
               variant="lime"
               onClick={handleRecompute}
               loading={isRecomputing}
+              icon="⟳"
+              loadingText="Recomputing…"
             >
-              {isRecomputing ? '⟳ Recomputing…' : '⟳ Recompute'}
+              Recompute
             </NeonButton>
           }
         >
