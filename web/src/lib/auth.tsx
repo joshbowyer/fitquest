@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from './api';
 
 export type ClassName =
@@ -38,15 +38,22 @@ const Ctx = createContext<AuthCtx | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Only the very first refresh() call is allowed to clear the user.
+  // Subsequent failures (e.g., a cookie race right after register/login)
+  // leave the user state alone, preventing a blank-screen flash.
+  const hasInitialized = useRef(false);
 
   async function refresh() {
     try {
       const r = await api<{ user: User }>('/auth/me');
       setUser(r.user);
     } catch {
-      setUser(null);
+      if (!hasInitialized.current) {
+        setUser(null);
+      }
     } finally {
       setLoading(false);
+      hasInitialized.current = true;
     }
   }
 
@@ -56,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // ignore
     }
+    hasInitialized.current = false;
     setUser(null);
   }
 
