@@ -1,0 +1,17 @@
+# Caddy config for production (optional profile)
+# Routes: / -> web, /api -> api
+{$WEB_DOMAIN:localhost} {
+  encode gzip zstd
+  @api path /api/*
+  handle @api {
+    reverse_proxy api:3001 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+    }
+  }
+  handle {
+    reverse_proxy web:80
+  }
+}

@@ -1,0 +1,94 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { MetricType } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { requireUser } from '../lib/auth.js';
+import { METRICS } from '../lib/metrics.js';
+import { checkAchievements } from '../lib/achievements.js';
+
+const CreateSchema = z.object({
+  metric: z.nativeEnum(MetricType),
+  value: z.number().positive().max(10000),
+  unit: z.string().max(16).optional(),
+  notes: z.string().max(500).optional(),
+  recordedAt: z.string().datetime().optional(),
+});
+
+const UpdateSchema = CreateSchema.partial().extend({ id: z.string() });
+
+export async function measurementRoutes(app: FastifyInstance) {
+  app.get('/', async (req) => {
+    const me = await requireUser(req);
+    const q = z.object({
+      metric: z.nativeEnum(MetricType).optional(),
+      limit: z.coerce.number().int().min(1).max(500).default(100),
+    }).parse(req.query);
+    const where: any = { userId: me.id };
+    if (q.metric) where.metric = q.metric;
+    const items = await prisma.measurement.findMany({
+      where,
+      orderBy: { recordedAt: 'desc' },
+      take: q.limit,
+    });
+    return { items };
+  });
+
+  app.get('/latest', async (req) => {
+    const me = await requireUser(req);
+    const all = await prisma.measurement.findMany({
+      where: { userId: me.id },
+      orderBy: { recordedAt: 'desc' },
+    });
+    const latestByMetric = new Map<string, typeof all[number]>();
+    for (const m of all) {
+      if (!latestByMetric.has(m.metric)) latestByMetric.set(m.metric, m);
+    }
+    return { items: Array.from(latestByMetric.values()) };
+  });
+
+  app.post('/', async (req) => {
+    const me = await requireUser(req);
+    const body = CreateSchema.parse(req.body);
+    const m = await prisma.measurement.create({
+      data: {
+        userId: me.id,
+        metric: body.metric,
+        value: body.value,
+        unit: body.unit ?? METRICS[body.metric].unit,
+        notes: body.notes,
+        recordedAt: body.recordedAt ? new Date(body.recordedAt) : new Date(),
+      },
+    });
+    await checkAchievements(me.id);
+    return { item: m };
+  });
+
+  app.patch('/:id', async (req) => {
+    const me = await requireUser(req);
+    const body = UpdateSchema.parse({ ...(req.body as any), id: (req.params as any).id });
+    const existing = await prisma.measurement.findFirst({
+      where: { id: body.id, userId: me.id },
+    });
+    if (!existing) return { error: 'Not found' };
+    const m = await prisma.measurement.update({
+      where: { id: body.id },
+      data: {
+        metric: body.metric,
+        value: body.value,
+        unit: body.unit,
+        notes: body.notes,
+        recordedAt: body.recordedAt ? new Date(body.recordedAt) : undefined,
+      },
+    });
+    return { item: m };
+  });
+
+  app.delete('/:id', async (req) => {
+    const me = await requireUser(req);
+    const id = (req.params as any).id;
+    const existing = await prisma.measurement.findFirst({ where: { id, userId: me.id } });
+    if (!existing) return { error: 'Not found' };
+    await prisma.measurement.delete({ where: { id } });
+    return { ok: true };
+  });
+}

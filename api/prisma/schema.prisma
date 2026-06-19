@@ -1,0 +1,326 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ClassName {
+  BODYBUILDER
+  POWERLIFTER
+  CALISTHENIST
+  ENDURANCE
+  HYBRID
+}
+
+enum MetricType {
+  // Hypertrophy (circumferences in cm)
+  BICEP
+  CHEST
+  SHOULDER
+  QUAD
+  CALF
+  FOREARM
+  NECK
+  WAIST
+  // Strength (1RM in kg)
+  BENCH_1RM
+  SQUAT_1RM
+  DEADLIFT_1RM
+  OHP_1RM
+  PULLUP_1RM
+  // Body composition
+  BODY_FAT_PCT
+  LEAN_MASS
+  FFMI
+  WEIGHT
+  // Cardio / endurance
+  VO2_MAX
+  RESTING_HR
+  HRV
+  FIVE_K_TIME
+  // Calisthenics
+  PLANK_HOLD
+  L_SIT_HOLD
+  // Powerlifts (composite)
+  POWERLIFT_TOTAL
+}
+
+enum MetricCategory {
+  HYPERTROPHY
+  STRENGTH
+  BODY_COMP
+  CARDIO
+  CALISTHENICS
+}
+
+enum WorkoutType {
+  STRENGTH
+  HYPERTROPHY
+  CALISTHENICS
+  CARDIO
+  MOBILITY
+  OTHER
+}
+
+enum PrType {
+  ONE_RM
+  VOLUME
+  REPS
+  TIME
+  HOLD
+}
+
+enum SkillTier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+enum AchievementCategory {
+  STRENGTH
+  HYPERTROPHY
+  CONSISTENCY
+  ENDURANCE
+  SOCIAL
+  CALISTHENICS
+  BODY_COMP
+}
+
+enum GeneticMaxSource {
+  FORMULA
+  MANUAL
+  PROJECTED
+}
+
+enum RaidStatus {
+  ACTIVE
+  VICTORY
+  DEFEAT
+}
+
+enum MemberRole {
+  LEADER
+  OFFICER
+  MEMBER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String
+  class        ClassName?
+  level        Int      @default(1)
+  xp           Int      @default(0)
+  gold         Int      @default(0)
+  // Body metrics used by genetic-max formulas
+  heightCm     Float?
+  wristCm      Float?
+  ankleCm      Float?
+  weightKg     Float?
+  bodyFatPct   Float?
+  birthDate    DateTime?
+  // Cached PRs (kg or seconds depending on exercise)
+  benchPr      Float?
+  squatPr      Float?
+  deadliftPr   Float?
+  ohpPr        Float?
+  pullupPr     Int?
+  // Relations
+  sessions        Session[]
+  measurements    Measurement[]
+  geneticMaxes     GeneticMax[]
+  workouts         Workout[]
+  prs              Pr[]
+  partyMember      PartyMember?
+  raidContribs     RaidContribution[]
+  achievements     UserAchievement[]
+  skills           UserSkill[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Measurement {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric     MetricType
+  value      Float
+  unit       String
+  notes      String?
+  recordedAt DateTime   @default(now())
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, metric, recordedAt])
+}
+
+model GeneticMax {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric    MetricType
+  value     Float
+  source    GeneticMaxSource @default(FORMULA)
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([userId, metric])
+}
+
+model Workout {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        WorkoutType
+  name        String?
+  duration    Int?
+  notes       String?
+  performedAt DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  exercises   Exercise[]
+
+  @@index([userId, performedAt])
+}
+
+model Exercise {
+  id        String   @id @default(cuid())
+  workoutId String
+  workout   Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int      @default(0)
+  notes     String?
+  sets      Set[]
+}
+
+model Set {
+  id         String   @id @default(cuid())
+  exerciseId String
+  exercise   Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  reps       Int
+  weight     Float?
+  duration   Int?
+  rpe        Float?
+  completed  Boolean  @default(true)
+  order      Int      @default(0)
+}
+
+model Pr {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          PrType
+  exercise      String
+  value         Float
+  previousValue Float?
+  achievedAt    DateTime @default(now())
+  workoutId     String?
+
+  @@index([userId, exercise, achievedAt])
+}
+
+model Skill {
+  id            String      @id @default(cuid())
+  className     ClassName
+  tier          SkillTier
+  name          String      @unique
+  description   String
+  cost          Int         @default(1)
+  prerequisites String[]
+  position      Int
+  effects       Json
+  userSkills    UserSkill[]
+}
+
+model UserSkill {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId    String
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  unlockedAt DateTime @default(now())
+
+  @@unique([userId, skillId])
+}
+
+model Party {
+  id        String        @id @default(cuid())
+  name      String
+  createdAt DateTime      @default(now())
+  members   PartyMember[]
+  raids     Raid[]
+}
+
+model PartyMember {
+  id       String     @id @default(cuid())
+  partyId  String
+  party    Party      @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  userId   String     @unique
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+}
+
+model Raid {
+  id            String            @id @default(cuid())
+  partyId       String
+  party         Party             @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  bossName      String
+  bossHp        Int
+  bossMaxHp     Int
+  status        RaidStatus        @default(ACTIVE)
+  startedAt     DateTime          @default(now())
+  endedAt       DateTime?
+  contributions RaidContribution[]
+}
+
+model RaidContribution {
+  id             String   @id @default(cuid())
+  raidId         String
+  raid           Raid     @relation(fields: [raidId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  damage         Int
+  source         String
+  contributedAt  DateTime @default(now())
+
+  @@index([raidId, userId])
+}
+
+model Achievement {
+  id              String            @id @default(cuid())
+  key             String            @unique
+  name            String
+  description     String
+  category        AchievementCategory
+  icon            String
+  criteria        Json
+  points          Int               @default(10)
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+}

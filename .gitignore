@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+*.lcov
+
+# production
+dist/
+build/
+.next/
+out/
+
+# misc
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# prisma
+api/prisma/migrations/dev.db*
+
+# misc
+*.tsbuildinfo
