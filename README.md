@@ -136,6 +136,25 @@ Skill points gained per level. Each skill applies effects (XP multiplier, gold m
 - Per-category streak achievements: 7-day and 30-day for Sleep, Nutrition, Wellness (6 total)
 - History viewer with 30-day trend chart and average reference line
 
+### Recovery & insights
+- **Recovery score (0-100)** on the dashboard, computed from 8 weighted metrics
+  - HRV vs your 30-day baseline (25%) — best single signal
+  - Sleep hours (20%, piecewise 7-9h optimal)
+  - Resting HR vs your 30-day baseline (15%, inverted)
+  - Sleep quality, soreness, stress, energy, mood (5-10% each)
+  - Missing metrics are handled by redistributing their weight across what's available
+  - 7-day rolling average trend with delta indicator
+  - Per-component breakdown bars with raw value + reason
+- **Correlations** — Pearson r over 60 days between 11 habit metrics and 4 training outcomes
+  - Outcomes: workout volume, avg RPE, PR count, next-day energy/mood
+  - Top 10 returned, sorted by |r|, requires ≥7 paired observations
+  - Full /insights page buckets them into strong / moderate / weak
+- **Personalized tips** — combine recovery + correlations into 3-5 actionable lines
+  - Low recovery → "PRIMED" or "DEPLETED" status, biggest drag identified
+  - Strong correlation → "Sleep hours strongly boost your bench volume (r=0.78, n=14)."
+  - Coverage gap → "You haven't logged HRV in 5 days. Closing this gap unlocks correlations."
+  - Insufficient data → "Log a few days of sleep + workouts to unlock insights."
+
 ### Achievements
 40+ achievements across:
 - Consistency (workout count, weigh-in streaks, sleep/nutrition/wellness streaks)
@@ -208,7 +227,7 @@ pg_dump $DATABASE_URL > backup.sql
 - [ ] **Calendar view** of workouts and measurements
 - [ ] **OAuth providers** (GitHub, Google) alongside email/password
 - [ ] **Body measurement photos** with diff view over time
-- [ ] **Habit correlations & insights** — Pearson correlations between sleep, mood, energy, soreness, HRV vs workout performance and PRs; "you PR more after 7+ hrs sleep" type insights
+- [x] **Habit correlations & insights** — Pearson correlations between sleep, mood, energy, soreness, HRV vs workout performance and PRs; "you PR more after 7+ hrs sleep" type insights
 
 ### Future ideas (unscheduled)
 - Native mobile app (Tauri or React Native)

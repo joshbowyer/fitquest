@@ -7,6 +7,8 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
 import { WeighInPanel } from '@/components/WeighInPanel';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
+import { RecoveryPanel } from '@/components/RecoveryPanel';
+import { InsightsPanel } from '@/components/InsightsPanel';
 import { useAuth } from '@/lib/auth';
 import {
   CLASS_META,
@@ -149,6 +151,12 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 mb-6">
         <WeighInPanel />
         <TodayHabitsPanel />
+      </div>
+
+      {/* Recovery + Insights */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 mb-6">
+        <RecoveryPanel />
+        <InsightsPanel />
       </div>
 
       {/* Stat sheet by category */}

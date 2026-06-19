@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { WorkoutsPage } from './pages/Workouts';
 import { MeasurementsPage } from './pages/Measurements';
 import { HabitsPage } from './pages/Habits';
+import { InsightsPage } from './pages/Insights';
 import { SkillsPage } from './pages/Skills';
 import { PartyPage } from './pages/Party';
 import { ProfilePage } from './pages/Profile';
@@ -46,6 +47,7 @@ export default function App() {
       <Route path="/workouts" element={<RequireAuth><WorkoutsPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
+      <Route path="/insights" element={<RequireAuth><InsightsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
