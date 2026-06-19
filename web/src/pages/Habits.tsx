@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
 import { classNames, formatDate, formatMetricWithUnit, formatNumber, formatRelative } from '@/lib/format';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
 const CATEGORY_VARIANT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'> = {
   SLEEP: 'violet',
@@ -43,7 +44,7 @@ export function HabitsPage() {
     ),
   });
 
-  const batchM = useMutation({
+  const batchM = useDelayedMutation({
     mutationFn: (items: Array<{ metric: MetricType; value: number }>) =>
       api<{ items: any[]; unlocked: string[] }>('/measurements/batch', {
         method: 'POST',
@@ -58,7 +59,7 @@ export function HabitsPage() {
         setTimeout(() => setUnlockedToast(null), 4000);
       }
     },
-  });
+  }, 1200);
 
   const status = statusQ.data?.status || {};
 
@@ -71,9 +72,7 @@ export function HabitsPage() {
     if (!raw) return;
     const value = Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
-    batchM.mutate([{ metric, value }], {
-      onSuccess: () => setDraft(metric, ''),
-    });
+    batchM.run([{ metric, value }]).then(() => setDraft(metric, ''));
   }
 
   function commitAll() {
@@ -85,7 +84,7 @@ export function HabitsPage() {
       items.push({ metric: metric as MetricType, value: v });
     }
     if (items.length === 0) return;
-    batchM.mutate(items, { onSuccess: () => setDrafts({}) });
+    batchM.run(items).then(() => setDrafts({}));
   }
 
   const dirtyCount = Object.values(drafts).filter((v) => v !== '' && v != null).length;
@@ -197,7 +196,8 @@ export function HabitsPage() {
                       <NeonButton
                         variant={CATEGORY_VARIANT[cat]}
                         onClick={() => commitOne(m)}
-                        disabled={!draft || batchM.isPending}
+                        loading={batchM.isPending}
+                        disabled={!draft}
                         className="text-[10px] px-2 py-1"
                       >
                         ⚡
@@ -220,9 +220,12 @@ export function HabitsPage() {
         )}
         <NeonButton
           onClick={commitAll}
-          disabled={dirtyCount === 0 || batchM.isPending}
+          loading={batchM.isPending}
+          disabled={dirtyCount === 0}
+          icon="⚡"
+          loadingText="Saving…"
         >
-          {batchM.isPending ? 'Saving…' : `⚡ Save ${dirtyCount || ''}`.trim()}
+          {`Save ${dirtyCount || ''}`.trim()}
         </NeonButton>
       </div>
 

@@ -6,6 +6,7 @@ type Props = {
   onUnlock: () => void;
   affordable: boolean;
   unlockable: boolean;
+  unlocking?: boolean;
 };
 
 const TIER_BORDER: Record<string, string> = {
@@ -20,15 +21,15 @@ const TIER_GLOW: Record<string, string> = {
   TIER_3: 'shadow-neon-amber/40',
 };
 
-export function SkillNode({ skill, onUnlock, affordable, unlockable }: Props) {
+export function SkillNode({ skill, onUnlock, affordable, unlockable, unlocking }: Props) {
   const cost = skill.cost;
   const baseClasses = 'w-full text-left p-3 border-2 transition-all cursor-pointer';
   const unlocked = skill.unlocked;
 
   return (
     <button
-      onClick={unlocked || !unlockable ? undefined : onUnlock}
-      disabled={unlocked || !unlockable}
+      onClick={unlockable && !unlocking ? onUnlock : undefined}
+      disabled={!unlockable || unlocking}
       className={classNames(
         baseClasses,
         TIER_BORDER[skill.tier],
@@ -36,6 +37,8 @@ export function SkillNode({ skill, onUnlock, affordable, unlockable }: Props) {
           ? 'bg-neon-lime/10 border-neon-lime shadow-neon-lime cursor-default'
           : !unlockable
           ? 'border-ink-500/30 bg-bg-800/40 opacity-50 cursor-not-allowed'
+          : unlocking
+          ? `bg-bg-800/80 animate-neon-charge ${TIER_GLOW[skill.tier]} border-current`
           : affordable
           ? `bg-bg-800/80 hover:scale-[1.02] hover:shadow-lg ${TIER_GLOW[skill.tier]}`
           : 'bg-bg-800/40 opacity-70'

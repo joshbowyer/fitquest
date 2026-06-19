@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { formatRelative, formatSeconds, classNames } from '@/lib/format';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
 
 const TYPE_OPTIONS: { value: WorkoutType; label: string; color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' }[] = [
@@ -36,7 +37,7 @@ export function WorkoutsPage() {
     queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=50'),
   });
 
-  const createM = useMutation({
+  const createM = useDelayedMutation({
     mutationFn: () =>
       api<any>('/workouts', {
         method: 'POST',
@@ -73,7 +74,7 @@ export function WorkoutsPage() {
       setName('');
       setNotes('');
     },
-  });
+  }, 1500);
 
   return (
     <Layout>
@@ -255,10 +256,13 @@ export function WorkoutsPage() {
 
             <div className="flex items-center gap-3">
               <NeonButton
-                onClick={() => createM.mutate()}
-                disabled={createM.isPending || exercises.every((e) => !e.name || e.sets.every((s) => !s.reps && !s.duration))}
+                onClick={() => createM.run()}
+                loading={createM.isPending}
+                disabled={exercises.every((e) => !e.name || e.sets.every((s) => !s.reps && !s.duration))}
+                icon="⚡"
+                loadingText="Committing…"
               >
-                {createM.isPending ? 'Saving…' : '⚡ Commit Session'}
+                Commit Session
               </NeonButton>
               {result && (
                 <div className="text-xs font-mono text-neon-lime">

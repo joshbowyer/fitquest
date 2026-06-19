@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { METRICS, METRICS_BY_CATEGORY, type GeneticMax, type Measurement, type MetricType } from '@/lib/types';
 import { formatDate, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 
@@ -45,7 +46,7 @@ export function MeasurementsPage() {
     queryFn: () => api<{ items: GeneticMax[] }>('/genetic-max'),
   });
 
-  const createM = useMutation({
+  const createM = useDelayedMutation({
     mutationFn: () => {
       const inputValue = Number(draftValue);
       const stored = convertForStorage(inputValue, displayUnit(METRICS[selected].unit, system), system);
@@ -65,9 +66,9 @@ export function MeasurementsPage() {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
     },
-  });
+  }, 1000);
 
-  const setMaxM = useMutation({
+  const setMaxM = useDelayedMutation({
     mutationFn: (value: number) =>
       api('/genetic-max', {
         method: 'PUT',
@@ -77,9 +78,9 @@ export function MeasurementsPage() {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
     },
-  });
+  }, 1000);
 
-  const setMaxFromLatestM = useMutation({
+  const setMaxFromLatestM = useDelayedMutation({
     mutationFn: (bufferPct: number) => {
       if (filtered.length === 0) throw new Error('No measurements to base max on');
       const latestVal = filtered[filtered.length - 1]!.value;
@@ -93,12 +94,12 @@ export function MeasurementsPage() {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
     },
-  });
+  }, 800);
 
-  const delMaxM = useMutation({
+  const delMaxM = useDelayedMutation({
     mutationFn: () => api(`/genetic-max/${selected}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['genetic-max'] }),
-  });
+  }, 800);
 
   const all = allQ.data?.items || [];
   const filtered = all
@@ -255,10 +256,13 @@ export function MeasurementsPage() {
               </div>
               <NeonButton
                 variant="lime"
-                onClick={() => createM.mutate()}
-                disabled={!draftValue || createM.isPending}
+                onClick={() => createM.run()}
+                loading={createM.isPending}
+                disabled={!draftValue}
+                icon="⚡"
+                loadingText="Logging…"
               >
-                ⚡ Log
+                Log
               </NeonButton>
             </div>
           </Panel>
@@ -285,11 +289,11 @@ export function MeasurementsPage() {
                       return (
                         <button
                           key={pct}
-                          onClick={() => setMaxFromLatestM.mutate(pct)}
+                          onClick={() => setMaxFromLatestM.run(pct)}
                           disabled={setMaxFromLatestM.isPending}
                           className="btn-ghost"
                         >
-                          {displayValue(buffered, meta.unit, system)} (+{pct}%)
+                          {setMaxFromLatestM.isPending ? '…' : `${displayValue(buffered, meta.unit, system)} (+${pct}%)`}
                         </button>
                       );
                     })}
@@ -320,19 +324,23 @@ export function MeasurementsPage() {
                     const n = Number(maxDraft);
                     if (!Number.isFinite(n)) return;
                     const stored = convertForStorage(n, displayUnitLabel, system);
-                    setMaxM.mutate(stored.value);
+                    setMaxM.run(stored.value);
                     setMaxDraft('');
                   }}
-                  disabled={!maxDraft || setMaxM.isPending}
+                  loading={setMaxM.isPending}
+                  disabled={!maxDraft}
+                  icon="⚡"
+                  loadingText="Setting…"
                 >
                   Set Max
                 </NeonButton>
                 {currentMax?.source === 'MANUAL' && (
                   <button
-                    onClick={() => delMaxM.mutate()}
+                    onClick={() => delMaxM.run()}
+                    disabled={delMaxM.isPending}
                     className="btn-ghost"
                   >
-                    Clear
+                    {delMaxM.isPending ? '…' : 'Clear'}
                   </button>
                 )}
               </div>

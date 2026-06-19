@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { BossBar } from '@/components/BossBar';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Raid } from '@/lib/types';
 import { formatRelative } from '@/lib/format';
 
@@ -45,7 +46,7 @@ export function PartyPage() {
     queryFn: () => api<{ items: any[] }>('/raids/history'),
   });
 
-  const createM = useMutation({
+  const createM = useDelayedMutation({
     mutationFn: () => api('/parties', { method: 'POST', body: { name: newPartyName } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['party'] });
@@ -53,25 +54,25 @@ export function PartyPage() {
       setNewPartyName('');
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
-  });
-  const joinM = useMutation({
+  }, 1000);
+  const joinM = useDelayedMutation({
     mutationFn: (id: string) => api(`/parties/${id}/join`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['party'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
-  });
-  const leaveM = useMutation({
+  }, 800);
+  const leaveM = useDelayedMutation({
     mutationFn: () => api('/parties/leave', { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['party'] }),
-  });
-  const startRaidM = useMutation({
+  }, 800);
+  const startRaidM = useDelayedMutation({
     mutationFn: () => api('/raids/start', { method: 'POST', body: { bossName, bossHp } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['raid'] }),
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
-  });
-  const contributeM = useMutation({
+  }, 1000);
+  const contributeM = useDelayedMutation({
     mutationFn: () => {
       const raid = raidQ.data?.raid;
       if (!raid) throw new Error('No active raid');
@@ -86,7 +87,7 @@ export function PartyPage() {
       qc.invalidateQueries({ queryKey: ['achievements'] });
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
-  });
+  }, 600);
 
   const party = partyQ.data?.party;
   const role = partyQ.data?.role;
@@ -112,13 +113,16 @@ export function PartyPage() {
                 value={newPartyName}
                 onChange={(e) => setNewPartyName(e.target.value)}
               />
-              <NeonButton
-                onClick={() => createM.mutate()}
-                disabled={newPartyName.length < 2 || createM.isPending}
-                fullWidth
-              >
-                ⚑ Create
-              </NeonButton>
+                <NeonButton
+                  onClick={() => createM.run()}
+                  loading={createM.isPending}
+                  disabled={newPartyName.length < 2}
+                  fullWidth
+                  icon="⚑"
+                  loadingText="Creating…"
+                >
+                  Create
+                </NeonButton>
             </div>
           </Panel>
 
@@ -130,12 +134,15 @@ export function PartyPage() {
                     <div className="font-display tracking-wider text-neon-cyan">{p.name}</div>
                     <div className="text-[10px] font-mono text-ink-300">{p.memberCount} member{p.memberCount !== 1 ? 's' : ''}</div>
                   </div>
-                  <NeonButton
-                    variant="magenta"
-                    onClick={() => joinM.mutate(p.id)}
-                  >
-                    Join
-                  </NeonButton>
+                    <NeonButton
+                      variant="magenta"
+                      onClick={() => joinM.run(p.id)}
+                      loading={joinM.isPending}
+                      icon="→"
+                      loadingText="Joining…"
+                    >
+                      Join
+                    </NeonButton>
                 </div>
               ))}
               {(listQ.data?.items || []).length === 0 && (
@@ -182,8 +189,14 @@ export function PartyPage() {
                       onChange={(e) => setDamage(Number(e.target.value))}
                       min={1}
                     />
-                    <NeonButton variant="magenta" onClick={() => contributeM.mutate()} disabled={contributeM.isPending}>
-                      ⚔ Strike
+                    <NeonButton
+                      variant="magenta"
+                      onClick={() => contributeM.run()}
+                      loading={contributeM.isPending}
+                      icon="⚔"
+                      loadingText="Striking…"
+                    >
+                      Strike
                     </NeonButton>
                   </div>
                 )}
@@ -223,8 +236,13 @@ export function PartyPage() {
                     />
                   </div>
                   {(role === 'LEADER' || role === 'OFFICER') ? (
-                    <NeonButton onClick={() => startRaidM.mutate()} disabled={startRaidM.isPending}>
-                      ⚔ Start
+                    <NeonButton
+                      onClick={() => startRaidM.run()}
+                      loading={startRaidM.isPending}
+                      icon="⚔"
+                      loadingText="Starting…"
+                    >
+                      Start
                     </NeonButton>
                   ) : (
                     <span className="text-[10px] text-ink-400 font-mono">leader starts</span>
@@ -250,8 +268,12 @@ export function PartyPage() {
                 </div>
               ))}
             </div>
-            <button onClick={() => leaveM.mutate()} className="btn-ghost mt-3 w-full">
-              Leave Party
+            <button
+              onClick={() => leaveM.run()}
+              disabled={leaveM.isPending}
+              className="btn-ghost mt-3 w-full"
+            >
+              {leaveM.isPending ? '…' : 'Leave Party'}
             </button>
           </Panel>
 

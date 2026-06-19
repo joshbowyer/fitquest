@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { SkillNode } from '@/components/SkillNode';
 import { useAuth } from '@/lib/auth';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { CLASS_META, type Skill } from '@/lib/types';
 
 export function SkillsPage() {
@@ -17,7 +18,7 @@ export function SkillsPage() {
     queryFn: () => api<{ className: string; skillPoints: number; items: Skill[] }>('/skills/tree'),
   });
 
-  const unlockM = useMutation({
+  const unlockM = useDelayedMutation({
     mutationFn: (skillId: string) =>
       api('/skills/unlock', { method: 'POST', body: { skillId } }),
     onSuccess: () => {
@@ -26,7 +27,7 @@ export function SkillsPage() {
       setErr(null);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to unlock'),
-  });
+  }, 1000);
 
   if (!user) return null;
   if (!user.class) {
@@ -79,13 +80,14 @@ export function SkillsPage() {
                 {items.map((s) => {
                   const prereqMet = s.prerequisites.every((p) => myNames.has(p));
                   return (
-                    <SkillNode
-                      key={s.id}
-                      skill={s}
-                      onUnlock={() => unlockM.mutate(s.id)}
-                      affordable={(tree?.skillPoints ?? 0) >= s.cost}
-                      unlockable={prereqMet && !s.unlocked}
-                    />
+                  <SkillNode
+                    key={s.id}
+                    skill={s}
+                    onUnlock={() => unlockM.run(s.id)}
+                    affordable={(tree?.skillPoints ?? 0) >= s.cost}
+                    unlockable={prereqMet && !s.unlocked}
+                    unlocking={unlockM.isPending}
+                  />
                   );
                 })}
               </div>
