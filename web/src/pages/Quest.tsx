@@ -65,7 +65,10 @@ export function QuestPage() {
             <OverworldMap
               portals={portals}
               archetype={archetype}
+              avatar={avatar}
               playerLevel={user.level}
+              accentColor={avatar?.accentColor ?? '#14d6e8'}
+              classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               onSelect={(id) => setSelectedWorldId(id)}
             />
           </Panel>
@@ -165,6 +168,20 @@ function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'pe
   }
 }
 
+function spriteForArchetype(a: 'WISP' | 'SPRITE' | 'DRAKE' | 'STRIKER' | 'FORGE' | 'GOLEM' | 'WIRED' | 'BEAR' | 'BEHEMOTH'): string {
+  switch (a) {
+    case 'WISP':     return 'nun';
+    case 'SPRITE':   return 'merchant';
+    case 'DRAKE':    return 'cultist';
+    case 'STRIKER':  return 'wind';
+    case 'FORGE':    return 'priest';
+    case 'GOLEM':    return 'captain';
+    case 'WIRED':    return 'light';
+    case 'BEAR':     return 'earth';
+    case 'BEHEMOTH': return 'pirate';
+  }
+}
+
 function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan'):
   'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' {
   switch (c) {
@@ -180,12 +197,18 @@ function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' 
 function OverworldMap({
   portals,
   archetype,
+  avatar,
   playerLevel,
+  accentColor,
+  classStripe,
   onSelect,
 }: {
   portals: PortalTile[];
   archetype: 'WISP' | 'SPRITE' | 'DRAKE' | 'STRIKER' | 'FORGE' | 'GOLEM' | 'WIRED' | 'BEAR' | 'BEHEMOTH';
+  avatar: UserAvatar | null;
   playerLevel: number;
+  accentColor: string;
+  classStripe: string | null;
   onSelect: (worldId: string) => void;
 }) {
   // Build a 2D grid of cells.
@@ -223,23 +246,45 @@ function OverworldMap({
             minWidth: 0,
           };
           if (cell.kind === 'home') {
+            // Show the user's avatar sprite at the home base. The
+            // sprite is small enough to fit (clamped cell size up to
+            // 48px) and we use image-rendering: pixelated so the
+            // pixels stay crisp.
+            const spriteFile = spriteForArchetype(archetype);
             return (
               <div
                 key={`${x}-${y}`}
-                className="relative flex items-center justify-center"
+                className="relative flex items-center justify-center overflow-hidden"
                 style={{
                   ...cellStyle,
-                  background: 'radial-gradient(circle at center, rgba(255,195,77,0.25), rgba(255,195,77,0.05) 60%, transparent 90%)',
-                  boxShadow: 'inset 0 0 0 1px rgba(255, 195, 77, 0.5)',
+                  background: 'radial-gradient(circle at center, rgba(255,195,77,0.3), rgba(255,195,77,0.05) 60%, transparent 95%)',
+                  boxShadow: 'inset 0 0 0 1px rgba(255, 195, 77, 0.55)',
                 }}
                 title="Home Base"
               >
-                <span
-                  className="text-base"
-                  style={{ color: '#ffc34d', textShadow: '0 0 6px #ffc34d' }}
-                >
-                  ◉
-                </span>
+                <img
+                  src={`/sprites/${spriteFile}.png`}
+                  alt="You"
+                  style={{
+                    width: '85%',
+                    height: '85%',
+                    imageRendering: 'pixelated',
+                    filter: `drop-shadow(0 0 4px ${accentColor})`,
+                  }}
+                />
+                {classStripe && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 2,
+                      left: '15%',
+                      right: '15%',
+                      height: 2,
+                      background: classStripe,
+                      boxShadow: `0 0 4px ${classStripe}`,
+                    }}
+                  />
+                )}
               </div>
             );
           }

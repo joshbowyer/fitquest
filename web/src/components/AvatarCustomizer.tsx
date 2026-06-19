@@ -1,26 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Avatar, type AvatarHairStyle } from './Avatar';
+import { Avatar } from './Avatar';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
 import type { User, UserAvatar } from '@/lib/auth';
-import { getFrameArchetype, type FrameArchetype } from '@/lib/frame';
+import { getFrameArchetype, type FrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { classNames } from '@/lib/format';
 
-const HAIR_STYLES: { value: AvatarHairStyle; label: string }[] = [
-  { value: 'SHORT', label: 'Short' },
-  { value: 'BUZZ', label: 'Buzz' },
-  { value: 'LONG', label: 'Long' },
-  { value: 'MOHAWK', label: 'Mohawk' },
-  { value: 'PONYTAIL', label: 'Ponytail' },
-  { value: 'PIXIE', label: 'Pixie' },
-];
-
-const COLORS = [
+const ACCENT_PALETTE = [
   '#14d6e8', '#f55cc4', '#56e88e', '#ffaa3a', '#daa520',
-  '#8b9eff', '#9a6cf2', '#d0d0db', '#a8a8b8', '#585868',
-  '#d0a878', '#e8c89a', '#8d5524', '#fafafd', '#1a1a1a',
+  '#8b9eff', '#9a6cf2', '#d0d0db', '#fafafd',
 ];
 
 function isValidHex(s: string) {
@@ -66,6 +56,8 @@ export function AvatarCustomizer({ user }: { user: User }) {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(avatarQ.data?.avatar);
 
+  const meta = ARCHETYPE_META[archetype];
+
   return (
     <Panel
       title="Avatar"
@@ -85,7 +77,15 @@ export function AvatarCustomizer({ user }: { user: User }) {
       <div className="flex flex-col md:flex-row gap-4">
         {/* Preview */}
         <div className="flex-shrink-0 flex flex-col items-center">
-          <div className="border border-neon-cyan/30 bg-bg-900 p-3 rounded">
+          <div
+            className="border border-neon-cyan/30 bg-bg-900 p-3 relative"
+            style={{
+              backgroundImage:
+                'linear-gradient(45deg, rgba(20,214,232,0.06) 25%, transparent 25%, transparent 75%, rgba(20,214,232,0.06) 75%), linear-gradient(45deg, rgba(20,214,232,0.06) 25%, transparent 25%, transparent 75%, rgba(20,214,232,0.06) 75%)',
+              backgroundSize: '12px 12px',
+              backgroundPosition: '0 0, 6px 6px',
+            }}
+          >
             <Avatar
               archetype={archetype}
               bodyFatPct={user.bodyFatPct}
@@ -100,68 +100,69 @@ export function AvatarCustomizer({ user }: { user: User }) {
             />
           </div>
           <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
-            {archetype} · {draft.hairStyle.toLowerCase()}
+            {meta.label} · {meta.tagline}
           </div>
           {classColor && (
-            <div className="text-[10px] font-mono text-ink-300 mt-1">
-              Class stripe: <span style={{ color: classColor }}>●</span>
+            <div className="text-[10px] font-mono text-ink-300 mt-1 flex items-center gap-1">
+              <span>Class stripe</span>
+              <span
+                className="inline-block w-3 h-3"
+                style={{ background: classColor, boxShadow: `0 0 6px ${classColor}` }}
+              />
             </div>
           )}
         </div>
 
         {/* Controls */}
         <div className="flex-1 space-y-3">
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-              Hair style
-            </label>
-            <div className="flex flex-wrap gap-1">
-              {HAIR_STYLES.map((h) => (
-                <button
-                  key={h.value}
-                  type="button"
-                  onClick={() => update({ hairStyle: h.value })}
-                  className={classNames(
-                    'px-2 py-1 text-[10px] font-mono uppercase tracking-widest border transition-all',
-                    draft.hairStyle === h.value
-                      ? 'border-neon-cyan/80 text-neon-cyan bg-neon-cyan/10'
-                      : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
-                  )}
-                >
-                  {h.label}
-                </button>
-              ))}
-            </div>
+          <div className="text-[10px] font-mono text-ink-300 leading-relaxed">
+            Your avatar is bound to your <span className="text-ink-50">{meta.label}</span> archetype —
+            each of the 9 somatotypes maps to a unique sprite from the Antifarea
+            pixel character set. Change your frame (height, wrist, ankle, body fat)
+            to swap silhouettes.
           </div>
 
           <ColorRow
-            label="Hair color"
-            value={draft.hairColor}
-            onChange={(v) => update({ hairColor: v })}
-          />
-          <ColorRow
-            label="Skin tone"
-            value={draft.skinTone}
-            onChange={(v) => update({ skinTone: v })}
-          />
-          <ColorRow
-            label="Shirt color"
-            value={draft.shirtColor}
-            onChange={(v) => update({ shirtColor: v })}
-          />
-          <ColorRow
-            label="Pants color"
-            value={draft.pantsColor}
-            onChange={(v) => update({ pantsColor: v })}
-          />
-          <ColorRow
-            label="Accent (eyes + outline)"
+            label="Accent (sprite tint)"
             value={draft.accentColor}
             onChange={(v) => update({ accentColor: v })}
+            palette={ACCENT_PALETTE}
           />
+
+          <details className="text-[10px] font-mono">
+            <summary className="cursor-pointer text-ink-300 hover:text-ink-50 tracking-widest uppercase">
+              ▾ Legacy customization (hair/skin/etc.)
+            </summary>
+            <div className="mt-2 space-y-2 opacity-60">
+              <p className="text-ink-400 leading-relaxed">
+                The Antifarea sprites are pre-coloured pixel art — recolouring them
+                pixel-by-pixel would lose the original detail. Saved here for
+                forward-compat in case we want to overlay hair later.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <Field label="Hair"  v={draft.hairStyle}  />
+                <Field label="Skin"  v={draft.skinTone}   />
+                <Field label="Shirt" v={draft.shirtColor} />
+                <Field label="Pants" v={draft.pantsColor} />
+              </div>
+            </div>
+          </details>
         </div>
       </div>
     </Panel>
+  );
+}
+
+function Field({ label, v }: { label: string; v: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-ink-400 uppercase tracking-widest">{label}</span>
+      {v.startsWith('#') ? (
+        <span className="inline-block w-4 h-4 border border-ink-700" style={{ background: v }} />
+      ) : (
+        <span className="text-ink-200">{v}</span>
+      )}
+    </div>
   );
 }
 
@@ -169,10 +170,12 @@ function ColorRow({
   label,
   value,
   onChange,
+  palette,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  palette: string[];
 }) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
@@ -203,12 +206,15 @@ function ColorRow({
           )}
         />
         <div className="flex flex-wrap gap-1">
-          {COLORS.slice(0, 6).map((c) => (
+          {palette.map((c) => (
             <button
               key={c}
               type="button"
               onClick={() => onChange(c)}
-              className="w-5 h-5 border border-ink-500/40 hover:border-ink-100"
+              className={classNames(
+                'w-5 h-5 border',
+                value === c ? 'border-ink-50' : 'border-ink-500/40 hover:border-ink-300',
+              )}
               style={{ background: c }}
               title={c}
             />
@@ -221,11 +227,11 @@ function ColorRow({
 
 function getClassColor(className: string): string | null {
   switch (className) {
-    case 'JUGGERNAUT': return '#f55cc4'; // magenta (STR)
+    case 'JUGGERNAUT': return '#f55cc4';
     case 'BERSERKER':  return '#f55cc4';
-    case 'PHANTOM':    return '#56e88e'; // lime (AGI)
-    case 'SCOUT':      return '#daa520'; // goldenrod (CONST)
-    case 'ORACLE':     return '#8b9eff'; // periwinkle (MIND)
+    case 'PHANTOM':    return '#56e88e';
+    case 'SCOUT':      return '#daa520';
+    case 'ORACLE':     return '#8b9eff';
     default: return null;
   }
 }
