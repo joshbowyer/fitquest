@@ -38,6 +38,7 @@ export async function geneticMaxRoutes(app: FastifyInstance) {
     });
     const existing = await prisma.geneticMax.findMany({ where: { userId: me.id } });
     const manual = new Map(existing.filter((e) => e.source === 'MANUAL').map((e) => [e.metric, e.value]));
+    const updated: string[] = [];
     for (const [metric, value] of Object.entries(formulas)) {
       if (value == null) continue;
       if (manual.has(metric as any)) continue;
@@ -46,8 +47,9 @@ export async function geneticMaxRoutes(app: FastifyInstance) {
         create: { userId: me.id, metric: metric as any, value, source: 'FORMULA' },
         update: { value, source: 'FORMULA' },
       });
+      updated.push(metric);
     }
-    return { ok: true };
+    return { ok: true, updated, skipped: Array.from(manual.keys()) };
   });
 
   app.post('/preview', async (req) => {

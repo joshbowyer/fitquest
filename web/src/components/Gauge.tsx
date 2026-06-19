@@ -242,9 +242,17 @@ export function Gauge({
         )}
 
         {/* Exceeded marker */}
-        {clamped && (
-          <text x={cx} y={cy + 50} textAnchor="middle" fontSize="9" fill="#ff2bd6" className="font-mono">
-            ! EXCEEDED
+        {clamped && value != null && max > 0 && (
+          <text
+            x={cx}
+            y={cy + 50}
+            textAnchor="middle"
+            fontSize="9"
+            fill="#ff2bd6"
+            className="font-mono"
+            style={{ filter: 'drop-shadow(0 0 3px #ff2bd6)' }}
+          >
+            ! {(((value as number) / max) * 100 - 100).toFixed(0)}% OVER
           </text>
         )}
       </svg>

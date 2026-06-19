@@ -5,6 +5,7 @@ import { Gauge } from '@/components/Gauge';
 import { Panel } from '@/components/Panel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
+import { useState } from 'react';
 import { WeighInPanel } from '@/components/WeighInPanel';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
@@ -62,9 +63,18 @@ export function DashboardPage() {
     queryFn: () => api<{ raid: Raid | null }>('/raids/active'),
   });
   const recomputeM = useMutation({
-    mutationFn: () => api('/genetic-max/recompute', { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['genetic-max'] }),
+    mutationFn: () => api<{ ok: true; updated: string[]; skipped: string[] }>(
+      '/genetic-max/recompute',
+      { method: 'POST' }
+    ),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      setRecomputeToast(`Recomputed ${r.updated.length} maxes from formulas${r.skipped.length > 0 ? ` · ${r.skipped.length} manual kept` : ''}`);
+      setTimeout(() => setRecomputeToast(null), 4000);
+    },
   });
+  const [recomputeToast, setRecomputeToast] = useState<string | null>(null);
 
   if (!user) return null;
 
@@ -82,13 +92,20 @@ export function DashboardPage() {
         title="// Stat Sheet"
         subtitle={`${cls?.label ?? 'Unclassed'} // ${user.username}`}
         action={
-          <button
-            onClick={() => recomputeM.mutate()}
-            disabled={recomputeM.isPending}
-            className="btn-ghost"
-          >
-            ⟳ Recompute Maxes
-          </button>
+          <div className="flex items-center gap-3">
+            {recomputeToast && (
+              <span className="text-xs font-mono neon-text-cyan border border-neon-cyan/30 bg-neon-cyan/5 px-2 py-1">
+                ✓ {recomputeToast}
+              </span>
+            )}
+            <button
+              onClick={() => recomputeM.mutate()}
+              disabled={recomputeM.isPending}
+              className="btn-ghost"
+            >
+              {recomputeM.isPending ? '⟳ Recomputing…' : '⟳ Recompute Maxes'}
+            </button>
+          </div>
         }
       />
 

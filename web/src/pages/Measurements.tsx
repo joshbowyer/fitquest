@@ -6,7 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { METRICS, METRICS_BY_CATEGORY, type GeneticMax, type Measurement, type MetricType } from '@/lib/types';
-import { formatDate, formatRelative, formatSeconds } from '@/lib/format';
+import { formatDate, formatMetricWithUnit, formatRelative, formatSeconds } from '@/lib/format';
 
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 
@@ -51,6 +51,22 @@ export function MeasurementsPage() {
         body: { items: [{ metric: selected, value, source: 'MANUAL' }] },
       }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+    },
+  });
+
+  const setMaxFromLatestM = useMutation({
+    mutationFn: (bufferPct: number) => {
+      if (filtered.length === 0) throw new Error('No measurements to base max on');
+      const latestVal = filtered[filtered.length - 1]!.value;
+      const buffered = latestVal * (1 + bufferPct / 100);
+      return api('/genetic-max', {
+        method: 'PUT',
+        body: { items: [{ metric: selected, value: Number(buffered.toFixed(2)), source: 'MANUAL' }] },
+      });
+    },
+    onSuccess: (_r, bufferPct) => {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
     },
@@ -209,39 +225,69 @@ export function MeasurementsPage() {
 
           {/* Set max */}
           <Panel variant="amber" title="Override Genetic Max">
-            <div className="grid grid-cols-[120px_1fr_auto_auto] gap-3 items-end">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80 block mb-1">
-                  New max ({meta.unit})
-                </label>
-                <input
-                  id="max-input"
-                  className="input-neon"
-                  type="number"
-                  step="0.1"
-                  placeholder={currentMax ? currentMax.value.toString() : 'auto'}
-                />
-              </div>
-              <div className="text-[10px] text-ink-300 font-mono self-center">
-                Set a manual max that takes priority over the formula-derived value.
-              </div>
-              <NeonButton
-                variant="amber"
-                onClick={() => {
-                  const el = document.getElementById('max-input') as HTMLInputElement | null;
-                  if (el && el.value) setMaxM.mutate(Number(el.value));
-                }}
-              >
-                Set Max
-              </NeonButton>
-              {currentMax?.source === 'MANUAL' && (
-                <button
-                  onClick={() => delMaxM.mutate()}
-                  className="btn-ghost"
-                >
-                  Clear
-                </button>
+            <div className="space-y-3">
+              {filtered.length > 0 && (
+                <div className="border border-neon-amber/30 p-3 bg-neon-amber/5">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-neon-amber mb-1">
+                    Quick set from current
+                  </div>
+                  <div className="text-xs text-ink-300 font-mono mb-2">
+                    Latest {meta.shortLabel} value:{' '}
+                    <span className="neon-text-cyan">{formatMetricWithUnit(filtered[filtered.length - 1]!.value, meta.unit)}</span>.
+                    Set max to current + a buffer:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[10, 20, 50].map((pct) => {
+                      const latest = filtered[filtered.length - 1]!.value;
+                      const buffered = (latest * (1 + pct / 100)).toFixed(2);
+                      return (
+                        <button
+                          key={pct}
+                          onClick={() => setMaxFromLatestM.mutate(pct)}
+                          disabled={setMaxFromLatestM.isPending}
+                          className="btn-ghost"
+                        >
+                          {formatMetricWithUnit(Number(buffered), meta.unit)} (+{pct}%)
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
+              <div className="grid grid-cols-[120px_1fr_auto_auto] gap-3 items-end">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80 block mb-1">
+                    New max ({meta.unit})
+                  </label>
+                  <input
+                    id="max-input"
+                    className="input-neon"
+                    type="number"
+                    step="0.1"
+                    placeholder={currentMax ? currentMax.value.toString() : 'auto'}
+                  />
+                </div>
+                <div className="text-[10px] text-ink-300 font-mono self-center">
+                  Set a manual max that takes priority over the formula-derived value.
+                </div>
+                <NeonButton
+                  variant="amber"
+                  onClick={() => {
+                    const el = document.getElementById('max-input') as HTMLInputElement | null;
+                    if (el && el.value) setMaxM.mutate(Number(el.value));
+                  }}
+                >
+                  Set Max
+                </NeonButton>
+                {currentMax?.source === 'MANUAL' && (
+                  <button
+                    onClick={() => delMaxM.mutate()}
+                    className="btn-ghost"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
           </Panel>
 

@@ -28,46 +28,45 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
 
   switch (metric) {
     case 'BICEP': {
-      // McCallum's "ideal" formula is bicep = wrist, but that's the target
-      // for a well-proportioned physique, not the genetic ceiling. Use 1.6x
-      // wrist as a realistic max for a natural lifter at low body fat.
-      if (wristCm) return round1(wristCm * 1.6);
-      if (heightCm) return round1(heightCm * 0.31);
+      // Natural ceiling for a well-trained meso on a small frame is ~2x
+      // wrist. McCallum's 1.0x is the ideal proportion, not the ceiling.
+      if (wristCm) return round1(wristCm * 2.0);
+      if (heightCm) return round1(heightCm * 0.35);
       return null;
     }
     case 'FOREARM': {
-      if (wristCm) return round1(wristCm * 1.05);
+      if (wristCm) return round1(wristCm * 1.25);
       return null;
     }
     case 'CHEST': {
-      if (wristCm) return round1(wristCm * 6.6);
-      if (heightCm) return round1(heightCm * 0.66);
+      if (wristCm) return round1(wristCm * 7.0);
+      if (heightCm) return round1(heightCm * 0.68);
       return null;
     }
     case 'SHOULDER': {
-      if (wristCm) return round1(wristCm * 6.5);
-      if (heightCm) return round1(heightCm * 0.7);
+      if (wristCm) return round1(wristCm * 7.0);
+      if (heightCm) return round1(heightCm * 0.72);
       return null;
     }
     case 'NECK': {
-      if (wristCm) return round1(wristCm * 1.6);
-      if (heightCm) return round1(heightCm * 0.27);
+      if (wristCm) return round1(wristCm * 1.8);
+      if (heightCm) return round1(heightCm * 0.28);
       return null;
     }
     case 'QUAD': {
-      if (ankleCm) return round1(ankleCm * 1.85);
-      if (heightCm) return round1(heightCm * 0.34);
+      if (ankleCm) return round1(ankleCm * 2.0);
+      if (heightCm) return round1(heightCm * 0.36);
       return null;
     }
     case 'CALF': {
-      if (ankleCm) return round1(ankleCm * 1.55);
-      if (heightCm) return round1(heightCm * 0.23);
+      if (ankleCm) return round1(ankleCm * 1.7);
+      if (heightCm) return round1(heightCm * 0.24);
       return null;
     }
     case 'WAIST': {
-      // Maxes below wrist×4.4 keep the V-taper look; smaller = leaner
-      if (wristCm) return round1(wristCm * 4.0);
-      if (heightCm) return round1(heightCm * 0.42);
+      // Smaller waist = leaner; this is the lean ceiling
+      if (wristCm) return round1(wristCm * 3.8);
+      if (heightCm) return round1(heightCm * 0.40);
       return null;
     }
     case 'LEAN_MASS': {
