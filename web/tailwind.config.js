@@ -9,36 +9,38 @@ export default {
         body: ['"Inter"', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Cyberpunk palette
+        // "Optimistic in a dingy techworld" — charcoal base, neon accents
+        // pop against it. Solarpunk ↔ neon-hellscape, aim for the middle.
         bg: {
-          900: '#05050a',
-          800: '#0a0a14',
-          700: '#0f0f1e',
-          600: '#161628',
-          500: '#1d1d35',
+          900: '#2c2f3a', // main page bg (charcoal)
+          800: '#363944', // panel bg
+          700: '#424553', // raised
+          600: '#4f5263',
+          500: '#5c5f70',
         },
         neon: {
-          cyan: '#00f0ff',
-          magenta: '#ff2bd6',
-          lime: '#00ff88',
-          amber: '#ffb800',
-          violet: '#7c3aed',
+          cyan: '#14d6e8',
+          magenta: '#f55cc4',
+          lime: '#56e88e',
+          amber: '#ffaa3a',
+          violet: '#9a6cf2',
         },
         ink: {
-          50: '#f4f4ff',
-          100: '#e0e0ff',
-          200: '#b0b0d4',
-          300: '#8080a8',
-          400: '#5a5a7a',
-          500: '#3a3a55',
+          50: '#fafafd',
+          100: '#f5f5fa',
+          200: '#d0d0db',
+          300: '#a8a8b8',
+          400: '#787888',
+          500: '#585868',
         },
       },
       boxShadow: {
-        'neon-cyan': '0 0 8px rgba(0,240,255,0.6), 0 0 16px rgba(0,240,255,0.4), 0 0 32px rgba(0,240,255,0.2)',
-        'neon-magenta': '0 0 8px rgba(255,43,214,0.6), 0 0 16px rgba(255,43,214,0.4), 0 0 32px rgba(255,43,214,0.2)',
-        'neon-lime': '0 0 8px rgba(0,255,136,0.6), 0 0 16px rgba(0,255,136,0.4)',
-        'neon-amber': '0 0 8px rgba(255,184,0,0.6), 0 0 16px rgba(255,184,0,0.4)',
-        'panel': 'inset 0 0 0 1px rgba(0,240,255,0.15), 0 0 30px rgba(0,240,255,0.05)',
+        'neon-cyan': '0 0 8px rgba(20,214,232,0.55), 0 0 16px rgba(20,214,232,0.35), 0 0 32px rgba(20,214,232,0.18)',
+        'neon-magenta': '0 0 8px rgba(245,92,196,0.55), 0 0 16px rgba(245,92,196,0.35), 0 0 32px rgba(245,92,196,0.18)',
+        'neon-lime': '0 0 8px rgba(86,232,142,0.55), 0 0 16px rgba(86,232,142,0.35)',
+        'neon-amber': '0 0 8px rgba(255,170,58,0.55), 0 0 16px rgba(255,170,58,0.35)',
+        'neon-violet': '0 0 8px rgba(154,108,242,0.55), 0 0 16px rgba(154,108,242,0.35)',
+        'panel': 'inset 0 0 0 1px rgba(20,214,232,0.12), 0 0 30px rgba(20,214,232,0.04)',
       },
       animation: {
         'pulse-slow': 'pulse 3s ease-in-out infinite',

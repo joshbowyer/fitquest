@@ -8,11 +8,11 @@
 
 html, body, #root {
   height: 100%;
-  background: #05050a;
+  background: #2c2f3a;
   background-image:
-    radial-gradient(circle at 20% 10%, rgba(0, 240, 255, 0.06), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(255, 43, 214, 0.05), transparent 40%),
-    linear-gradient(180deg, #05050a 0%, #0a0a14 100%);
+    radial-gradient(circle at 20% 10%, rgba(20, 214, 232, 0.07), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(245, 92, 196, 0.06), transparent 40%),
+    linear-gradient(180deg, #2c2f3a 0%, #232531 100%);
 }
 
 body {
@@ -80,8 +80,8 @@ body {
 
   .grid-bg {
     background-image:
-      linear-gradient(rgba(0,240,255,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,240,255,0.04) 1px, transparent 1px);
+      linear-gradient(rgba(20,214,232,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20,214,232,0.06) 1px, transparent 1px);
     background-size: 40px 40px;
   }
 
@@ -101,6 +101,6 @@ body {
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #0a0a14; }
-::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.5); }
+::-webkit-scrollbar-track { background: #363944; }
+::-webkit-scrollbar-thumb { background: rgba(20,214,232,0.35); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: rgba(20,214,232,0.6); }

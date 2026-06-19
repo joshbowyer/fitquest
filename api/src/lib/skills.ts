@@ -19,54 +19,61 @@ export type SkillDef = {
 };
 
 export const SKILL_TREES: Record<ClassName, SkillDef[]> = {
-  BODYBUILDER: [
-    { className: 'BODYBUILDER', tier: 'TIER_1', name: 'Mind-Muscle Connection', description: '+10% XP from hypertrophy workouts.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'HYPERTROPHY' }] },
-    { className: 'BODYBUILDER', tier: 'TIER_1', name: 'PPL Specialist', description: '+10% XP from push/pull/leg sessions.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'HYPERTROPHY' }] },
-    { className: 'BODYBUILDER', tier: 'TIER_2', name: 'Volume Tolerance', description: '+15% gold from hypertrophy sessions.', cost: 2, prerequisites: ['Mind-Muscle Connection'], position: 2, effects: [{ type: 'gold_multiplier', value: 1.15, appliesTo: 'HYPERTROPHY' }] },
-    { className: 'BODYBUILDER', tier: 'TIER_2', name: 'Body Composition Insight', description: '+1% lean mass genetic max.', cost: 2, prerequisites: ['PPL Specialist'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'LEAN_MASS', value: 0.01 }] },
-    { className: 'BODYBUILDER', tier: 'TIER_3', name: 'Aesthetician', description: '+10% raid damage from hypertrophy PRs.', cost: 3, prerequisites: ['Volume Tolerance', 'Body Composition Insight'], position: 4, effects: [{ type: 'raid_damage_multiplier', value: 1.1 }] },
+  JUGGERNAUT: [
+    { className: 'JUGGERNAUT', tier: 'TIER_1', name: 'Bracing', description: '+10% XP from SBD sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'STRENGTH' }] },
+    { className: 'JUGGERNAUT', tier: 'TIER_1', name: 'Compound Specialist', description: '+10% gold from PRs.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'JUGGERNAUT', tier: 'TIER_2', name: 'Heavy Hitter', description: '+5% bench/squat/deadlift XP.', cost: 2, prerequisites: ['Bracing'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'STRENGTH' }] },
+    { className: 'JUGGERNAUT', tier: 'TIER_2', name: 'Power Through Pain', description: '+15% XP from heavy singles (1-3 reps).', cost: 2, prerequisites: ['Compound Specialist'], position: 3, effects: [{ type: 'xp_multiplier', value: 1.15, appliesTo: 'STRENGTH' }] },
+    { className: 'JUGGERNAUT', tier: 'TIER_3', name: 'Mountain of Muscle', description: '+1% all muscle-genetic maxes.', cost: 3, prerequisites: ['Heavy Hitter', 'Power Through Pain'], position: 4, effects: [
+      { type: 'measurement_bonus', metric: 'BENCH_1RM', value: 0.01 },
+      { type: 'measurement_bonus', metric: 'SQUAT_1RM', value: 0.01 },
+      { type: 'measurement_bonus', metric: 'DEADLIFT_1RM', value: 0.01 },
+      { type: 'measurement_bonus', metric: 'OHP_1RM', value: 0.01 },
+    ] },
   ],
 
-  POWERLIFTER: [
-    { className: 'POWERLIFTER', tier: 'TIER_1', name: 'Bracing', description: '+10% XP from SBD sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'STRENGTH' }] },
-    { className: 'POWERLIFTER', tier: 'TIER_1', name: 'Conjugate', description: '+5% gold from all workouts.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.05, appliesTo: 'ALL' }] },
-    { className: 'POWERLIFTER', tier: 'TIER_2', name: 'Pause Specialist', description: '+10% PR detection sensitivity.', cost: 2, prerequisites: ['Bracing'], position: 2, effects: [{ type: 'raid_damage_multiplier', value: 1.05 }] },
-    { className: 'POWERLIFTER', tier: 'TIER_2', name: 'Intensity King', description: '+15% XP from heavy singles (1-3 reps).', cost: 2, prerequisites: ['Conjugate'], position: 3, effects: [{ type: 'xp_multiplier', value: 1.15, appliesTo: 'STRENGTH' }] },
-    { className: 'POWERLIFTER', tier: 'TIER_3', name: 'Total Domination', description: '+1% bench, squat, deadlift genetic max.', cost: 3, prerequisites: ['Pause Specialist', 'Intensity King'], position: 4, effects: [
+  PHANTOM: [
+    { className: 'PHANTOM', tier: 'TIER_1', name: 'Static Holds', description: '+10% XP from calisthenics sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CALISTHENICS' }] },
+    { className: 'PHANTOM', tier: 'TIER_1', name: 'Body Awareness', description: '+5% XP from mobility work.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'MOBILITY' }] },
+    { className: 'PHANTOM', tier: 'TIER_2', name: 'Dynamic Skills', description: '+10% gold from calisthenics.', cost: 2, prerequisites: ['Static Holds'], position: 2, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'CALISTHENICS' }] },
+    { className: 'PHANTOM', tier: 'TIER_2', name: 'One-Arm Path', description: '+15% pull-up genetic max.', cost: 2, prerequisites: ['Body Awareness'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'PULLUP_1RM', value: 0.15 }] },
+    { className: 'PHANTOM', tier: 'TIER_3', name: 'Skill Mastery', description: '+20% raid damage from calisthenics PRs.', cost: 3, prerequisites: ['Dynamic Skills', 'One-Arm Path'], position: 4, effects: [{ type: 'raid_damage_multiplier', value: 1.20 }] },
+  ],
+
+  FORGE: [
+    { className: 'FORGE', tier: 'TIER_1', name: 'Adaptation', description: '+5% XP from all workouts.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'ALL' }] },
+    { className: 'FORGE', tier: 'TIER_1', name: 'Recovery', description: '+10% gold from all sessions.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'FORGE', tier: 'TIER_2', name: 'Jack-of-All', description: '+5% raid damage.', cost: 2, prerequisites: ['Adaptation'], position: 2, effects: [{ type: 'raid_damage_multiplier', value: 1.05 }] },
+    { className: 'FORGE', tier: 'TIER_2', name: 'Generalist', description: '+1% to all strength genetic maxes.', cost: 2, prerequisites: ['Recovery'], position: 3, effects: [
       { type: 'measurement_bonus', metric: 'BENCH_1RM', value: 0.01 },
       { type: 'measurement_bonus', metric: 'SQUAT_1RM', value: 0.01 },
       { type: 'measurement_bonus', metric: 'DEADLIFT_1RM', value: 0.01 },
     ] },
-  ],
-
-  CALISTHENIST: [
-    { className: 'CALISTHENIST', tier: 'TIER_1', name: 'Static Holds', description: '+10% XP from calisthenics sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CALISTHENICS' }] },
-    { className: 'CALISTHENIST', tier: 'TIER_1', name: 'Body Awareness', description: '+5% XP from mobility work.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'MOBILITY' }] },
-    { className: 'CALISTHENIST', tier: 'TIER_2', name: 'Dynamic Skills', description: '+10% gold from calisthenics.', cost: 2, prerequisites: ['Static Holds'], position: 2, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'CALISTHENICS' }] },
-    { className: 'CALISTHENIST', tier: 'TIER_2', name: 'One-Arm Path', description: '+15% pull-up genetic max.', cost: 2, prerequisites: ['Body Awareness'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'PULLUP_1RM', value: 0.15 }] },
-    { className: 'CALISTHENIST', tier: 'TIER_3', name: 'Skill Mastery', description: '+20% raid damage from calisthenics PRs.', cost: 3, prerequisites: ['Dynamic Skills', 'One-Arm Path'], position: 4, effects: [{ type: 'raid_damage_multiplier', value: 1.20 }] },
-  ],
-
-  ENDURANCE: [
-    { className: 'ENDURANCE', tier: 'TIER_1', name: 'Zone 2 Foundation', description: '+10% XP from cardio sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CARDIO' }] },
-    { className: 'ENDURANCE', tier: 'TIER_1', name: 'Aerobic Engine', description: '+5% gold from cardio.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.05, appliesTo: 'CARDIO' }] },
-    { className: 'ENDURANCE', tier: 'TIER_2', name: 'Lactate Threshold', description: '+10% XP from cardio PRs.', cost: 2, prerequisites: ['Zone 2 Foundation'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.1, appliesTo: 'CARDIO' }] },
-    { className: 'ENDURANCE', tier: 'TIER_2', name: 'HRV Reader', description: '+1 HRV genetic max.', cost: 2, prerequisites: ['Aerobic Engine'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'HRV', value: 1 }] },
-    { className: 'ENDURANCE', tier: 'TIER_3', name: 'VO2 Peak', description: '+1 VO2 max genetic ceiling.', cost: 3, prerequisites: ['Lactate Threshold', 'HRV Reader'], position: 4, effects: [{ type: 'measurement_bonus', metric: 'VO2_MAX', value: 1 }] },
-  ],
-
-  HYBRID: [
-    { className: 'HYBRID', tier: 'TIER_1', name: 'Adaptation', description: '+5% XP from all workouts.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'ALL' }] },
-    { className: 'HYBRID', tier: 'TIER_1', name: 'Recovery', description: '+10% gold from all sessions.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
-    { className: 'HYBRID', tier: 'TIER_2', name: 'Jack-of-All', description: '+5% raid damage.', cost: 2, prerequisites: ['Adaptation'], position: 2, effects: [{ type: 'raid_damage_multiplier', value: 1.05 }] },
-    { className: 'HYBRID', tier: 'TIER_2', name: 'Generalist', description: '+1% to all strength genetic maxes.', cost: 2, prerequisites: ['Recovery'], position: 3, effects: [
-      { type: 'measurement_bonus', metric: 'BENCH_1RM', value: 0.01 },
-      { type: 'measurement_bonus', metric: 'SQUAT_1RM', value: 0.01 },
-      { type: 'measurement_bonus', metric: 'DEADLIFT_1RM', value: 0.01 },
-    ] },
-    { className: 'HYBRID', tier: 'TIER_3', name: 'Master of None, Better Than One', description: '+15% XP and gold from all workouts.', cost: 3, prerequisites: ['Jack-of-All', 'Generalist'], position: 4, effects: [
+    { className: 'FORGE', tier: 'TIER_3', name: 'Master of None, Better Than One', description: '+15% XP and gold from all workouts.', cost: 3, prerequisites: ['Jack-of-All', 'Generalist'], position: 4, effects: [
       { type: 'xp_multiplier', value: 1.15, appliesTo: 'ALL' },
       { type: 'gold_multiplier', value: 1.15, appliesTo: 'ALL' },
+    ] },
+  ],
+
+  BERSERKER: [
+    { className: 'BERSERKER', tier: 'TIER_1', name: 'All-Out', description: '+10% XP on high-RPE sets (RPE ≥ 8).', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'BERSERKER', tier: 'TIER_1', name: 'Volume King', description: '+10% XP on hypertrophy workouts.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'HYPERTROPHY' }] },
+    { className: 'BERSERKER', tier: 'TIER_2', name: 'No Days Off', description: '+5% XP on streak days.', cost: 2, prerequisites: ['All-Out'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'ALL' }] },
+    { className: 'BERSERKER', tier: 'TIER_2', name: 'Pain into Power', description: '+10% gold on all sessions.', cost: 2, prerequisites: ['Volume King'], position: 3, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'BERSERKER', tier: 'TIER_3', name: 'Unstoppable', description: '+1% all muscle-genetic maxes.', cost: 3, prerequisites: ['No Days Off', 'Pain into Power'], position: 4, effects: [
+      { type: 'measurement_bonus', metric: 'BENCH_1RM', value: 0.01 },
+      { type: 'measurement_bonus', metric: 'SQUAT_1RM', value: 0.01 },
+      { type: 'measurement_bonus', metric: 'DEADLIFT_1RM', value: 0.01 },
+    ] },
+  ],
+
+  ORACLE: [
+    { className: 'ORACLE', tier: 'TIER_1', name: 'Mindful Movement', description: '+5% XP on mobility/recovery sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'MOBILITY' }] },
+    { className: 'ORACLE', tier: 'TIER_1', name: 'Sleep Mastery', description: '+10% XP for logging 7+ hrs of sleep.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'ORACLE', tier: 'TIER_2', name: 'Rest Day Reward', description: '+10% gold on rest days.', cost: 2, prerequisites: ['Mindful Movement'], position: 2, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'ORACLE', tier: 'TIER_2', name: 'HRV Reader', description: '+1 HRV genetic max.', cost: 2, prerequisites: ['Sleep Mastery'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'HRV', value: 1 }] },
+    { className: 'ORACLE', tier: 'TIER_3', name: 'Inner Peace', description: '+1 VO2 max ceiling, +1 recovery.', cost: 3, prerequisites: ['Rest Day Reward', 'HRV Reader'], position: 4, effects: [
+      { type: 'measurement_bonus', metric: 'VO2_MAX', value: 1 },
     ] },
   ],
 };

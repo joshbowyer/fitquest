@@ -1,9 +1,9 @@
 export type ClassName =
-  | 'BODYBUILDER'
-  | 'POWERLIFTER'
-  | 'CALISTHENIST'
-  | 'ENDURANCE'
-  | 'HYBRID';
+  | 'JUGGERNAUT'
+  | 'PHANTOM'
+  | 'FORGE'
+  | 'BERSERKER'
+  | 'ORACLE';
 
 export type MetricType =
   | 'BICEP' | 'CHEST' | 'SHOULDER' | 'QUAD' | 'CALF' | 'FOREARM' | 'NECK' | 'WAIST'
@@ -77,21 +77,68 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],
 };
 
+import type { FrameArchetype } from './frame';
+
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
-  BODYBUILDER: ['BICEP', 'CHEST', 'SHOULDER', 'QUAD'],
-  POWERLIFTER: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'POWERLIFT_TOTAL'],
-  CALISTHENIST: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD'],
-  ENDURANCE: ['VO2_MAX', 'FIVE_K_TIME', 'RESTING_HR', 'HRV'],
-  HYBRID: ['BENCH_1RM', 'BICEP', 'VO2_MAX', 'WEIGHT'],
+  JUGGERNAUT: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'POWERLIFT_TOTAL'],
+  PHANTOM: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD'],
+  FORGE: ['BENCH_1RM', 'BICEP', 'VO2_MAX', 'WEIGHT'],
+  BERSERKER: ['BENCH_1RM', 'SQUAT_1RM', 'PULLUP_1RM'],
+  ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS'],
 };
 
-export const CLASS_META: Record<string, { label: string; color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'; tagline: string }> = {
-  BODYBUILDER: { label: 'Bodybuilder', color: 'magenta', tagline: 'Sculpt the physique' },
-  POWERLIFTER: { label: 'Powerlifter', color: 'cyan', tagline: 'Total domination' },
-  CALISTHENIST: { label: 'Calisthenist', color: 'lime', tagline: 'Master your bodyweight' },
-  ENDURANCE: { label: 'Endurance', color: 'amber', tagline: 'Outlast the rest' },
-  HYBRID: { label: 'Hybrid', color: 'violet', tagline: 'Jack of all trades' },
+export const CLASS_META: Record<string, {
+  label: string;
+  color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
+  tagline: string;
+  description: string;
+  // Which archetypes qualify for this class. Empty = available to all.
+  eligibility: FrameArchetype[];
+}> = {
+  JUGGERNAUT: {
+    label: 'Juggernaut',
+    color: 'amber',
+    tagline: 'Heavy hits, big gains',
+    description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP.',
+    eligibility: ['GOLEM', 'BEHEMOTH', 'BEAR'],
+  },
+  PHANTOM: {
+    label: 'Phantom',
+    color: 'magenta',
+    tagline: 'Agile, lean, bodyweight mastery',
+    description: 'Bodyweight and agility. Calisthenics, mobility, and total-body control. PRs come from skill, not weight on the bar.',
+    eligibility: ['WISP', 'STRIKER', 'SPRITE'],
+  },
+  FORGE: {
+    label: 'Forge',
+    color: 'lime',
+    tagline: 'Balanced generalist',
+    description: 'The classic balanced physique. Room to grow in any direction. Train everything; nothing is off-limits.',
+    eligibility: ['FORGE', 'BEAR', 'GOLEM'],
+  },
+  BERSERKER: {
+    label: 'Berserker',
+    color: 'magenta',
+    tagline: 'All-out, no days off',
+    description: 'High volume, high intensity. No metagame — just train hard. Available to all frames because intensity is a choice, not a build.',
+    eligibility: [], // available to all
+  },
+  ORACLE: {
+    label: 'Oracle',
+    color: 'cyan',
+    tagline: 'Recovery, mindfulness, consistency',
+    description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity.',
+    eligibility: [], // available to all
+  },
 };
+
+export function isClassEligible(cls: ClassName, archetype: FrameArchetype | null): boolean {
+  const meta = CLASS_META[cls];
+  if (!meta) return false;
+  if (meta.eligibility.length === 0) return true; // universal
+  if (archetype == null) return false;
+  return meta.eligibility.includes(archetype);
+}
 
 export type WorkoutType = 'STRENGTH' | 'HYPERTROPHY' | 'CALISTHENICS' | 'CARDIO' | 'MOBILITY' | 'OTHER';
 export type Workout = {

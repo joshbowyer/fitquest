@@ -7,12 +7,22 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { CLASS_META, type ClassName } from '@/lib/types';
+import { CLASS_META, isClassEligible, type ClassName } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
-import { getFrameSize, frameDescription } from '@/lib/frame';
+import {
+  getFrameSize,
+  getFrameArchetype,
+  getBuildCategory,
+  getHeightCategory,
+  ARCHETYPE_META,
+  ARCHETYPE_MATRIX,
+  type BuildCategory,
+  type FrameArchetype,
+  type HeightCategory,
+} from '@/lib/frame';
 
-const CLASS_OPTIONS: ClassName[] = ['BODYBUILDER', 'POWERLIFTER', 'CALISTHENIST', 'ENDURANCE', 'HYBRID'];
+const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'FORGE', 'BERSERKER', 'ORACLE'];
 
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
 function previewMax(metric: string, wristCm: number | null, ankleCm: number | null, heightCm: number | null): number | null {
@@ -109,6 +119,10 @@ export function ProfilePage() {
   const previewFrame = useMemo(
     () => getFrameSize(previewWrist, previewAnkle),
     [previewWrist, previewAnkle],
+  );
+  const previewArchetype = useMemo(
+    () => getFrameArchetype(previewHeight, previewWeight, user?.bodyFatPct ?? null),
+    [previewHeight, previewWeight, user?.bodyFatPct],
   );
 
   // Detect what changed from the saved user object
@@ -211,23 +225,45 @@ export function ProfilePage() {
           }
         >
           <div className="space-y-4">
-            {/* Frame size + summary */}
-            <div className="text-center border-b border-ink-500/30 pb-3">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Size</div>
-              <div
-                className={`font-display text-5xl tracking-[0.3em] mt-1 ${
-                  previewFrame === 'SMALL' ? 'neon-text-magenta' :
-                  previewFrame === 'MEDIUM' ? 'neon-text-cyan' :
-                  previewFrame === 'LARGE' ? 'neon-text-amber' :
-                  'text-ink-400'
-                }`}
-                style={{ textShadow: previewFrame !== 'UNKNOWN' ? '0 0 12px currentColor' : undefined }}
-              >
-                {previewFrame}
-              </div>
-              <div className="text-[10px] text-ink-300 font-mono mt-1 italic">
-                {frameDescription(previewFrame)}
-              </div>
+            {/* Archetype (9-class somatotype) */}
+            <div className="border-b border-ink-500/30 pb-3">
+              {previewArchetype ? (
+                <>
+                  <div className="text-center">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Archetype</div>
+                    <div
+                      className={`font-display text-4xl tracking-[0.2em] mt-1 neon-text-${ARCHETYPE_META[previewArchetype].color}`}
+                      style={{ textShadow: '0 0 12px currentColor' }}
+                    >
+                      {ARCHETYPE_META[previewArchetype].emoji} {ARCHETYPE_META[previewArchetype].label}
+                    </div>
+                    <div className="text-[10px] text-ink-300 font-mono mt-1 italic">
+                      {ARCHETYPE_META[previewArchetype].tagline} · {ARCHETYPE_META[previewArchetype].description}
+                    </div>
+                  </div>
+                  {/* 3x3 grid showing where the user fits */}
+                  <div className="grid grid-cols-[auto_1fr_1fr_1fr] gap-1 text-[9px] font-mono mt-3">
+                    <div></div>
+                    <div className="text-center text-ink-300 uppercase tracking-widest pb-1">Short</div>
+                    <div className="text-center text-ink-300 uppercase tracking-widest pb-1">Med</div>
+                    <div className="text-center text-ink-300 uppercase tracking-widest pb-1">Tall</div>
+                    {(['LEAN', 'BALANCED', 'SOLID'] as const).map((b) => (
+                      <SomatotypeRow
+                        key={b}
+                        build={b}
+                        archetype={previewArchetype}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-3">
+                  <div className="text-xs text-neon-amber font-mono mb-1 animate-pulse">! ARCHETYPE UNKNOWN</div>
+                  <div className="text-[10px] text-ink-300 font-mono">
+                    Need height + wrist + ankle (and ideally weight) to classify.
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Frame inputs */}
@@ -358,31 +394,65 @@ export function ProfilePage() {
         <Panel variant="lime" title="Class">
           <div className="text-[10px] font-mono text-ink-300 mb-3">
             Your class determines which skill tree you can unlock and which stats get the most XP from training.
+            Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {CLASS_OPTIONS.map((c) => {
               const m = CLASS_META[c];
               const selected = (classChoice ?? user.class) === c;
+              const eligible = isClassEligible(c, previewArchetype);
               return (
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setClassChoice(c)}
+                  onClick={() => eligible && setClassChoice(c)}
+                  disabled={!eligible}
+                  title={eligible ? m.description : `Locked: your ${previewArchetype ? ARCHETYPE_META[previewArchetype].label.toLowerCase() : 'frame'} build can't take this path`}
                   className={classNames(
-                    'p-3 border-2 text-left transition-all',
-                    selected
+                    'p-3 border-2 text-left transition-all relative',
+                    selected && eligible
                       ? `border-neon-${m.color}/80 bg-neon-${m.color}/10`
+                      : !eligible
+                      ? 'border-ink-500/30 bg-bg-700/40 opacity-50 cursor-not-allowed'
                       : 'border-ink-500/40 hover:border-ink-300'
                   )}
                 >
-                  <div className={`font-display tracking-wider text-sm ${selected ? `neon-text-${m.color}` : 'text-ink-200'}`}>
-                    {m.label}
+                  <div className="flex items-baseline justify-between">
+                    <div className={`font-display tracking-wider text-sm ${selected && eligible ? `neon-text-${m.color}` : !eligible ? 'text-ink-400' : 'text-ink-200'}`}>
+                      {m.label}
+                    </div>
+                    {!eligible && (
+                      <span className="text-[9px] font-mono text-ink-400 uppercase tracking-widest">LOCKED</span>
+                    )}
+                    {eligible && !selected && (
+                      <span className="text-[9px] font-mono neon-text-lime uppercase tracking-widest">OPEN</span>
+                    )}
+                    {selected && eligible && (
+                      <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">PICKED</span>
+                    )}
                   </div>
-                  <div className="text-[10px] text-ink-300 font-mono mt-1">{m.tagline}</div>
+                  <div className={`text-[10px] font-mono mt-1 ${eligible ? 'text-ink-300' : 'text-ink-500'}`}>
+                    {m.tagline}
+                  </div>
+                  {!eligible && previewArchetype && (
+                    <div className="text-[9px] font-mono text-neon-magenta mt-1 italic">
+                      Not for {ARCHETYPE_META[previewArchetype].label}s.
+                    </div>
+                  )}
                 </button>
               );
             })}
           </div>
+          {previewArchetype && (
+            <div className="mt-3 text-[10px] font-mono text-ink-300 border-t border-ink-500/30 pt-2">
+              <span className="neon-text-cyan">{ARCHETYPE_META[previewArchetype].label}</span> opens:{' '}
+              {CLASS_OPTIONS.filter((c) => isClassEligible(c, previewArchetype)).map((c) => (
+                <span key={c} className={`ml-1 neon-text-${CLASS_META[c].color}`}>
+                  {CLASS_META[c].label}
+                </span>
+              ))}
+            </div>
+          )}
         </Panel>
 
         {/* IDENTITY */}
@@ -447,6 +517,34 @@ function FrameField({
         placeholder={storageKey === 'heightCm' ? '180' : storageKey === 'wristCm' ? '15' : '21'}
       />
     </div>
+  );
+}
+
+function SomatotypeRow({ build, archetype }: { build: BuildCategory; archetype: FrameArchetype }) {
+  const labels: Record<BuildCategory, string> = { LEAN: 'Lean', BALANCED: 'Bal', SOLID: 'Solid' };
+  return (
+    <>
+      <div className="text-right pr-2 text-ink-300 uppercase tracking-widest self-center">{labels[build]}</div>
+      {(['SHORT', 'MEDIUM', 'TALL'] as const).map((h) => {
+        const a = ARCHETYPE_MATRIX[build][h];
+        const meta = ARCHETYPE_META[a];
+        const isUser = archetype === a;
+        return (
+          <div
+            key={h}
+            className={classNames(
+              'h-9 border flex items-center justify-center font-display tracking-wider text-[10px]',
+              isUser
+                ? `border-neon-${meta.color}/80 bg-neon-${meta.color}/15 neon-text-${meta.color}`
+                : 'border-ink-500/30 text-ink-400'
+            )}
+            style={isUser ? { textShadow: '0 0 6px currentColor' } : undefined}
+          >
+            {meta.label.slice(0, 3).toUpperCase()}
+          </div>
+        );
+      })}
+    </>
   );
 }
 

@@ -1,14 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from './api';
+import type { ClassName } from './types';
+import type { UnitSystem } from './units';
 
-export type ClassName =
-  | 'BODYBUILDER'
-  | 'POWERLIFTER'
-  | 'CALISTHENIST'
-  | 'ENDURANCE'
-  | 'HYBRID';
-
-export type UnitSystem = 'METRIC' | 'IMPERIAL';
+export type { ClassName, UnitSystem };
 
 export type User = {
   id: string;

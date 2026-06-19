@@ -9,11 +9,11 @@ datasource db {
 }
 
 enum ClassName {
-  BODYBUILDER
-  POWERLIFTER
-  CALISTHENIST
-  ENDURANCE
-  HYBRID
+  JUGGERNAUT
+  PHANTOM
+  FORGE
+  BERSERKER
+  ORACLE
 }
 
 enum MetricType {
