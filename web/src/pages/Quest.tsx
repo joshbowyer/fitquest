@@ -208,18 +208,29 @@ function OverworldMap({
   return (
     <div
       className="grid gap-px bg-bg-700 border border-neon-cyan/15"
-      style={{ gridTemplateColumns: `repeat(${MAP_TILES_X}, 1fr)` }}
+      style={{
+        gridTemplateColumns: `repeat(${MAP_TILES_X}, minmax(0, 1fr))`,
+        width: 'fit-content',
+        maxWidth: '100%',
+        margin: '0 auto',
+      }}
     >
       {grid.flatMap((row, y) =>
         row.map((cell, x) => {
+          const cellStyle: React.CSSProperties = {
+            width: 'clamp(28px, 4.5vw, 48px)',
+            height: 'clamp(28px, 4.5vw, 48px)',
+            minWidth: 0,
+          };
           if (cell.kind === 'home') {
             return (
               <div
                 key={`${x}-${y}`}
-                className="aspect-square bg-bg-800 relative flex items-center justify-center"
+                className="relative flex items-center justify-center"
                 style={{
+                  ...cellStyle,
+                  background: 'radial-gradient(circle at center, rgba(255,195,77,0.25), rgba(255,195,77,0.05) 60%, transparent 90%)',
                   boxShadow: 'inset 0 0 0 1px rgba(255, 195, 77, 0.5)',
-                  background: 'radial-gradient(circle at center, rgba(255,195,77,0.18), transparent 70%)',
                 }}
                 title="Home Base"
               >
@@ -238,10 +249,10 @@ function OverworldMap({
             return (
               <div
                 key={`${x}-${y}`}
-                className="aspect-square"
                 style={{
-                  background: `linear-gradient(${hex}33, ${hex}66)`,
-                  boxShadow: `inset 0 0 0 1px ${hex}55`,
+                  ...cellStyle,
+                  background: `linear-gradient(${hex}44, ${hex}88)`,
+                  boxShadow: `inset 0 0 0 1px ${hex}66`,
                 }}
               />
             );
@@ -258,19 +269,20 @@ function OverworldMap({
                 onClick={() => onSelect(portal.world.id)}
                 disabled={!unlocked}
                 className={classNames(
-                  'aspect-square flex items-center justify-center transition-all',
+                  'flex items-center justify-center transition-all',
                   unlocked
                     ? 'hover:scale-110 cursor-pointer'
                     : 'opacity-40 cursor-not-allowed',
                 )}
                 style={{
-                  background: `radial-gradient(circle at center, ${hex}66, ${hex}11 70%, transparent)`,
+                  ...cellStyle,
+                  background: `radial-gradient(circle at center, ${hex}aa, ${hex}33 50%, transparent 80%)`,
                   boxShadow: unlocked ? `0 0 12px ${hex}, inset 0 0 0 2px ${hex}` : `inset 0 0 0 1px ${hex}55`,
                 }}
                 title={unlocked ? `${portal.world.name} (${completed}/${portal.world.levels.length})` : `Unlocks at Lvl ${portal.world.levelRequired}`}
               >
                 <span
-                  className="text-xl font-bold"
+                  className="text-lg font-bold"
                   style={{ color: hex, textShadow: `0 0 6px ${hex}` }}
                 >
                   {portal.world.icon}
@@ -278,16 +290,17 @@ function OverworldMap({
               </button>
             );
           }
-          // empty
-          // Faint grid: dots
+          // empty: subtle dot
           return (
             <div
               key={`${x}-${y}`}
-              className="aspect-square bg-bg-800/40"
               style={{
-                backgroundImage: 'radial-gradient(circle, rgba(20, 214, 232, 0.08) 1px, transparent 1px)',
-                backgroundSize: '60% 60%',
+                ...cellStyle,
+                background: 'rgba(20, 25, 35, 0.6)',
+                backgroundImage: 'radial-gradient(circle, rgba(20, 214, 232, 0.12) 1px, transparent 1px)',
+                backgroundSize: '50% 50%',
                 backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
               }}
             />
           );
