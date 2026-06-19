@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -10,18 +10,22 @@ import { Avatar } from '@/components/Avatar';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   BodyModel,
+  BODY_PARTS_UI,
   BODY_PARTS,
   intensityToColor,
   intensityLabel,
+  recoveryToColor,
+  recoveryLabel,
   type BodyPartMeta,
   type BodyPartId,
   type PainMarker,
+  type MuscleWorkedMarker,
+  type RecoveryMarker,
 } from '@/components/BodyModel';
 import { getFrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { WORLD_COLOR_HEX } from '@/lib/quest';
-import { classNames } from '@/lib/format';
 
-type PainLogEntry = {
+type PainEntry = {
   id: string;
   bodyPart: BodyPartId;
   intensity: number;
@@ -29,9 +33,11 @@ type PainLogEntry = {
   loggedAt: string;
 };
 
-type PainLogsResponse = {
-  logs: PainLogEntry[];
-  summary: Record<string, { latest: number; avg: number; count: number; latestAt: string }>;
+type StatusResponse = {
+  recovery: RecoveryMarker[];
+  worked: MuscleWorkedMarker[];
+  pain: PainEntry[];
+  painSummary: Record<string, { latest: number; avg: number; count: number; latestAt: string }>;
 };
 
 export function StatusPage() {
@@ -41,8 +47,8 @@ export function StatusPage() {
   const [hovered, setHovered] = useState<BodyPartMeta | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pain-logs'],
-    queryFn: () => api<PainLogsResponse>('/pain-logs'),
+    queryKey: ['status'],
+    queryFn: () => api<StatusResponse>('/status'),
   });
 
   const archive = useDelayedMutation<
@@ -51,7 +57,7 @@ export function StatusPage() {
   >({
     mutationFn: (id: string) =>
       api(`/pain-logs/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pain-logs'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['status'] }),
   }, 400);
 
   if (!user) return null;
@@ -59,9 +65,8 @@ export function StatusPage() {
   const archetype = getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE';
   const meta = ARCHETYPE_META[archetype];
 
-  // Convert summary to marker list
-  const markers: PainMarker[] = data
-    ? Object.entries(data.summary).map(([partId, s]) => ({
+  const painMarkers: PainMarker[] = data
+    ? Object.entries(data.painSummary).map(([partId, s]) => ({
         bodyPart: partId as BodyPartId,
         intensity: Math.round(s.latest),
         count: s.count,
@@ -72,34 +77,58 @@ export function StatusPage() {
   const bf = user.bodyFatPct ?? null;
   const weight = user.weightKg ?? null;
   const height = user.heightCm ?? null;
-  // Lean mass = weight * (1 - bf)
   const lbm = bf != null && weight != null ? weight * (1 - bf / 100) : null;
-  // FFMI = LBM / (height_m)^2 + adjustment
   const ffmi = lbm != null && height != null ? lbm / Math.pow(height / 100, 2) + 6.1 * (1.8 / (height / 100)) : null;
+
+  // Aggregate stats
+  const avgRecovery = data && data.recovery.length > 0
+    ? Math.round(data.recovery.reduce((s, r) => s + r.score, 0) / data.recovery.length)
+    : null;
+  const recovered = data?.recovery.filter((r) => r.score >= 80).length ?? 0;
+  const fatigued = data?.recovery.filter((r) => r.score < 50).length ?? 0;
 
   return (
     <Layout>
       <PageHeader
         title="Status"
-        subtitle="A holographic readout of your body. Click a part to log pain, hover for details."
+        subtitle="Holographic readout of your body. Click to log pain. Color = recovery status."
       />
 
       <div className="grid grid-cols-[1fr_320px] gap-6">
-        <Panel title="Hologram" variant="cyan">
+        <Panel
+          title="Hologram"
+          variant="cyan"
+          action={
+            <span className="text-[10px] font-mono text-ink-300 tracking-widest">
+              {data?.worked.length ?? 0} worked · {painMarkers.length} pain · {data?.recovery.length ?? 0} tracked
+            </span>
+          }
+        >
           <BodyModel
-            markers={markers}
+            painMarkers={painMarkers}
+            workedMarkers={data?.worked ?? []}
+            recoveryMarkers={data?.recovery ?? []}
             onPartClick={(p) => setSelected(p)}
             onPartHover={(p) => setHovered(p)}
-            height={520}
+            height={560}
           />
           {hovered && (
             <div className="mt-2 px-3 py-2 border border-neon-cyan/40 bg-bg-900/80 text-xs font-mono">
-              <span className="text-ink-300">Hover:</span>{' '}
-              <span className="text-neon-cyan">{hovered.label}</span>{' '}
-              <span className="text-ink-400">·</span>{' '}
-              <span className="text-ink-200">click to log pain</span>
+              <HoverInfo
+                part={hovered}
+                recovery={data?.recovery.find((r) => r.bodyPart === hovered.id)}
+                worked={data?.worked.find((w) => w.bodyPart === hovered.id)}
+                pain={painMarkers.find((p) => p.bodyPart === hovered.id)}
+              />
             </div>
           )}
+          <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-mono">
+            <Legend color="#9bff5c" label="recovered" />
+            <Legend color="#ffc34d" label="active" />
+            <Legend color="#f55cc4" label="fatigued" />
+            <Legend color="#ff3060" label="overworked" />
+            <Legend color="#14d6e8" label="pain" />
+          </div>
         </Panel>
 
         <div className="space-y-4">
@@ -117,43 +146,91 @@ export function StatusPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              {height != null && (
-                <Stat label="Height" value={`${Math.round(height)} cm`} />
-              )}
-              {weight != null && (
-                <Stat label="Weight" value={`${weight.toFixed(1)} kg`} />
-              )}
-              {bf != null && (
-                <Stat label="Body Fat" value={`${bf.toFixed(1)}%`} color={intensityToColor(bf / 2)} />
-              )}
-              {lbm != null && (
-                <Stat label="Lean Mass" value={`${lbm.toFixed(1)} kg`} color="#9bff5c" />
-              )}
-              {ffmi != null && (
-                <Stat label="FFMI" value={ffmi.toFixed(1)} color={ffmi > 22 ? '#9bff5c' : '#14d6e8'} />
-              )}
+              {height != null && <Stat label="Height" value={`${Math.round(height)} cm`} />}
+              {weight != null && <Stat label="Weight" value={`${weight.toFixed(1)} kg`} />}
+              {bf != null && <Stat label="Body Fat" value={`${bf.toFixed(1)}%`} color={intensityToColor(bf / 2)} />}
+              {lbm != null && <Stat label="Lean Mass" value={`${lbm.toFixed(1)} kg`} color="#9bff5c" />}
+              {ffmi != null && <Stat label="FFMI" value={ffmi.toFixed(1)} color={ffmi > 22 ? '#9bff5c' : '#14d6e8'} />}
             </div>
           </Panel>
+
+          {avgRecovery != null && (
+            <Panel title="Recovery" variant={fatigued > 3 ? 'magenta' : 'lime'}>
+              <div className="space-y-2">
+                <div className="text-center">
+                  <div
+                    className="text-3xl font-display"
+                    style={{
+                      color: recoveryToColor(avgRecovery),
+                      textShadow: `0 0 8px ${recoveryToColor(avgRecovery)}`,
+                    }}
+                  >
+                    {avgRecovery}
+                  </div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+                    Avg Recovery
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
+                  <div>
+                    <div className="text-lg text-neon-lime">{recovered}</div>
+                    <div className="text-ink-400">ready</div>
+                  </div>
+                  <div>
+                    <div className="text-lg text-neon-amber">
+                      {data!.recovery.filter((r) => r.score >= 50 && r.score < 80).length}
+                    </div>
+                    <div className="text-ink-400">active</div>
+                  </div>
+                  <div>
+                    <div className="text-lg text-neon-magenta">{fatigued}</div>
+                    <div className="text-ink-400">fatigued</div>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          )}
+
+          {data && data.worked.length > 0 && (
+            <Panel title="Recently Worked" variant="cyan">
+              <div className="space-y-1 text-[10px] font-mono">
+                {data.worked
+                  .sort((a, b) => new Date(b.workedAt).getTime() - new Date(a.workedAt).getTime())
+                  .slice(0, 6)
+                  .map((w) => {
+                    const meta = BODY_PARTS_UI.find((p) => p.id === w.bodyPart);
+                    if (!meta) return null;
+                    return (
+                      <div key={w.bodyPart} className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-neon-cyan shrink-0" />
+                        <div className="flex-1 text-ink-50">{meta.label}</div>
+                        <div className="text-ink-400">{timeAgo(w.workedAt)}</div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </Panel>
+          )}
 
           <Panel title="Pain Map" variant="violet">
             {isLoading ? (
               <div className="text-[10px] font-mono text-ink-300">loading…</div>
-            ) : markers.length === 0 ? (
+            ) : painMarkers.length === 0 ? (
               <div className="text-[10px] font-mono text-ink-300 italic">
                 No pain logged. Click a body part on the hologram to log.
               </div>
             ) : (
               <div className="space-y-1.5">
-                {markers
+                {painMarkers
                   .sort((a, b) => b.intensity - a.intensity)
-                  .slice(0, 8)
+                  .slice(0, 6)
                   .map((m) => {
-                    const meta = BODY_PARTS.find((p) => p.id === m.bodyPart);
-                    if (!meta) return null;
+                    const m2 = BODY_PARTS_UI.find((p) => p.id === m.bodyPart);
+                    if (!m2) return null;
                     return (
                       <button
                         key={m.bodyPart}
-                        onClick={() => setSelected(meta)}
+                        onClick={() => setSelected(m2)}
                         className="w-full flex items-center gap-2 px-2 py-1 border border-ink-700/50 hover:border-ink-300 text-left"
                       >
                         <div
@@ -164,7 +241,7 @@ export function StatusPage() {
                           }}
                         />
                         <div className="flex-1 text-[10px] font-mono">
-                          <span className="text-ink-50">{meta.label}</span>
+                          <span className="text-ink-50">{m2.label}</span>
                           <span className="text-ink-400 ml-2">
                             {intensityLabel(m.intensity)} ({m.intensity}/10)
                           </span>
@@ -183,16 +260,15 @@ export function StatusPage() {
         <PainLogModal
           part={selected}
           onClose={() => setSelected(null)}
-          onSaved={() => qc.invalidateQueries({ queryKey: ['pain-logs'] })}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['status'] })}
         />
       )}
 
-      {/* Recent log list (collapsible at bottom) */}
-      {data && data.logs.length > 0 && (
-        <Panel title="Recent logs" variant="cyan" className="mt-6">
+      {data && data.pain.length > 0 && (
+        <Panel title="Recent pain logs" variant="cyan" className="mt-6">
           <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
-            {data.logs.slice(0, 20).map((log) => {
-              const part = BODY_PARTS.find((p) => p.id === log.bodyPart);
+            {data.pain.slice(0, 20).map((log) => {
+              const part = BODY_PARTS_UI.find((p) => p.id === log.bodyPart) ?? BODY_PARTS.find((p) => p.id === log.bodyPart);
               return (
                 <div
                   key={log.id}
@@ -229,6 +305,69 @@ export function StatusPage() {
         </Panel>
       )}
     </Layout>
+  );
+}
+
+function HoverInfo({
+  part,
+  recovery,
+  worked,
+  pain,
+}: {
+  part: BodyPartMeta;
+  recovery?: RecoveryMarker;
+  worked?: MuscleWorkedMarker;
+  pain?: PainMarker;
+}) {
+  return (
+    <div className="space-y-1">
+      <div>
+        <span className="text-ink-300">Part:</span>{' '}
+        <span className="text-neon-cyan font-display tracking-widest">{part.label}</span>
+      </div>
+      {recovery && (
+        <div>
+          <span className="text-ink-300">Recovery:</span>{' '}
+          <span style={{ color: recoveryToColor(recovery.score) }}>
+            {recovery.score}/100 · {recoveryLabel(recovery.score)}
+          </span>
+          {recovery.lastWorkedAt && (
+            <span className="text-ink-400 ml-2 text-[10px]">
+              (last worked {timeAgo(recovery.lastWorkedAt)})
+            </span>
+          )}
+        </div>
+      )}
+      {worked && (
+        <div>
+          <span className="text-ink-300">Worked:</span>{' '}
+          <span className="text-neon-cyan">{timeAgo(worked.workedAt)} · intensity {worked.intensity}/10</span>
+        </div>
+      )}
+      {pain && (
+        <div>
+          <span className="text-ink-300">Pain:</span>{' '}
+          <span style={{ color: intensityToColor(pain.intensity) }}>
+            {pain.intensity}/10 · {intensityLabel(pain.intensity)} ({pain.count} logs)
+          </span>
+        </div>
+      )}
+      {!recovery && !worked && !pain && (
+        <div className="text-ink-400 text-[10px]">No data. Click to log pain.</div>
+      )}
+    </div>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span
+        className="inline-block w-2.5 h-2.5 rounded-full"
+        style={{ background: color, boxShadow: `0 0 4px ${color}` }}
+      />
+      <span className="text-ink-300">{label}</span>
+    </span>
   );
 }
 
@@ -322,9 +461,7 @@ function PainLogModal({
         </div>
 
         <div className="flex items-center justify-end gap-2">
-          <NeonButton onClick={onClose} variant="cyan">
-            Cancel
-          </NeonButton>
+          <NeonButton onClick={onClose} variant="cyan">Cancel</NeonButton>
           <NeonButton
             variant="violet"
             onClick={() => create.run()}
@@ -349,4 +486,14 @@ function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'pe
     case 'ORACLE':    return 'periwinkle';
     default:          return 'goldenrod';
   }
+}
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const hours = Math.round(ms / (60 * 60 * 1000));
+  if (hours < 1) return 'just now';
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
 }

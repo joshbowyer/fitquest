@@ -18,6 +18,7 @@ import { insightRoutes } from './routes/insights.js';
 import { avatarRoutes } from './routes/avatar.js';
 import { questRoutes } from './routes/quest.js';
 import { painLogRoutes } from './routes/painLogs.js';
+import { statusRoutes } from './routes/status.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
 
@@ -51,6 +52,7 @@ async function build() {
   await app.register(avatarRoutes, { prefix: '/avatar' });
   await app.register(questRoutes, { prefix: '/quest' });
   await app.register(painLogRoutes, { prefix: '/pain-logs' });
+  await app.register(statusRoutes, { prefix: '/status' });
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');

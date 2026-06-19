@@ -239,6 +239,11 @@ model Exercise {
   name      String
   order     Int      @default(0)
   notes     String?
+  // BodyPart IDs that this exercise primarily works.
+  // Populated from a seed table by name lookup at insertion time
+  // so users see the right muscles on the body without having to
+  // tag exercises manually.
+  musclesWorked BodyPart[] @default([])
   sets      Set[]
 }
 
@@ -400,21 +405,43 @@ model UserWorldProgress {
 }
 
 enum BodyPart {
+  // Head + spine
   HEAD
   NECK
-  CHEST
+  TRAPS
+  // Torso — chest + back + core
+  PECTORAL
   BACK_UPPER
   BACK_LOWER
+  LAT_L
+  LAT_R
+  ABS
+  OBLIQUE_L
+  OBLIQUE_R
+  // Legacy / overview parts (kept for backward compat)
+  CHEST
+  HIP_L
+  HIP_R
+  // Shoulders + arms
   SHOULDER_L
   SHOULDER_R
+  ROTATOR_CUFF_L
+  ROTATOR_CUFF_R
   BICEP_L
   BICEP_R
+  TRICEP_L
+  TRICEP_R
   FOREARM_L
   FOREARM_R
   WRIST_L
   WRIST_R
-  HIP_L
-  HIP_R
+  // Hips + legs
+  GLUTE_L
+  GLUTE_R
+  ADDUCTOR_L
+  ADDUCTOR_R
+  ABDUCTOR_L
+  ABDUCTOR_R
   QUAD_L
   QUAD_R
   HAMSTRING_L
@@ -441,3 +468,7 @@ model PainLog {
   @@index([userId, bodyPart])
   @@index([userId, loggedAt])
 }
+
+// Add new muscle groups to BodyPart enum
+// PECTORAL, ABS, OBLIQUE_L/R, TRICEP_L/R, TRAPS, LAT_L/R,
+// GLUTE_L/R, ADDUCTOR_L/R, ABDUCTOR_L/R, ROTATOR_CUFF_L/R
