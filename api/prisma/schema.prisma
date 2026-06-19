@@ -78,6 +78,12 @@ enum WorkoutType {
   OTHER
 }
 
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+}
+
 enum PrType {
   ONE_RM
   VOLUME
@@ -163,6 +169,7 @@ model User {
   skills           UserSkill[]
   classChangedAt   DateTime?
   soulstones       Int      @default(0)
+  sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }

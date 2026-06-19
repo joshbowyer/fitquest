@@ -10,7 +10,7 @@ type Inputs = {
   weightKg?: number | null;
   bodyFatPct?: number | null;
   birthDate?: Date | null;
-  sex?: 'male' | 'female' | null;
+  sex?: 'MALE' | 'FEMALE' | 'OTHER' | null;
 };
 
 function age(birthDate?: Date | null): number | null {
@@ -27,6 +27,7 @@ function age(birthDate?: Date | null): number | null {
  */
 export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | null {
   const { heightCm, wristCm, ankleCm, forearmLengthCm, neckCircCm, weightKg, bodyFatPct, birthDate, sex } = inputs;
+  const isFemale = sex === 'FEMALE';
 
   switch (metric) {
     // Casey Butt–calibrated formulas. All ratios are derived from the
@@ -149,7 +150,7 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       const baseMale = 60;
       const baseFemale = 55;
       const decline = Math.max(0, (a - 25) * 0.4);
-      const ceiling = (sex === 'female' ? baseFemale : baseMale) - decline;
+      const ceiling = (isFemale ? baseFemale : baseMale) - decline;
       return round1(Math.max(35, ceiling));
     }
     case 'RESTING_HR': {
@@ -163,7 +164,7 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
     }
     case 'FIVE_K_TIME': {
       // 20 min for fit, 15 min for elite male, 17 female baseline
-      return sex === 'female' ? 17 * 60 : 15 * 60;
+      return isFemale ? 17 * 60 : 15 * 60;
     }
     case 'PLANK_HOLD': {
       // Holds are training-dependent, not genetic. Track in Measurements.

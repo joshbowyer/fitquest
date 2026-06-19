@@ -10,6 +10,7 @@ import { assertCanChangeClass, getClassLockStatus } from '../lib/classLock.js';
 const ProfileSchema = z.object({
   class: z.nativeEnum(ClassName).optional(),
   units: z.enum(['METRIC', 'IMPERIAL']).optional(),
+  sex: z.enum(['MALE', 'FEMALE', 'OTHER']).optional().nullable(),
   heightCm: z.number().positive().max(260).optional().nullable(),
   wristCm: z.number().positive().max(30).optional().nullable(),
   ankleCm: z.number().positive().max(30).optional().nullable(),
@@ -38,6 +39,7 @@ export async function userRoutes(app: FastifyInstance) {
       ankleCm: user.ankleCm,
       forearmLengthCm: user.forearmLengthCm,
       neckCircCm: user.neckCircCm,
+      sex: user.sex,
       weightKg: user.weightKg,
       bodyFatPct: user.bodyFatPct,
       birthDate: user.birthDate,
@@ -75,6 +77,7 @@ export async function userRoutes(app: FastifyInstance) {
         // Decrement Soulstone if one was used.
         ...(soulstoneConsumed ? { soulstones: { decrement: 1 } } : {}),
         units: (body as any).units ?? undefined,
+        sex: body.sex === undefined ? undefined : body.sex,
         heightCm: body.heightCm === undefined ? undefined : body.heightCm,
         wristCm: body.wristCm === undefined ? undefined : body.wristCm,
         ankleCm: body.ankleCm === undefined ? undefined : body.ankleCm,
@@ -88,6 +91,7 @@ export async function userRoutes(app: FastifyInstance) {
 
     // Re-compute formula-based genetic maxes (skip those with MANUAL source).
     const formulas = computeAllGeneticMaxes({
+      sex: updated.sex,
       heightCm: updated.heightCm,
       wristCm: updated.wristCm,
       ankleCm: updated.ankleCm,

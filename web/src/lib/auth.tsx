@@ -15,6 +15,8 @@ export type ClassLockStatus = {
   nextBirthdayAt: string | null;
 };
 
+export type UserSex = 'MALE' | 'FEMALE' | 'OTHER';
+
 export type User = {
   id: string;
   email: string;
@@ -25,6 +27,7 @@ export type User = {
   soulstones: number;
   class: ClassName | null;
   units: UnitSystem;
+  sex: UserSex | null;
   heightCm: number | null;
   wristCm: number | null;
   ankleCm: number | null;

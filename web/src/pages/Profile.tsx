@@ -80,6 +80,7 @@ export function ProfilePage() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [classChoice, setClassChoice] = useState<ClassName | null>(null);
   const [birthDate, setBirthDate] = useState<string | null>(null);
+  const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -114,6 +115,7 @@ export function ProfilePage() {
     setDraft(next);
     if (classChoice === null) setClassChoice(user.class);
     if (birthDate === null) setBirthDate(user.birthDate);
+    if (sexDraft === null) setSexDraft(user.sex);
   }, [user, inImperial]);
 
   function setDraftField(key: string, raw: string) {
@@ -166,7 +168,8 @@ export function ProfilePage() {
 
   const classChanged = classChoice !== null && classChoice !== user?.class;
   const birthChanged = birthDate !== null && birthDate !== user?.birthDate;
-  const anythingChanged = frameChanged || classChanged || birthChanged;
+  const sexChanged = sexDraft !== null && sexDraft !== user?.sex;
+  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged;
 
   const saveM = useDelayedMutation<
     { recomputed: boolean; changeCount: number },
@@ -201,6 +204,7 @@ export function ProfilePage() {
         }
       }
       if (birthChanged) body.birthDate = birthDate;
+      if (sexChanged) body.sex = sexDraft;
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -425,13 +429,29 @@ export function ProfilePage() {
               )}
             </div>
 
-            {/* Birth Date — sits with the static frame fields since it
-                changes ~never. Drives the class-lock birthday window. */}
+            {/* Birth Date + Sex — sit with the static identity fields.
+                Birthday drives the class-lock window. Sex affects body
+                fat interpretation and genetic max norms. */}
             <div className="border-t border-ink-500/30 pt-3">
               <div className="text-[9px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
                 Static · identity
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+                    Sex
+                  </label>
+                  <select
+                    className="input-neon"
+                    value={sexDraft ?? ''}
+                    onChange={(e) => setSexDraft((e.target.value || null) as 'MALE' | 'FEMALE' | 'OTHER' | null)}
+                  >
+                    <option value="">— prefer not to say —</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other / non-binary</option>
+                  </select>
+                </div>
                 <div>
                   <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
                     Birth Date
@@ -445,7 +465,8 @@ export function ProfilePage() {
                 </div>
               </div>
               <p className="text-[10px] text-ink-400 font-mono mt-2 italic">
-                Birthday is used to unlock your class once a year. No birthday = fallback to 365-day cooldown.
+                Birthday unlocks your class once a year. Sex refines body fat
+                interpretation, VO2 max, and other sex-aware genetic maxes.
               </p>
             </div>
 

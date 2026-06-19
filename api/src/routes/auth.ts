@@ -41,7 +41,7 @@ export async function authRoutes(app: FastifyInstance) {
       select: {
         id: true, email: true, username: true, level: true, xp: true, gold: true,
         class: true, units: true, createdAt: true, classChangedAt: true,
-        soulstones: true, birthDate: true, heightCm: true, wristCm: true,
+        soulstones: true, birthDate: true, sex: true, heightCm: true, wristCm: true,
         ankleCm: true, forearmLengthCm: true, neckCircCm: true,
       },
     });
@@ -108,6 +108,7 @@ export async function authRoutes(app: FastifyInstance) {
         ankleCm: user.ankleCm,
         forearmLengthCm: user.forearmLengthCm,
         neckCircCm: user.neckCircCm,
+        sex: user.sex,
         weightKg: user.weightKg,
         bodyFatPct: user.bodyFatPct,
         birthDate: user.birthDate,
