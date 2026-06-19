@@ -13,6 +13,7 @@ import { PartyPage } from './pages/Party';
 import { ProfilePage } from './pages/Profile';
 import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
+import { StatusPage } from './pages/Status';
 import type { ReactNode } from 'react';
 
 function FullPageLoader() {
@@ -50,6 +51,7 @@ export default function App() {
       <Route path="/quest" element={<RequireAuth><QuestPage /></RequireAuth>} />
       <Route path="/quest/:worldId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
       <Route path="/quest/:worldId/:levelId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
+      <Route path="/status" element={<RequireAuth><StatusPage /></RequireAuth>} />
       <Route path="/workouts" element={<RequireAuth><WorkoutsPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
