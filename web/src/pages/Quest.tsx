@@ -168,20 +168,6 @@ function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'pe
   }
 }
 
-function spriteForArchetype(a: 'WISP' | 'SPRITE' | 'DRAKE' | 'STRIKER' | 'FORGE' | 'GOLEM' | 'WIRED' | 'BEAR' | 'BEHEMOTH'): string {
-  switch (a) {
-    case 'WISP':     return 'nun';
-    case 'SPRITE':   return 'merchant';
-    case 'DRAKE':    return 'cultist';
-    case 'STRIKER':  return 'wind';
-    case 'FORGE':    return 'priest';
-    case 'GOLEM':    return 'captain';
-    case 'WIRED':    return 'light';
-    case 'BEAR':     return 'earth';
-    case 'BEHEMOTH': return 'pirate';
-  }
-}
-
 function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan'):
   'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' {
   switch (c) {
@@ -254,7 +240,9 @@ function OverworldMap({
       {grid.flatMap((row, y) =>
         row.map((cell, x) => {
           if (cell.kind === 'home') {
-            const spriteFile = spriteForArchetype(archetype);
+            // Tron-style disc avatar at the home base. The Avatar
+            // component is an SVG so we can drop it into a cell
+            // easily.
             return (
               <div
                 key={`${x}-${y}`}
@@ -265,34 +253,19 @@ function OverworldMap({
                   alignItems: 'center',
                   justifyContent: 'center',
                   overflow: 'hidden',
-                  background: '#ffc34d',
-                  boxShadow: 'inset 0 0 0 2px #ffe4a8',
+                  background: '#0e0f1a',
+                  boxShadow: `inset 0 0 0 2px ${accentColor}, 0 0 8px ${accentColor}`,
                 }}
                 title="Home Base"
               >
-                <img
-                  src={`/sprites/${spriteFile}.png`}
-                  alt="You"
-                  style={{
-                    width: '90%',
-                    height: '90%',
-                    imageRendering: 'pixelated',
-                    filter: `drop-shadow(0 0 3px ${accentColor})`,
-                  }}
-                />
-                {classStripe && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: 2,
-                      left: '20%',
-                      right: '20%',
-                      height: 2,
-                      background: classStripe,
-                      boxShadow: `0 0 4px ${classStripe}`,
-                    }}
+                <div style={{ width: '88%', height: '88%' }}>
+                  <Avatar
+                    archetype={archetype}
+                    accentColor={accentColor}
+                    classStripe={classStripe}
+                    size={40}
                   />
-                )}
+                </div>
               </div>
             );
           }

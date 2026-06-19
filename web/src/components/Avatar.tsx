@@ -5,12 +5,12 @@ export type AvatarHairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' 
 export type AvatarProps = {
   archetype: FrameArchetype;
   bodyFatPct?: number | null;
-  hairStyle: AvatarHairStyle;
-  hairColor: string;
-  skinTone: string;
-  shirtColor: string;
-  pantsColor: string;
-  accentColor: string;
+  hairStyle?: AvatarHairStyle;
+  hairColor?: string;
+  skinTone?: string;
+  shirtColor?: string;
+  pantsColor?: string;
+  accentColor?: string;
   size?: number;
   className?: string;
   classStripe?: string | null;
