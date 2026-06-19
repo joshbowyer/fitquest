@@ -108,6 +108,11 @@ enum GeneticMaxSource {
   PROJECTED
 }
 
+enum UnitSystem {
+  METRIC
+  IMPERIAL
+}
+
 enum RaidStatus {
   ACTIVE
   VICTORY
@@ -129,6 +134,7 @@ model User {
   level        Int      @default(1)
   xp           Int      @default(0)
   gold         Int      @default(0)
+  units        UnitSystem @default(METRIC)
   // Body metrics used by genetic-max formulas
   heightCm     Float?
   wristCm      Float?

@@ -8,6 +8,8 @@ export type ClassName =
   | 'ENDURANCE'
   | 'HYBRID';
 
+export type UnitSystem = 'METRIC' | 'IMPERIAL';
+
 export type User = {
   id: string;
   email: string;
@@ -16,6 +18,7 @@ export type User = {
   xp: number;
   gold: number;
   class: ClassName | null;
+  units: UnitSystem;
   heightCm: number | null;
   wristCm: number | null;
   ankleCm: number | null;

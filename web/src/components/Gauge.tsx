@@ -1,6 +1,8 @@
 import { useId, useMemo } from 'react';
 import { METRICS, type MetricType } from '@/lib/types';
 import { formatNumber } from '@/lib/format';
+import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { useAuth } from '@/lib/auth';
 
 export type GaugeColor = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
 
@@ -66,6 +68,8 @@ export function Gauge({
   const meta = METRICS[metric];
   const colorHex = COLOR_HEX[color];
   const trackColor = BG_TRACK[color];
+  const { user } = useAuth();
+  const system: UnitSystem = user?.units ?? 'METRIC';
 
   const { pct, clamped, angle, tickPositions, hasValue, noMax } = useMemo(() => {
     const hasValue = value != null && Number.isFinite(value);
@@ -92,6 +96,17 @@ export function Gauge({
   const indicatorPos = hasValue && !noMax
     ? polar(cx, cy, (rOuter + rInner) / 2, angle)
     : null;
+
+  // Convert min, max, and value into the user's display unit so the gauge
+  // reads in their preferred system. The math (pct) is computed on the
+  // metric values so conversion is purely cosmetic.
+  const valueDisp = value != null ? convertForDisplay(value, meta.unit, system) : null;
+  const minDisp = convertForDisplay(min, meta.unit, system);
+  const maxDisp = convertForDisplay(max, meta.unit, system);
+  const displayValue = valueDisp?.value ?? null;
+  const displayMin = minDisp.value;
+  const displayMax = maxDisp.value;
+  const displayUnitLabel = displayUnit(meta.unit, system);
 
   return (
     <div className="inline-flex flex-col items-center" style={{ width: size }}>
@@ -203,7 +218,7 @@ export function Gauge({
           fill={colorHex}
           style={{ filter: `drop-shadow(0 0 4px ${colorHex})` }}
         >
-          {noMax ? '—' : hasValue ? formatNumber(value as number, meta.unit === 's' || meta.unit === '%' || meta.unit === 'ms' || meta.unit === 'bpm' ? 0 : 1) : '—'}
+          {noMax ? '—' : displayValue != null ? formatNumber(displayValue, displayUnitLabel === 's' || displayUnitLabel === '%' || displayUnitLabel === '/10' || displayUnitLabel === 'ms' || displayUnitLabel === 'bpm' ? 0 : 1) : '—'}
         </text>
         <text
           x={cx}
@@ -213,7 +228,7 @@ export function Gauge({
           fill="rgba(180,180,210,0.7)"
           className="font-mono tracking-widest"
         >
-          {meta.unit}
+          {displayUnitLabel}
         </text>
         {showPct && !noMax && (
           <text
@@ -233,10 +248,10 @@ export function Gauge({
         {!noMax && (
           <>
             <text x={20} y={170} fontSize="9" fill="rgba(180,180,210,0.6)" className="font-mono">
-              {formatNumber(min, 0)}
+              {formatNumber(displayMin, 0)}
             </text>
             <text x={180} y={170} textAnchor="end" fontSize="9" fill={colorHex} fillOpacity="0.85" className="font-mono">
-              {formatNumber(max, 0)}
+              {formatNumber(displayMax, 0)}
             </text>
           </>
         )}

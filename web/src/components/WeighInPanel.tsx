@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
 import { formatRelative, classNames } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
+import { useAuth } from '@/lib/auth';
 
 type Status = {
   today: { logged: boolean; value: number | null; recordedAt: string | null; unit: string };
@@ -20,6 +22,9 @@ export function WeighInPanel() {
   const id = useId();
   const [draft, setDraft] = useState('');
   const [unlockedToast, setUnlockedToast] = useState<string[] | null>(null);
+  const { user } = useAuth();
+  const system: UnitSystem = user?.units ?? 'METRIC';
+  const inImperial = system === 'IMPERIAL';
 
   const statusQ = useQuery({
     queryKey: ['weigh-in', 'status'],
@@ -32,7 +37,12 @@ export function WeighInPanel() {
   });
 
   const logM = useMutation({
-    mutationFn: () => api<any>('/measurements/weigh-in', { method: 'POST', body: { value: Number(draft) } }),
+    mutationFn: () => {
+      // Convert input from display unit back to kg for storage
+      const inputValue = Number(draft);
+      const stored = convertForStorage(inputValue, displayUnit('kg', system), system);
+      return api<any>('/measurements/weigh-in', { method: 'POST', body: { value: stored.value } });
+    },
     onSuccess: (r) => {
       setDraft('');
       qc.invalidateQueries({ queryKey: ['weigh-in'] });
@@ -51,22 +61,27 @@ export function WeighInPanel() {
   const streak = status?.streak;
   const logged = !!today?.logged;
 
-  // For chart, fill nulls with a smoothed value so the line doesn't break
+  // For chart, fill nulls with a smoothed value so the line doesn't break.
+  // If imperial, convert each value to lb so the chart axis shows pounds.
   const chartData = (trend?.series || []).map((p, i, arr) => {
-    if (p.value != null) return { ...p, _v: p.value };
-    // Forward fill: use previous non-null value if available
-    for (let j = i - 1; j >= 0; j--) {
-      if (arr[j]!.value != null) return { ...p, _v: arr[j]!.value };
+    let v: number | null = null;
+    if (p.value != null) v = p.value;
+    else for (let j = i - 1; j >= 0; j--) {
+      if (arr[j]!.value != null) { v = arr[j]!.value; break; }
     }
-    return { ...p, _v: null };
+    if (v == null) return { ...p, _v: null };
+    const disp = convertForDisplay(v, 'kg', system);
+    return { ...p, _v: disp.value };
   });
-  const values = chartData.map((d) => d.value).filter((v): v is number => v != null);
+  const values = chartData.map((d) => d._v).filter((v): v is number => v != null);
   const yMin = values.length ? Math.floor(Math.min(...values) - 1) : 70;
   const yMax = values.length ? Math.ceil(Math.max(...values) + 1) : 100;
-  const delta = trend?.delta7d;
+  const deltaRaw = trend?.delta7d;
+  const delta = deltaRaw != null ? convertForDisplay(deltaRaw, 'kg', system).value : null;
   const dayLabels = chartData.map((p) =>
     new Date(p.date).toLocaleDateString(undefined, { weekday: 'narrow' })
   );
+  const weightUnit = displayUnit('kg', system);
 
   return (
     <Panel variant="amber" title="Daily Weigh-In" scanline>
@@ -78,8 +93,13 @@ export function WeighInPanel() {
             {logged && today ? (
               <div>
                 <div className="font-display text-3xl neon-text-amber leading-none">
-                  {today.value?.toFixed(1)}
-                  <span className="text-sm text-ink-300 ml-1.5 font-mono">{today.unit}</span>
+                  {(() => {
+                    const disp = convertForDisplay(today.value ?? 0, today.unit, system);
+                    return disp.value.toFixed(1);
+                  })()}
+                  <span className="text-sm text-ink-300 ml-1.5 font-mono">
+                    {convertForDisplay(0, today.unit, system).unit}
+                  </span>
                 </div>
                 <div className="text-[10px] font-mono text-ink-300 mt-1">
                   ✓ logged {today.recordedAt ? formatRelative(today.recordedAt) : ''}
@@ -126,7 +146,7 @@ export function WeighInPanel() {
                 )}
               >
                 {delta > 0 ? '+' : ''}
-                {delta.toFixed(2)} kg · 7d
+                {delta.toFixed(2)} {weightUnit} · 7d
               </div>
             )}
           </div>
@@ -137,7 +157,14 @@ export function WeighInPanel() {
               className="input-neon border-neon-amber/40 text-neon-amber"
               type="number"
               step="0.1"
-              placeholder={logged && today?.value ? `update: ${today.value.toFixed(1)}` : 'kg'}
+              placeholder={(() => {
+                const u = displayUnit('kg', system);
+                if (logged && today?.value) {
+                  const disp = convertForDisplay(today.value, 'kg', system);
+                  return `update: ${disp.value.toFixed(1)} ${u}`;
+                }
+                return u;
+              })()}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {

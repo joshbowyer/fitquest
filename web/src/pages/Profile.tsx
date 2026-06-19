@@ -7,6 +7,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { CLASS_META, type ClassName } from '@/lib/types';
 import { classNames } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit } from '@/lib/units';
 
 const CLASS_OPTIONS: ClassName[] = ['BODYBUILDER', 'POWERLIFTER', 'CALISTHENIST', 'ENDURANCE', 'HYBRID'];
 
@@ -22,6 +23,9 @@ export function ProfilePage() {
     bodyFatPct: number | null;
     birthDate: string | null;
   }>>({});
+
+  const system = user?.units ?? 'METRIC';
+  const inImperial = system === 'IMPERIAL';
   const [saved, setSaved] = useState(false);
 
   const updateM = useMutation({
@@ -50,16 +54,48 @@ export function ProfilePage() {
   if (!user) return null;
 
   function val<K extends keyof NonNullable<typeof form>>(key: K): string {
-    const v = form[key];
-    if (v === undefined) {
-      const fromUser = (user as any)[key as any];
-      return fromUser == null ? '' : String(fromUser);
+    const v = form[key] as number | null | undefined;
+    const raw: number | null = v === undefined
+      ? ((user as any)[key as any] as number | null | undefined) ?? null
+      : v;
+    if (raw == null) return '';
+    // Convert stored metric value to display unit if imperial
+    if (inImperial) {
+      const converted = convertForDisplay(raw, storageUnitForKey(key), 'IMPERIAL');
+      return String(converted.value);
     }
-    return v == null ? '' : String(v);
+    return String(raw);
+  }
+
+  function storageUnitForKey(key: string): string {
+    if (key === 'heightCm') return 'cm';
+    if (key === 'wristCm') return 'cm';
+    if (key === 'ankleCm') return 'cm';
+    if (key === 'weightKg') return 'kg';
+    return '';
+  }
+
+  function displayUnitForKey(key: string): string {
+    if (inImperial) {
+      return displayUnit(storageUnitForKey(key), 'IMPERIAL');
+    }
+    return storageUnitForKey(key);
   }
 
   function setNum<K extends keyof NonNullable<typeof form>>(key: K, raw: string) {
-    setForm((f) => ({ ...f, [key]: raw === '' ? null : Number(raw) }));
+    if (raw === '') {
+      setForm((f) => ({ ...f, [key]: null }));
+      return;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return;
+    // If imperial, convert input back to metric for storage
+    if (inImperial) {
+      const stored = convertForStorage(n, displayUnitForKey(key as string), 'IMPERIAL');
+      setForm((f) => ({ ...f, [key]: stored.value }));
+    } else {
+      setForm((f) => ({ ...f, [key]: n }));
+    }
   }
 
   return (
@@ -105,19 +141,27 @@ export function ProfilePage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Height (cm)</label>
-                <input className="input-neon" type="number" step="0.5" value={val('heightCm')} onChange={(e) => setNum('heightCm', e.target.value)} />
+                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                  Height ({displayUnitForKey('heightCm')})
+                </label>
+                <input className="input-neon" type="number" step="0.1" value={val('heightCm')} onChange={(e) => setNum('heightCm', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Wrist (cm)</label>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                  Wrist ({displayUnitForKey('wristCm')})
+                </label>
                 <input className="input-neon" type="number" step="0.1" value={val('wristCm')} onChange={(e) => setNum('wristCm', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Ankle (cm)</label>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                  Ankle ({displayUnitForKey('ankleCm')})
+                </label>
                 <input className="input-neon" type="number" step="0.1" value={val('ankleCm')} onChange={(e) => setNum('ankleCm', e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Weight (kg)</label>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                  Weight ({displayUnitForKey('weightKg')})
+                </label>
                 <input className="input-neon" type="number" step="0.1" value={val('weightKg')} onChange={(e) => setNum('weightKg', e.target.value)} />
               </div>
               <div>

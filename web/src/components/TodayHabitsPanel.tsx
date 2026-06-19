@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
 import { classNames, formatRelative, formatMetricWithUnit } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
+import { useAuth } from '@/lib/auth';
 
 type HabitStatus = Record<string, { logged: boolean; value: number | null; recordedAt: string | null }>;
 
@@ -30,6 +32,8 @@ export function TodayHabitsPanel() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<MetricType | null>(null);
   const [draft, setDraft] = useState('');
+  const { user } = useAuth();
+  const system: UnitSystem = user?.units ?? 'METRIC';
 
   const statusQ = useQuery({
     queryKey: ['habits', 'today'],
@@ -56,7 +60,9 @@ export function TodayHabitsPanel() {
     if (!draft) return;
     const value = Number(draft);
     if (!Number.isFinite(value) || value < 0) return;
-    batchM.mutate([{ metric: m, value }]);
+    // Convert input from display unit back to metric
+    const stored = convertForStorage(value, displayUnit(METRICS[m].unit, system), system);
+    batchM.mutate([{ metric: m, value: stored.value }]);
   }
 
   return (
@@ -124,7 +130,10 @@ export function TodayHabitsPanel() {
                   </div>
                   {s?.logged && s.value != null ? (
                     <div className="text-[9px] text-ink-300">
-                      {formatMetricWithUnit(s.value, meta.unit)} · {s.recordedAt ? formatRelative(s.recordedAt) : ''}
+                      {(() => {
+                        const disp = convertForDisplay(s.value, meta.unit, system);
+                        return `${disp.value.toFixed(meta.unit === 'g' || meta.unit === 'ml' || meta.unit === 'fl oz' || meta.unit === 'kcal' ? 0 : 1)} ${disp.unit}`;
+                      })()} · {s.recordedAt ? formatRelative(s.recordedAt) : ''}
                     </div>
                   ) : null}
                 </div>
@@ -143,7 +152,7 @@ export function TodayHabitsPanel() {
                           if (e.key === 'Escape') { setEditing(null); setDraft(''); }
                         }}
                         onBlur={() => { if (!draft) setEditing(null); }}
-                        placeholder={meta.unit}
+                        placeholder={displayUnit(meta.unit, system)}
                       />
                     </div>
                   ) : (

@@ -8,6 +8,7 @@ import { levelFromXp, progressInLevel } from '../lib/xp.js';
 
 const ProfileSchema = z.object({
   class: z.nativeEnum(ClassName).optional(),
+  units: z.enum(['METRIC', 'IMPERIAL']).optional(),
   heightCm: z.number().positive().max(260).optional().nullable(),
   wristCm: z.number().positive().max(30).optional().nullable(),
   ankleCm: z.number().positive().max(30).optional().nullable(),
@@ -27,6 +28,7 @@ export async function userRoutes(app: FastifyInstance) {
       xp: user.xp,
       gold: user.gold,
       class: user.class,
+      units: user.units,
       heightCm: user.heightCm,
       wristCm: user.wristCm,
       ankleCm: user.ankleCm,
@@ -44,6 +46,7 @@ export async function userRoutes(app: FastifyInstance) {
       where: { id: me.id },
       data: {
         class: body.class ?? undefined,
+        units: (body as any).units ?? undefined,
         heightCm: body.heightCm === undefined ? undefined : body.heightCm,
         wristCm: body.wristCm === undefined ? undefined : body.wristCm,
         ankleCm: body.ankleCm === undefined ? undefined : body.ankleCm,

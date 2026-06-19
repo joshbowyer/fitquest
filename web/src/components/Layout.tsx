@@ -1,7 +1,9 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import { CLASS_META } from '@/lib/types';
-import { classNames, formatPct } from '@/lib/format';
+import { classNames } from '@/lib/format';
+import { api } from '@/lib/api';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -18,10 +20,25 @@ const NAV = [
 ];
 
 export function Layout({ children }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const cls = user?.class ? CLASS_META[user.class] : null;
   const colorClass = cls ? `neon-text-${cls.color}` : 'neon-text-cyan';
+
+  const unitsM = useMutation({
+    mutationFn: (units: 'METRIC' | 'IMPERIAL') =>
+      api('/users/me', { method: 'PATCH', body: { units } }),
+    onSuccess: () => {
+      refresh();
+      qc.invalidateQueries();
+    },
+  });
+
+  function toggleUnits() {
+    if (!user) return;
+    unitsM.mutate(user.units === 'METRIC' ? 'IMPERIAL' : 'METRIC');
+  }
 
   async function handleLogout() {
     await logout();
@@ -36,6 +53,14 @@ export function Layout({ children }: Props) {
         <div className="flex-1" />
         {user && (
           <div className="flex items-center gap-5 text-sm font-mono">
+            <button
+              onClick={toggleUnits}
+              disabled={unitsM.isPending}
+              className="text-[10px] font-display tracking-widest uppercase border border-ink-500/50 px-2 py-1 hover:border-neon-cyan hover:text-neon-cyan transition-all disabled:opacity-50"
+              title="Toggle unit system"
+            >
+              {user.units === 'METRIC' ? 'cm / kg' : 'in / lb'}
+            </button>
             <div className="flex items-center gap-2">
               <span className="text-ink-300 text-[10px] uppercase tracking-widest">LVL</span>
               <span className="neon-text-cyan text-lg font-bold">{user.level}</span>
