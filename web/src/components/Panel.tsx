@@ -40,7 +40,7 @@ export function Panel({
       {(title || action) && (
         <header className="flex items-center justify-between mb-3 pb-2 border-b border-current/10">
           {title && (
-            <h2 className={`font-display tracking-widest text-xs uppercase text-neon-${variant}`}>
+            <h2 className={`font-display tracking-widest text-xs uppercase text-ink-50`}>
               {title}
             </h2>
           )}

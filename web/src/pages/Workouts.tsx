@@ -70,6 +70,7 @@ export function WorkoutsPage() {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
       qc.invalidateQueries({ queryKey: ['user'] });
+      qc.invalidateQueries({ queryKey: ['raids'] });
       setExercises([emptyExercise()]);
       setName('');
       setNotes('');
@@ -265,11 +266,28 @@ export function WorkoutsPage() {
                 Commit Session
               </NeonButton>
               {result && (
-                <div className="text-xs font-mono text-neon-lime">
-                  +{result.rewards.xp} XP · +{result.rewards.gold} gold · lvl {result.rewards.level}
+                <div className="text-xs font-mono flex items-center flex-wrap gap-x-3 gap-y-1">
+                  <span className="text-neon-lime">
+                    +{result.rewards.xp} XP · +{result.rewards.gold} gold · lvl {result.rewards.level}
+                  </span>
                   {result.rewards.prs.length > 0 && (
-                    <span className="neon-text-amber ml-2">
+                    <span className="neon-text-amber">
                       {result.rewards.prs.length} PR{result.rewards.prs.length > 1 ? 's' : ''}!
+                    </span>
+                  )}
+                  {result.raid?.damage && result.raid.damage.total > 0 && (
+                    <span className="neon-text-magenta">
+                      ⚔ {result.raid.damage.total} dmg
+                      {result.raid.damage.crit > 0 && (
+                        <span className="neon-text-amber ml-1">({result.raid.damage.crit} crit!)</span>
+                      )}
+                      {result.raid.damage.evade > 0 && (
+                        <span className="text-ink-300 ml-1">({result.raid.damage.evade} evaded)</span>
+                      )}
+                      {result.raid.damage.shield > 0 && (
+                        <span className="neon-text-periwinkle ml-1">+{result.raid.damage.shield} shield</span>
+                      )}
+                      {result.raid.contribution ? <span className="text-ink-400 ml-1">→ raid</span> : <span className="text-ink-500 ml-1 italic">(no active raid)</span>}
                     </span>
                   )}
                 </div>

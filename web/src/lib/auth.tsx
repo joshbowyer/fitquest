@@ -20,6 +20,7 @@ export type User = {
   weightKg: number | null;
   bodyFatPct: number | null;
   birthDate: string | null;
+  createdAt: string;
   progress?: { current: number; needed: number; pct: number };
 };
 

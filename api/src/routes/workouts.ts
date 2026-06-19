@@ -6,6 +6,7 @@ import { requireUser } from '../lib/auth.js';
 import { bestEstimatedOneRm, isPrCandidate } from '../lib/pr.js';
 import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '../lib/xp.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { computeRaidDamage } from '../lib/raidDamage.js';
 
 const SetInput = z.object({
   reps: z.number().int().min(0).max(1000),
@@ -148,6 +149,88 @@ export async function workoutRoutes(app: FastifyInstance) {
 
     await checkAchievements(me.id);
 
+    // Raid damage: compute from workout, apply class multiplier, contribute
+    // to the active raid for the user's party (if any). Even if no raid is
+    // active, we still return the computed damage so the UI can show what
+    // *would* have been dealt.
+    const raidDamage = computeRaidDamage(
+      {
+        type: body.type,
+        durationMin: duration,
+        exercises: body.exercises.map((ex) => ({
+          name: ex.name,
+          sets: ex.sets,
+        })),
+      },
+      me.class,
+    );
+
+    let raidContribution: { id: string; damage: number; source: string; raidId: string } | null = null;
+    if (me.class && raidDamage.total > 0) {
+      const membership = await prisma.partyMember.findUnique({ where: { userId: me.id } });
+      if (membership) {
+        const raid = await prisma.raid.findFirst({
+          where: { partyId: membership.partyId, status: 'ACTIVE' },
+        });
+        if (raid) {
+          const newHp = Math.max(0, raid.bossHp - raidDamage.total);
+          const status = newHp <= 0 ? 'VICTORY' : 'ACTIVE';
+          const [contribution] = await prisma.$transaction([
+            prisma.raidContribution.create({
+              data: {
+                raidId: raid.id,
+                userId: me.id,
+                damage: raidDamage.total,
+                source: 'workout',
+              },
+            }),
+            prisma.raid.update({
+              where: { id: raid.id },
+              data: {
+                bossHp: newHp,
+                status,
+                endedAt: status === 'VICTORY' ? new Date() : null,
+              },
+            }),
+          ]);
+          raidContribution = {
+            id: contribution.id,
+            damage: contribution.damage,
+            source: contribution.source,
+            raidId: contribution.raidId,
+          };
+          // On victory, distribute XP+gold to all members (mirror the
+          // manual contribute flow).
+          if (status === 'VICTORY') {
+            const members = await prisma.partyMember.findMany({ where: { partyId: raid.partyId } });
+            const totalAgg = await prisma.raidContribution.aggregate({
+              where: { raidId: raid.id },
+              _sum: { damage: true },
+            });
+            const total = totalAgg._sum.damage ?? raidDamage.total;
+            for (const m of members) {
+              const myAgg = await prisma.raidContribution.aggregate({
+                where: { raidId: raid.id, userId: m.userId },
+                _sum: { damage: true },
+              });
+              const my = myAgg._sum.damage ?? 0;
+              const share = Math.round((my / total) * 200) + 50;
+              const u = await prisma.user.findUnique({ where: { id: m.userId } });
+              if (!u) continue;
+              await prisma.user.update({
+                where: { id: m.userId },
+                data: {
+                  xp: u.xp + share,
+                  gold: u.gold + Math.floor(share / 4),
+                },
+              });
+              await checkAchievements(m.userId);
+            }
+          }
+        }
+      }
+    }
+
     return reply.send({
       workout: result.workout,
       rewards: {
@@ -158,6 +241,10 @@ export async function workoutRoutes(app: FastifyInstance) {
         level: result.level,
         progress: progressInLevel(result.totalXp, result.level),
         prs,
+      },
+      raid: {
+        damage: raidDamage,
+        contribution: raidContribution,
       },
     });
   });

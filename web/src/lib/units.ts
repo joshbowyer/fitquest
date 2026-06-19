@@ -87,7 +87,8 @@ export function formatInUnits(
   if (u === 'kg' || u === 'lb' || u === 'cm' || u === 'in') {
     return `${v.toFixed(1)} ${u}`;
   }
-  if (u === 'kcal' || u === 'g' || u === 'ml' || u === 'fl oz' || u === 'bpm' || u === 'ms') {
+  if (u === 'ml' || u === 'fl oz') return `${v.toFixed(1)} ${u}`;
+  if (u === 'kcal' || u === 'g' || u === 'bpm' || u === 'ms' || u === '%') {
     return `${Math.round(v)} ${u}`;
   }
   return `${v} ${u}`;
@@ -102,7 +103,7 @@ function formatSecondsLocal(v: number): string {
 
 /** Round a converted value to sensible decimals. */
 export function roundForUnits(value: number, unit: string): number {
-  if (unit === 's' || unit === 'bpm' || unit === '/10' || unit === 'ms' || unit === 'kcal' || unit === 'g' || unit === 'ml' || unit === 'fl oz') {
+  if (unit === 's' || unit === 'bpm' || unit === '/10' || unit === 'ms' || unit === 'kcal' || unit === 'g' || unit === '%') {
     return Math.round(value);
   }
   return Math.round(value * 10) / 10;
@@ -129,5 +130,6 @@ export function displayValue(value: number, unit: string, system: UnitSystem): s
   if (u === 'kg' || u === 'lb' || u === 'cm' || u === 'in') {
     return `${v.toFixed(1)} ${u}`;
   }
+  if (u === 'ml' || u === 'fl oz') return `${v.toFixed(1)} ${u}`;
   return `${Math.round(v)} ${u}`;
 }

@@ -66,8 +66,8 @@ export function FramePanel() {
             <div className="text-center">
               <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Archetype</div>
               <div
-                className={`font-display text-4xl tracking-[0.2em] neon-text-${ARCHETYPE_META[archetype].color} mt-0.5`}
-                style={{ textShadow: '0 0 12px currentColor' }}
+                className="font-display text-4xl tracking-[0.2em] text-ink-50 mt-0.5"
+                style={{ textShadow: '0 0 12px rgba(245,245,250,0.5)' }}
               >
                 {ARCHETYPE_META[archetype].emoji} {ARCHETYPE_META[archetype].label}
               </div>

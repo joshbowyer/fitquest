@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName } from '@/lib/types';
 import { classNames } from '@/lib/format';
-import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
+import { convertForDisplay, convertForStorage, displayUnit, roundForUnits, type UnitSystem } from '@/lib/units';
 import {
   getFrameSize,
   getFrameArchetype,
@@ -85,9 +85,11 @@ export function ProfilePage() {
         next[key] = '';
       } else if (inImperial) {
         const converted = convertForDisplay(v, storageUnitForKey(key), 'IMPERIAL');
-        next[key] = String(Math.round(converted.value * 10) / 10);
+        next[key] = String(roundForUnits(converted.value, storageUnitForKey(key)));
       } else {
-        next[key] = String(v);
+        // Always round to clean up float imprecision from prior
+        // imperial->metric conversions (e.g. 71 in -> 180.3399... cm).
+        next[key] = String(roundForUnits(v, storageUnitForKey(key)));
       }
     }
     setDraft(next);
@@ -161,9 +163,11 @@ export function ProfilePage() {
         if (!Number.isFinite(n)) continue;
         if (inImperial) {
           const stored = convertForStorage(n, displayUnit(storageUnitForKey(key), 'IMPERIAL'), 'IMPERIAL');
-          body[key] = stored.value;
+          // Round before saving so we never persist float imprecision
+          // (e.g. 71 in -> 180.3399... cm).
+          body[key] = roundForUnits(stored.value, storageUnitForKey(key));
         } else {
-          body[key] = n;
+          body[key] = roundForUnits(n, storageUnitForKey(key));
         }
       }
       if (birthChanged) body.birthDate = birthDate;
@@ -172,6 +176,7 @@ export function ProfilePage() {
       if (frameChanged) {
         const recomputeRes = await api<{ changes: Array<{ metric: string; from: number | null; to: number }> }>(
           '/genetic-max/recompute',
+          { method: 'POST' },
         );
         return { recomputed: true, changeCount: recomputeRes.changes.length };
       }
@@ -232,8 +237,8 @@ export function ProfilePage() {
                   <div className="text-center">
                     <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Archetype</div>
                     <div
-                      className={`font-display text-4xl tracking-[0.2em] mt-1 neon-text-${ARCHETYPE_META[previewArchetype].color}`}
-                      style={{ textShadow: '0 0 12px currentColor' }}
+                      className="font-display text-4xl tracking-[0.2em] mt-1 text-ink-50"
+                      style={{ textShadow: '0 0 12px rgba(245,245,250,0.5)' }}
                     >
                       {ARCHETYPE_META[previewArchetype].emoji} {ARCHETYPE_META[previewArchetype].label}
                     </div>
@@ -391,7 +396,7 @@ export function ProfilePage() {
         </Panel>
 
         {/* CLASS */}
-        <Panel variant="lime" title="Class">
+        <Panel variant="cyan" title="Class">
           <div className="text-[10px] font-mono text-ink-300 mb-3">
             Your class determines which skill tree you can unlock and which stats get the most XP from training.
             Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
@@ -437,7 +442,7 @@ export function ProfilePage() {
                     </span>
                     <span className="text-ink-500 text-[9px]">·</span>
                     <span className={`text-[9px] font-mono ${eligible ? 'text-ink-400' : 'text-ink-500'}`}>
-                      +{m.primary === 'STRENGTH' ? 'Power' : m.primary === 'AGILITY' ? 'Endurance' : m.primary === 'CONSTITUTION' ? (c === 'BERSERKER' ? 'Intensity' : 'Discovery') : 'Recovery'}
+                      {m.ability.tag}
                     </span>
                   </div>
                   <div className={`text-[10px] font-mono mt-1 ${eligible ? 'text-ink-300' : 'text-ink-500'}`}>
@@ -465,7 +470,7 @@ export function ProfilePage() {
           </div>
           {previewArchetype && (
             <div className="mt-3 text-[10px] font-mono text-ink-300 border-t border-ink-500/30 pt-2">
-              <span className="neon-text-cyan">{ARCHETYPE_META[previewArchetype].label}</span> opens:{' '}
+              <span className="text-ink-50">{ARCHETYPE_META[previewArchetype].label}</span> opens:{' '}
               {CLASS_OPTIONS.filter((c) => isClassEligible(c, previewArchetype)).map((c) => (
                 <span key={c} className={`ml-1 neon-text-${CLASS_META[c].color}`}>
                   {CLASS_META[c].label}
@@ -481,7 +486,7 @@ export function ProfilePage() {
         </Panel>
 
         {/* IDENTITY */}
-        <Panel variant="magenta" title="Identity">
+        <Panel variant="cyan" title="Identity">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
             <Row k="Callsign" v={user.username} />
             <Row k="Email" v={user.email} />
@@ -489,7 +494,7 @@ export function ProfilePage() {
             <Row k="Level" v={String(user.level)} />
             <Row k="Total XP" v={String(user.xp)} />
             <Row k="Gold" v={String(user.gold)} />
-            <Row k="Created" v={user.birthDate ? new Date(user.birthDate).toLocaleDateString() : '—'} />
+            <Row k="Created" v={new Date(user.createdAt).toLocaleDateString()} />
             <Row k="Units" v={user.units === 'IMPERIAL' ? 'in / lb / fl oz' : 'cm / kg / ml'} />
           </div>
           <div className="mt-4 text-[10px] text-ink-400 font-mono leading-relaxed border-t border-neon-magenta/20 pt-3">

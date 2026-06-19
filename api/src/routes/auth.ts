@@ -37,7 +37,7 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = await hashPassword(body.password);
     const user = await prisma.user.create({
       data: { email: body.email, username: body.username, passwordHash },
-      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true },
+      select: { id: true, email: true, username: true, level: true, xp: true, gold: true, class: true, units: true, createdAt: true },
     });
     const { session } = await createSessionAndFetchUser(user.id, req);
     await setSessionCookie(reply, session.token);
@@ -64,6 +64,7 @@ export async function authRoutes(app: FastifyInstance) {
         gold: user.gold,
         class: user.class,
         units: user.units,
+        createdAt: user.createdAt,
       },
     });
   });

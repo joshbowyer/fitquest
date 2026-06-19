@@ -35,6 +35,7 @@ export async function userRoutes(app: FastifyInstance) {
       weightKg: user.weightKg,
       bodyFatPct: user.bodyFatPct,
       birthDate: user.birthDate,
+      createdAt: user.createdAt,
       progress: progressInLevel(user.xp, user.level),
     };
   });

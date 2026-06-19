@@ -1,6 +1,15 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Safelist dynamic color classes that are built via template literals
+  // (e.g. `text-neon-${m.color}`) so the JIT always generates them,
+  // including opacity modifiers (/5, /15, /60, /80).
+  safelist: [
+    {
+      pattern:
+        /^(text|border|bg|neon-text)-neon-(cyan|magenta|lime|amber|goldenrod|periwinkle|violet)(\/(5|15|60|80))?$/,
+    },
+  ],
   theme: {
     extend: {
       fontFamily: {
@@ -23,6 +32,8 @@ export default {
           magenta: '#f55cc4',
           lime: '#56e88e',
           amber: '#ffaa3a',
+          goldenrod: '#daa520',
+          periwinkle: '#8b9eff',
           violet: '#9a6cf2',
         },
         ink: {

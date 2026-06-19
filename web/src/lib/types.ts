@@ -107,7 +107,7 @@ export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
 
 export const CLASS_META: Record<string, {
   label: string;
-  color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
+  color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'goldenrod' | 'periwinkle' | 'violet';
   tagline: string;
   description: string;
   primary: PrimaryAspect;
@@ -117,7 +117,7 @@ export const CLASS_META: Record<string, {
 }> = {
   JUGGERNAUT: {
     label: 'Juggernaut',
-    color: 'amber',
+    color: 'magenta',
     tagline: 'Heavy hits, big gains',
     description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP. Powerlifter / bodybuilder.',
     primary: 'STRENGTH',
@@ -127,7 +127,7 @@ export const CLASS_META: Record<string, {
   },
   PHANTOM: {
     label: 'Phantom',
-    color: 'magenta',
+    color: 'lime',
     tagline: 'Agile, lean, bodyweight mastery',
     description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar.',
     primary: 'AGILITY',
@@ -138,7 +138,7 @@ export const CLASS_META: Record<string, {
   },
   SCOUT: {
     label: 'Scout',
-    color: 'lime',
+    color: 'goldenrod',
     tagline: 'Long, steady, exploring',
     description: 'Explorer. Sustained effort, trail running, hiking, multi-sport. Finds items and quests faster. The first to see new areas and new enemies.',
     primary: 'CONSTITUTION',
@@ -151,14 +151,14 @@ export const CLASS_META: Record<string, {
     color: 'magenta',
     tagline: 'All-out, no days off',
     description: 'High volume, high intensity. HIIT, tabata, all-out efforts. No metagame — just train hard. Intensity is a choice, not a build.',
-    primary: 'CONSTITUTION',
+    primary: 'STRENGTH',
     ability: { tag: '+CRIT', label: 'Bonus damage on crits' },
-    // CONSTITUTION primary is universal
+    // STRENGTH primary is universal
     eligibility: [],
   },
   ORACLE: {
     label: 'Oracle',
-    color: 'cyan',
+    color: 'periwinkle',
     tagline: 'Recovery, mindfulness, ritual',
     description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity. Yoga, pilates, meditation.',
     primary: 'MIND',

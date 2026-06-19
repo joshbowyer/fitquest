@@ -99,6 +99,18 @@ body {
   }
 }
 
+/* Custom neon-text classes kept outside @layer because Tailwind's
+   @apply on safelist-only classes can silently drop rules inside
+   @layer components when the class is built via a template literal. */
+.neon-text-goldenrod {
+  color: #daa520;
+  text-shadow: 0 0 6px rgba(218,165,32,0.7), 0 0 14px rgba(218,165,32,0.4);
+}
+.neon-text-periwinkle {
+  color: #8b9eff;
+  text-shadow: 0 0 6px rgba(139,158,255,0.7), 0 0 14px rgba(139,158,255,0.4);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #363944; }
