@@ -151,10 +151,21 @@ export function ProfilePage() {
   const birthChanged = birthDate !== null && birthDate !== user?.birthDate;
   const anythingChanged = frameChanged || classChanged || birthChanged;
 
-  const saveM = useDelayedMutation({
-    mutationFn: async () => {
+  const saveM = useDelayedMutation<
+    { recomputed: boolean; changeCount: number },
+    { targetClass?: ClassName | null } | undefined
+  >({
+    mutationFn: async (vars) => {
       const body: any = {};
-      if (classChoice) body.class = classChoice;
+      // The class to set comes from the modal's pendingClass (passed via
+      // vars.targetClass) when the user confirms a class change. When
+      // saving other Profile fields without a class change, vars is
+      // undefined and we fall back to nothing (no class sent).
+      if (vars?.targetClass) {
+        body.class = vars.targetClass;
+      } else if (classChoice) {
+        body.class = classChoice;
+      }
       for (const key of NUMERIC_KEYS) {
         const raw = draft[key];
         if (raw === '' || raw == null) {
@@ -382,7 +393,7 @@ export function ProfilePage() {
             {/* Save button + feedback */}
             <div className="border-t border-ink-500/30 pt-3 flex items-center gap-3">
               <NeonButton
-                onClick={() => saveM.run()}
+                onClick={() => saveM.run(undefined)}
                 loading={saveM.isPending}
                 disabled={!anythingChanged}
                 icon="⚡"
@@ -427,17 +438,24 @@ export function ProfilePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {CLASS_OPTIONS.map((c) => {
               const m = CLASS_META[c];
-              const selected = (classChoice ?? user.class) === c;
+              const isCurrentClass = user.class === c;
+              const isPendingClass = pendingClass === c;
               const eligible = isClassEligible(c, previewArchetype);
               const disabled = !eligible || (user.classLock?.locked ?? false);
               return (
                 <button
                   key={c}
                   type="button"
-                  onClick={() => eligible && !user.classLock?.locked && setClassChoice(c)}
+                  onClick={() => {
+                    if (disabled) return;
+                    if (isCurrentClass) return; // already picked, no-op
+                    // Open confirmation dialog immediately. User must
+                    // confirm before the class is actually set.
+                    setPendingClass(c);
+                  }}
                   disabled={disabled}
                   title={
-                    user.classLock?.locked
+                    user.classLock?.locked && !isCurrentClass
                       ? `Locked for ${user.classLock.remainingLabel}`
                       : eligible
                       ? m.description
@@ -445,28 +463,33 @@ export function ProfilePage() {
                   }
                   className={classNames(
                     'p-3 border-2 text-left transition-all relative',
-                    selected && eligible && !user.classLock?.locked
+                    isCurrentClass
                       ? `border-neon-${m.color}/80 bg-neon-${m.color}/10`
+                      : isPendingClass
+                      ? `border-neon-magenta/80 bg-neon-magenta/10`
                       : disabled
                       ? 'border-ink-500/30 bg-bg-700/40 opacity-50 cursor-not-allowed'
                       : 'border-ink-500/40 hover:border-ink-300'
                   )}
                 >
                   <div className="flex items-baseline justify-between">
-                    <div className={`font-display tracking-wider text-sm ${selected && eligible && !user.classLock?.locked ? `neon-text-${m.color}` : !eligible || user.classLock?.locked ? 'text-ink-400' : 'text-ink-200'}`}>
+                    <div className={`font-display tracking-wider text-sm ${isCurrentClass ? `neon-text-${m.color}` : isPendingClass ? 'neon-text-magenta' : !eligible || user.classLock?.locked ? 'text-ink-400' : 'text-ink-200'}`}>
                       {m.label}
                     </div>
                     {!eligible && (
                       <span className="text-[9px] font-mono text-ink-400 uppercase tracking-widest">LOCKED</span>
                     )}
-                    {eligible && !selected && !user.classLock?.locked && (
+                    {eligible && !isCurrentClass && !user.classLock?.locked && (
                       <span className="text-[9px] font-mono neon-text-lime uppercase tracking-widest">OPEN</span>
                     )}
-                    {selected && eligible && !user.classLock?.locked && (
+                    {isCurrentClass && (
                       <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">PICKED</span>
                     )}
-                    {eligible && user.classLock?.locked && user.class !== c && (
+                    {eligible && !isCurrentClass && user.classLock?.locked && (
                       <span className="text-[9px] font-mono neon-text-amber uppercase tracking-widest">FROZEN</span>
+                    )}
+                    {isPendingClass && (
+                      <span className="text-[9px] font-mono neon-text-magenta uppercase tracking-widest animate-pulse">CONFIRM?</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
@@ -484,7 +507,9 @@ export function ProfilePage() {
                   <div
                     className={classNames(
                       'inline-block mt-1.5 px-1.5 py-0.5 text-[9px] font-mono tracking-widest uppercase border',
-                      eligible && !user.classLock?.locked
+                      isCurrentClass
+                        ? `border-neon-${m.color}/60 text-neon-${m.color} bg-neon-${m.color}/5`
+                        : eligible && !user.classLock?.locked
                         ? `border-neon-${m.color}/60 text-neon-${m.color} bg-neon-${m.color}/5`
                         : 'border-ink-500/30 text-ink-500 bg-ink-500/5'
                     )}
@@ -501,15 +526,6 @@ export function ProfilePage() {
               );
             })}
           </div>
-          {user.class && !user.classLock?.locked && classChoice && classChoice !== user.class && (
-            <button
-              type="button"
-              onClick={() => setPendingClass(classChoice)}
-              className="mt-3 btn-neon-magenta text-[10px]"
-            >
-              ⚠ Switch to {CLASS_META[classChoice].label} (locks for 7 days)
-            </button>
-          )}
           {previewArchetype && (
             <div className="mt-3 text-[10px] font-mono text-ink-300 border-t border-ink-500/30 pt-2">
               <span className="text-ink-50">{ARCHETYPE_META[previewArchetype].label}</span> opens:{' '}
@@ -568,10 +584,11 @@ export function ProfilePage() {
               <button
                 type="button"
                 onClick={() => {
-                  setClassChoice(null);
+                  const target = pendingClass;
                   setPendingClass(null);
-                  // Trigger the save with the new class
-                  saveM.run();
+                  setClassChoice(null);
+                  // Trigger the save with the target class
+                  saveM.run({ targetClass: target });
                 }}
                 className="btn-neon-magenta flex-1"
               >
