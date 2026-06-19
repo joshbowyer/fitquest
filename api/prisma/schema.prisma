@@ -179,6 +179,7 @@ model User {
   avatar           Avatar?
   classChangedAt   DateTime?
   soulstones       Int      @default(0)
+  worldProgress    UserWorldProgress[]
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -377,4 +378,19 @@ model Session {
   createdAt DateTime @default(now())
   userAgent String?
   ipAddress String?
+}
+
+model UserWorldProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  levelId     String    // static key, e.g. "spire-1"
+  completed   Boolean   @default(false)
+  attempts    Int       @default(0)
+  bestScore   Int       @default(0)
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, levelId])
+  @@index([userId])
 }

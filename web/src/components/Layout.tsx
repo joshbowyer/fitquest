@@ -8,6 +8,7 @@ type Props = { children: ReactNode };
 
 const NAV = [
   { to: '/dashboard', label: 'Stat Sheet', icon: '◆' },
+  { to: '/quest', label: 'Quest', icon: '◇' },
   { to: '/workouts', label: 'Workouts', icon: '▣' },
   { to: '/measurements', label: 'Measurements', icon: '◎' },
   { to: '/habits', label: 'Habits', icon: '◐' },

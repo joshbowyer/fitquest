@@ -11,6 +11,7 @@ import { SettingsPage } from './pages/Settings';
 import { SkillsPage } from './pages/Skills';
 import { PartyPage } from './pages/Party';
 import { ProfilePage } from './pages/Profile';
+import { QuestPage } from './pages/Quest';
 import type { ReactNode } from 'react';
 
 function FullPageLoader() {
@@ -45,6 +46,7 @@ export default function App() {
       <Route path="/login" element={<RedirectIfAuth><LoginPage /></RedirectIfAuth>} />
       <Route path="/register" element={<RedirectIfAuth><RegisterPage /></RedirectIfAuth>} />
       <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+      <Route path="/quest" element={<RequireAuth><QuestPage /></RequireAuth>} />
       <Route path="/workouts" element={<RequireAuth><WorkoutsPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
