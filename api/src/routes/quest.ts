@@ -10,7 +10,7 @@ const attemptSchema = z.object({
 
 export async function questRoutes(app: FastifyInstance) {
   // GET /quest/worlds — list all worlds with the user's progress attached
-  app.get('/quest/worlds', async (req) => {
+  app.get('/worlds', async (req) => {
     const me = await requireUser(req);
     const userId = me.id;
     const rows = await prisma.userWorldProgress.findMany({ where: { userId } });
@@ -28,7 +28,7 @@ export async function questRoutes(app: FastifyInstance) {
   });
 
   // GET /quest/worlds/:id — single world with full levels
-  app.get<{ Params: { id: string } }>('/quest/worlds/:id', async (req, reply) => {
+  app.get<{ Params: { id: string } }>('/worlds/:id', async (req, reply) => {
     const me = await requireUser(req);
     const userId = me.id;
     const { id } = req.params;
@@ -52,7 +52,7 @@ export async function questRoutes(app: FastifyInstance) {
   });
 
   // POST /quest/levels/:id/attempt — record an attempt
-  app.post<{ Params: { id: string } }>('/quest/levels/:id/attempt', async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/levels/:id/attempt', async (req, reply) => {
     const me = await requireUser(req);
     const userId = me.id;
     const { id } = req.params;

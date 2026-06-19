@@ -332,9 +332,9 @@ function OverworldMap({
               key={`${x}-${y}`}
               style={{
                 ...cellStyle,
-                background: '#1f2230',
+                background: '#2a2d3a',
                 backgroundImage:
-                  'radial-gradient(circle, rgba(20,214,232,0.18) 1px, transparent 1px)',
+                  'radial-gradient(circle, rgba(20,214,232,0.5) 1px, transparent 1px)',
                 backgroundSize: '12px 12px',
                 backgroundPosition: 'center',
                 backgroundRepeat: 'no-repeat',
