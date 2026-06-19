@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -26,22 +26,55 @@ export function ProfilePage() {
 
   const system = user?.units ?? 'METRIC';
   const inImperial = system === 'IMPERIAL';
+
+  // Local draft state for the input fields. We don't bind directly to the
+  // form state because every keystroke would re-convert (e.g. 178cm ->
+  // 70.07874015748031 in -> re-convert on backspace -> user can never
+  // clear the field). The draft holds whatever the user typed; conversion
+  // happens only on submit.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+
+  const NUMERIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'weightKg', 'bodyFatPct'] as const;
+
+  useEffect(() => {
+    if (!user) return;
+    const next: Record<string, string> = {};
+    for (const key of NUMERIC_KEYS) {
+      const v = (user as any)[key] as number | null | undefined;
+      if (v == null) {
+        next[key] = '';
+      } else if (inImperial) {
+        const converted = convertForDisplay(v, storageUnitForKey(key), 'IMPERIAL');
+        next[key] = String(Math.round(converted.value * 10) / 10);
+      } else {
+        next[key] = String(v);
+      }
+    }
+    setDraft(next);
+  }, [user, inImperial]);
   const [saved, setSaved] = useState(false);
 
   const updateM = useMutation({
-    mutationFn: () =>
-      api('/users/me', {
-        method: 'PATCH',
-        body: {
-          class: form.class,
-          heightCm: form.heightCm === undefined ? undefined : form.heightCm,
-          wristCm: form.wristCm === undefined ? undefined : form.wristCm,
-          ankleCm: form.ankleCm === undefined ? undefined : form.ankleCm,
-          weightKg: form.weightKg === undefined ? undefined : form.weightKg,
-          bodyFatPct: form.bodyFatPct === undefined ? undefined : form.bodyFatPct,
-          birthDate: form.birthDate === undefined ? undefined : form.birthDate,
-        },
-      }),
+    mutationFn: () => {
+      const body: any = { class: form.class };
+      for (const key of NUMERIC_KEYS) {
+        const raw = draft[key];
+        if (raw === '' || raw == null) {
+          body[key] = null;
+          continue;
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n)) continue;
+        if (inImperial) {
+          const stored = convertForStorage(n, displayUnitForKey(key), 'IMPERIAL');
+          body[key] = stored.value;
+        } else {
+          body[key] = n;
+        }
+      }
+      if (form.birthDate !== undefined) body.birthDate = form.birthDate;
+      return api('/users/me', { method: 'PATCH', body });
+    },
     onSuccess: async () => {
       await refresh();
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
@@ -52,20 +85,6 @@ export function ProfilePage() {
   });
 
   if (!user) return null;
-
-  function val<K extends keyof NonNullable<typeof form>>(key: K): string {
-    const v = form[key] as number | null | undefined;
-    const raw: number | null = v === undefined
-      ? ((user as any)[key as any] as number | null | undefined) ?? null
-      : v;
-    if (raw == null) return '';
-    // Convert stored metric value to display unit if imperial
-    if (inImperial) {
-      const converted = convertForDisplay(raw, storageUnitForKey(key), 'IMPERIAL');
-      return String(converted.value);
-    }
-    return String(raw);
-  }
 
   function storageUnitForKey(key: string): string {
     if (key === 'heightCm') return 'cm';
@@ -82,20 +101,8 @@ export function ProfilePage() {
     return storageUnitForKey(key);
   }
 
-  function setNum<K extends keyof NonNullable<typeof form>>(key: K, raw: string) {
-    if (raw === '') {
-      setForm((f) => ({ ...f, [key]: null }));
-      return;
-    }
-    const n = Number(raw);
-    if (!Number.isFinite(n)) return;
-    // If imperial, convert input back to metric for storage
-    if (inImperial) {
-      const stored = convertForStorage(n, displayUnitForKey(key as string), 'IMPERIAL');
-      setForm((f) => ({ ...f, [key]: stored.value }));
-    } else {
-      setForm((f) => ({ ...f, [key]: n }));
-    }
+  function setDraftField(key: string, raw: string) {
+    setDraft((d) => ({ ...d, [key]: raw }));
   }
 
   return (
@@ -144,36 +151,66 @@ export function ProfilePage() {
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
                   Height ({displayUnitForKey('heightCm')})
                 </label>
-                <input className="input-neon" type="number" step="0.1" value={val('heightCm')} onChange={(e) => setNum('heightCm', e.target.value)} />
+                <input
+                  className="input-neon"
+                  type="number"
+                  step={inImperial ? 0.5 : 0.1}
+                  value={draft.heightCm ?? ''}
+                  onChange={(e) => setDraftField('heightCm', e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
                   Wrist ({displayUnitForKey('wristCm')})
                 </label>
-                <input className="input-neon" type="number" step="0.1" value={val('wristCm')} onChange={(e) => setNum('wristCm', e.target.value)} />
+                <input
+                  className="input-neon"
+                  type="number"
+                  step={inImperial ? 0.25 : 0.1}
+                  value={draft.wristCm ?? ''}
+                  onChange={(e) => setDraftField('wristCm', e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
                   Ankle ({displayUnitForKey('ankleCm')})
                 </label>
-                <input className="input-neon" type="number" step="0.1" value={val('ankleCm')} onChange={(e) => setNum('ankleCm', e.target.value)} />
+                <input
+                  className="input-neon"
+                  type="number"
+                  step={inImperial ? 0.25 : 0.1}
+                  value={draft.ankleCm ?? ''}
+                  onChange={(e) => setDraftField('ankleCm', e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
                   Weight ({displayUnitForKey('weightKg')})
                 </label>
-                <input className="input-neon" type="number" step="0.1" value={val('weightKg')} onChange={(e) => setNum('weightKg', e.target.value)} />
+                <input
+                  className="input-neon"
+                  type="number"
+                  step={inImperial ? 1 : 0.1}
+                  value={draft.weightKg ?? ''}
+                  onChange={(e) => setDraftField('weightKg', e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Body Fat (%)</label>
-                <input className="input-neon" type="number" step="0.1" value={val('bodyFatPct')} onChange={(e) => setNum('bodyFatPct', e.target.value)} />
+                <input
+                  className="input-neon"
+                  type="number"
+                  step="0.1"
+                  value={draft.bodyFatPct ?? ''}
+                  onChange={(e) => setDraftField('bodyFatPct', e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Birth Date</label>
                 <input
                   className="input-neon"
                   type="date"
-                  value={val('birthDate') ? new Date(val('birthDate')).toISOString().slice(0, 10) : ''}
+                  value={form.birthDate ? new Date(form.birthDate).toISOString().slice(0, 10) : ''}
                   onChange={(e) => setForm((f) => ({ ...f, birthDate: e.target.value ? new Date(e.target.value).toISOString() : null }))}
                 />
               </div>

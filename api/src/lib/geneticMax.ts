@@ -28,10 +28,11 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
 
   switch (metric) {
     case 'BICEP': {
-      // Natural ceiling for a well-trained meso on a small frame is ~2x
-      // wrist. McCallum's 1.0x is the ideal proportion, not the ceiling.
-      if (wristCm) return round1(wristCm * 2.0);
-      if (heightCm) return round1(heightCm * 0.35);
+      // Natural ceiling for a well-trained small-frame meso is ~2.4x
+      // wrist at very low body fat. McCallum's 1.0x is the ideal
+      // proportion, not the ceiling.
+      if (wristCm) return round1(wristCm * 2.4);
+      if (heightCm) return round1(heightCm * 0.38);
       return null;
     }
     case 'FOREARM': {
