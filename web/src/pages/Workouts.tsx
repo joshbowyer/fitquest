@@ -240,12 +240,12 @@ export function WorkoutsPage() {
                     )}
                     {isBw && user?.weightKg && (
                       <div className="text-[10px] font-mono text-neon-lime/80">
-                        ⚖ bodyweight: {bodyweightDisplay} {weightUnitLabel(units)} (using profile value)
+                        ⚖ bodyweight exercise · weight = profile ({bodyweightDisplay} {weightUnitLabel(units)}) · input disabled
                       </div>
                     )}
                     {isWeightedBw && user?.weightKg && (
                       <div className="text-[10px] font-mono text-neon-amber/80">
-                        ⚖ effective load = bodyweight ({bodyweightDisplay} {weightUnitLabel(units)}) + extra below
+                        ⚖ weighted · effective load = bodyweight ({bodyweightDisplay} {weightUnitLabel(units)}) + extra you enter below
                       </div>
                     )}
                     <div className="space-y-1">
@@ -270,22 +270,31 @@ export function WorkoutsPage() {
                             }}
                           />
                           {showWeight ? (
-                            <input
-                              className="input-neon text-xs"
-                              type="number"
-                              step="0.5"
-                              placeholder={
-                                isWeightedBw
-                                  ? `+${weightUnitLabel(units)} (extra)`
-                                  : weightUnitLabel(units)
-                              }
-                              value={s.weight || ''}
-                              onChange={(e) => {
-                                const copy = [...exercises];
-                                copy[i].sets[j] = { ...s, weight: Number(e.target.value) };
-                                setExercises(copy);
-                              }}
-                            />
+                            <div className="relative">
+                              {isWeightedBw && (
+                                <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] font-mono text-neon-amber pointer-events-none">+</span>
+                              )}
+                              <input
+                                className={classNames(
+                                  'input-neon text-xs',
+                                  isWeightedBw && 'pl-3',
+                                )}
+                                type="number"
+                                step="0.5"
+                                placeholder={weightUnitLabel(units)}
+                                value={s.weight || ''}
+                                onChange={(e) => {
+                                  const copy = [...exercises];
+                                  copy[i].sets[j] = { ...s, weight: Number(e.target.value) };
+                                  setExercises(copy);
+                                }}
+                                title={
+                                  isWeightedBw
+                                    ? `Extra weight on top of bodyweight (${bodyweightDisplay} ${weightUnitLabel(units)})`
+                                    : `Weight in ${weightUnitLabel(units)}`
+                                }
+                              />
+                            </div>
                           ) : !isStrength ? (
                             <input
                               className="input-neon text-xs opacity-40 cursor-not-allowed"
