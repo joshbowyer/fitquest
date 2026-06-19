@@ -35,7 +35,7 @@ export function SettingsPage() {
   const [isRecomputing, setIsRecomputing] = useState(false);
   const recomputeM = useMutation({
     mutationFn: () =>
-      api<{ ok: true; updated: string[]; skipped: string[]; changes: Change[] }>(
+      api<{ ok: true; updated: string[]; skipped: string[]; removed: string[]; changes: Change[] }>(
         '/genetic-max/recompute',
         { method: 'POST' }
       ),
@@ -59,7 +59,13 @@ export function SettingsPage() {
         setRecomputeSummary('No changes — formulas already up to date.');
         setRecomputeResult([]);
       } else {
-        setRecomputeSummary(`${r.changes.length} maxes updated${r.skipped.length > 0 ? ` · ${r.skipped.length} manual kept` : ''}.`);
+        const updatedCount = r.changes.length - r.removed.length;
+        const removedCount = r.removed.length;
+        const parts: string[] = [];
+        if (updatedCount > 0) parts.push(`${updatedCount} maxes updated`);
+        if (removedCount > 0) parts.push(`${removedCount} removed (no formula)`);
+        if (r.skipped.length > 0) parts.push(`${r.skipped.length} manual kept`);
+        setRecomputeSummary(parts.join(' · '));
         setRecomputeResult(r.changes);
       }
     } catch (e) {
@@ -192,15 +198,18 @@ export function SettingsPage() {
                   {recomputeResult.map((c) => {
                     const meta = METRICS[c.metric as MetricType];
                     if (!meta) return null;
+                    const isRemoved = c.to === 0;
                     return (
                       <div key={c.metric} className="grid grid-cols-[100px_1fr_60px_1fr] gap-2 text-[10px]">
-                        <span className="text-ink-200">{meta.shortLabel}</span>
+                        <span className={isRemoved ? 'text-ink-300 line-through' : 'text-ink-200'}>
+                          {meta.shortLabel}
+                        </span>
                         <span className="text-ink-400 text-right">
                           {c.from != null ? displayValue(c.from, meta.unit, system) : '—'}
                         </span>
                         <span className="text-ink-300 text-center">→</span>
-                        <span className="neon-text-cyan">
-                          {displayValue(c.to, meta.unit, system)}
+                        <span className={isRemoved ? 'neon-text-amber' : 'neon-text-cyan'}>
+                          {isRemoved ? 'removed' : displayValue(c.to, meta.unit, system)}
                         </span>
                       </div>
                     );

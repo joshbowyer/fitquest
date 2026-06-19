@@ -41,8 +41,21 @@ export async function geneticMaxRoutes(app: FastifyInstance) {
     const manual = new Set(existing.filter((e) => e.source === 'MANUAL').map((e) => e.metric));
     const updated: string[] = [];
     const changes: Array<{ metric: string; from: number | null; to: number }> = [];
+    const removed: string[] = [];
     for (const [metric, value] of Object.entries(formulas)) {
-      if (value == null) continue;
+      if (value == null) {
+        // Formula no longer applies (e.g., we removed a metric from
+        // Genetic Maxes). Drop any non-MANUAL row for it.
+        const existing = byMetric.get(metric as any);
+        if (existing && existing.source !== 'MANUAL') {
+          await prisma.geneticMax.deleteMany({
+            where: { userId: me.id, metric: metric as any, source: { not: 'MANUAL' } },
+          });
+          removed.push(metric);
+          changes.push({ metric, from: existing.value, to: 0 });
+        }
+        continue;
+      }
       if (manual.has(metric as any)) continue;
       const prev = byMetric.get(metric as any)?.value ?? null;
       await prisma.geneticMax.upsert({
@@ -59,6 +72,7 @@ export async function geneticMaxRoutes(app: FastifyInstance) {
       ok: true,
       updated,
       skipped: Array.from(manual),
+      removed,
       changes,
     };
   });

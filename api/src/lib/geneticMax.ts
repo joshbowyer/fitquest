@@ -79,37 +79,39 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       return null;
     }
     case 'WAIST': {
-      // Smaller is leaner — this is the contest-shape "lean max" for
-      // small frame at FFMI 25. ~0.16x height gives ~29" for 5'11".
-      if (heightCm) return round1(heightCm * 0.161);
-      if (wristCm) return round1(wristCm * 1.9);
+      // "Lean max" (smaller is leaner) is a contest-shape number, not a
+      // genetic ceiling — it belongs in Measurements, not Genetic Maxes.
       return null;
     }
     case 'LEAN_MASS': {
-      if (weightKg && bodyFatPct) return round1(weightKg * (1 - bodyFatPct / 100));
+      // Casey Butt's natural-ceiling lean mass at FFMI 25. For a 180cm
+      // person that's ~81 kg / ~179 lb. This is the *ceiling*, not the
+      // user's current lean mass. They can override per-metric if their
+      // personal max is lower (FFMI 22 ≈ 71 kg, FFMI 21 ≈ 68 kg).
+      if (heightCm) {
+        const ffmiCeiling = 25;
+        const leanKg = ffmiCeiling * Math.pow(heightCm / 100, 2);
+        return round1(leanKg);
+      }
+      // Fallback: if no height, derive from current weight+BF% * 1.4 as
+      // a rough "achievable" target.
+      if (weightKg && bodyFatPct) return round1(weightKg * (1 - bodyFatPct / 100) * 1.4);
       return null;
     }
     case 'FFMI': {
-      // Natural ceiling: 25-26. Target = min(25, current projected FFMI * 1.15)
-      if (weightKg && heightCm && bodyFatPct) {
-        const lean = weightKg * (1 - bodyFatPct / 100);
-        const f = lean / Math.pow(heightCm / 100, 2);
-        return round1(Math.min(25, Math.max(f * 1.1, 22)));
-      }
-      // Default ceiling for unknown
-      return 25;
+      // FFMI is a derived index (not a metric you directly train), so it
+      // doesn't belong as a separate Genetic Max. Return null and let the
+      // user compute it from lean mass + height.
+      return null;
     }
     case 'BODY_FAT_PCT': {
-      // "Optimal" lower bound (genetic) — typical male ~6-8%, female ~12-14%
-      if (sex === 'female') return 14;
-      return 8;
+      // Body fat has no upper limit (you can get as fat as you want), so
+      // it doesn't belong in Genetic Maxes. Track it in Measurements.
+      return null;
     }
     case 'WEIGHT': {
-      // BMI midrange as a baseline, override-able
-      if (heightCm) {
-        const bmi = 24;
-        return round1(bmi * Math.pow(heightCm / 100, 2));
-      }
+      // Body weight has no upper bound and is goal-dependent. Track in
+      // Measurements.
       return null;
     }
     case 'BENCH_1RM': {
@@ -159,10 +161,11 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       return sex === 'female' ? 17 * 60 : 15 * 60;
     }
     case 'PLANK_HOLD': {
-      return 240; // 4 min plank as a strong "natural" target
+      // Holds are training-dependent, not genetic. Track in Measurements.
+      return null;
     }
     case 'L_SIT_HOLD': {
-      return 60;
+      return null;
     }
     default:
       return null;
