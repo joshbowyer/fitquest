@@ -16,6 +16,16 @@ export type ClassLockStatus = {
 };
 
 export type UserSex = 'MALE' | 'FEMALE' | 'OTHER';
+export type UserHairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' | 'PIXIE';
+
+export type UserAvatar = {
+  hairStyle: UserHairStyle;
+  hairColor: string;
+  skinTone: string;
+  shirtColor: string;
+  pantsColor: string;
+  accentColor: string;
+};
 
 export type User = {
   id: string;

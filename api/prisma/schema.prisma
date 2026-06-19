@@ -84,6 +84,15 @@ enum Sex {
   OTHER
 }
 
+enum HairStyle {
+  SHORT
+  LONG
+  MOHAWK
+  BUZZ
+  PONYTAIL
+  PIXIE
+}
+
 enum PrType {
   ONE_RM
   VOLUME
@@ -167,6 +176,7 @@ model User {
   raidContribs     RaidContribution[]
   achievements     UserAchievement[]
   skills           UserSkill[]
+  avatar           Avatar?
   classChangedAt   DateTime?
   soulstones       Int      @default(0)
   sex              Sex?
@@ -264,6 +274,20 @@ model Skill {
   position      Int
   effects       Json
   userSkills    UserSkill[]
+}
+
+model Avatar {
+  id          String     @id @default(cuid())
+  userId      String     @unique
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hairStyle   HairStyle  @default(SHORT)
+  hairColor   String     @default("#56e88e")
+  skinTone    String     @default("#d0a878")
+  shirtColor  String     @default("#14d6e8")
+  pantsColor  String     @default("#424553")
+  accentColor String     @default("#f55cc4")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 model UserSkill {

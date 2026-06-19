@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Modal } from '@/components/Modal';
+import { AvatarCustomizer } from '@/components/AvatarCustomizer';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -496,6 +497,9 @@ export function ProfilePage() {
             </div>
           </div>
         </Panel>
+
+        {/* AVATAR */}
+        <AvatarCustomizer user={user} />
 
         {/* CLASS */}
         <Panel variant="cyan" title="Class">
