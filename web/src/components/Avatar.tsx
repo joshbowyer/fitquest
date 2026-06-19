@@ -4,38 +4,27 @@ export type AvatarHairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' 
 
 export type AvatarProps = {
   archetype: FrameArchetype;
-  /** Body fat % (0–60). Drives width scaling. */
   bodyFatPct?: number | null;
   hairStyle: AvatarHairStyle;
-  hairColor: string;   // #rrggbb
-  skinTone: string;    // #rrggbb
-  shirtColor: string;  // #rrggbb
-  pantsColor: string;  // #rrggbb
-  accentColor: string;  // #rrggbb
-  /** Render at this pixel size. viewBox is 16×24. */
+  hairColor: string;
+  skinTone: string;
+  shirtColor: string;
+  pantsColor: string;
+  accentColor: string;
   size?: number;
-  /** Add a subtle neon outline. Default true. */
   neon?: boolean;
   className?: string;
-  /** Optional class color stripe on the shirt (the user's chosen class). */
   classStripe?: string | null;
 };
 
 /**
- * Pixel-art Tron-style avatar. 9 base silhouettes (one per
- * somatotype) with body-fat-driven width scaling + custom colors.
+ * Stylized pixel avatar. 16x24 viewBox with proper human proportions:
+ * head ~1/3 of total height, body has shoulders narrowing to waist,
+ * jointed limbs with hands/feet, visible face.
  *
- * The drawing is 16×24 cells. Each cell is 1 unit, so the viewBox is
- * 16×24. shape-rendering="crispEdges" keeps the edges sharp at any
- * size.
- *
- * Body parts:
- *   - Head  : top 1/4 (rows 0..5)
- *   - Body  : middle 1/2 (rows 6..15)
- *   - Legs  : bottom 1/4 (rows 16..23)
- *   - Arms  : flanking the body
- *   - Hair  : overlays the head
- *   - Eyes  : two pixels on the head
+ * 9 archetype base shapes (WISP/SPRITE/DRAKE/STRIKER/FORGE/GOLEM/
+ * WIRED/BEAR/BEHEMOTH) drive height + build width. Body fat %
+ * scales width further. All customizations layered on top.
  */
 export function Avatar({
   archetype,
@@ -46,51 +35,73 @@ export function Avatar({
   shirtColor,
   pantsColor,
   accentColor,
-  size = 128,
+  size = 160,
   neon = true,
   className,
   classStripe,
 }: AvatarProps) {
-  // Archetype base body shape. Width/height in cell units.
-  const base = baseShape(archetype);
-
-  // Body-fat width scaling: lean=0.85x, balanced=1.0x, solid=1.18x.
-  // Within each build category we further scale by bf%.
-  const buildScale = widthForBuild(archetype, bodyFatPct);
-  const bodyW = Math.max(3, Math.round(base.bodyW * buildScale));
-  const bodyH = base.bodyH;
-
-  // Center the body horizontally on a 16-wide canvas.
+  // Build dimensions (in 16x24 cells) per archetype.
+  // shoulderW (cells 0-1) is how much the body is wider at top than waist
+  const dim = archetypeDims(archetype);
+  const shoulderW = dim.shoulderW;
+  const waistW = dim.waistW;
+  const heightH = dim.bodyH; // total body (torso + head + legs)
+  const headH = 6;
+  const legH = 7;
+  const torsoH = heightH - headH - legH;
   const cx = 8;
-  const bodyX = Math.round(cx - bodyW / 2);
 
-  // Vertical layout. Total height = 24 cells.
-  const headH = 5;
-  const legH = 6;
-  const torsoH = 24 - headH - legH;
+  // Body-fat width scaling
+  const buildScale = widthForBuild(archetype, bodyFatPct);
+  const shoulder = Math.max(3, Math.round(shoulderW * buildScale));
+  const waist = Math.max(2, Math.round(waistW * buildScale));
+  const shoulderX = Math.round(cx - shoulder / 2);
+  const waistX = Math.round(cx - waist / 2);
+  // Taper: top at shoulderY, bottom at waistY. We use a polyline.
+
+  // Vertical layout
   const headY = 0;
-  const torsoY = headH;
-  const legY = headY + headH + torsoH;
-  const headW = Math.min(6, bodyW);
+  const torsoY = headY + headH; // 6
+  const waistY = torsoY + torsoH;
+  const legY = waistY;
+  // Total height check: headH + torsoH + legH should = 24
+  // headH=6, legH=7, so torsoH=11, total=24 ✓
+
+  // Head
+  const headW = 5;
   const headX = Math.round(cx - headW / 2);
 
-  // Limbs
-  const armW = Math.max(1, Math.floor(bodyW / 4));
-  const armGap = bodyW >= 6 ? 1 : 0;
-  const lArmX = bodyX - armW - armGap;
-  const rArmX = bodyX + bodyW + armGap;
-  const armY = torsoY + 1;
-  const armH = torsoH - 2;
+  // Arms: drawn from shoulder corner downward
+  const armW = 2;
+  const armGap = 0; // touching shoulder
+  const lArmX = shoulderX - armW - armGap;
+  const rArmX = shoulderX + shoulder + armGap;
+  const armTop = torsoY + 1;
+  const armBottom = waistY - 1;
+  const armH = armBottom - armTop;
 
-  // Legs: split bodyW into two
-  const legW = Math.max(2, Math.floor((bodyW - 1) / 2));
-  const gapMid = bodyW - 2 * legW;
-  const lLegX = Math.round(cx - bodyW / 2) + 0;
-  const lLegMid = bodyX + Math.floor(bodyW / 2) - Math.floor(gapMid / 2);
+  // Legs: split waist into 2, plus a small gap
+  const legTotalW = waist;
+  const legW = Math.max(2, Math.floor((legTotalW - 1) / 2));
+  const lLegX = waistX;
+  const rLegX = waistX + legW + 1;
 
+  // Foot depth
+  const footH = 1;
   const meta = ARCHETYPE_META[archetype];
-  const outline = '#0e0f1a'; // near-black outline
-  const stroke = neon ? accentColor : outline;
+  const outline = '#0e0f1a';
+
+  // Build a T-shaped torso polygon (shoulders wider than waist).
+  // As a series of horizontal rects that taper down:
+  // - Top row (shoulders) is `shoulder` cells wide.
+  // - Each row below shrinks by 1 cell every 2 rows until waist.
+  // - Bottom row is `waist` cells wide.
+  const torsoRows: Array<{ x: number; y: number; w: number }> = [];
+  for (let i = 0; i < torsoH; i++) {
+    const t = i / Math.max(1, torsoH - 1); // 0..1
+    const w = Math.round(shoulder + (waist - shoulder) * t);
+    torsoRows.push({ x: Math.round(cx - w / 2), y: torsoY + i, w });
+  }
 
   return (
     <svg
@@ -102,123 +113,110 @@ export function Avatar({
       className={className}
       aria-label={`${meta.label} avatar`}
     >
-      {/* Background — transparent (let panel show through) */}
+      {/* Legs (drawn first so the torso covers their top edge) */}
+      {/* Left leg */}
+      <rect x={lLegX} y={legY} width={legW} height={legH - footH} fill={pantsColor} stroke={outline} />
+      {/* Right leg */}
+      <rect x={rLegX} y={legY} width={legW} height={legH - footH} fill={pantsColor} stroke={outline} />
+      {/* Feet */}
+      <rect x={lLegX - 1} y={legY + legH - footH} width={legW + 1} height={footH} fill={outline} />
+      <rect x={rLegX} y={legY + legH - footH} width={legW + 1} height={footH} fill={outline} />
 
-      {/* Legs */}
-      <rect x={bodyX} y={legY} width={legW} height={legH} fill={pantsColor} stroke={outline} />
-      <rect
-        x={bodyX + bodyW - legW}
-        y={legY}
-        width={legW}
-        height={legH}
-        fill={pantsColor}
-        stroke={outline}
-      />
-      {/* Leg gap shadow */}
-      <line
-        x1={bodyX + legW}
-        y1={legY}
-        x2={bodyX + legW}
-        y2={legY + legH}
-        stroke={outline}
-        strokeWidth={0.2}
-      />
-
-      {/* Body / shirt */}
-      <rect
-        x={bodyX}
-        y={torsoY}
-        width={bodyW}
-        height={torsoH}
-        fill={shirtColor}
-        stroke={outline}
-      />
-      {/* Shirt accent stripe (class color) */}
-      {classStripe && (
+      {/* Torso (tapered rows) */}
+      {torsoRows.map((r, i) => (
         <rect
-          x={bodyX + Math.floor(bodyW / 2) - 1}
-          y={torsoY}
-          width={2}
-          height={torsoH}
-          fill={classStripe}
+          key={`torso-${i}`}
+          x={r.x}
+          y={r.y}
+          width={r.w}
+          height={1}
+          fill={shirtColor}
+          stroke={outline}
         />
-      )}
-      {/* Shirt collar */}
-      <rect
-        x={bodyX + Math.floor(bodyW / 2) - 1}
-        y={torsoY}
-        width={2}
-        height={1}
-        fill={skinTone}
-        stroke={outline}
-      />
+      ))}
+      {/* Class-color accent stripe down the torso center */}
+      {classStripe &&
+        torsoRows.map((r, i) => {
+          if (r.w < 4) return null;
+          const stripeX = Math.round(cx - 1 / 2);
+          return (
+            <rect
+              key={`stripe-${i}`}
+              x={stripeX}
+              y={r.y}
+              width={1}
+              height={1}
+              fill={classStripe}
+            />
+          );
+        })}
 
-      {/* Arms */}
-      <rect x={lArmX} y={armY} width={armW} height={armH} fill={shirtColor} stroke={outline} />
-      <rect x={rArmX} y={armY} width={armW} height={armH} fill={shirtColor} stroke={outline} />
-      {/* Hands */}
-      <rect x={lArmX} y={armY + armH - 1} width={armW} height={1} fill={skinTone} stroke={outline} />
-      <rect x={rArmX} y={armY + armH - 1} width={armW} height={1} fill={skinTone} stroke={outline} />
+      {/* Arms (shoulder to wrist) */}
+      <rect x={lArmX} y={armTop} width={armW} height={armH} fill={shirtColor} stroke={outline} />
+      <rect x={rArmX} y={armTop} width={armW} height={armH} fill={shirtColor} stroke={outline} />
+      {/* Hands (skin) */}
+      <rect x={lArmX} y={armTop + armH - 1} width={armW} height={1} fill={skinTone} stroke={outline} />
+      <rect x={rArmX} y={armTop + armH - 1} width={armW} height={1} fill={skinTone} stroke={outline} />
+
+      {/* Neck (1 cell below the head) */}
+      <rect x={cx - 1} y={torsoY - 1} width={2} height={1} fill={skinTone} />
 
       {/* Head */}
       <rect x={headX} y={headY} width={headW} height={headH} fill={skinTone} stroke={outline} />
 
-      {/* Hair (overlay) */}
+      {/* Hair (overlay on head) */}
       <Hair hairStyle={hairStyle} hairColor={hairColor} accent={accentColor}
             headX={headX} headY={headY} headW={headW} headH={headH} outline={outline} />
 
-      {/* Eyes */}
-      <rect
-        x={headX + 1}
-        y={headY + 2}
-        width={Math.max(1, Math.floor(headW / 4))}
-        height={1}
-        fill={accentColor}
-      />
-      <rect
-        x={headX + headW - 1 - Math.max(1, Math.floor(headW / 4))}
-        y={headY + 2}
-        width={Math.max(1, Math.floor(headW / 4))}
-        height={1}
-        fill={accentColor}
-      />
+      {/* Face: eyes + small mouth */}
+      <Eye x={headX + 1} y={headY + 3} color={accentColor} />
+      <Eye x={headX + headW - 2} y={headY + 3} color={accentColor} />
+      <rect x={cx - 1} y={headY + 5} width={2} height={1} fill={skinTone === '#fcd2a3' ? '#a87148' : '#5a3825'} />
     </svg>
   );
 }
 
-function baseShape(archetype: FrameArchetype): { bodyW: number; bodyH: number } {
-  // Body widths/heights in 16x24 cells. Tuned for visual variety.
+function Eye({ x, y, color }: { x: number; y: number; color: string }) {
+  return <rect x={x} y={y} width={1} height={1} fill={color} />;
+}
+
+function archetypeDims(archetype: FrameArchetype): {
+  bodyH: number;
+  shoulderW: number;
+  waistW: number;
+} {
+  // Body heights in cells. Head takes 6, legs 7, so torso = bodyH - 13.
+  // Forgoes an extremely tall body since viewBox is 24 cells; we
+  // differentiate archetype via proportions + build, not just height.
   switch (archetype) {
-    case 'WISP':     return { bodyW: 4, bodyH: 19 }; // small + lean
-    case 'SPRITE':   return { bodyW: 5, bodyH: 19 }; // small + balanced
-    case 'DRAKE':    return { bodyW: 7, bodyH: 19 }; // small + solid
-    case 'STRIKER':  return { bodyW: 4, bodyH: 21 }; // medium + lean
-    case 'FORGE':    return { bodyW: 5, bodyH: 21 }; // medium + balanced
-    case 'GOLEM':    return { bodyW: 7, bodyH: 21 }; // medium + solid
-    case 'WIRED':    return { bodyW: 4, bodyH: 23 }; // tall + lean
-    case 'BEAR':     return { bodyW: 5, bodyH: 23 }; // tall + balanced
-    case 'BEHEMOTH': return { bodyW: 7, bodyH: 23 }; // tall + solid
+    case 'WISP':     return { bodyH: 22, shoulderW: 5, waistW: 4 }; // small + lean
+    case 'SPRITE':   return { bodyH: 22, shoulderW: 6, waistW: 5 };
+    case 'DRAKE':    return { bodyH: 22, shoulderW: 8, waistW: 7 };
+    case 'STRIKER':  return { bodyH: 23, shoulderW: 5, waistW: 4 };
+    case 'FORGE':    return { bodyH: 23, shoulderW: 6, waistW: 5 };
+    case 'GOLEM':    return { bodyH: 23, shoulderW: 8, waistW: 7 };
+    case 'WIRED':    return { bodyH: 24, shoulderW: 5, waistW: 4 }; // tall + lean
+    case 'BEAR':     return { bodyH: 24, shoulderW: 6, waistW: 5 };
+    case 'BEHEMOTH': return { bodyH: 24, shoulderW: 8, waistW: 7 };
   }
 }
 
 function widthForBuild(archetype: FrameArchetype, bodyFatPct: number | null | undefined): number {
   const bf = bodyFatPct ?? 15;
-  // Build category by archetype
   let baseScale: number;
   if (archetype === 'WISP' || archetype === 'STRIKER' || archetype === 'WIRED') {
-    baseScale = 0.85;
+    baseScale = 0.9;
   } else if (
     archetype === 'DRAKE' ||
     archetype === 'GOLEM' ||
     archetype === 'BEHEMOTH'
   ) {
-    baseScale = 1.15;
+    baseScale = 1.2;
   } else {
     baseScale = 1.0;
   }
-  // Within a build, scale +0.5% per body-fat point above 15.
-  // Capped at 1.0× wider than base.
-  const bfScale = 1 + Math.max(-0.2, Math.min(0.25, (bf - 15) * 0.005));
+  // Wider as body fat % increases; capped to prevent absurd values.
+  const bfScale = 1 + Math.max(-0.15, Math.min(0.2, (bf - 15) * 0.005));
   return baseScale * bfScale;
 }
 
@@ -241,123 +239,81 @@ function Hair({
   headH: number;
   outline: string;
 }) {
-  // Top row(s) of the head.
-  const topW = headW;
+  const full = { x: headX, y: headY, w: headW, h: 1, fill: hairColor, stroke: outline };
   switch (hairStyle) {
-    case 'SHORT': {
-      return (
-        <rect
-          x={headX}
-          y={headY}
-          width={topW}
-          height={1}
-          fill={hairColor}
-          stroke={outline}
-        />
-      );
-    }
-    case 'BUZZ': {
-      return (
-        <rect
-          x={headX}
-          y={headY}
-          width={topW}
-          height={1}
-          fill={hairColor}
-        />
-      );
-    }
-    case 'LONG': {
+    case 'SHORT':
       return (
         <>
-          <rect
-            x={headX}
-            y={headY}
-            width={topW}
-            height={1}
-            fill={hairColor}
-            stroke={outline}
-          />
-          {/* Hair falls past the head on both sides */}
-          <rect
-            x={headX}
-            y={headY + 1}
-            width={1}
-            height={headH - 1}
-            fill={hairColor}
-            stroke={outline}
-          />
-          <rect
-            x={headX + headW - 1}
-            y={headY + 1}
-            width={1}
-            height={headH - 1}
-            fill={hairColor}
-            stroke={outline}
-          />
+          <rect {...full} />
+          {/* tiny bangs */}
+          <rect x={headX + 1} y={headY + 1} width={2} height={1} fill={hairColor} />
+          <rect x={headX + headW - 3} y={headY + 1} width={2} height={1} fill={hairColor} />
         </>
       );
-    }
-    case 'MOHAWK': {
-      // 1-2 wide strip down the middle of the head
-      const stripW = Math.max(1, Math.floor(headW / 3));
+    case 'BUZZ':
+      // Hair stubble shading — a single thin row + a soft tint
       return (
         <>
-          <rect
-            x={headX + Math.floor((headW - stripW) / 2)}
-            y={headY}
-            width={stripW}
-            height={Math.ceil(headH / 2)}
-            fill={hairColor}
-            stroke={outline}
-          />
-          {/* Tip glow */}
-          <rect
-            x={headX + Math.floor((headW - stripW) / 2)}
-            y={headY}
-            width={stripW}
-            height={1}
-            fill={accent}
-          />
+          <rect x={headX + 1} y={headY} width={headW - 2} height={1} fill={hairColor} opacity={0.6} />
+          {/* Tip accent: one cell glow */}
+          <rect x={headX + Math.floor(headW / 2)} y={headY} width={1} height={1} fill={accent} />
         </>
       );
-    }
-    case 'PONYTAIL': {
+    case 'LONG':
       return (
         <>
-          <rect
-            x={headX}
-            y={headY}
-            width={topW}
-            height={1}
-            fill={hairColor}
-            stroke={outline}
-          />
-          <rect
-            x={headX + topW}
-            y={headY}
-            width={1}
-            height={Math.max(2, Math.floor(headH * 0.7))}
-            fill={hairColor}
-            stroke={outline}
-          />
+          <rect {...full} />
+          {/* Top fringe */}
+          <rect x={headX} y={headY + 1} width={headW} height={1} fill={hairColor} />
+          {/* Falls down both sides past the head */}
+          <rect x={headX} y={headY + 1} width={1} height={headH - 1} fill={hairColor} stroke={outline} />
+          <rect x={headX + headW - 1} y={headY + 1} width={1} height={headH - 1} fill={hairColor} stroke={outline} />
         </>
       );
-    }
-    case 'PIXIE': {
-      // Slightly narrower than SHORT, with a side tuft
+    case 'MOHAWK':
+      // Strip down the middle, glowing tip
       return (
         <>
           <rect
             x={headX + 1}
             y={headY}
-            width={topW - 2}
+            width={Math.max(1, headW - 2)}
             height={1}
+            fill={accent}
+          />
+          <rect
+            x={headX + 1}
+            y={headY + 1}
+            width={Math.max(1, headW - 2)}
+            height={2}
+            fill={hairColor}
+          />
+        </>
+      );
+    case 'PONYTAIL':
+      return (
+        <>
+          <rect {...full} />
+          {/* Bangs */}
+          <rect x={headX} y={headY + 1} width={Math.max(1, headW - 1)} height={1} fill={hairColor} />
+          {/* Tail trailing off the back-right */}
+          <rect
+            x={headX + headW}
+            y={headY}
+            width={1}
+            height={Math.max(2, headH - 1)}
             fill={hairColor}
             stroke={outline}
           />
+        </>
+      );
+    case 'PIXIE':
+      return (
+        <>
+          <rect x={headX + 1} y={headY} width={headW - 2} height={1} fill={hairColor} stroke={outline} />
+          {/* Side tuft */}
           <rect
-            x={headX - 1}
+            x={headX}
             y={headY + 1}
             width={1}
             height={2}
@@ -366,6 +322,5 @@ function Hair({
           />
         </>
       );
-    }
   }
 }
