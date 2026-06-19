@@ -27,48 +27,62 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
   const { heightCm, wristCm, ankleCm, weightKg, bodyFatPct, birthDate, sex } = inputs;
 
   switch (metric) {
+    // Casey Butt–calibrated formulas. All ratios are derived from the
+    // natural ceiling at FFMI 25 (~16% body fat, contest shape, years of
+    // optimal training) for a small-frame male (6" wrist, 5'11"). Height
+    // fallbacks are calibrated to give the same answer for that frame so
+    // results are consistent regardless of which inputs are present.
     case 'BICEP': {
-      // Natural ceiling for a small-frame meso at very low body fat is
-      // ~2.5-3.0x wrist (Reeves proportions, Casey Butt natural limits,
-      // Lyle McDonald). 3.0x is the upper bound — most naturals cap
-      // around 2.0-2.5x. For 15.24cm wrist this yields 45.7cm (~18in).
-      if (wristCm) return round1(wristCm * 3.0);
-      if (heightCm) return round1(heightCm * 0.43);
+      // Casey Butt range: 15.5-16.5" (2.6-2.75x wrist), midpoint ~2.7x.
+      // 6" wrist -> 16.2" ceiling. (User initially estimated 18" but
+      // Grok + Casey Butt flag that as too high for a 6" wrist frame.)
+      if (wristCm) return round1(wristCm * 2.7);
+      if (heightCm) return round1(heightCm * 0.228);
       return null;
     }
     case 'FOREARM': {
-      if (wristCm) return round1(wristCm * 1.25);
+      // Casey Butt range: 13-14" (2.2-2.4x wrist), midpoint ~2.3x.
+      if (wristCm) return round1(wristCm * 2.3);
+      if (heightCm) return round1(heightCm * 0.195);
       return null;
     }
     case 'CHEST': {
-      if (wristCm) return round1(wristCm * 7.0);
-      if (heightCm) return round1(heightCm * 0.68);
+      // Casey Butt range: 44-47" (7.3-7.8x wrist), midpoint ~7.5x.
+      if (wristCm) return round1(wristCm * 7.5);
+      if (heightCm) return round1(heightCm * 0.634);
       return null;
     }
     case 'SHOULDER': {
-      if (wristCm) return round1(wristCm * 7.0);
-      if (heightCm) return round1(heightCm * 0.72);
+      // Casey Butt range: 49-53" (8.2-8.8x wrist), midpoint ~8.5x.
+      if (wristCm) return round1(wristCm * 8.5);
+      if (heightCm) return round1(heightCm * 0.718);
       return null;
     }
     case 'NECK': {
-      if (wristCm) return round1(wristCm * 1.8);
-      if (heightCm) return round1(heightCm * 0.28);
+      // Casey Butt range: 17-18" (2.8-3.0x wrist), midpoint ~2.9x.
+      if (wristCm) return round1(wristCm * 2.9);
+      if (heightCm) return round1(heightCm * 0.245);
       return null;
     }
     case 'QUAD': {
-      if (ankleCm) return round1(ankleCm * 2.0);
-      if (heightCm) return round1(heightCm * 0.36);
+      // Casey Butt range: 24-26" (2.7-3.0x ankle), midpoint ~2.85x.
+      // Old formula was 2.0x which gave only 17.5" for 8.75" ankle —
+      // that was an "untrained" baseline, not a natural ceiling.
+      if (ankleCm) return round1(ankleCm * 2.85);
+      if (heightCm) return round1(heightCm * 0.352);
       return null;
     }
     case 'CALF': {
-      if (ankleCm) return round1(ankleCm * 1.7);
-      if (heightCm) return round1(heightCm * 0.24);
+      // Casey Butt range: 16-17.5" (1.8-2.0x ankle), midpoint ~1.9x.
+      if (ankleCm) return round1(ankleCm * 1.9);
+      if (heightCm) return round1(heightCm * 0.234);
       return null;
     }
     case 'WAIST': {
-      // Smaller waist = leaner; this is the lean ceiling
-      if (wristCm) return round1(wristCm * 3.8);
-      if (heightCm) return round1(heightCm * 0.40);
+      // Smaller is leaner — this is the contest-shape "lean max" for
+      // small frame at FFMI 25. ~0.16x height gives ~29" for 5'11".
+      if (heightCm) return round1(heightCm * 0.161);
+      if (wristCm) return round1(wristCm * 1.9);
       return null;
     }
     case 'LEAN_MASS': {
