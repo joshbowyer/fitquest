@@ -107,3 +107,27 @@ export function roundForUnits(value: number, unit: string): number {
   }
   return Math.round(value * 10) / 10;
 }
+
+/**
+ * Format a stored metric value for display in the user's chosen unit
+ * system, with sensible decimals per unit type. Use this anywhere a
+ * raw value is shown — pick a unit-aware format instead of a hardcoded one.
+ */
+export function displayValue(value: number, unit: string, system: UnitSystem): string {
+  if (!Number.isFinite(value)) return '—';
+  const d = convertForDisplay(value, unit, system);
+  const v = d.value;
+  const u = d.unit;
+  if (u === 's') {
+    const s = Math.max(0, Math.round(v));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m > 0 ? `${m}:${r.toString().padStart(2, '0')}` : `${r}s`;
+  }
+  if (u === 'h') return `${v.toFixed(1)} h`;
+  if (u === '/10') return `${Math.round(v)}/10`;
+  if (u === 'kg' || u === 'lb' || u === 'cm' || u === 'in') {
+    return `${v.toFixed(1)} ${u}`;
+  }
+  return `${Math.round(v)} ${u}`;
+}

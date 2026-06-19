@@ -1,20 +1,40 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { useAuth } from '@/lib/auth';
 import { METRICS, METRICS_BY_CATEGORY, type GeneticMax, type Measurement, type MetricType } from '@/lib/types';
-import { formatDate, formatMetricWithUnit, formatRelative, formatSeconds } from '@/lib/format';
+import { formatDate, formatRelative } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 
+function stepForUnit(unit: string, system: UnitSystem): number {
+  if (unit === 's' || unit === 'ms') return 1;
+  if (unit === 'h') return 0.25;
+  if (unit === 'kg' || unit === 'lb') return system === 'IMPERIAL' ? 1 : 0.1;
+  if (unit === 'cm' || unit === 'in') return system === 'IMPERIAL' ? 0.25 : 0.1;
+  if (unit === 'ml' || unit === 'fl oz') return system === 'IMPERIAL' ? 1 : 10;
+  if (unit === 'g') return 1;
+  if (unit === 'kcal') return 10;
+  if (unit === '/10') return 1;
+  if (unit === 'bpm') return 1;
+  if (unit === '%') return 0.1;
+  return 0.1;
+}
+
 export function MeasurementsPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const system: UnitSystem = user?.units ?? 'METRIC';
+  const inImperial = system === 'IMPERIAL';
   const [selected, setSelected] = useState<MetricType>('BICEP');
   const [draftValue, setDraftValue] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
+  const [maxDraft, setMaxDraft] = useState('');
 
   const allQ = useQuery({
     queryKey: ['measurements', 'all'],
@@ -26,15 +46,18 @@ export function MeasurementsPage() {
   });
 
   const createM = useMutation({
-    mutationFn: () =>
-      api('/measurements', {
+    mutationFn: () => {
+      const inputValue = Number(draftValue);
+      const stored = convertForStorage(inputValue, displayUnit(METRICS[selected].unit, system), system);
+      return api('/measurements', {
         method: 'POST',
         body: {
           metric: selected,
-          value: Number(draftValue),
+          value: stored.value,
           notes: draftNotes || undefined,
         },
-      }),
+      });
+    },
     onSuccess: () => {
       setDraftValue('');
       setDraftNotes('');
@@ -66,7 +89,7 @@ export function MeasurementsPage() {
         body: { items: [{ metric: selected, value: Number(buffered.toFixed(2)), source: 'MANUAL' }] },
       });
     },
-    onSuccess: (_r, bufferPct) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
     },
@@ -81,18 +104,25 @@ export function MeasurementsPage() {
   const filtered = all
     .filter((m) => m.metric === selected)
     .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-  const chartData = filtered.map((m) => ({
-    date: new Date(m.recordedAt).getTime(),
-    value: m.value,
-  }));
   const meta = METRICS[selected];
   const currentMax = (maxesQ.data?.items || []).find((g) => g.metric === selected);
+  const displayUnitLabel = displayUnit(meta.unit, system);
+
+  // Chart data in display units
+  const chartData = filtered.map((m) => {
+    const disp = convertForDisplay(m.value, meta.unit, system);
+    return { date: new Date(m.recordedAt).getTime(), value: disp.value, _orig: m.value };
+  });
+  const values = chartData.map((d) => d.value);
+  const yMin = values.length ? Math.floor(Math.min(...values) - 1) : undefined;
+  const yMax = values.length ? Math.ceil(Math.max(...values) + 1) : undefined;
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 
   return (
     <Layout>
       <PageHeader
         title="// Measurements"
-        subtitle="Log metrics. Adjust genetic maxes (overrides formulas)."
+        subtitle={`Log metrics. Adjust genetic maxes (overrides formulas). Showing in ${displayUnitLabel}.`}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
@@ -116,7 +146,9 @@ export function MeasurementsPage() {
                       }`}
                     >
                       {METRICS[m].shortLabel}
-                      <span className="text-ink-400 text-[10px] ml-1">({METRICS[m].unit})</span>
+                      <span className="text-ink-400 text-[10px] ml-1">
+                        ({displayUnit(METRICS[m].unit, system)})
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -135,8 +167,7 @@ export function MeasurementsPage() {
               <div className="border border-neon-cyan/30 p-2 bg-neon-cyan/5">
                 <div className="text-[10px] uppercase font-mono text-neon-cyan tracking-widest">Genetic Max</div>
                 <div className="font-display text-2xl neon-text-cyan">
-                  {currentMax ? currentMax.value.toFixed(1) : '—'}
-                  <span className="text-xs text-ink-300 ml-1">{meta.unit}</span>
+                  {currentMax ? displayValue(currentMax.value, meta.unit, system) : '—'}
                 </div>
                 <div className="text-[10px] text-ink-400 font-mono mt-1">
                   source: {currentMax?.source ?? 'none'}
@@ -159,13 +190,16 @@ export function MeasurementsPage() {
                     <YAxis
                       tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
                       stroke="#3a3a55"
-                      domain={['auto', 'auto']}
+                      domain={[yMin ?? 'auto', yMax ?? 'auto']}
                     />
+                    {avg != null && (
+                      <ReferenceLine y={avg} stroke="#00f0ff" strokeOpacity="0.3" strokeDasharray="3 3" />
+                    )}
                     <Tooltip
                       contentStyle={{ background: '#0a0a14', border: '1px solid rgba(0,240,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 12 }}
                       labelStyle={{ color: '#00f0ff' }}
                       labelFormatter={(d) => new Date(d as number).toLocaleString()}
-                      formatter={(v: number) => [`${v.toFixed(2)} ${meta.unit}`, meta.shortLabel]}
+                      formatter={(v: number) => [`${v.toFixed(2)} ${displayUnitLabel}`, meta.shortLabel]}
                     />
                     <Line
                       type="monotone"
@@ -188,18 +222,24 @@ export function MeasurementsPage() {
 
           {/* Log new */}
           <Panel variant="lime" title="Log Measurement">
-            <div className="grid grid-cols-[120px_1fr_auto] gap-3 items-end">
+            <div className="grid grid-cols-[140px_1fr_auto] gap-3 items-end">
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 block mb-1">
-                  Value ({meta.unit})
+                  Value ({displayUnitLabel})
                 </label>
                 <input
                   className="input-neon"
                   type="number"
-                  step="0.1"
+                  step={stepForUnit(meta.unit, system)}
                   value={draftValue}
                   onChange={(e) => setDraftValue(e.target.value)}
-                  placeholder={meta.unit === 's' ? '60' : '38.5'}
+                  placeholder={
+                    meta.unit === 's' ? '60'
+                    : meta.unit === 'h' ? '7.5'
+                    : displayUnitLabel === 'in' ? '14.5'
+                    : displayUnitLabel === 'lb' ? '160'
+                    : '38.5'
+                  }
                 />
               </div>
               <div>
@@ -233,13 +273,15 @@ export function MeasurementsPage() {
                   </div>
                   <div className="text-xs text-ink-300 font-mono mb-2">
                     Latest {meta.shortLabel} value:{' '}
-                    <span className="neon-text-cyan">{formatMetricWithUnit(filtered[filtered.length - 1]!.value, meta.unit)}</span>.
-                    Set max to current + a buffer:
+                    <span className="neon-text-cyan">
+                      {displayValue(filtered[filtered.length - 1]!.value, meta.unit, system)}
+                    </span>
+                    . Set max to current + a buffer:
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {[10, 20, 50].map((pct) => {
                       const latest = filtered[filtered.length - 1]!.value;
-                      const buffered = (latest * (1 + pct / 100)).toFixed(2);
+                      const buffered = latest * (1 + pct / 100);
                       return (
                         <button
                           key={pct}
@@ -247,24 +289,25 @@ export function MeasurementsPage() {
                           disabled={setMaxFromLatestM.isPending}
                           className="btn-ghost"
                         >
-                          {formatMetricWithUnit(Number(buffered), meta.unit)} (+{pct}%)
+                          {displayValue(buffered, meta.unit, system)} (+{pct}%)
                         </button>
                       );
                     })}
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-[120px_1fr_auto_auto] gap-3 items-end">
+              <div className="grid grid-cols-[140px_1fr_auto_auto] gap-3 items-end">
                 <div>
                   <label className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80 block mb-1">
-                    New max ({meta.unit})
+                    New max ({displayUnitLabel})
                   </label>
                   <input
-                    id="max-input"
                     className="input-neon"
                     type="number"
-                    step="0.1"
-                    placeholder={currentMax ? currentMax.value.toString() : 'auto'}
+                    step={stepForUnit(meta.unit, system)}
+                    value={maxDraft}
+                    onChange={(e) => setMaxDraft(e.target.value)}
+                    placeholder={currentMax ? displayValue(currentMax.value, meta.unit, system) : 'auto'}
                   />
                 </div>
                 <div className="text-[10px] text-ink-300 font-mono self-center">
@@ -273,9 +316,14 @@ export function MeasurementsPage() {
                 <NeonButton
                   variant="amber"
                   onClick={() => {
-                    const el = document.getElementById('max-input') as HTMLInputElement | null;
-                    if (el && el.value) setMaxM.mutate(Number(el.value));
+                    if (!maxDraft) return;
+                    const n = Number(maxDraft);
+                    if (!Number.isFinite(n)) return;
+                    const stored = convertForStorage(n, displayUnitLabel, system);
+                    setMaxM.mutate(stored.value);
+                    setMaxDraft('');
                   }}
+                  disabled={!maxDraft || setMaxM.isPending}
                 >
                   Set Max
                 </NeonButton>
@@ -308,9 +356,14 @@ export function MeasurementsPage() {
                     .reverse()
                     .map((m) => (
                       <tr key={m.id} className="border-b border-ink-500/20">
-                        <td className="py-1">{formatDate(m.recordedAt)}</td>
+                        <td className="py-1">
+                          {formatDate(m.recordedAt)}{' '}
+                          <span className="text-ink-400 text-[10px]">
+                            ({formatRelative(m.recordedAt)})
+                          </span>
+                        </td>
                         <td className="text-right neon-text-cyan">
-                          {m.value.toFixed(2)} {m.unit}
+                          {displayValue(m.value, meta.unit, system)}
                         </td>
                         <td className="pl-4 text-ink-300">{m.notes || '—'}</td>
                       </tr>
