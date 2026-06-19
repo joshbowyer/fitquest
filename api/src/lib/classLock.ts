@@ -24,7 +24,8 @@ export type ClassLockStatus = {
   nextBirthdayAt: string | null;
 };
 
-const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+export const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+export const CLASS_LOCK_MS = ONE_YEAR_MS;
 
 /**
  * Compute the next birthday (this year if still upcoming, next year
@@ -38,6 +39,43 @@ export function nextBirthday(birthDate: Date | null | undefined, now: Date = new
   if (thisYear.getTime() > now.getTime()) return thisYear;
   // Already passed this year — next year's
   return new Date(now.getFullYear() + 1, bday.getMonth(), bday.getDate(), bday.getHours(), bday.getMinutes(), bday.getSeconds(), bday.getMilliseconds());
+}
+
+
+/**
+ * Find the first birthday (same month/day as birthDate) that occurs
+ * after the given classChangedAt. Walks year by year from the change
+ * date forward.
+ */
+function firstBirthdayAfter(
+  classChangedAt: Date,
+  birthDate: Date,
+  _now: Date = new Date(),
+): Date {
+  // Start with the birthday in the year of the change
+  const candidate = new Date(
+    classChangedAt.getFullYear(),
+    birthDate.getMonth(),
+    birthDate.getDate(),
+    birthDate.getHours(),
+    birthDate.getMinutes(),
+    birthDate.getSeconds(),
+    birthDate.getMilliseconds(),
+  );
+  // If the change happened after the birthday in that year, the
+  // next unlock is the following year's birthday.
+  if (candidate.getTime() <= classChangedAt.getTime()) {
+    return new Date(
+      classChangedAt.getFullYear() + 1,
+      birthDate.getMonth(),
+      birthDate.getDate(),
+      birthDate.getHours(),
+      birthDate.getMinutes(),
+      birthDate.getSeconds(),
+      birthDate.getMilliseconds(),
+    );
+  }
+  return candidate;
 }
 
 export function getClassLockStatus(
@@ -60,17 +98,13 @@ export function getClassLockStatus(
     };
   }
 
-  // Birthday-based unlock if we have a birthDate
+  // Birthday-based unlock if we have a birthDate. The user can change
+  // their class on/after the first birthday that occurs AFTER
+  // classChangedAt. So if they changed on June 1, 2025 and their
+  // birthday is Jan 19, the next unlock is Jan 19, 2026.
   if (birthDate) {
-    const bday = nextBirthday(birthDate, now);
-    if (bday && bday.getTime() <= classChangedAt.getTime() + 1000) {
-      // Birthday is the same day or after the change — use the next one
-      // (i.e. the next anniversary).
-    }
-    // The user can change freely on their birthday (the annual class
-    // change window). Compare: is the next birthday <= now?
-    // If yes, unlocked. If no, locked until that birthday.
-    if (bday && bday.getTime() <= now.getTime()) {
+    const nextUnlock = firstBirthdayAfter(classChangedAt, birthDate, now);
+    if (nextUnlock.getTime() <= now.getTime()) {
       return {
         locked: false,
         remainingMs: 0,
@@ -78,21 +112,19 @@ export function getClassLockStatus(
         remainingLabel: '',
         canUseSoulstone: false,
         birthdayUnlock: true,
-        nextBirthdayAt: bday.toISOString(),
+        nextBirthdayAt: nextUnlock.toISOString(),
       };
     }
-    if (bday) {
-      const remaining = bday.getTime() - now.getTime();
-      return {
-        locked: true,
-        remainingMs: remaining,
-        unlockAt: bday.toISOString(),
-        remainingLabel: daysLabel(remaining),
-        canUseSoulstone: soulstones > 0,
-        birthdayUnlock: true,
-        nextBirthdayAt: bday.toISOString(),
-      };
-    }
+    const remaining = nextUnlock.getTime() - now.getTime();
+    return {
+      locked: true,
+      remainingMs: remaining,
+      unlockAt: nextUnlock.toISOString(),
+      remainingLabel: daysLabel(remaining),
+      canUseSoulstone: soulstones > 0,
+      birthdayUnlock: true,
+      nextBirthdayAt: nextUnlock.toISOString(),
+    };
   }
 
   // Fallback: 365 days from classChangedAt

@@ -14,7 +14,9 @@
     "build": "npm --workspace api run build && npm --workspace web run build",
     "db:migrate": "npm --workspace api run db:migrate",
     "db:seed": "npm --workspace api run db:seed",
-    "typecheck": "npm --workspace api run typecheck && npm --workspace web run typecheck"
+    "typecheck": "npm --workspace api run typecheck && npm --workspace web run typecheck",
+    "test": "npm --workspace api run test",
+    "test:watch": "npm --workspace api run test:watch"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
