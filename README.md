@@ -127,9 +127,18 @@ Skill points gained per level. Each skill applies effects (XP multiplier, gold m
 - One-click log with Enter-to-submit
 - Unlocks 4 achievements: first weigh-in, 7-day, 14-day, 30-day streak
 
+### Habit tracking
+- New **Habits** page with 3 categories: Sleep, Nutrition, Wellness
+- **9 new metrics:** Sleep (hours + quality), Nutrition (calories + protein + water), Wellness (mood + energy + soreness + stress)
+- Subjective 1-10 scales (mood/energy/soreness/stress) use range sliders with auto-commit on release
+- Numeric fields commit on Enter or via "Save all" button
+- "Today's Habits" mini-panel on dashboard with per-category progress + inline quick-log
+- Per-category streak achievements: 7-day and 30-day for Sleep, Nutrition, Wellness (6 total)
+- History viewer with 30-day trend chart and average reference line
+
 ### Achievements
-30+ achievements across:
-- Consistency (workout count, streaks, weigh-in streaks)
+40+ achievements across:
+- Consistency (workout count, weigh-in streaks, sleep/nutrition/wellness streaks)
 - Strength (relative-to-BW milestones: bench 1x/1.5x/2x BW, squat 2x/2.5x BW, deadlift 2.5x/3x BW)
 - Hypertrophy (bicep 40/45cm)
 - Body comp (FFMI 22/24)
@@ -174,7 +183,7 @@ pg_dump $DATABASE_URL > backup.sql
 ### v0.2 — auth hardening & daily rituals
 - [ ] **2FA / TOTP** — opt-in TOTP-based 2FA for accounts (recovery codes, backup flow)
 - [x] **Daily weigh-ins** — quick-log flow on the dashboard, streak counter, weight-trend chart
-- [ ] **Habit tracking** — sleep, nutrition, mood, HRV (manual + future auto-import)
+- [x] **Habit tracking** — sleep, nutrition, wellness (logging complete; correlations/insights next)
 - [ ] **Email verification** on signup + password reset flow
 - [ ] **Rate limiting** on auth + write endpoints (Redis-backed)
 
@@ -199,6 +208,7 @@ pg_dump $DATABASE_URL > backup.sql
 - [ ] **Calendar view** of workouts and measurements
 - [ ] **OAuth providers** (GitHub, Google) alongside email/password
 - [ ] **Body measurement photos** with diff view over time
+- [ ] **Habit correlations & insights** — Pearson correlations between sleep, mood, energy, soreness, HRV vs workout performance and PRs; "you PR more after 7+ hrs sleep" type insights
 
 ### Future ideas (unscheduled)
 - Native mobile app (Tauri or React Native)

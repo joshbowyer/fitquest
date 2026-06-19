@@ -10,6 +10,7 @@ import {
   getWeighInToday,
   getWeightTrend,
   getWeighInDelta7d,
+  getTodayHabitStatus,
 } from '../lib/streaks.js';
 
 const CreateSchema = z.object({
@@ -141,5 +142,52 @@ export async function measurementRoutes(app: FastifyInstance) {
     ]);
     const unlocked = await checkAchievements(me.id);
     return { measurement: m, today, streak, unlocked };
+  });
+
+  // ---- Batch habit log -------------------------------------------------
+
+  const BatchItem = z.object({
+    metric: z.nativeEnum(MetricType),
+    value: z.number().min(0).max(10000),
+    notes: z.string().max(500).optional(),
+  });
+
+  app.post('/batch', async (req) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      items: z.array(BatchItem).min(1).max(20),
+      date: z.string().datetime().optional(), // defaults to now
+    }).parse(req.body);
+    const recordedAt = body.date ? new Date(body.date) : new Date();
+    const created = await prisma.$transaction(
+      body.items.map((it) =>
+        prisma.measurement.create({
+          data: {
+            userId: me.id,
+            metric: it.metric,
+            value: it.value,
+            unit: METRICS[it.metric].unit,
+            notes: it.notes,
+            recordedAt,
+          },
+        })
+      )
+    );
+    const unlocked = await checkAchievements(me.id);
+    return { items: created, unlocked };
+  });
+
+  app.get('/habits/today', async (req) => {
+    const me = await requireUser(req);
+    const q = z.object({
+      metrics: z.string().optional(), // comma-separated MetricType
+    }).parse(req.query);
+    const metrics = q.metrics ? q.metrics.split(',') : [
+      'SLEEP_HOURS', 'SLEEP_QUALITY',
+      'CALORIES', 'PROTEIN_G', 'WATER_ML',
+      'MOOD', 'ENERGY', 'SORENESS', 'STRESS',
+    ];
+    const status = await getTodayHabitStatus(me.id, metrics);
+    return { status };
   });
 }

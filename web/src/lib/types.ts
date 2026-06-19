@@ -11,10 +11,14 @@ export type MetricType =
   | 'BODY_FAT_PCT' | 'LEAN_MASS' | 'FFMI' | 'WEIGHT'
   | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME'
   | 'PLANK_HOLD' | 'L_SIT_HOLD'
-  | 'POWERLIFT_TOTAL';
+  | 'POWERLIFT_TOTAL'
+  | 'SLEEP_HOURS' | 'SLEEP_QUALITY'
+  | 'CALORIES' | 'PROTEIN_G' | 'WATER_ML'
+  | 'MOOD' | 'ENERGY' | 'SORENESS' | 'STRESS';
 
 export type MetricCategory =
-  | 'HYPERTROPHY' | 'STRENGTH' | 'BODY_COMP' | 'CARDIO' | 'CALISTHENICS';
+  | 'HYPERTROPHY' | 'STRENGTH' | 'BODY_COMP' | 'CARDIO' | 'CALISTHENICS'
+  | 'SLEEP' | 'NUTRITION' | 'WELLNESS';
 
 export type MetricMeta = {
   type: MetricType;
@@ -51,6 +55,15 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   PLANK_HOLD: { type: 'PLANK_HOLD', category: 'CALISTHENICS', label: 'Plank Hold', shortLabel: 'Plank', unit: 's', defaultMin: 30, description: 'Longest plank hold.' },
   L_SIT_HOLD: { type: 'L_SIT_HOLD', category: 'CALISTHENICS', label: 'L-Sit Hold', shortLabel: 'L-Sit', unit: 's', defaultMin: 5, description: 'Longest L-sit hold.' },
   POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best S/B/D.' },
+  SLEEP_HOURS: { type: 'SLEEP_HOURS', category: 'SLEEP', label: 'Sleep Duration', shortLabel: 'Sleep', unit: 'h', defaultMin: 5, description: 'Hours slept.' },
+  SLEEP_QUALITY: { type: 'SLEEP_QUALITY', category: 'SLEEP', label: 'Sleep Quality', shortLabel: 'Sleep Q', unit: '/10', defaultMin: 5, description: 'Sleep quality 1-10.' },
+  CALORIES: { type: 'CALORIES', category: 'NUTRITION', label: 'Calories', shortLabel: 'Calories', unit: 'kcal', defaultMin: 1500, description: 'Daily calories.' },
+  PROTEIN_G: { type: 'PROTEIN_G', category: 'NUTRITION', label: 'Protein', shortLabel: 'Protein', unit: 'g', defaultMin: 80, description: 'Daily protein (g).' },
+  WATER_ML: { type: 'WATER_ML', category: 'NUTRITION', label: 'Water', shortLabel: 'Water', unit: 'ml', defaultMin: 1500, description: 'Daily water (ml).' },
+  MOOD: { type: 'MOOD', category: 'WELLNESS', label: 'Mood', shortLabel: 'Mood', unit: '/10', defaultMin: 5, description: 'Mood 1-10.' },
+  ENERGY: { type: 'ENERGY', category: 'WELLNESS', label: 'Energy', shortLabel: 'Energy', unit: '/10', defaultMin: 5, description: 'Energy 1-10.' },
+  SORENESS: { type: 'SORENESS', category: 'WELLNESS', label: 'Soreness', shortLabel: 'Soreness', unit: '/10', defaultMin: 5, description: 'Soreness 1-10.' },
+  STRESS: { type: 'STRESS', category: 'WELLNESS', label: 'Stress', shortLabel: 'Stress', unit: '/10', defaultMin: 5, description: 'Stress 1-10.' },
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
@@ -59,6 +72,9 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME'],
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD'],
+  SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
+  NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
+  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],
 };
 
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {

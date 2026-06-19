@@ -38,3 +38,26 @@ export function formatRelative(s: string | Date): string {
 export function classNames(...xs: Array<string | false | null | undefined>): string {
   return xs.filter(Boolean).join(' ');
 }
+
+// Format a metric value based on its unit
+export function formatMetricValue(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return '—';
+  if (unit === 's') return formatSeconds(value);
+  if (unit === '%' || unit === '/10' || unit === 'ms' || unit === 'bpm') return value.toFixed(0);
+  if (unit === 'h') return `${value.toFixed(1)} h`;
+  if (unit === 'kg' || unit === 'cm') return value.toFixed(1);
+  // Default: integer for whole-number units
+  return Math.round(value).toString();
+}
+
+export function formatMetricWithUnit(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return '—';
+  if (unit === '/10') return `${Math.round(value)}/10`;
+  if (unit === 's') return formatSeconds(value);
+  if (unit === 'h') return `${value.toFixed(1)} h`;
+  if (unit === 'kg' || unit === 'cm') return `${value.toFixed(1)} ${unit}`;
+  if (unit === 'kcal' || unit === 'g' || unit === 'ml' || unit === 'bpm' || unit === 'ms') {
+    return `${Math.round(value)} ${unit}`;
+  }
+  return `${value} ${unit}`;
+}

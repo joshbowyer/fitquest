@@ -5,7 +5,10 @@ export type MetricCategory =
   | 'STRENGTH'
   | 'BODY_COMP'
   | 'CARDIO'
-  | 'CALISTHENICS';
+  | 'CALISTHENICS'
+  | 'SLEEP'
+  | 'NUTRITION'
+  | 'WELLNESS';
 
 export type MetricMeta = {
   type: MetricType;
@@ -305,6 +308,108 @@ export const METRICS: Record<MetricType, MetricMeta> = {
     format: kg,
     description: 'Sum of best S/B/D. Strength-standards reference.',
   },
+  // Sleep
+  SLEEP_HOURS: {
+    type: 'SLEEP_HOURS',
+    category: 'SLEEP',
+    label: 'Sleep Duration',
+    shortLabel: 'Sleep',
+    unit: 'h',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(1)} h`,
+    description: 'Hours slept last night.',
+  },
+  SLEEP_QUALITY: {
+    type: 'SLEEP_QUALITY',
+    category: 'SLEEP',
+    label: 'Sleep Quality',
+    shortLabel: 'Sleep Q',
+    unit: '/10',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/10`,
+    description: 'Subjective sleep quality (1-10).',
+  },
+  // Nutrition
+  CALORIES: {
+    type: 'CALORIES',
+    category: 'NUTRITION',
+    label: 'Calories',
+    shortLabel: 'Calories',
+    unit: 'kcal',
+    inverted: false,
+    defaultMin: 1500,
+    format: (v) => `${Math.round(v)} kcal`,
+    description: 'Total daily calories consumed.',
+  },
+  PROTEIN_G: {
+    type: 'PROTEIN_G',
+    category: 'NUTRITION',
+    label: 'Protein',
+    shortLabel: 'Protein',
+    unit: 'g',
+    inverted: false,
+    defaultMin: 80,
+    format: (v) => `${Math.round(v)} g`,
+    description: 'Total daily protein in grams.',
+  },
+  WATER_ML: {
+    type: 'WATER_ML',
+    category: 'NUTRITION',
+    label: 'Water',
+    shortLabel: 'Water',
+    unit: 'ml',
+    inverted: false,
+    defaultMin: 1500,
+    format: (v) => `${Math.round(v)} ml`,
+    description: 'Total daily water intake.',
+  },
+  // Wellness (subjective 1-10)
+  MOOD: {
+    type: 'MOOD',
+    category: 'WELLNESS',
+    label: 'Mood',
+    shortLabel: 'Mood',
+    unit: '/10',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/10`,
+    description: 'Subjective mood (1-10).',
+  },
+  ENERGY: {
+    type: 'ENERGY',
+    category: 'WELLNESS',
+    label: 'Energy',
+    shortLabel: 'Energy',
+    unit: '/10',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/10`,
+    description: 'Subjective energy (1-10).',
+  },
+  SORENESS: {
+    type: 'SORENESS',
+    category: 'WELLNESS',
+    label: 'Soreness',
+    shortLabel: 'Soreness',
+    unit: '/10',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/10`,
+    description: 'Muscle soreness (1-10). Higher = more sore.',
+  },
+  STRESS: {
+    type: 'STRESS',
+    category: 'WELLNESS',
+    label: 'Stress',
+    shortLabel: 'Stress',
+    unit: '/10',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/10`,
+    description: 'Subjective stress (1-10).',
+  },
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
@@ -313,6 +418,9 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME'],
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD'],
+  SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
+  NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
+  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],
 };
 
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {

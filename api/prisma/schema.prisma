@@ -47,6 +47,18 @@ enum MetricType {
   L_SIT_HOLD
   // Powerlifts (composite)
   POWERLIFT_TOTAL
+  // Sleep
+  SLEEP_HOURS
+  SLEEP_QUALITY
+  // Nutrition
+  CALORIES
+  PROTEIN_G
+  WATER_ML
+  // Wellness (1-10 subjective scales)
+  MOOD
+  ENERGY
+  SORENESS
+  STRESS
 }
 
 enum MetricCategory {

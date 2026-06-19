@@ -6,6 +6,7 @@ import { Panel } from '@/components/Panel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
 import { WeighInPanel } from '@/components/WeighInPanel';
+import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { useAuth } from '@/lib/auth';
 import {
   CLASS_META,
@@ -144,9 +145,10 @@ export function DashboardPage() {
         </Panel>
       </div>
 
-      {/* Daily weigh-in */}
-      <div className="mb-6">
+      {/* Daily weigh-in + habits */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 mb-6">
         <WeighInPanel />
+        <TodayHabitsPanel />
       </div>
 
       {/* Stat sheet by category */}

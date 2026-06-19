@@ -1,6 +1,6 @@
 import { AchievementCategory, type PrismaClient } from '@prisma/client';
 import { prisma } from './prisma.js';
-import { getWeighInStreak } from './streaks.js';
+import { getWeighInStreak, getCategoryStreak } from './streaks.js';
 
 type Criteria =
   | { kind: 'workout_count'; gte: number }
@@ -13,7 +13,8 @@ type Criteria =
   | { kind: 'vo2_max_gte'; gte: number }
   | { kind: 'plank_hold_gte'; gte: number }
   | { kind: 'weigh_in_count'; gte: number }
-  | { kind: 'weigh_in_streak'; gte: number };
+  | { kind: 'weigh_in_streak'; gte: number }
+  | { kind: 'category_streak'; category: string; gte: number };
 
 export const ACHIEVEMENT_DEFS: Array<{
   key: string;
@@ -69,6 +70,14 @@ export const ACHIEVEMENT_DEFS: Array<{
   { key: 'weigh_in_week', name: 'Weekly Weigh-In', description: '7-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 7 }, points: 30 },
   { key: 'weigh_in_fortnight', name: 'Fortnight Vigil', description: '14-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 14 }, points: 75 },
   { key: 'weigh_in_month', name: 'Iron Routine', description: '30-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 30 }, points: 200 },
+
+  // Habit tracking
+  { key: 'sleep_week', name: 'Well Rested', description: 'Log sleep 7 days in a row.', category: 'CONSISTENCY', icon: 'moon', criteria: { kind: 'category_streak', category: 'SLEEP', gte: 7 }, points: 25 },
+  { key: 'sleep_month', name: 'Sleep Architect', description: 'Log sleep 30 days in a row.', category: 'CONSISTENCY', icon: 'moon', criteria: { kind: 'category_streak', category: 'SLEEP', gte: 30 }, points: 150 },
+  { key: 'nutrition_week', name: 'Fueled Up', description: 'Log nutrition 7 days in a row.', category: 'CONSISTENCY', icon: 'apple', criteria: { kind: 'category_streak', category: 'NUTRITION', gte: 7 }, points: 25 },
+  { key: 'nutrition_month', name: 'Macro Master', description: 'Log nutrition 30 days in a row.', category: 'CONSISTENCY', icon: 'apple', criteria: { kind: 'category_streak', category: 'NUTRITION', gte: 30 }, points: 150 },
+  { key: 'wellness_week', name: 'Self-Aware', description: 'Log wellness 7 days in a row.', category: 'CONSISTENCY', icon: 'heart', criteria: { kind: 'category_streak', category: 'WELLNESS', gte: 7 }, points: 25 },
+  { key: 'wellness_month', name: 'Mind-Body Sync', description: 'Log wellness 30 days in a row.', category: 'CONSISTENCY', icon: 'heart', criteria: { kind: 'category_streak', category: 'WELLNESS', gte: 30 }, points: 150 },
 ];
 
 export async function ensureAchievementsSeeded() {
@@ -197,6 +206,11 @@ export async function checkAchievements(
       case 'weigh_in_streak':
         ok = weighInStreak >= c.gte;
         break;
+      case 'category_streak': {
+        const s = await getCategoryStreak(userId, c.category);
+        ok = s.current >= c.gte;
+        break;
+      }
     }
     if (ok) {
       await tx.userAchievement.create({
