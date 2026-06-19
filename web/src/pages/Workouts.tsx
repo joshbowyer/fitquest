@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { formatRelative, formatSeconds, classNames } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
-import { useAuth } from '@/lib/auth';
 import { type UnitSystem } from '@/lib/units';
+import { musclesForExercise, loadForExercise } from '@/lib/muscles';
+import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 
 function kgToLb(kg: number): number {
   return kg * 2.20462;
@@ -16,8 +18,6 @@ function kgToLb(kg: number): number {
 function lbToKg(lb: number): number {
   return lb / 2.20462;
 }
-import { musclesForExercise } from '@/lib/muscles';
-import { Modal } from '@/components/Modal';
 
 const TYPE_OPTIONS: { value: WorkoutType; label: string; color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' }[] = [
   { value: 'STRENGTH', label: 'Strength', color: 'cyan' },
@@ -84,21 +84,39 @@ export function WorkoutsPage() {
           name: name || undefined,
           duration,
           notes: notes || undefined,
-          exercises: exercises.map((e, i) => ({
-            name: e.name,
-            order: i,
-            musclesWorked: musclesForExercise(e.name),
-            sets: e.sets
-              .filter((s) => s.reps > 0 || s.duration > 0)
-              .map((s, j) => ({
-                reps: s.reps,
-                weight: weightToKg(s.weight, units),
-                duration: s.duration || undefined,
-                rpe: s.rpe || undefined,
-                order: j,
-                completed: true,
-              })),
-          })),
+          exercises: exercises.map((e, i) => {
+            const load = loadForExercise(e.name);
+            const bodyweight = user?.weightKg ?? null;
+            return {
+              name: e.name,
+              order: i,
+              musclesWorked: musclesForExercise(e.name),
+              sets: e.sets
+                .filter((s) => s.reps > 0 || s.duration > 0)
+                .map((s, j) => {
+                  // Compute the effective weight:
+                  //  - BODYWEIGHT: just bodyweight, no input
+                  //  - WEIGHTED_BODYWEIGHT: bodyweight + extra
+                  //  - FREE_WEIGHT/MACHINE/OTHER: just the input
+                  let weight: number | undefined;
+                  if (load === 'BODYWEIGHT' && bodyweight) {
+                    weight = bodyweight;
+                  } else if (load === 'WEIGHTED_BODYWEIGHT' && bodyweight) {
+                    weight = bodyweight + weightToKg(s.weight, units)!;
+                  } else {
+                    weight = weightToKg(s.weight, units);
+                  }
+                  return {
+                    reps: s.reps,
+                    weight: weight || undefined,
+                    duration: s.duration || undefined,
+                    rpe: s.rpe || undefined,
+                    order: j,
+                    completed: true,
+                  };
+                }),
+            };
+          }),
         },
       }),
     onSuccess: (r) => {
@@ -179,20 +197,28 @@ export function WorkoutsPage() {
               <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">Exercises</div>
               {exercises.map((ex, i) => {
                 const muscles = musclesForExercise(ex.name);
+                const load = loadForExercise(ex.name);
+                const isBw = load === 'BODYWEIGHT';
+                const isWeightedBw = load === 'WEIGHTED_BODYWEIGHT';
+                // For weighted bodyweight: weight input = extra on top of bodyweight
+                // For bodyweight: weight input disabled, use profile bodyweight
+                const showWeight = isStrength && !isBw;
+                const showDuration = isCardio || isTimed;
+                const bodyweightDisplay = units === 'IMPERIAL'
+                  ? Math.round(kgToLb(user?.weightKg ?? 0))
+                  : Math.round(user?.weightKg ?? 0);
                 return (
                   <div key={i} className="border border-ink-500/30 p-3 space-y-2">
                     <div className="flex items-center gap-2">
-                      <input
-                        className="input-neon flex-1"
-                        placeholder="Exercise name (e.g. Bench Press)"
+                      <ExerciseAutocomplete
+                        className="flex-1"
                         value={ex.name}
-                        onChange={(e) => {
+                        onChange={(v) => {
                           const copy = [...exercises];
-                          copy[i] = { ...copy[i], name: e.target.value };
+                          copy[i] = { ...copy[i], name: v };
                           setExercises(copy);
                         }}
-                        onFocus={() => setSelectedExerciseIdx(i)}
-                        onBlur={() => setSelectedExerciseIdx(null)}
+                        placeholder="Exercise name (start typing…)"
                       />
                       {exercises.length > 1 && (
                         <button
@@ -212,9 +238,25 @@ export function WorkoutsPage() {
                         {muscles.length > 8 && <span className="text-ink-500">+{muscles.length - 8} more</span>}
                       </div>
                     )}
+                    {isBw && user?.weightKg && (
+                      <div className="text-[10px] font-mono text-neon-lime/80">
+                        ⚖ bodyweight: {bodyweightDisplay} {weightUnitLabel(units)} (using profile value)
+                      </div>
+                    )}
+                    {isWeightedBw && user?.weightKg && (
+                      <div className="text-[10px] font-mono text-neon-amber/80">
+                        ⚖ effective load = bodyweight ({bodyweightDisplay} {weightUnitLabel(units)}) + extra below
+                      </div>
+                    )}
                     <div className="space-y-1">
                       {ex.sets.map((s, j) => (
-                        <div key={j} className="grid grid-cols-[20px_1fr_1fr_1fr_1fr_30px] gap-2 items-center">
+                        <div
+                          key={j}
+                          className={classNames(
+                            'gap-2 items-center',
+                            showDuration ? 'grid grid-cols-[20px_1fr_1fr_1fr_30px]' : 'grid grid-cols-[20px_1fr_1fr_1fr_1fr_30px]',
+                          )}
+                        >
                           <span className="text-[10px] font-mono text-ink-400">#{j + 1}</span>
                           <input
                             className="input-neon text-xs"
@@ -227,12 +269,16 @@ export function WorkoutsPage() {
                               setExercises(copy);
                             }}
                           />
-                          {isStrength ? (
+                          {showWeight ? (
                             <input
                               className="input-neon text-xs"
                               type="number"
                               step="0.5"
-                              placeholder={weightUnitLabel(units)}
+                              placeholder={
+                                isWeightedBw
+                                  ? `+${weightUnitLabel(units)} (extra)`
+                                  : weightUnitLabel(units)
+                              }
                               value={s.weight || ''}
                               onChange={(e) => {
                                 const copy = [...exercises];
@@ -240,7 +286,7 @@ export function WorkoutsPage() {
                                 setExercises(copy);
                               }}
                             />
-                          ) : (
+                          ) : !isStrength ? (
                             <input
                               className="input-neon text-xs opacity-40 cursor-not-allowed"
                               type="number"
@@ -248,8 +294,17 @@ export function WorkoutsPage() {
                               placeholder="—"
                               title="Weight doesn't apply to this workout type"
                             />
+                          ) : (
+                            // Bodyweight: weight column greyed out, value not stored
+                            <input
+                              className="input-neon text-xs opacity-40 cursor-not-allowed"
+                              type="number"
+                              disabled
+                              placeholder="BW"
+                              title="Bodyweight exercise — uses your profile bodyweight"
+                            />
                           )}
-                          {isCardio || isTimed ? (
+                          {showDuration ? (
                             <input
                               className="input-neon text-xs"
                               type="number"
