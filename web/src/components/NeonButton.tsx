@@ -17,8 +17,17 @@ type Props = {
   type?: 'button' | 'submit';
   variant?: Variant;
   disabled?: boolean;
+  loading?: boolean;
   className?: string;
   fullWidth?: boolean;
+};
+
+const LOADING_CLASSES: Record<Variant, string> = {
+  cyan: 'animate-neon-charge border-neon-cyan text-neon-cyan',
+  magenta: 'animate-neon-charge border-neon-magenta text-neon-magenta',
+  lime: 'animate-neon-charge border-neon-lime text-neon-lime',
+  amber: 'animate-neon-charge border-neon-amber text-neon-amber',
+  violet: 'animate-neon-charge border-neon-violet text-neon-violet',
 };
 
 export function NeonButton({
@@ -27,6 +36,7 @@ export function NeonButton({
   type = 'button',
   variant = 'cyan',
   disabled,
+  loading,
   className,
   fullWidth,
 }: Props) {
@@ -34,8 +44,13 @@ export function NeonButton({
     <button
       type={type}
       onClick={onClick}
-      disabled={disabled}
-      className={classNames(VARIANT_CLASS[variant], fullWidth && 'w-full', className)}
+      disabled={disabled || loading}
+      className={classNames(
+        VARIANT_CLASS[variant],
+        fullWidth && 'w-full',
+        loading && LOADING_CLASSES[variant],
+        className
+      )}
     >
       {children}
     </button>

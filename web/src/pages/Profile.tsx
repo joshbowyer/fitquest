@@ -51,6 +51,9 @@ export function ProfilePage() {
       }
     }
     setDraft(next);
+    // Also seed the form's birthDate from the user so the field shows
+    // the current value on revisit.
+    setForm((f) => (f.birthDate === undefined ? { ...f, birthDate: user.birthDate ?? null } : f));
   }, [user, inImperial]);
   const [saved, setSaved] = useState(false);
 

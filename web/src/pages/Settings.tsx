@@ -32,13 +32,23 @@ export function SettingsPage() {
     },
   });
 
+  const [isRecomputing, setIsRecomputing] = useState(false);
   const recomputeM = useMutation({
     mutationFn: () =>
       api<{ ok: true; updated: string[]; skipped: string[]; changes: Change[] }>(
         '/genetic-max/recompute',
         { method: 'POST' }
       ),
-    onSuccess: (r) => {
+  });
+
+  async function handleRecompute() {
+    if (isRecomputing) return;
+    setIsRecomputing(true);
+    setRecomputeResult(null);
+    setRecomputeSummary(null);
+    const minDelay = new Promise((r) => setTimeout(r, 1200));
+    try {
+      const r = await Promise.all([recomputeM.mutateAsync(), minDelay]).then(([res]) => res);
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['insights'] });
@@ -49,8 +59,12 @@ export function SettingsPage() {
         setRecomputeSummary(`${r.changes.length} maxes updated${r.skipped.length > 0 ? ` · ${r.skipped.length} manual kept` : ''}.`);
         setRecomputeResult(r.changes);
       }
-    },
-  });
+    } catch (e) {
+      setRecomputeSummary(`Error: ${e instanceof Error ? e.message : 'recompute failed'}`);
+    } finally {
+      setIsRecomputing(false);
+    }
+  }
 
   const maxesQ = useQuery({
     queryKey: ['genetic-max'],
@@ -154,10 +168,10 @@ export function SettingsPage() {
           action={
             <NeonButton
               variant="lime"
-              onClick={() => recomputeM.mutate()}
-              disabled={recomputeM.isPending}
+              onClick={handleRecompute}
+              loading={isRecomputing}
             >
-              {recomputeM.isPending ? '⟳ Recomputing…' : '⟳ Recompute'}
+              {isRecomputing ? '⟳ Recomputing…' : '⟳ Recompute'}
             </NeonButton>
           }
         >

@@ -45,6 +45,7 @@ export default {
         'scan': 'scan 6s linear infinite',
         'flicker': 'flicker 4s linear infinite',
         'glow': 'glow 2s ease-in-out infinite alternate',
+        'neon-charge': 'neon-charge 1.2s ease-in-out infinite',
       },
       keyframes: {
         scan: {
@@ -58,6 +59,16 @@ export default {
         glow: {
           '0%': { textShadow: '0 0 4px currentColor, 0 0 8px currentColor' },
           '100%': { textShadow: '0 0 8px currentColor, 0 0 20px currentColor, 0 0 40px currentColor' },
+        },
+        'neon-charge': {
+          '0%, 100%': {
+            boxShadow: '0 0 4px currentColor, 0 0 8px currentColor',
+            borderColor: 'currentColor',
+          },
+          '50%': {
+            boxShadow: '0 0 16px currentColor, 0 0 32px currentColor, 0 0 56px currentColor',
+            borderColor: 'currentColor',
+          },
         },
       },
     },
