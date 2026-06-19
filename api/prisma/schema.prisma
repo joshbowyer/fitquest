@@ -180,9 +180,13 @@ model User {
   classChangedAt   DateTime?
   soulstones       Int      @default(0)
   worldProgress    UserWorldProgress[]
+  painLogs         PainLog[]
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([email])
+  @@index([username])
 }
 
 model Measurement {
@@ -393,4 +397,47 @@ model UserWorldProgress {
 
   @@unique([userId, levelId])
   @@index([userId])
+}
+
+enum BodyPart {
+  HEAD
+  NECK
+  CHEST
+  BACK_UPPER
+  BACK_LOWER
+  SHOULDER_L
+  SHOULDER_R
+  BICEP_L
+  BICEP_R
+  FOREARM_L
+  FOREARM_R
+  WRIST_L
+  WRIST_R
+  HIP_L
+  HIP_R
+  QUAD_L
+  QUAD_R
+  HAMSTRING_L
+  HAMSTRING_R
+  KNEE_L
+  KNEE_R
+  CALF_L
+  CALF_R
+  ANKLE_L
+  ANKLE_R
+  FOOT_L
+  FOOT_R
+}
+
+model PainLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bodyPart  BodyPart
+  intensity Int      // 0-10
+  notes     String?
+  loggedAt  DateTime @default(now())
+
+  @@index([userId, bodyPart])
+  @@index([userId, loggedAt])
 }
