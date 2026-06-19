@@ -28,11 +28,12 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
 
   switch (metric) {
     case 'BICEP': {
-      // Natural ceiling for a well-trained small-frame meso is ~2.4x
-      // wrist at very low body fat. McCallum's 1.0x is the ideal
-      // proportion, not the ceiling.
-      if (wristCm) return round1(wristCm * 2.4);
-      if (heightCm) return round1(heightCm * 0.38);
+      // Natural ceiling for a small-frame meso at very low body fat is
+      // ~2.5-3.0x wrist (Reeves proportions, Casey Butt natural limits,
+      // Lyle McDonald). 3.0x is the upper bound — most naturals cap
+      // around 2.0-2.5x. For 15.24cm wrist this yields 45.7cm (~18in).
+      if (wristCm) return round1(wristCm * 3.0);
+      if (heightCm) return round1(heightCm * 0.43);
       return null;
     }
     case 'FOREARM': {
