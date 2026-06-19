@@ -10,6 +10,8 @@ import { WeighInPanel } from '@/components/WeighInPanel';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
+import { FramePanel } from '@/components/FramePanel';
+import { WaistDisplay } from '@/components/WaistDisplay';
 import { useAuth } from '@/lib/auth';
 import {
   CLASS_META,
@@ -182,11 +184,19 @@ export function DashboardPage() {
         <InsightsPanel />
       </div>
 
+      {/* Frame + Recovery (or body comp) — Frame shows wrist/ankle/height
+          classification that drives all genetic-max formulas */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <FramePanel />
+      </div>
+
       {/* Stat sheet by category */}
       {STAT_SHEET_CATEGORIES.map((cat) => {
         const metrics = METRICS_BY_CATEGORY[cat];
         const cfg = CATEGORY_LABELS[cat];
         if (!cfg) return null;
+        const isBodyComp = cat === 'BODY_COMP';
+        const gaugeMetrics = isBodyComp ? metrics.filter((m) => m !== 'WAIST') : metrics;
         return (
           <Panel
             key={cat}
@@ -195,7 +205,7 @@ export function DashboardPage() {
             className="mb-6"
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 justify-items-center">
-              {metrics.map((m) => {
+              {gaugeMetrics.map((m) => {
                 const meta = METRICS[m];
                 const latest = latestByMetric.get(m);
                 const max = maxByMetric.get(m);
@@ -213,6 +223,7 @@ export function DashboardPage() {
                 );
               })}
             </div>
+            {isBodyComp && <WaistDisplay />}
           </Panel>
         );
       })}
