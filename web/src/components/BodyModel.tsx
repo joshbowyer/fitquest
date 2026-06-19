@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 export type BodyPartId =
@@ -115,7 +116,7 @@ export function BodyModel({
       }}
     >
       <Canvas
-        camera={{ position: [0, 0.1, 5.5], fov: 35 }}
+        camera={{ position: [0, 0.2, 7.5], fov: 45 }}
         gl={{ antialias: true, alpha: true }}
         dpr={[1, 2]}
       >
@@ -141,6 +142,15 @@ export function BodyModel({
 
         {/* Pedestal dais */}
         <Pedestal />
+
+        <OrbitControls
+          enablePan={false}
+          enableZoom={true}
+          minDistance={4}
+          maxDistance={14}
+          minPolarAngle={Math.PI * 0.15}
+          maxPolarAngle={Math.PI * 0.85}
+        />
       </Canvas>
     </div>
   );
