@@ -22,7 +22,7 @@ import {
   type HeightCategory,
 } from '@/lib/frame';
 
-const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'MARATHONER', 'BERSERKER', 'ORACLE'];
+const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'ORACLE'];
 
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
 function previewMax(metric: string, wristCm: number | null, ankleCm: number | null, heightCm: number | null): number | null {
@@ -437,11 +437,22 @@ export function ProfilePage() {
                     </span>
                     <span className="text-ink-500 text-[9px]">·</span>
                     <span className={`text-[9px] font-mono ${eligible ? 'text-ink-400' : 'text-ink-500'}`}>
-                      +{m.primary === 'STRENGTH' ? 'Power' : m.primary === 'AGILITY' ? 'Endurance' : m.primary === 'CONSTITUTION' ? (c === 'BERSERKER' ? 'Intensity' : 'Endurance') : 'Recovery'}
+                      +{m.primary === 'STRENGTH' ? 'Power' : m.primary === 'AGILITY' ? 'Endurance' : m.primary === 'CONSTITUTION' ? (c === 'BERSERKER' ? 'Intensity' : 'Discovery') : 'Recovery'}
                     </span>
                   </div>
                   <div className={`text-[10px] font-mono mt-1 ${eligible ? 'text-ink-300' : 'text-ink-500'}`}>
                     {m.tagline}
+                  </div>
+                  <div
+                    className={classNames(
+                      'inline-block mt-1.5 px-1.5 py-0.5 text-[9px] font-mono tracking-widest uppercase border',
+                      eligible
+                        ? `border-neon-${m.color}/60 text-neon-${m.color} bg-neon-${m.color}/5`
+                        : 'border-ink-500/30 text-ink-500 bg-ink-500/5'
+                    )}
+                    style={eligible ? { textShadow: `0 0 4px currentColor` } : undefined}
+                  >
+                    ⚡ {m.ability.tag} · {m.ability.label}
                   </div>
                   {!eligible && previewArchetype && (
                     <div className="text-[9px] font-mono text-neon-magenta mt-1 italic">

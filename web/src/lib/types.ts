@@ -1,7 +1,7 @@
 export type ClassName =
   | 'JUGGERNAUT'
   | 'PHANTOM'
-  | 'MARATHONER'
+  | 'SCOUT'
   | 'BERSERKER'
   | 'ORACLE';
 
@@ -88,10 +88,19 @@ export const PRIMARY_ASPECT_LABEL: Record<PrimaryAspect, string> = {
   MIND: 'Mind',
 };
 
+// Game-effect style "ability tag" per class (Habitica-like). Displayed
+// in the class selector and applied to future raid/enemy calculations.
+export type ClassAbility =
+  | { tag: '+DMG'; label: string }
+  | { tag: '+EVA'; label: string }
+  | { tag: '+CRIT'; label: string }
+  | { tag: '+HEAL'; label: string }
+  | { tag: '+DISC'; label: string };
+
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
   JUGGERNAUT: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'POWERLIFT_TOTAL'],
   PHANTOM: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD', 'FIVE_K_TIME'],
-  MARATHONER: ['VO2_MAX', 'FIVE_K_TIME', 'RESTING_HR', 'HRV'],
+  SCOUT: ['VO2_MAX', 'FIVE_K_TIME', 'RESTING_HR', 'HRV'],
   BERSERKER: ['BENCH_1RM', 'SQUAT_1RM', 'PULLUP_1RM', 'PLANK_HOLD'],
   ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS', 'SLEEP_QUALITY'],
 };
@@ -102,6 +111,7 @@ export const CLASS_META: Record<string, {
   tagline: string;
   description: string;
   primary: PrimaryAspect;
+  ability: ClassAbility;
   // Which archetypes qualify for this class. Empty = available to all.
   eligibility: FrameArchetype[];
 }> = {
@@ -111,6 +121,7 @@ export const CLASS_META: Record<string, {
     tagline: 'Heavy hits, big gains',
     description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP. Powerlifter / bodybuilder.',
     primary: 'STRENGTH',
+    ability: { tag: '+DMG', label: 'More raid damage' },
     // STRENGTH primary requires solid or large-balanced build
     eligibility: ['DRAKE', 'FORGE', 'GOLEM', 'BEAR', 'BEHEMOTH'],
   },
@@ -118,17 +129,20 @@ export const CLASS_META: Record<string, {
     label: 'Phantom',
     color: 'magenta',
     tagline: 'Agile, lean, bodyweight mastery',
-    description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar. Endurance secondary for cardio conditioning.',
+    description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar.',
     primary: 'AGILITY',
-    // AGILITY primary is universal — anyone can train bodyweight
-    eligibility: [],
+    ability: { tag: '+EVA', label: 'Chance to evade in raids' },
+    // AGILITY primary: lean or small/medium-balanced. "Too big"
+    // archetypes (BEAR, BEHEMOTH, GOLEM, DRAKE) aren't lithe.
+    eligibility: ['WISP', 'SPRITE', 'STRIKER', 'FORGE', 'WIRED'],
   },
-  MARATHONER: {
-    label: 'Marathoner',
+  SCOUT: {
+    label: 'Scout',
     color: 'lime',
-    tagline: 'Long, steady, sustained',
-    description: 'Endurance athlete. Zone 2 cardio, long runs, cycling, swimming. Build the aerobic base. Recovery and consistency are the work.',
+    tagline: 'Long, steady, exploring',
+    description: 'Explorer. Sustained effort, trail running, hiking, multi-sport. Finds items and quests faster. The first to see new areas and new enemies.',
     primary: 'CONSTITUTION',
+    ability: { tag: '+DISC', label: 'Faster item/quest discovery' },
     // CONSTITUTION primary is universal
     eligibility: [],
   },
@@ -138,6 +152,7 @@ export const CLASS_META: Record<string, {
     tagline: 'All-out, no days off',
     description: 'High volume, high intensity. HIIT, tabata, all-out efforts. No metagame — just train hard. Intensity is a choice, not a build.',
     primary: 'CONSTITUTION',
+    ability: { tag: '+CRIT', label: 'Bonus damage on crits' },
     // CONSTITUTION primary is universal
     eligibility: [],
   },
@@ -147,6 +162,7 @@ export const CLASS_META: Record<string, {
     tagline: 'Recovery, mindfulness, ritual',
     description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity. Yoga, pilates, meditation.',
     primary: 'MIND',
+    ability: { tag: '+HEAL', label: 'Heal between rounds · see enemy stats' },
     // MIND primary is universal
     eligibility: [],
   },
