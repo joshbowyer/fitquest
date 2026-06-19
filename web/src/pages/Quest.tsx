@@ -1,15 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth, type UserAvatar } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
-import { NeonButton } from '@/components/NeonButton';
-import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { Avatar } from '@/components/Avatar';
 import {
   type World,
-  type WorldLevel,
   type PortalTile,
   portalLayoutFor,
   HOME_TILE,
@@ -22,8 +20,7 @@ import { classNames } from '@/lib/format';
 
 export function QuestPage() {
   const { user } = useAuth();
-  const qc = useQueryClient();
-  const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const { data: worlds, isLoading } = useQuery({
     queryKey: ['quest-worlds'],
@@ -69,7 +66,7 @@ export function QuestPage() {
               playerLevel={user.level}
               accentColor={avatar?.accentColor ?? '#14d6e8'}
               classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
-              onSelect={(id) => setSelectedWorldId(id)}
+              onSelect={(id) => navigate(`/quest/${id}`)}
             />
           </Panel>
 
@@ -102,54 +99,45 @@ export function QuestPage() {
               </div>
             </Panel>
 
-            {selectedWorldId ? (
-              <SelectedWorldPanel
-                worldId={selectedWorldId}
-                worlds={worlds ?? []}
-                playerLevel={user.level}
-                onClose={() => setSelectedWorldId(null)}
-              />
-            ) : (
-              <Panel title="WORLDS" variant="cyan">
-                <div className="space-y-2">
-                  {portals.map((p) => {
-                    const completed = p.world.levels.filter((l) => l.progress?.completed).length;
-                    const unlocked = user.level >= p.world.levelRequired;
-                    return (
-                      <button
-                        key={p.world.id}
-                        onClick={() => unlocked && setSelectedWorldId(p.world.id)}
-                        disabled={!unlocked}
-                        className={classNames(
-                          'w-full text-left px-3 py-2 border transition-all',
-                          unlocked
-                            ? 'border-ink-500 hover:border-neon-cyan/60 hover:bg-bg-700 cursor-pointer'
-                            : 'border-bg-700 opacity-50 cursor-not-allowed',
-                        )}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="text-lg"
-                            style={{ color: WORLD_COLOR_HEX[p.world.color], textShadow: `0 0 8px ${WORLD_COLOR_HEX[p.world.color]}` }}
-                          >
-                            {p.world.icon}
-                          </span>
-                          <div className="flex-1">
-                            <div className="text-sm font-display tracking-widest text-ink-50">{p.world.name.toUpperCase()}</div>
-                            <div className="text-[10px] text-ink-300 font-mono">
-                              {p.world.theme} · {completed}/{p.world.levels.length} cleared
-                            </div>
+            <Panel title="WORLDS" variant="cyan">
+              <div className="space-y-2">
+                {portals.map((p) => {
+                  const completed = p.world.levels.filter((l) => l.progress?.completed).length;
+                  const unlocked = user.level >= p.world.levelRequired;
+                  return (
+                    <button
+                      key={p.world.id}
+                      onClick={() => unlocked && navigate(`/quest/${p.world.id}`)}
+                      disabled={!unlocked}
+                      className={classNames(
+                        'w-full text-left px-3 py-2 border transition-all',
+                        unlocked
+                          ? 'border-ink-500 hover:border-neon-cyan/60 hover:bg-bg-700 cursor-pointer'
+                          : 'border-bg-700 opacity-50 cursor-not-allowed',
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-lg"
+                          style={{ color: WORLD_COLOR_HEX[p.world.color], textShadow: `0 0 8px ${WORLD_COLOR_HEX[p.world.color]}` }}
+                        >
+                          {p.world.icon}
+                        </span>
+                        <div className="flex-1">
+                          <div className="text-sm font-display tracking-widest text-ink-50">{p.world.name.toUpperCase()}</div>
+                          <div className="text-[10px] text-ink-300 font-mono">
+                            {p.world.theme} · {completed}/{p.world.levels.length} cleared
                           </div>
-                          {!unlocked && (
-                            <span className="text-[10px] font-mono text-ink-400">LVL {p.world.levelRequired}</span>
-                          )}
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Panel>
-            )}
+                        {!unlocked && (
+                          <span className="text-[10px] font-mono text-ink-400">LVL {p.world.levelRequired}</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Panel>
           </div>
         </div>
       )}
@@ -214,6 +202,17 @@ function OverworldMap({
   // Color lookup by worldId
   const colorByWorld = new Map(portals.map((p) => [p.world.id, p.world.color]));
 
+  // For each path, compute the cell's distance from home (0 = adjacent,
+  // increasing toward portal). Used to stagger the energy flow animation
+  // so the energy appears to flow FROM home TO portal.
+  const pathDistance: Map<string, number> = new Map();
+  for (const p of portals) {
+    p.pathCells.forEach((cell, i) => {
+      if (i === 0 || i === p.pathCells.length - 1) return;
+      pathDistance.set(`${cell.x},${cell.y}`, i);
+    });
+  }
+
   const cellSize = 44;
   const cellStyle: React.CSSProperties = {
     width: cellSize,
@@ -242,7 +241,7 @@ function OverworldMap({
           if (cell.kind === 'home') {
             // Tron-style disc avatar at the home base. The Avatar
             // component is an SVG so we can drop it into a cell
-            // easily.
+            // easily. The wrapper has a gentle bobbing animation.
             return (
               <div
                 key={`${x}-${y}`}
@@ -258,7 +257,13 @@ function OverworldMap({
                 }}
                 title="Home Base"
               >
-                <div style={{ width: '88%', height: '88%' }}>
+                <div
+                  style={{
+                    width: '88%',
+                    height: '88%',
+                    animation: 'avatarBob 3s ease-in-out infinite',
+                  }}
+                >
                   <Avatar
                     archetype={archetype}
                     accentColor={accentColor}
@@ -272,14 +277,19 @@ function OverworldMap({
           if (cell.kind === 'path') {
             const c = colorByWorld.get(cell.worldId)!;
             const hex = WORLD_COLOR_HEX[c];
+            // Energy flow: each cell pulses at a different phase based on
+            // its distance from home. Uses a CSS keyframe animation.
+            const dist = pathDistance.get(`${x},${y}`) ?? 0;
+            const delay = dist * 0.18;
             return (
               <div
                 key={`${x}-${y}`}
                 style={{
                   ...cellStyle,
                   background: hex,
-                  opacity: 0.85,
+                  opacity: 0.7,
                   boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.3)`,
+                  animation: `energyFlow 2.4s ease-in-out ${delay}s infinite`,
                 }}
               />
             );
@@ -305,9 +315,10 @@ function OverworldMap({
                   opacity: unlocked ? 1 : 0.35,
                   background: '#0e0f1a',
                   boxShadow: `inset 0 0 0 3px ${hex}, 0 0 12px ${hex}`,
-                  transition: 'transform 0.15s',
                   border: 'none',
                   padding: 0,
+                  color: hex,
+                  animation: unlocked ? 'portalPulse 2.6s ease-in-out infinite' : 'none',
                 }}
                 title={unlocked ? `${portal.world.name} (${completed}/${portal.world.levels.length})` : `Unlocks at Lvl ${portal.world.levelRequired}`}
                 onMouseEnter={(e) => { if (unlocked) e.currentTarget.style.transform = 'scale(1.15)'; }}
@@ -344,129 +355,5 @@ function OverworldMap({
         }),
       )}
     </div>
-  );
-}
-
-function SelectedWorldPanel({
-  worldId,
-  worlds,
-  playerLevel,
-  onClose,
-}: {
-  worldId: string;
-  worlds: World[];
-  playerLevel: number;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const world = worlds.find((w) => w.id === worldId);
-  if (!world) return null;
-  const hex = WORLD_COLOR_HEX[world.color];
-  const completed = world.levels.filter((l) => l.progress?.completed).length;
-  const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
-
-  const attempt = useDelayedMutation<
-    { level: WorldLevel; result: { won: boolean; score: number; xpAwarded: number; goldAwarded: number; attempts: number; bestScore: number; completed: boolean } },
-    string
-  >({
-    mutationFn: (levelId: string) =>
-      api(`/quest/levels/${levelId}/attempt`, {
-        method: 'POST',
-        body: { score: 100 },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['quest-worlds'] }),
-  }, 600);
-
-  return (
-    <Panel
-      title={world.name.toUpperCase()}
-      variant={worldColorToVariant(world.color)}
-      action={
-        <button onClick={onClose} className="text-ink-300 hover:text-ink-50 text-xs font-mono">
-          ← back
-        </button>
-      }
-    >
-      <div className="space-y-3">
-        <div>
-          <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: hex }}>
-            {world.theme} · {world.affiliation}
-          </div>
-          <div className="text-xs text-ink-300 font-mono mt-1 leading-relaxed">{world.description}</div>
-        </div>
-        <div className="text-[10px] font-mono text-ink-400 tracking-widest">
-          {completed}/{world.levels.length} cleared
-        </div>
-        <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-          {world.levels.map((lvl) => {
-            const prev = lvl.requiredLevelId
-              ? world.levels.find((l) => l.id === lvl.requiredLevelId)
-              : null;
-            const prevDone = prev ? !!prev.progress?.completed : true;
-            const unlocked = playerLevel >= lvl.playerLevelRequired && prevDone;
-            const done = !!lvl.progress?.completed;
-            return (
-              <div
-                key={lvl.id}
-                className={classNames(
-                  'p-2 border transition-all',
-                  activeLevelId === lvl.id
-                    ? 'border-neon-cyan/60 bg-bg-700'
-                    : done
-                    ? 'border-neon-amber/40 bg-bg-800/50'
-                    : unlocked
-                    ? 'border-ink-500 hover:border-neon-cyan/40 cursor-pointer'
-                    : 'border-bg-700 opacity-50',
-                )}
-                onClick={() => unlocked && setActiveLevelId(lvl.id === activeLevelId ? null : lvl.id)}
-              >
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-6 h-6 grid place-items-center text-xs font-mono border"
-                    style={{ borderColor: hex, color: hex }}
-                  >
-                    {lvl.order}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm text-ink-50 font-display tracking-wide">{lvl.name}</div>
-                    <div className="text-[10px] text-ink-300 font-mono">
-                      {lvl.enemy} · diff {lvl.difficulty} · {lvl.xp} XP · {lvl.gold} G
-                    </div>
-                  </div>
-                  {done && <span className="text-neon-amber">✓</span>}
-                  {!unlocked && !done && (
-                    <span className="text-[10px] text-ink-400 font-mono">🔒</span>
-                  )}
-                </div>
-                {activeLevelId === lvl.id && (
-                  <div className="mt-2 pt-2 border-t border-ink-700/50 space-y-2">
-                    <p className="text-xs text-ink-200 font-mono leading-relaxed">{lvl.description}</p>
-                    {lvl.progress && (
-                      <p className="text-[10px] text-ink-400 font-mono">
-                        Attempts: {lvl.progress.attempts} · Best: {lvl.progress.bestScore}
-                      </p>
-                    )}
-                    <NeonButton
-                      variant={worldColorToVariant(world.color)}
-                      loading={attempt.isPending}
-                      onClick={() => attempt.run(lvl.id)}
-                    >
-                      {done ? 'REPLAY' : 'BEGIN'}
-                    </NeonButton>
-                    {attempt.data && (
-                      <p className="text-[10px] font-mono" style={{ color: attempt.data.result.won ? '#9bff5c' : '#f55cc4' }}>
-                        {attempt.data.result.won
-                          ? `Victory! +${attempt.data.result.xpAwarded} XP, +${attempt.data.result.goldAwarded} G`
-                          : 'Defeat. Try again.'}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </Panel>
   );
 }

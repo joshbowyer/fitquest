@@ -105,7 +105,7 @@ export function Layout({ children }: Props) {
   );
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex items-end justify-between mb-6 pb-3 border-b border-neon-cyan/15">
       <div>
