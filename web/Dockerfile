@@ -8,8 +8,7 @@ RUN npm install
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG VITE_API_URL=http://localhost:3001
-ENV VITE_API_URL=$VITE_API_URL
+# VITE_API_URL is intentionally unset; nginx proxies /api/* to the api container.
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runner
