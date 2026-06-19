@@ -31,6 +31,20 @@ export function QuestWorldPage() {
     enabled: !!worldId,
   });
 
+  // Hooks must always be called in the same order — keep all
+  // useDelayedMutation etc. above the early return below.
+  const attempt = useDelayedMutation<
+    { level: WorldLevel; result: { won: boolean; score: number; xpAwarded: number; goldAwarded: number; attempts: number; bestScore: number; completed: boolean } },
+    string
+  >({
+    mutationFn: (lid: string) =>
+      api(`/quest/levels/${lid}/attempt`, { method: 'POST', body: { score: 100 } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+      qc.invalidateQueries({ queryKey: ['quest-world'] });
+    },
+  }, 600);
+
   if (isLoading || !user || !world) {
     return (
       <Layout>
@@ -44,18 +58,6 @@ export function QuestWorldPage() {
   const meta = ARCHETYPE_META[archetype];
   const completed = world.levels.filter((l) => l.progress?.completed).length;
   const activeLevel = levelId ? world.levels.find((l) => l.id === levelId) : null;
-
-  const attempt = useDelayedMutation<
-    { level: WorldLevel; result: { won: boolean; score: number; xpAwarded: number; goldAwarded: number; attempts: number; bestScore: number; completed: boolean } },
-    string
-  >({
-    mutationFn: (lid: string) =>
-      api(`/quest/levels/${lid}/attempt`, { method: 'POST', body: { score: 100 } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
-      qc.invalidateQueries({ queryKey: ['quest-world'] });
-    },
-  }, 600);
 
   return (
     <Layout>
