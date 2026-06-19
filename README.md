@@ -120,9 +120,16 @@ Skill points gained per level. Each skill applies effects (XP multiplier, gold m
 - Victory distributes XP + gold based on contribution share
 - 5 starter bosses (Iron Colossus, Cardio Wyrm, The Plateau, Skeletal Minion, BPM Demon)
 
+### Daily weigh-ins
+- Prominent dashboard panel: today's weight, current streak, longest streak
+- 7-day sparkline with current-vs-baseline reference line
+- 7-day delta indicator (gaining / losing trend)
+- One-click log with Enter-to-submit
+- Unlocks 4 achievements: first weigh-in, 7-day, 14-day, 30-day streak
+
 ### Achievements
 30+ achievements across:
-- Consistency (workout count, streaks)
+- Consistency (workout count, streaks, weigh-in streaks)
 - Strength (relative-to-BW milestones: bench 1x/1.5x/2x BW, squat 2x/2.5x BW, deadlift 2.5x/3x BW)
 - Hypertrophy (bicep 40/45cm)
 - Body comp (FFMI 22/24)
@@ -166,7 +173,7 @@ pg_dump $DATABASE_URL > backup.sql
 
 ### v0.2 — auth hardening & daily rituals
 - [ ] **2FA / TOTP** — opt-in TOTP-based 2FA for accounts (recovery codes, backup flow)
-- [ ] **Daily weigh-ins** — quick-log flow on the dashboard, streak counter, weight-trend chart
+- [x] **Daily weigh-ins** — quick-log flow on the dashboard, streak counter, weight-trend chart
 - [ ] **Habit tracking** — sleep, nutrition, mood, HRV (manual + future auto-import)
 - [ ] **Email verification** on signup + password reset flow
 - [ ] **Rate limiting** on auth + write endpoints (Redis-backed)

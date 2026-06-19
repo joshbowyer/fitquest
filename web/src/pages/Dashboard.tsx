@@ -5,6 +5,7 @@ import { Gauge } from '@/components/Gauge';
 import { Panel } from '@/components/Panel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
+import { WeighInPanel } from '@/components/WeighInPanel';
 import { useAuth } from '@/lib/auth';
 import {
   CLASS_META,
@@ -141,6 +142,11 @@ export function DashboardPage() {
             </div>
           )}
         </Panel>
+      </div>
+
+      {/* Daily weigh-in */}
+      <div className="mb-6">
+        <WeighInPanel />
       </div>
 
       {/* Stat sheet by category */}

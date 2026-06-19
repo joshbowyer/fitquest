@@ -1,5 +1,6 @@
 import { AchievementCategory, type PrismaClient } from '@prisma/client';
 import { prisma } from './prisma.js';
+import { getWeighInStreak } from './streaks.js';
 
 type Criteria =
   | { kind: 'workout_count'; gte: number }
@@ -10,7 +11,9 @@ type Criteria =
   | { kind: 'party_join' }
   | { kind: 'raid_victory' }
   | { kind: 'vo2_max_gte'; gte: number }
-  | { kind: 'plank_hold_gte'; gte: number };
+  | { kind: 'plank_hold_gte'; gte: number }
+  | { kind: 'weigh_in_count'; gte: number }
+  | { kind: 'weigh_in_streak'; gte: number };
 
 export const ACHIEVEMENT_DEFS: Array<{
   key: string;
@@ -60,6 +63,12 @@ export const ACHIEVEMENT_DEFS: Array<{
   // Social
   { key: 'first_party', name: 'Band Formed', description: 'Join or create a party.', category: 'SOCIAL', icon: 'shield', criteria: { kind: 'party_join' }, points: 10 },
   { key: 'raid_victory', name: 'Boss Slayer', description: 'Defeat a raid boss with your party.', category: 'SOCIAL', icon: 'sword', criteria: { kind: 'raid_victory' }, points: 100 },
+
+  // Daily weigh-ins
+  { key: 'first_weigh_in', name: 'On the Scale', description: 'Log your first daily weigh-in.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_count', gte: 1 }, points: 5 },
+  { key: 'weigh_in_week', name: 'Weekly Weigh-In', description: '7-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 7 }, points: 30 },
+  { key: 'weigh_in_fortnight', name: 'Fortnight Vigil', description: '14-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 14 }, points: 75 },
+  { key: 'weigh_in_month', name: 'Iron Routine', description: '30-day weigh-in streak.', category: 'CONSISTENCY', icon: 'scale', criteria: { kind: 'weigh_in_streak', gte: 30 }, points: 200 },
 ];
 
 export async function ensureAchievementsSeeded() {
@@ -130,6 +139,14 @@ export async function checkAchievements(
     else if (i > 0) break;
   }
 
+  // Weigh-in data (count + streak)
+  const weighInMeasurements = user.measurements.filter((m) => m.metric === 'WEIGHT');
+  const weighInCount = new Set(
+    weighInMeasurements.map((m) => new Date(m.recordedAt).toDateString())
+  ).size;
+  const weighInStreakData = await getWeighInStreak(userId);
+  const weighInStreak = weighInStreakData.current;
+
   for (const a of all) {
     if (ownedIds.has(a.id)) continue;
     const c = a.criteria as Criteria;
@@ -173,6 +190,12 @@ export async function checkAchievements(
         break;
       case 'plank_hold_gte':
         ok = (latest('PLANK_HOLD') ?? 0) >= c.gte;
+        break;
+      case 'weigh_in_count':
+        ok = weighInCount >= c.gte;
+        break;
+      case 'weigh_in_streak':
+        ok = weighInStreak >= c.gte;
         break;
     }
     if (ok) {

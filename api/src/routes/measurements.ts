@@ -5,6 +5,12 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { METRICS } from '../lib/metrics.js';
 import { checkAchievements } from '../lib/achievements.js';
+import {
+  getWeighInStreak,
+  getWeighInToday,
+  getWeightTrend,
+  getWeighInDelta7d,
+} from '../lib/streaks.js';
 
 const CreateSchema = z.object({
   metric: z.nativeEnum(MetricType),
@@ -90,5 +96,50 @@ export async function measurementRoutes(app: FastifyInstance) {
     if (!existing) return { error: 'Not found' };
     await prisma.measurement.delete({ where: { id } });
     return { ok: true };
+  });
+
+  // ---- Daily weigh-in shortcuts -----------------------------------------
+
+  app.get('/weigh-in/status', async (req) => {
+    const me = await requireUser(req);
+    const [today, streak] = await Promise.all([
+      getWeighInToday(me.id),
+      getWeighInStreak(me.id),
+    ]);
+    return { today, streak };
+  });
+
+  app.get('/weigh-in/trend', async (req) => {
+    const me = await requireUser(req);
+    const q = z.object({ days: z.coerce.number().int().min(2).max(90).default(7) }).parse(req.query);
+    const [series, delta7d] = await Promise.all([
+      getWeightTrend(me.id, q.days),
+      getWeighInDelta7d(me.id),
+    ]);
+    return { series, delta7d };
+  });
+
+  app.post('/weigh-in', async (req) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      value: z.number().positive().max(500),
+      notes: z.string().max(500).optional(),
+    }).parse(req.body);
+    const m = await prisma.measurement.create({
+      data: {
+        userId: me.id,
+        metric: 'WEIGHT',
+        value: body.value,
+        unit: 'kg',
+        notes: body.notes,
+        recordedAt: new Date(),
+      },
+    });
+    const [today, streak] = await Promise.all([
+      getWeighInToday(me.id),
+      getWeighInStreak(me.id),
+    ]);
+    const unlocked = await checkAchievements(me.id);
+    return { measurement: m, today, streak, unlocked };
   });
 }
