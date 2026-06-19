@@ -305,17 +305,20 @@ function BodyPartMesh({
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  // Color priority: hovered > pain > recovery > worked
-  // Recovery: 100 = recovered (lime), 50 = active (goldenrod), 0 = red
-  // Worked in last 48h: cyan tint if no pain or recovery data
+  // Color priority: hovered > recovery > cyan default
+  // Pain is shown ONLY as an overlay marker (red/magenta sphere)
+  // so the user can see "overworked AND has pain" at the same time.
   let baseColor = '#14d6e8'; // default cyan
   if (recovery) baseColor = recoveryToColor(recovery.score);
-  if (pain) baseColor = intensityToColor(pain.intensity);
   if (hovered) baseColor = '#14d6e8';
 
-  // Recently worked + no pain = subtle cyan accent via emissiveIntensity
+  // Recently worked + recovery data = keep recovery color but pulse
   const recentlyWorked = worked && (Date.now() - new Date(worked.workedAt).getTime()) < 48 * 60 * 60 * 1000;
-  const emissiveBoost = recentlyWorked && !pain ? 0.55 : 0.3;
+  const emissiveBoost = hovered
+    ? 0.85
+    : recentlyWorked
+    ? 0.6
+    : 0.3;
 
   return (
     <group position={part.position}>
@@ -341,7 +344,7 @@ function BodyPartMesh({
         <meshStandardMaterial
           color="#1a1c26"
           emissive={baseColor}
-          emissiveIntensity={hovered ? 0.85 : emissiveBoost}
+          emissiveIntensity={emissiveBoost}
           metalness={0.7}
           roughness={0.3}
           transparent
@@ -356,21 +359,35 @@ function BodyPartMesh({
           color={baseColor}
           wireframe
           transparent
-          opacity={hovered ? 0.95 : 0.5}
+          opacity={hovered ? 0.95 : 0.55}
         />
       </mesh>
 
-      {/* Pain marker — magenta/red sphere */}
+      {/* Pain marker — magenta/red sphere, ALWAYS shown when pain exists.
+          Sits on top of the recovery wireframe so you can see
+          "overworked AND hurting" simultaneously. */}
       {pain && (
-        <mesh position={[0, part.size[1] / 2 + 0.12, 0]}>
-          <sphereGeometry args={[0.08, 16, 16]} />
-          <meshBasicMaterial color={intensityToColor(pain.intensity)} />
-        </mesh>
+        <group position={[0, part.size[1] / 2 + 0.18, 0]}>
+          <mesh>
+            <sphereGeometry args={[0.1, 16, 16]} />
+            <meshBasicMaterial color={intensityToColor(pain.intensity)} />
+          </mesh>
+          {/* Glow halo around the pain marker */}
+          <mesh>
+            <sphereGeometry args={[0.16, 16, 16]} />
+            <meshBasicMaterial
+              color={intensityToColor(pain.intensity)}
+              transparent
+              opacity={0.25}
+            />
+          </mesh>
+        </group>
       )}
 
-      {/* Recently-worked marker — small cyan dot */}
-      {recentlyWorked && !pain && (
-        <mesh position={[0, part.size[1] / 2 + 0.1, 0]}>
+      {/* Recently-worked marker — small cyan dot ABOVE the part.
+          Only shown if no pain marker is taking the top spot. */}
+      {recentlyWorked && (
+        <mesh position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}>
           <sphereGeometry args={[0.05, 12, 12]} />
           <meshBasicMaterial color="#14d6e8" />
         </mesh>
