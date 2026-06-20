@@ -181,6 +181,7 @@ model User {
   soulstones       Int      @default(0)
   worldProgress    UserWorldProgress[]
   painLogs         PainLog[]
+  routine          Routine?
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -472,3 +473,21 @@ model PainLog {
 // Add new muscle groups to BodyPart enum
 // PECTORAL, ABS, OBLIQUE_L/R, TRICEP_L/R, TRAPS, LAT_L/R,
 // GLUTE_L/R, ADDUCTOR_L/R, ABDUCTOR_L/R, ROTATOR_CUFF_L/R
+
+model Routine {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Target workouts per week (1-14). Default 3.
+  weeklyGoal      Int      @default(3)
+  // Consecutive weeks where the user met their weekly goal.
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  // ISO date (YYYY-MM-DD) of the Monday of the last week that was completed.
+  // Used to detect when the user crosses a week boundary.
+  lastCompletedWeek String?
+  // When the streak was last touched (set / incremented / reset).
+  streakUpdatedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

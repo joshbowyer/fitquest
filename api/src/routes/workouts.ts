@@ -7,6 +7,7 @@ import { bestEstimatedOneRm, isPrCandidate } from '../lib/pr.js';
 import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '../lib/xp.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
+import { checkRoutineProgress } from './routine.js';
 
 const SetInput = z.object({
   reps: z.number().int().min(0).max(1000),
@@ -154,6 +155,11 @@ export async function workoutRoutes(app: FastifyInstance) {
 
     await checkAchievements(me.id);
 
+    // Check routine progress — if the user hit their weekly goal,
+    // bump their streak. Returns whether the streak just incremented
+    // so the workout response can show a celebratory message.
+    const routineProgress = await checkRoutineProgress(me.id);
+
     // Raid damage: compute from workout, apply class multiplier, contribute
     // to the active raid for the user's party (if any). Even if no raid is
     // active, we still return the computed damage so the UI can show what
@@ -255,6 +261,7 @@ export async function workoutRoutes(app: FastifyInstance) {
         damage: raidDamage,
         contribution: raidContribution,
       },
+      routine: routineProgress,
     });
   });
 

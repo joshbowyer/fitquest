@@ -11,6 +11,7 @@ import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
+import { RoutinePanel } from '@/components/RoutinePanel';
 import { WaistDisplay } from '@/components/WaistDisplay';
 import { useAuth } from '@/lib/auth';
 import {
@@ -153,6 +154,35 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 md:gap-6 mb-4 md:mb-6">
         <WeighInPanel />
         <TodayHabitsPanel />
+      </div>
+
+      {/* Routine (weekly training goal + streak) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
+        <div className="lg:col-span-1">
+          <RoutinePanel />
+        </div>
+        <div className="lg:col-span-2 text-[10px] font-mono text-ink-400 leading-relaxed self-center">
+          <div className="border border-ink-700/30 p-3">
+            <div className="text-ink-300 text-[11px] mb-1 font-display tracking-widest uppercase">
+              How streaks work
+            </div>
+            <p className="mb-2">
+              Pick a weekly workout target (1–7). Each week you hit
+              your target, your streak extends and you earn a bonus
+              applied to XP, gold, and raid damage.
+            </p>
+            <p className="mb-2">
+              <span className="text-neon-lime">No penalty for missing a week.</span>{' '}
+              If you skip, the streak resets but you keep your
+              longest streak badge. Come back whenever — there are
+              no dailies to maintain.
+            </p>
+            <p>
+              Bonus scales linearly: streak 1 = ×1.05, streak 5 =
+              ×1.25, streak 10+ = ×1.50 (cap).
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Recovery + Insights */}
