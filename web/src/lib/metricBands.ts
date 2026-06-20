@@ -1,17 +1,24 @@
 /**
- * Fitness-test bands for metrics that should be displayed as
- * ideal-radial gauges (top = ideal elite, fanning out to "too low"
- * on the left and "too high" on the right).
+ * Fitness-test bands for the dashboard radials.
  *
- * Sources are approximate, blending ACFT/Air Force / general
- * strength standards + USAFA / military fitness. Values are
- * gender-neutral averages; the user can always check metric-specific
- * tests (ACFT, USMC PFT, NSCA) for population-specific norms.
+ * Two kinds:
+ *  - **threshold bands** (IdealGauge): top-center is the elite midpoint,
+ *    values fan out to too-low / too-high. Used for body fat (asymmetric)
+ *    and 1mi/5K (lower-is-better, no gap between elite and healthy).
+ *  - **monotonic thresholds** (BetterGauge): the dial fills bottom→top,
+ *    with three zone backgrounds (warn / healthy / elite). Used for
+ *    VO2 max, push-ups, pull-ups, plank, shoulder:waist.
+ *
+ * Sources are approximations, blending ACFT, USMC PFT, NSCA, and
+ * general endurance norms. The user can always defer to a specific
+ * population standard (NSCA for strength, ACFT for military readiness,
+ * etc.) — these are decent general-purpose defaults.
  */
 
 import type { MetricType } from '@/lib/types';
 
-export type MetricBands = {
+/** Threshold bands for an "ideal middle" radial (IdealGauge). */
+export type IdealBands = {
   min: number;
   eliteMin: number;
   eliteMax: number;
@@ -19,29 +26,48 @@ export type MetricBands = {
   healthyMax: number;
   max: number;
   subtitle: string;
-  unit: string;
+  /** True for "less is better" — angle mapping flips so elite is at
+   *  the low end. Used by 1mi/5K. */
+  lessIsBetter?: boolean;
+  /** Optional asymmetric mapping: split the dial at `midpoint` with
+   *  the left half covering `leftSpan` units and the right half
+   *  `rightSpan`. If unset, mapping is symmetric around the elite
+   *  midpoint. Body fat uses this so the "too low" side compresses. */
+  midpoint?: number;
+  leftSpan?: number;
+  rightSpan?: number;
 };
 
-// World-record / elite-athletic values for time-based events.
-const WR_1MI_SECONDS = 223;    // 3:43 — El Guerrouj, 1999
-const WR_5K_SECONDS  = 755;    // 12:35 — Cheptegei, 2020
-const BEGINNER_1MI   = 12 * 60; // 12:00 — novice ceiling
-const BEGINNER_5K    = 40 * 60; // 40:00 — novice ceiling
+/** Threshold bands for a monotonic "more is better" radial (BetterGauge). */
+export type MonotonicBands = {
+  min: number;
+  max: number;
+  eliteMin: number;
+  healthyMin: number;
+  subtitle: string;
+};
 
-export const METRIC_BANDS: Partial<Record<MetricType, MetricBands>> = {
+// World records (kept as constants for reference).
+const WR_1MI_SECONDS = 223;   // 3:43 — El Guerrouj, 1999
+const WR_5K_SECONDS  = 755;   // 12:35 — Cheptegei, 2020
+
+export const METRIC_IDEAL_BANDS: Partial<Record<MetricType, IdealBands>> = {
   BODY_FAT_PCT: {
-    // top is elite, healthy is a wider band. <6% objectively unhealthy.
-    min: 3,
-    eliteMin: 11,
-    eliteMax: 13,
-    healthyMin: 9,
-    healthyMax: 16,
-    max: 35,
-    subtitle: 'elite 11–13% · healthy 9–16%',
-    unit: '%',
+    // <5% is rare and unhealthy. 5-9 is below healthy. 10-12 elite.
+    // 13-15 healthy. 16-22 warn. >22 far.
+    // Asymmetric: min→midpoint covers 6pp, midpoint→max covers 15pp.
+    min: 5,
+    eliteMin: 10,
+    eliteMax: 12,
+    healthyMin: 8,
+    healthyMax: 15,
+    max: 26,
+    midpoint: 11,
+    leftSpan: 6,
+    rightSpan: 15,
+    subtitle: 'elite 10–12% · healthy 8–15% · >25% is "too fat"',
   },
   HRV: {
-    // Higher RMSSD generally better. Elite endurance athletes 70-90+.
     min: 10,
     eliteMin: 60,
     eliteMax: 80,
@@ -49,81 +75,79 @@ export const METRIC_BANDS: Partial<Record<MetricType, MetricBands>> = {
     healthyMax: 95,
     max: 150,
     subtitle: 'elite 60–80 ms · healthy 40–95',
-    unit: 'ms',
-  },
-  VO2_MAX: {
-    // ml/kg/min. Elite 55+ for most men, 50+ women; elite endurance 70+.
-    min: 15,
-    eliteMin: 55,
-    eliteMax: 65,
-    healthyMin: 40,
-    healthyMax: 75,
-    max: 90,
-    subtitle: 'elite 55–65 · healthy 40–75',
-    unit: 'ml/kg/min',
   },
   ONE_MILE_TIME: {
-    // Inverse — lower is better. Top of dial = elite (fast), so we
-    // present time values flipped. We achieve the flip by setting
-    // min/max swapped (min = WR ceiling, max = beginner ceiling) and
-    // letting the gauge render the raw second value; the formatter
-    // converts to M:SS. Elite band maps to fastest realistic times.
+    // Threshold bands for "less is better". Elite is anything below
+    // 5:30 (330s). Healthy is anything below 9:00 (540s) that isn't
+    // elite. >9:00 is warn/far.
     min: WR_1MI_SECONDS - 5,
-    eliteMin: WR_1MI_SECONDS,
-    eliteMax: 5 * 60 + 30,    // 5:30 — club-level elite amateur
-    healthyMin: 6 * 60,         // 6:00 — competitive amateur
-    healthyMax: 9 * 60,         // 9:00 — recreational
-    max: BEGINNER_1MI,
-    subtitle: `elite sub-5:30 · healthy 6:00–9:00 · WR ${Math.floor(WR_1MI_SECONDS/60)}:${(WR_1MI_SECONDS%60).toString().padStart(2,'0')}`,
-    unit: 's',
+    eliteMin: WR_1MI_SECONDS - 5,
+    eliteMax: 5 * 60 + 30,    // 5:30 — top of elite
+    healthyMin: 5 * 60 + 30, // 5:30 — bottom of elite = top of healthy (no gap)
+    healthyMax: 9 * 60,      // 9:00 — bottom of healthy
+    max: 15 * 60,
+    lessIsBetter: true,
+    subtitle: `elite <5:30 · healthy <9:00 · WR ${Math.floor(WR_1MI_SECONDS/60)}:${(WR_1MI_SECONDS%60).toString().padStart(2,'0')}`,
   },
   FIVE_K_TIME: {
     min: WR_5K_SECONDS - 5,
-    eliteMin: WR_5K_SECONDS,
-    eliteMax: 17 * 60,         // 17:00 — strong amateur
-    healthyMin: 20 * 60,        // 20:00 — solid recreational
-    healthyMax: 28 * 60,        // 28:00 — typical adult
-    max: BEGINNER_5K,
-    subtitle: `elite sub-17 · healthy 20–28 · WR ${Math.floor(WR_5K_SECONDS/60)}:${(WR_5K_SECONDS%60).toString().padStart(2,'0')}`,
-    unit: 's',
-  },
-  PLANK_HOLD: {
-    // ACFT uses 2:30 minimum (silver standard), 4:30+ elite.
-    // Values are seconds.
-    min: 0,
-    eliteMin: 240,   // 4:00
-    eliteMax: 360,   // 6:00
-    healthyMin: 120, // 2:00
-    healthyMax: 300, // 5:00
-    max: 600,         // 10:00 (top of dial)
-    subtitle: 'elite 4–6 min · healthy 2–5 min',
-    unit: 's',
-  },
-  PUSHUP_MAX: {
-    // ACFT: min 10, max 71. Industry standards for healthy adult males 25-30;
-    // elite 50+, women proportionally lower.
-    min: 0,
-    eliteMin: 50,
-    eliteMax: 80,
-    healthyMin: 25,
-    healthyMax: 49,
-    max: 100,
-    subtitle: 'elite 50–80 reps · healthy 25–49',
-    unit: 'reps',
-  },
-  PULLUP_MAX: {
-    // ACFT: dead-hang pull-up, men 1 min, max 20. NASM elite 15+.
-    min: 0,
-    eliteMin: 15,
-    eliteMax: 25,
-    healthyMin: 8,
-    healthyMax: 14,
-    max: 35,
-    subtitle: 'elite 15–25 reps · healthy 8–14',
-    unit: 'reps',
+    eliteMin: WR_5K_SECONDS - 5,
+    eliteMax: 17 * 60,        // 17:00 — top of elite
+    healthyMin: 17 * 60,      // no gap
+    healthyMax: 28 * 60,      // 28:00 — bottom of healthy
+    max: 50 * 60,
+    lessIsBetter: true,
+    subtitle: `elite <17:00 · healthy <28:00 · WR ${Math.floor(WR_5K_SECONDS/60)}:${(WR_5K_SECONDS%60).toString().padStart(2,'0')}`,
   },
 };
 
-export function bandsFor(metric: MetricType): MetricBands | null {
-  return METRIC_BANDS[metric] ?? null;
+export const METRIC_MONOTONIC_BANDS: Partial<Record<MetricType, MonotonicBands>> = {
+  VO2_MAX: {
+    // Monotonic "more is better". Elite endurance athletes 70+; elite
+    // general adult 55+; healthy 40+.
+    min: 15,
+    max: 85,
+    eliteMin: 55,
+    healthyMin: 40,
+    subtitle: 'elite ≥55 · healthy ≥40 ml/kg/min',
+  },
+  PLANK_HOLD: {
+    // No max for elite — if you can plank 9 min you're elite, no cap.
+    min: 0,
+    max: 600,
+    eliteMin: 240,    // 4:00 — top of elite band
+    healthyMin: 120,  // 2:00 — top of healthy
+    subtitle: 'elite ≥4:00 · healthy ≥2:00',
+  },
+  PUSHUP_MAX: {
+    min: 0,
+    max: 100,
+    eliteMin: 50,
+    healthyMin: 25,
+    subtitle: 'elite ≥50 · healthy ≥25 reps',
+  },
+  PULLUP_MAX: {
+    min: 0,
+    max: 35,
+    eliteMin: 15,
+    healthyMin: 8,
+    subtitle: 'elite ≥15 · healthy ≥8 reps',
+  },
+};
+
+/** Synthetic metric: shoulder ÷ waist (a V-taper indicator). */
+export const SHO_WAIST_RATIO: MonotonicBands = {
+  min: 1.0,
+  max: 2.0,
+  eliteMin: 1.6,
+  healthyMin: 1.4,
+  subtitle: 'elite ≥1.6 · healthy ≥1.4',
+};
+
+export function idealBandsFor(metric: MetricType): IdealBands | null {
+  return METRIC_IDEAL_BANDS[metric] ?? null;
+}
+
+export function monotonicBandsFor(metric: MetricType): MonotonicBands | null {
+  return METRIC_MONOTONIC_BANDS[metric] ?? null;
 }

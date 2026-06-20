@@ -65,6 +65,14 @@ const METRIC_HELP: Record<string, { about: string; tips: string[] }> = {
       'Fat-Free Mass Index = lean mass (kg) / height² (m²). 25 is the natural ceiling for most men; 22+ is considered "built".',
     tips: [],
   },
+  SHOULDER_WAIST_RATIO: {
+    about:
+      'Shoulder width ÷ waist circumference. Higher ratio = more V-taper. Elite 1.6+, healthy 1.4+. Driven mostly by skeletal shoulder width and lat/deltoid development on the high side; waist reduction via body-fat loss on the low side.',
+    tips: [
+      'Waist moves with body fat — drop waist and the ratio climbs without changing frame.',
+      'Side delts respond to overhead press; lats respond to vertical pulls.',
+    ],
+  },
   BENCH_1RM: { about: 'Estimated 1-rep max bench press.', tips: [] },
   SQUAT_1RM: { about: 'Estimated 1-rep max back squat.', tips: [] },
   DEADLIFT_1RM: { about: 'Estimated 1-rep max conventional deadlift.', tips: [] },

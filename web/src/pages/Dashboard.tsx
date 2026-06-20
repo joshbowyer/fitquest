@@ -16,7 +16,6 @@ import { FramePanel } from '@/components/FramePanel';
 import { RoutinePanel } from '@/components/RoutinePanel';
 import { NutritionWidget } from '@/components/NutritionWidget';
 import { HabitsWidget } from '@/components/HabitsWidget';
-import { WaistDisplay } from '@/components/WaistDisplay';
 import { useAuth } from '@/lib/auth';
 import {
   CLASS_META,
@@ -31,20 +30,27 @@ import {
 import { formatRelative, formatSeconds } from '@/lib/format';
 import { displayUnit } from '@/lib/units';
 import { WORLD_COLOR_HEX as CLASS_COLOR_HEX } from '@/lib/quest';
-import { bandsFor } from '@/lib/metricBands';
+import { idealBandsFor, monotonicBandsFor, SHO_WAIST_RATIO } from '@/lib/metricBands';
+import { BetterGauge } from '@/components/BetterGauge';
 import { Link } from 'react-router-dom';
 
-// Metrics that use the IdealGauge (top-center = elite, fan-out
-// bands). The bands themselves come from lib/metricBands.
+// Metrics that use the IdealGauge (top-center = elite, fan-out bands).
+// Body fat / HRV are "ideal in the middle"; 1mi / 5K are threshold-mode
+// (less is better) — both supported by IdealGauge.
 const idealMetricKeys = new Set([
   'BODY_FAT_PCT',
   'HRV',
-  'VO2_MAX',
   'ONE_MILE_TIME',
   'FIVE_K_TIME',
+]);
+
+// Metrics that use the BetterGauge (monotonic, more is better).
+const monotonicMetricKeys = new Set([
+  'VO2_MAX',
   'PLANK_HOLD',
   'PUSHUP_MAX',
   'PULLUP_MAX',
+  'SHOULDER_WAIST_RATIO',
 ]);
 
 // Categories displayed as gauges on the stat sheet. New habit categories
@@ -128,6 +134,27 @@ export function DashboardPage() {
       } as Measurement);
     }
   }
+
+  // Shoulder:Waist ratio (V-taper indicator). Derived from the latest
+  // SHOULDER and WAIST measurements. Display in user units so the
+  // ratio is unitless regardless of which system.
+  const shoulder = latestByMetric.get('SHOULDER')?.value ?? null;
+  const waist = latestByMetric.get('WAIST')?.value ?? null;
+  if (shoulder != null && waist != null && waist > 0) {
+    // SHOULDER is stored in cm; waist can be in cm (waist circumference
+    // uses cm). They cancel out so the ratio is unitless.
+    const ratio = shoulder / waist;
+    if (!latestByMetric.has('SHOULDER_WAIST_RATIO')) {
+      latestByMetric.set('SHOULDER_WAIST_RATIO', {
+        id: 'derived:sho_waist',
+        metric: 'SHOULDER_WAIST_RATIO' as any,
+        value: ratio,
+        unit: '',
+        notes: 'auto: shoulder ÷ waist',
+        recordedAt: new Date().toISOString(),
+      } as any);
+    }
+  }
   const maxByMetric = new Map<string, GeneticMax>();
   for (const g of geneticQ.data?.items || []) maxByMetric.set(g.metric, g);
 
@@ -156,18 +183,18 @@ export function DashboardPage() {
               </div>
               <div className="mt-1.5">
                 <span
-                  className="font-display text-base tracking-wider text-white"
+                  className="font-display text-base tracking-wider"
                   style={{
-                    color: cls ? CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fafafd' : '#fafafd',
+                    color: '#fafafd',
                     textShadow: cls
-                      ? `0 0 6px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}80, 0 0 2px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}`
-                      : undefined,
+                      ? `0 0 8px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}cc, 0 0 2px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}`
+                      : 'none',
                   }}
                 >
                   {user.classDisplay ?? cls?.label ?? 'Unclassed'}
                 </span>
                 {cls?.tagline && (
-                  <div className="text-[10px] font-mono text-ink-400 italic mt-0.5">
+                  <div className="text-[10px] font-mono text-ink-300 italic mt-0.5">
                     {cls.tagline}
                   </div>
                 )}
@@ -291,13 +318,14 @@ export function DashboardPage() {
                 const max = maxByMetric.get(m);
                 const min = meta.defaultMin;
                 const value = latest?.value ?? null;
-                const bands = bandsFor(m);
-                // Ideal-radial metrics get the IdealGauge (top-center is
-                // elite, fans out to too-high / too-low). The metric-specific
-                // bands (world record for time events, fitness-test standards
-                // for reps) live in lib/metricBands so they stay consistent
-                // across pages.
-                if (idealMetricKeys.has(m) && bands) {
+                const idealBands = idealBandsFor(m);
+                const monoBands = monotonicMetricKeys.has(m)
+                  ? m === 'SHOULDER_WAIST_RATIO'
+                    ? SHO_WAIST_RATIO
+                    : monotonicBandsFor(m)
+                  : null;
+                // Ideal-radial metrics (body fat, HRV, 1mi, 5K).
+                if (idealMetricKeys.has(m) && idealBands) {
                   return (
                     <button
                       key={m}
@@ -309,14 +337,42 @@ export function DashboardPage() {
                       <IdealGauge
                         metric={m}
                         value={value}
-                        min={bands.min}
-                        eliteMin={bands.eliteMin}
-                        eliteMax={bands.eliteMax}
-                        healthyMin={bands.healthyMin}
-                        healthyMax={bands.healthyMax}
-                        max={bands.max}
-                        subtitle={bands.subtitle}
+                        min={idealBands.min}
+                        eliteMin={idealBands.eliteMin}
+                        eliteMax={idealBands.eliteMax}
+                        healthyMin={idealBands.healthyMin}
+                        healthyMax={idealBands.healthyMax}
+                        max={idealBands.max}
+                        subtitle={idealBands.subtitle}
                         color="lime"
+                        size={170}
+                        midpoint={idealBands.midpoint}
+                        leftSpan={idealBands.leftSpan}
+                        rightSpan={idealBands.rightSpan}
+                      />
+                    </button>
+                  );
+                }
+                // Monotonic "more is better" metrics (VO2, plank,
+                // pushups, pullups, shoulder:waist).
+                if (monotonicMetricKeys.has(m) && monoBands) {
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDetailMetric(m)}
+                      className="cursor-pointer hover:brightness-125 transition-all"
+                      title="Click for details"
+                    >
+                      <BetterGauge
+                        metric={m}
+                        value={value}
+                        min={monoBands.min}
+                        max={monoBands.max}
+                        eliteMin={monoBands.eliteMin}
+                        healthyMin={monoBands.healthyMin}
+                        subtitle={monoBands.subtitle}
+                        color="cyan"
                         size={170}
                       />
                     </button>
@@ -351,7 +407,6 @@ export function DashboardPage() {
                 );
               })}
             </div>
-            {isBodyComp && <WaistDisplay />}
           </Panel>
         );
       })}

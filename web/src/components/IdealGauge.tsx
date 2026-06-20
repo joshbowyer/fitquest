@@ -57,6 +57,16 @@ type Props = {
   size?: number;
   showPct?: boolean;
   subtitle?: string;
+  /**
+   * If provided, the dial is split asymmetrically at this value:
+   *   left  half (min → midpoint) covers `leftSpan` units
+   *   right half (midpoint → max) covers `rightSpan` units
+   * Useful for body fat where the "too low" side should compress more
+   * than the "too high" side. If omitted, the dial is symmetric.
+   */
+  midpoint?: number;
+  leftSpan?: number;
+  rightSpan?: number;
 };
 
 export function IdealGauge({
@@ -72,6 +82,9 @@ export function IdealGauge({
   size = 200,
   showPct = true,
   subtitle,
+  midpoint,
+  leftSpan,
+  rightSpan,
 }: Props) {
   const id = useId();
   const meta = METRICS[metric];
@@ -84,14 +97,37 @@ export function IdealGauge({
   const rOuter = 86;
   const rInner = 70;
 
-  const range = max - min;
-  const idealMid = (eliteMin + eliteMax) / 2;
+  // When `midpoint` is provided we map asymmetrically: the left half
+  // covers `leftSpan` units, the right half covers `rightSpan`. This
+  // gives the "low is tighter, high is wider" weighting the user asked
+  // for on body fat.
+  const useAsymmetric = midpoint != null && leftSpan != null && rightSpan != null
+    && leftSpan! > 0 && rightSpan! > 0;
 
-  // Angle mapping: t in [-1, +1] maps linearly to the dial.
+  // Default symmetric mapping: ideal midpoint = (eliteMin + eliteMax) / 2.
+  const idealMid = useAsymmetric ? midpoint! : (eliteMin + eliteMax) / 2;
+
+  // Map value → angle. Convention: dial starts at bottom-left (135°),
+// sweeps clockwise to bottom-right (405°), passing through the top
+// (270°). The elite midpoint sits at the top.
   const angleOf = (v: number) => {
-    const t = (v - idealMid) / Math.max(range / 2, 0.0001);
     const half = SWEEP / 2;
-    return TOP_ANGLE - t * half;
+    if (useAsymmetric) {
+      // Two-segment linear mapping around `midpoint`:
+      //   v = midpoint            → TOP (270°)
+      //   v = midpoint - leftSpan  → BOTTOM-LEFT  (135°)
+      //   v = midpoint + rightSpan → BOTTOM-RIGHT (405°)
+      if (v <= idealMid) {
+        const t = leftSpan! > 0 ? (midpoint! - v) / leftSpan! : 0;
+        return TOP_ANGLE - t * half;
+      }
+      const t = rightSpan! > 0 ? (v - midpoint!) / rightSpan! : 0;
+      return TOP_ANGLE + t * half;
+    }
+    // Symmetric mapping around the elite midpoint.
+    const totalRange = Math.max(0.0001, max - min);
+    const t = (v - idealMid) / Math.max(totalRange / 2, 0.0001);
+    return TOP_ANGLE + t * half;
   };
 
   const valueAngle = value != null && Number.isFinite(value) ? angleOf(value) : null;
@@ -100,13 +136,27 @@ export function IdealGauge({
   const healthyMinAngle = angleOf(healthyMin);
   const healthyMaxAngle = angleOf(healthyMax);
 
-  // Status classification.
+  // Status classification. We support two modes:
+  //   "ideal" (default): elite is [eliteMin, eliteMax], healthy is
+  //     [healthyMin, healthyMax]. Bands don't have to overlap; we
+  //     infer "less is better" when eliteMax < eliteMin and treat
+  //     value <= eliteMax as elite.
+  //   "threshold" (1mi / 5K "less is better"): strict ladder where
+  //     `eliteMax === healthyMin`. Elite = anything ≤ eliteMax,
+  //     healthy = anything between eliteMax and healthyMax.
+  const lessIsBetter = eliteMax < eliteMin;
   const status = (() => {
     if (value == null) return '—';
+    if (lessIsBetter) {
+      if (value <= eliteMax) return 'elite';
+      if (value <= healthyMax) return 'healthy';
+      // Beyond healthyMax: warn if close, far if way past.
+      const span = Math.max(1, healthyMax - eliteMax);
+      if (value <= healthyMax + span) return 'warn';
+      return 'far';
+    }
     if (value >= eliteMin && value <= eliteMax) return 'elite';
     if (value >= healthyMin && value <= healthyMax) return 'healthy';
-    // Anything outside healthy is "warn" (mild) or "far" (extreme).
-    // Use a 25% buffer of the healthy span to differentiate.
     const span = healthyMax - healthyMin;
     const buf = span * 0.25;
     if (value < healthyMin - buf || value > healthyMax + buf) return 'far';
@@ -161,14 +211,17 @@ export function IdealGauge({
     return formatNumber(v, decimals);
   };
 
-  // Background zones
-  const eliteArc = arcPath(cx, cy, (rOuter + rInner) / 2, eliteMaxAngle, eliteMinAngle);
+  // Background zones. Arc goes from eliteMin angle → eliteMax angle for
+  // the elite band, healthyMin → healthyMax for the healthy band. For
+  // threshold mode (1mi/5K) eliteMax === healthyMin so the two arcs
+  // abut without a gap.
+  const eliteArc = arcPath(cx, cy, (rOuter + rInner) / 2, eliteMinAngle, eliteMaxAngle);
   const healthyArc = arcPath(
     cx,
     cy,
     (rOuter + rInner) / 2,
-    healthyMaxAngle,
     healthyMinAngle,
+    healthyMaxAngle,
   );
 
   // Indicator (current value → ideal midpoint), colored by status

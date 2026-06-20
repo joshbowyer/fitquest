@@ -12,6 +12,8 @@ export type MetricType =
   | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME' | 'ONE_MILE_TIME'
   | 'PLANK_HOLD' | 'L_SIT_HOLD' | 'PUSHUP_MAX' | 'PULLUP_MAX'
   | 'POWERLIFT_TOTAL'
+  // Derived — not logged directly. Computed by Dashboard from SHOULDER + WAIST.
+  | 'SHOULDER_WAIST_RATIO'
   | 'SLEEP_HOURS' | 'SLEEP_QUALITY'
   | 'CALORIES' | 'PROTEIN_G' | 'WATER_ML'
   | 'MOOD' | 'ENERGY' | 'SORENESS' | 'STRESS';
@@ -63,6 +65,8 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   PUSHUP_MAX: { type: 'PUSHUP_MAX', category: 'CALISTHENICS', label: 'Push-ups in a Row', shortLabel: 'Push-ups', unit: 'reps', defaultMin: 5, description: 'Max push-ups in a single unbroken set.' },
   PULLUP_MAX: { type: 'PULLUP_MAX', category: 'CALISTHENICS', label: 'Pull-ups in a Row', shortLabel: 'Pull-ups', unit: 'reps', defaultMin: 1, description: 'Max pull-ups in a single unbroken set.' },
   POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best Squat + Bench + Deadlift.' },
+  // Derived metric — auto-computed from SHOULDER ÷ WAIST. Not loggable.
+  SHOULDER_WAIST_RATIO: { type: 'SHOULDER_WAIST_RATIO', category: 'BODY_COMP', label: 'Shoulder ÷ Waist', shortLabel: 'Sho÷W', unit: '', defaultMin: 1, description: 'Auto: shoulder width ÷ waist circumference. Higher = more V-taper.' },
   SLEEP_HOURS: { type: 'SLEEP_HOURS', category: 'SLEEP', label: 'Sleep Duration', shortLabel: 'Sleep', unit: 'h', defaultMin: 5, description: 'Hours slept.' },
   SLEEP_QUALITY: { type: 'SLEEP_QUALITY', category: 'SLEEP', label: 'Sleep Quality', shortLabel: 'Sleep Q', unit: '/10', defaultMin: 5, description: 'Sleep quality 1-10.' },
   CALORIES: { type: 'CALORIES', category: 'NUTRITION', label: 'Calories', shortLabel: 'Calories', unit: 'kcal', defaultMin: 1500, description: 'Daily calories.' },
@@ -77,7 +81,7 @@ export const METRICS: Record<MetricType, MetricMeta> = {
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   HYPERTROPHY: ['BICEP', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
   STRENGTH: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'OHP_1RM', 'PULLUP_1RM', 'POWERLIFT_TOTAL'],
-  BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
+  BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST', 'SHOULDER_WAIST_RATIO'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'PUSHUP_MAX', 'PULLUP_MAX'],
   SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
