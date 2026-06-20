@@ -1,23 +1,28 @@
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
-import { NeonButton } from '@/components/NeonButton';
-import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { Avatar } from '@/components/Avatar';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   type World,
   type WorldLevel,
   WORLD_COLOR_HEX,
+  type RequirementProgress,
 } from '@/lib/quest';
 import { getFrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { classNames } from '@/lib/format';
 
 /**
  * /quest/:worldId  → world landing page (level list)
- * /quest/:worldId/:levelId → single level detail with enemy + attempt
+ * /quest/:worldId/:levelId → single level detail (progress against threshold)
+ *
+ * Levels are auto-completed when their threshold is met by logged
+ * data — no BEGIN button needed. The user can manually re-trigger
+ * the check via the "Re-check" button if they've just logged a
+ * workout/sleep log that might cross a threshold.
  */
 export function QuestWorldPage() {
   const { worldId, levelId } = useParams<{ worldId: string; levelId?: string }>();
@@ -31,19 +36,15 @@ export function QuestWorldPage() {
     enabled: !!worldId,
   });
 
-  // Hooks must always be called in the same order — keep all
-  // useDelayedMutation etc. above the early return below.
-  const attempt = useDelayedMutation<
-    { level: WorldLevel; result: { won: boolean; score: number; xpAwarded: number; goldAwarded: number; attempts: number; bestScore: number; completed: boolean } },
-    string
-  >({
-    mutationFn: (lid: string) =>
-      api(`/quest/levels/${lid}/attempt`, { method: 'POST', body: { score: 100 } }),
+  const recheck = useDelayedMutation<{ results: unknown[] }, void>({
+    mutationFn: () =>
+      api(`/quest/check`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['quest-worlds'] });
       qc.invalidateQueries({ queryKey: ['quest-world'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
     },
-  }, 600);
+  }, 800);
 
   if (isLoading || !user || !world) {
     return (
@@ -56,7 +57,7 @@ export function QuestWorldPage() {
   const hex = WORLD_COLOR_HEX[world.color];
   const archetype = getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE';
   const meta = ARCHETYPE_META[archetype];
-  const completed = world.levels.filter((l) => l.progress?.completed).length;
+  const completed = world.levels.filter((l) => l.completed).length;
   const activeLevel = levelId ? world.levels.find((l) => l.id === levelId) : null;
 
   return (
@@ -64,18 +65,24 @@ export function QuestWorldPage() {
       <PageHeader
         title={world.name}
         subtitle={
-          <span className="flex items-center gap-3">
+          <span className="flex items-center gap-3 flex-wrap">
             <Link to="/quest" className="text-neon-cyan hover:underline">← overworld</Link>
             <span style={{ color: hex }}>{world.theme}</span>
             <span className="text-ink-400">·</span>
             <span className="text-ink-400">{completed}/{world.levels.length} cleared</span>
+            <button
+              onClick={() => recheck.run()}
+              disabled={recheck.isPending}
+              className="text-[10px] font-mono text-neon-cyan hover:underline ml-auto"
+            >
+              {recheck.isPending ? '⟳ checking…' : '⟳ re-check thresholds'}
+            </button>
           </span>
         }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <div className="space-y-4">
-          {/* World flavor */}
           <Panel title={world.affiliation} variant={worldColorToVariant(world.color)}>
             <p className="text-xs text-ink-200 font-mono leading-relaxed">{world.description}</p>
           </Panel>
@@ -84,9 +91,6 @@ export function QuestWorldPage() {
             <LevelDetail
               world={world}
               level={activeLevel}
-              onAttempt={(lid) => attempt.run(lid)}
-              attemptPending={attempt.isPending}
-              attemptResult={attempt.data}
             />
           ) : (
             <Panel title="Levels" variant={worldColorToVariant(world.color)}>
@@ -95,9 +99,8 @@ export function QuestWorldPage() {
                   const prev = lvl.requiredLevelId
                     ? world.levels.find((l) => l.id === lvl.requiredLevelId)
                     : null;
-                  const prevDone = prev ? !!prev.progress?.completed : true;
+                  const prevDone = prev ? prev.completed : true;
                   const unlocked = user.level >= lvl.playerLevelRequired && prevDone;
-                  const done = !!lvl.progress?.completed;
                   return (
                     <button
                       key={lvl.id}
@@ -105,36 +108,46 @@ export function QuestWorldPage() {
                       disabled={!unlocked}
                       className={classNames(
                         'w-full text-left p-3 border transition-all',
-                        done
+                        lvl.completed
                           ? 'border-neon-amber/40 bg-bg-800/50 hover:border-neon-amber'
                           : unlocked
-                          ? 'border-ink-500 hover:border-neon-cyan/60 hover:bg-bg-700 cursor-pointer'
+                          ? 'border-ink-500 hover:border-neon-cyan/40 cursor-pointer'
                           : 'border-bg-700 opacity-40 cursor-not-allowed',
                       )}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-start gap-3">
                         <div
-                          className="w-10 h-10 grid place-items-center font-display text-base border-2"
+                          className="w-10 h-10 grid place-items-center font-display text-base border-2 shrink-0"
                           style={{ borderColor: hex, color: hex, textShadow: `0 0 6px ${hex}` }}
                         >
                           {String(lvl.order).padStart(2, '0')}
                         </div>
-                        <div className="flex-1">
-                          <div className="text-base text-ink-50 font-display tracking-wide">
-                            {lvl.name}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="text-base text-ink-50 font-display tracking-wide">
+                              {lvl.name}
+                            </div>
+                            {lvl.completed && <span className="text-neon-amber text-sm">✓</span>}
+                            {!unlocked && !lvl.completed && <span className="text-ink-400">🔒</span>}
                           </div>
-                          <div className="text-[10px] text-ink-300 font-mono mt-1">
-                            {lvl.enemy} · diff {lvl.difficulty} ·{' '}
+                          <div className="text-[10px] font-mono text-ink-300 mb-2">
                             <span style={{ color: hex }}>+{lvl.xp} XP</span>
-                            {' · '}
+                            <span className="text-ink-500"> · </span>
                             <span className="text-neon-amber">+{lvl.gold} G</span>
                           </div>
+                          {/* Threshold progress */}
+                          {lvl.progress && unlocked && (
+                            <div>
+                              <div className="text-[10px] font-mono text-ink-400 leading-relaxed">
+                                {lvl.requirementSummary}
+                              </div>
+                              <ProgressBar progress={lvl.progress} />
+                            </div>
+                          )}
                         </div>
-                        <div className="text-2xl" style={{ color: hex, textShadow: `0 0 8px ${hex}` }}>
+                        <div className="text-2xl shrink-0" style={{ color: hex, textShadow: `0 0 8px ${hex}` }}>
                           {lvl.enemyGlyph}
                         </div>
-                        {done && <span className="text-neon-amber text-xl">✓</span>}
-                        {!unlocked && !done && <span className="text-ink-400">🔒</span>}
                       </div>
                     </button>
                   );
@@ -144,16 +157,15 @@ export function QuestWorldPage() {
           )}
         </div>
 
-        {/* Sidebar: player avatar + completion status */}
         <div className="space-y-4">
           <Panel title="YOU" variant="amber">
             <div className="flex items-center gap-3">
               <Avatar
                 archetype={archetype}
                 accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
-                size={80}
+                size={64}
               />
-              <div className="text-xs font-mono leading-relaxed">
+              <div className="text-xs font-mono">
                 <div className="text-ink-50 font-display tracking-widest">{user.username}</div>
                 <div className="text-ink-300">Lvl {user.level}</div>
                 <div className="text-ink-400 text-[10px] mt-1">
@@ -168,15 +180,33 @@ export function QuestWorldPage() {
               <div className="flex justify-between">
                 <span className="text-ink-300">Remaining XP</span>
                 <span className="text-neon-cyan">
-                  +{world.levels.filter((l) => !l.progress?.completed).reduce((s, l) => s + l.xp, 0)}
+                  +{world.levels.filter((l) => !l.completed).reduce((s, l) => s + l.xp, 0)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-ink-300">Remaining Gold</span>
                 <span className="text-neon-amber">
-                  +{world.levels.filter((l) => !l.progress?.completed).reduce((s, l) => s + l.gold, 0)}
+                  +{world.levels.filter((l) => !l.completed).reduce((s, l) => s + l.gold, 0)}
                 </span>
               </div>
+            </div>
+          </Panel>
+
+          <Panel title="HOW IT WORKS" variant="violet">
+            <div className="text-[10px] font-mono text-ink-300 leading-relaxed space-y-2">
+              <p>
+                Each level has a <span className="text-ink-50">threshold</span> — a
+                specific achievement you need to hit in your training.
+              </p>
+              <p>
+                Log the relevant workout, sleep, or recovery data and the
+                level clears automatically. No more clicking BEGIN.
+              </p>
+              <p>
+                <span className="text-ink-50">Thresholds scale with your
+                frame</span> — bodyweight multipliers for lifts, absolute
+                times for cardio, day-counts for sleep/recovery.
+              </p>
             </div>
           </Panel>
         </div>
@@ -185,28 +215,14 @@ export function QuestWorldPage() {
   );
 }
 
-function LevelDetail({
-  world,
-  level,
-  onAttempt,
-  attemptPending,
-  attemptResult,
-}: {
-  world: World;
-  level: WorldLevel;
-  onAttempt: (levelId: string) => void;
-  attemptPending: boolean;
-  attemptResult: { level: WorldLevel; result: { won: boolean; score: number; xpAwarded: number; goldAwarded: number; attempts: number; bestScore: number; completed: boolean } } | undefined;
-}) {
+function LevelDetail({ world, level }: { world: World; level: WorldLevel }) {
   const hex = WORLD_COLOR_HEX[world.color];
-  const done = !!level.progress?.completed;
   return (
     <Panel title={level.name} variant={worldColorToVariant(world.color)}>
       <div className="space-y-4">
-        {/* Enemy encounter */}
         <div className="flex items-center gap-4">
           <div
-            className="w-20 h-20 grid place-items-center text-5xl border-2"
+            className="w-20 h-20 grid place-items-center text-5xl border-2 shrink-0"
             style={{
               borderColor: hex,
               color: hex,
@@ -216,7 +232,7 @@ function LevelDetail({
           >
             {level.enemyGlyph}
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
               Encounter
             </div>
@@ -224,12 +240,19 @@ function LevelDetail({
               {level.enemy}
             </div>
             <div className="text-[10px] font-mono text-ink-400 mt-1">
-              Difficulty {level.difficulty} · Level {level.order}
+              Level {level.order}
+              {level.completed && level.completedAt && (
+                <span> · Cleared {new Date(level.completedAt).toLocaleDateString()}</span>
+              )}
             </div>
           </div>
+          {level.completed && (
+            <div className="text-3xl neon-text-amber" style={{ textShadow: '0 0 12px #ffaa3a' }}>
+              ✓
+            </div>
+          )}
         </div>
 
-        {/* Flavor text */}
         <blockquote
           className="border-l-2 pl-3 italic text-sm font-mono leading-relaxed"
           style={{ borderColor: hex, color: '#d0d0db' }}
@@ -237,55 +260,109 @@ function LevelDetail({
           {level.description}
         </blockquote>
 
-        {/* Rewards */}
-        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-          <div className="border border-ink-700/50 p-2">
-            <div className="text-ink-400 text-[10px] uppercase tracking-widest">XP Reward</div>
-            <div className="text-lg text-neon-cyan font-display">+{level.xp}</div>
+        {/* Threshold */}
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+            Requirement
           </div>
-          <div className="border border-ink-700/50 p-2">
-            <div className="text-ink-400 text-[10px] uppercase tracking-widest">Gold Reward</div>
-            <div className="text-lg text-neon-amber font-display">+{level.gold}</div>
-          </div>
-        </div>
-
-        {/* Progress */}
-        {level.progress && (
-          <div className="text-[10px] font-mono text-ink-300">
-            <div>Attempts: <span className="text-ink-50">{level.progress.attempts}</span></div>
-            <div>Best score: <span className="text-ink-50">{level.progress.bestScore}</span></div>
-            {level.progress.completedAt && (
-              <div>Completed: <span className="text-ink-50">{new Date(level.progress.completedAt).toLocaleDateString()}</span></div>
-            )}
-          </div>
-        )}
-
-        {/* Action */}
-        <div className="flex items-center gap-3">
-          <NeonButton
-            variant={worldColorToVariant(world.color)}
-            loading={attemptPending}
-            onClick={() => onAttempt(level.id)}
+          <div
+            className="text-sm font-mono p-3 border"
+            style={{
+              borderColor: hex,
+              background: `${hex}11`,
+              color: '#fafafd',
+            }}
           >
-            {done ? 'REPLAY' : 'BEGIN'}
-          </NeonButton>
-          {attemptResult && (
-            <div
-              className="text-sm font-display tracking-widest"
-              style={{
-                color: attemptResult.result.won ? '#9bff5c' : '#f55cc4',
-                textShadow: attemptResult.result.won ? '0 0 8px #9bff5c' : '0 0 8px #f55cc4',
-              }}
-            >
-              {attemptResult.result.won
-                ? `VICTORY · +${attemptResult.result.xpAwarded} XP · +${attemptResult.result.goldAwarded} G`
-                : 'DEFEAT'}
+            {level.requirementSummary}
+          </div>
+          {level.progress && (
+            <div className="mt-3">
+              <ProgressBar progress={level.progress} large />
+              <div className="mt-2 text-[10px] font-mono text-ink-400 leading-relaxed">
+                {progressSummary(level.progress, level.requirementSummary)}
+              </div>
             </div>
           )}
         </div>
+
+        {/* Rewards */}
+        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+          <div className="border border-ink-700/50 p-2">
+            <div className="text-ink-400 text-[10px] uppercase tracking-widest">XP on Clear</div>
+            <div className="text-lg font-display text-neon-cyan">+{level.xp}</div>
+          </div>
+          <div className="border border-ink-700/50 p-2">
+            <div className="text-ink-400 text-[10px] uppercase tracking-widest">Gold on Clear</div>
+            <div className="text-lg font-display text-neon-amber">+{level.gold}</div>
+          </div>
+        </div>
+
+        {level.completed && (
+          <div className="border border-neon-amber/40 bg-neon-amber/5 p-3 text-center">
+            <div className="font-display tracking-widest neon-text-amber text-lg">CLEARED</div>
+            <div className="text-[10px] font-mono text-ink-300 mt-1">
+              Level auto-cleared when your data met the threshold.
+            </div>
+          </div>
+        )}
       </div>
     </Panel>
   );
+}
+
+function ProgressBar({ progress, large = false }: { progress: RequirementProgress; large?: boolean }) {
+  const pct = Math.min(1, Math.max(0, progress.pct));
+  const pctText = `${Math.round(pct * 100)}%`;
+  const color = progress.cleared ? '#ffc34d' : pct > 0.7 ? '#9bff5c' : pct > 0.3 ? '#14d6e8' : '#585868';
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={classNames('flex-1 bg-bg-700 border border-ink-500/30', large ? 'h-3' : 'h-1.5')}
+      >
+        <div
+          className="h-full transition-all"
+          style={{
+            width: `${pct * 100}%`,
+            background: color,
+            boxShadow: `0 0 6px ${color}`,
+          }}
+        />
+      </div>
+      <span className="text-[10px] font-mono shrink-0" style={{ color }}>
+        {pctText}
+      </span>
+    </div>
+  );
+}
+
+function progressSummary(p: RequirementProgress, summary: string): string {
+  if (p.cleared) return `✓ threshold met — ${summary}`;
+  if (p.current == null) return `No data yet. Log a relevant workout to start tracking.`;
+  return `Progress: ${formatProgress(p.current, p.target)} of target. Keep going!`;
+}
+
+function formatProgress(current: number, target: number): string {
+  // If target looks like seconds (> 100), format as time
+  if (target >= 60 && target <= 60 * 60 * 4) {
+    return `${Math.round(current / 60)}min / ${Math.round(target / 60)}min`;
+  }
+  // If kg / volume range
+  if (target >= 20 && target <= 2000) {
+    return `${Math.round(current)}kg / ${Math.round(target)}kg`;
+  }
+  // If reps
+  if (target >= 5 && target <= 200) {
+    return `${Math.round(current)} / ${Math.round(target)} reps`;
+  }
+  // If days
+  if (target >= 1 && target <= 100) {
+    return `${Math.round(current)} / ${Math.round(target)} days`;
+  }
+  // If meters
+  if (target >= 100) {
+    return `${Math.round(current)}m / ${Math.round(target)}m`;
+  }
+  return `${Math.round(current)} / ${Math.round(target)}`;
 }
 
 function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' {

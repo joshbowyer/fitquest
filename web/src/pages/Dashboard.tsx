@@ -89,21 +89,21 @@ export function DashboardPage() {
       />
 
       {/* Top hero: level + raid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 md:mb-6">
         <Panel variant="cyan" className="lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/70">Character</div>
-              <div className="font-display text-3xl tracking-widest neon-text-cyan mt-1">
+              <div className="font-display text-2xl md:text-3xl tracking-widest neon-text-cyan mt-1 truncate">
                 {user.username}
               </div>
               <div className={`text-xs font-mono mt-1 ${cls ? `neon-text-${cls.color}` : 'text-ink-300'}`}>
                 {cls?.label ?? 'Unclassed'} — {cls?.tagline ?? 'pick a class in profile'}
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Level</div>
-              <div className="font-display text-5xl neon-text-cyan leading-none">{user.level}</div>
+              <div className="font-display text-4xl md:text-5xl neon-text-cyan leading-none">{user.level}</div>
               <div className="text-xs font-mono text-ink-300 mt-2">{user.xp} XP</div>
             </div>
           </div>

@@ -1,117 +1,176 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { WORLDS, getWorld, getLevel } from '../lib/worlds';
 import { requireUser } from '../lib/auth.js';
-
-const attemptSchema = z.object({
-  score: z.number().int().min(0).max(100),
-});
+import {
+  WORLDS,
+  getWorld,
+  getLevel,
+  computeRequirementProgress,
+  type World,
+  type WorldLevel,
+  type RequirementProgress,
+} from '../lib/worlds.js';
 
 export async function questRoutes(app: FastifyInstance) {
-  // GET /quest/worlds — list all worlds with the user's progress attached
+  // GET /worlds — list all worlds with the user's progress attached
   app.get('/worlds', async (req) => {
     const me = await requireUser(req);
-    const userId = me.id;
-    const rows = await prisma.userWorldProgress.findMany({ where: { userId } });
-    const progressByLevel = new Map(
-      rows.map((r: { levelId: string }) => [r.levelId, r]),
-    );
+    const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const recentWorkouts = await prisma.workout.findMany({
+      where: { userId: me.id, performedAt: { gte: sinceDate } },
+      include: { exercises: { include: { sets: true } } },
+      orderBy: { performedAt: 'desc' },
+    });
+    const sleepHistory = await loadSleepHistory(me.id);
+    const recoveryHistory = await loadRecoveryHistory(me.id);
+    const progress = await prisma.userWorldProgress.findMany({ where: { userId: me.id } });
 
-    return WORLDS.map((w) => ({
-      ...w,
-      levels: w.levels.map((l) => ({
-        ...l,
-        progress: progressByLevel.get(l.id) ?? null,
-      })),
-    }));
+    return WORLDS.map((w) => attachProgress(w, me, recentWorkouts, sleepHistory, recoveryHistory, progress));
   });
 
-  // GET /quest/worlds/:id — single world with full levels
+  // GET /worlds/:id — single world with full levels + progress
   app.get<{ Params: { id: string } }>('/worlds/:id', async (req, reply) => {
     const me = await requireUser(req);
-    const userId = me.id;
     const { id } = req.params;
     const world = getWorld(id);
     if (!world) return reply.code(404).send({ error: 'World not found' });
 
-    const rows = await prisma.userWorldProgress.findMany({
-      where: { userId, levelId: { startsWith: `${id}-` } },
+    const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const recentWorkouts = await prisma.workout.findMany({
+      where: { userId: me.id, performedAt: { gte: sinceDate } },
+      include: { exercises: { include: { sets: true } } },
+      orderBy: { performedAt: 'desc' },
     });
-    const progressByLevel = new Map(
-      rows.map((r: { levelId: string }) => [r.levelId, r]),
-    );
-
-    return {
-      ...world,
-      levels: world.levels.map((l) => ({
-        ...l,
-        progress: progressByLevel.get(l.id) ?? null,
-      })),
-    };
+    const sleepHistory = await loadSleepHistory(me.id);
+    const recoveryHistory = await loadRecoveryHistory(me.id);
+    const progress = await prisma.userWorldProgress.findMany({
+      where: { userId: me.id, levelId: { startsWith: `${id}-` } },
+    });
+    return attachProgress(world, me, recentWorkouts, sleepHistory, recoveryHistory, progress);
   });
 
-  // POST /quest/levels/:id/attempt — record an attempt
-  app.post<{ Params: { id: string } }>('/levels/:id/attempt', async (req, reply) => {
+  // POST /check — re-check all levels after a workout / sleep log /
+  // recovery change. Auto-completes any newly-cleared levels.
+  app.post('/check', async (req) => {
     const me = await requireUser(req);
-    const userId = me.id;
-    const { id } = req.params;
-    const body = attemptSchema.parse(req.body);
-    const ref = getLevel(id);
-    if (!ref) return reply.code(404).send({ error: 'Level not found' });
-    const { level } = ref;
-
-    // Compute win chance from level difficulty. We don't want to gate
-    // too hard on real measurements — the Quest tab is exploratory.
-    // difficulty 1 needs ≥20, higher difficulties need ~12/level.
-    const win = body.score >= Math.max(20, level.difficulty * 12);
-
-    const prev = await prisma.userWorldProgress.findUnique({
-      where: { userId_levelId: { userId, levelId: id } },
+    const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const recentWorkouts = await prisma.workout.findMany({
+      where: { userId: me.id, performedAt: { gte: sinceDate } },
+      include: { exercises: { include: { sets: true } } },
+      orderBy: { performedAt: 'desc' },
     });
-    const wasCompleted = prev?.completed ?? false;
+    const sleepHistory = await loadSleepHistory(me.id);
+    const recoveryHistory = await loadRecoveryHistory(me.id);
 
-    const updated = await prisma.userWorldProgress.upsert({
-      where: { userId_levelId: { userId, levelId: id } },
-      create: {
-        userId,
-        levelId: id,
-        attempts: 1,
-        bestScore: body.score,
-        completed: win,
-        completedAt: win ? new Date() : null,
-      },
-      update: {
-        attempts: { increment: 1 },
-        bestScore: { set: Math.max(prev?.bestScore ?? 0, body.score) },
-        completed: prev?.completed || win,
-        completedAt:
-          prev?.completedAt ?? (win ? new Date() : null),
-      },
-    });
-
-    // Award XP + gold on first completion.
-    if (win && !wasCompleted) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          xp: { increment: level.xp },
-          gold: { increment: level.gold },
-        },
-      });
+    const results: Array<{ levelId: string; cleared: boolean; progress: RequirementProgress }> = [];
+    for (const world of WORLDS) {
+      for (const lvl of world.levels) {
+        const progress = computeRequirementProgress(
+          lvl.requirement,
+          me.weightKg,
+          recentWorkouts,
+          sleepHistory,
+          recoveryHistory,
+        );
+        const existing = await prisma.userWorldProgress.findUnique({
+          where: { userId_levelId: { userId: me.id, levelId: lvl.id } },
+        });
+        const wasCompleted = existing?.completed ?? false;
+        if (progress.cleared && !wasCompleted) {
+          // Auto-complete this level and grant rewards
+          await prisma.userWorldProgress.upsert({
+            where: { userId_levelId: { userId: me.id, levelId: lvl.id } },
+            create: {
+              userId: me.id,
+              levelId: lvl.id,
+              completed: true,
+              completedAt: new Date(),
+              attempts: 1,
+              bestScore: 100,
+            },
+            update: {
+              completed: true,
+              completedAt: existing?.completedAt ?? new Date(),
+              attempts: { increment: 1 },
+            },
+          });
+          await prisma.user.update({
+            where: { id: me.id },
+            data: {
+              xp: { increment: lvl.xp },
+              gold: { increment: lvl.gold },
+            },
+          });
+          results.push({ levelId: lvl.id, cleared: true, progress });
+        } else {
+          results.push({
+            levelId: lvl.id,
+            cleared: wasCompleted || progress.cleared,
+            progress,
+          });
+        }
+      }
     }
+    return { results };
+  });
+}
 
+// Helper: load sleep history from the user's measurements (we treat
+// any SLEEP measurement as a sleep log).
+async function loadSleepHistory(userId: string) {
+  const sleeps = await prisma.measurement.findMany({
+    where: { userId, metric: 'SLEEP_HOURS' },
+    orderBy: { recordedAt: 'desc' },
+    take: 90,
+  });
+  return sleeps.map((s) => ({
+    date: s.recordedAt.toISOString().slice(0, 10),
+    hours: s.value,
+  }));
+}
+
+// Helper: load recovery score history. Compute the same way as
+// api/src/lib/recovery.ts but for past dates.
+async function loadRecoveryHistory(userId: string) {
+  // For now just return empty — recovery score computation requires
+  // multiple metrics; we can expand this later when the user has
+  // enough history.
+  return [];
+}
+
+// Helper: attach user progress to a world
+function attachProgress(
+  world: World,
+  user: { id: string; level: number; weightKg: number | null; bodyweightKg?: number | null },
+  recentWorkouts: Array<{
+    exercises: Array<{
+      name: string;
+      sets: Array<{ weight: number | null; reps: number; duration: number | null }>;
+    }>;
+  }>,
+  sleepHistory: Array<{ date: string; hours: number }>,
+  recoveryHistory: Array<{ date: string; score: number }>,
+  progress: Array<{ levelId: string; completed: boolean; completedAt: Date | null; attempts: number; bestScore: number }>,
+): World & {
+  levels: Array<WorldLevel & { progress: RequirementProgress | null; completed: boolean; completedAt: string | null }>;
+} {
+  const progressByLevel = new Map(progress.map((p) => [p.levelId, p]));
+  const levels = world.levels.map((lvl) => {
+    const reqProgress = computeRequirementProgress(
+      lvl.requirement,
+      user.weightKg,
+      recentWorkouts,
+      sleepHistory,
+      recoveryHistory,
+    );
+    const existing = progressByLevel.get(lvl.id);
+    const completed = existing?.completed ?? reqProgress.cleared;
     return {
-      level,
-      result: {
-        won: win,
-        score: body.score,
-        xpAwarded: win && !wasCompleted ? level.xp : 0,
-        goldAwarded: win && !wasCompleted ? level.gold : 0,
-        attempts: updated.attempts,
-        bestScore: updated.bestScore,
-        completed: updated.completed,
-      },
+      ...lvl,
+      progress: reqProgress,
+      completed,
+      completedAt: existing?.completedAt?.toISOString() ?? null,
     };
   });
+  return { ...world, levels };
 }

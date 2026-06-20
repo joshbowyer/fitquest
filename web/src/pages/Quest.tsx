@@ -102,7 +102,7 @@ export function QuestPage() {
             <Panel title="WORLDS" variant="cyan">
               <div className="space-y-2">
                 {portals.map((p) => {
-                  const completed = p.world.levels.filter((l) => l.progress?.completed).length;
+                  const completed = p.world.levels.filter((l) => l.completed).length;
                   const unlocked = user.level >= p.world.levelRequired;
                   return (
                     <button
@@ -271,7 +271,6 @@ function OverworldMap({
                     archetype={archetype}
                     accentColor={accentColor}
                     classStripe={classStripe}
-                    size={40}
                   />
                 </div>
               </div>
@@ -300,7 +299,7 @@ function OverworldMap({
           if (cell.kind === 'portal') {
             const portal = portals.find((p) => p.pathCells[p.pathCells.length - 1].x === x && p.pathCells[p.pathCells.length - 1].y === y)!;
             const unlocked = playerLevel >= portal.world.levelRequired;
-            const completed = portal.world.levels.filter((l) => l.progress?.completed).length;
+            const completed = portal.world.levels.filter((l) => l.completed).length;
             const c = portal.world.color;
             const hex = WORLD_COLOR_HEX[c];
             return (

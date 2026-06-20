@@ -3,6 +3,26 @@
 export type WorldColor = 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
 export type WorldAffiliation = 'JUGGERNAUT' | 'PHANTOM' | 'SCOUT' | 'BERSERKER' | 'ORACLE' | 'NEUTRAL';
 
+// Requirement progress for a single level. The backend computes
+// this based on the user's actual data (workouts, sleep, recovery).
+export type RequirementProgress = {
+  current: number | null;
+  target: number;
+  pct: number; // 0-1
+  cleared: boolean;
+};
+
+export type LevelRequirement =
+  | { kind: 'WEIGHT_REPS'; exercise: string; weightKg: number; reps: number; }
+  | { kind: 'WEIGHT_BODYWEIGHT_MULT'; exercise: string; multiplier: number; reps: number; }
+  | { kind: 'CARDIO_5K'; maxSeconds: number; }
+  | { kind: 'CARDIO_DISTANCE'; minMeters: number; }
+  | { kind: 'CALISTHENICS_REPS'; exercise: string; reps: number; }
+  | { kind: 'PLANK_HOLD'; minSeconds: number; }
+  | { kind: 'SLEEP_STREAK'; minHours: number; consecutiveDays: number; }
+  | { kind: 'RECOVERY_STREAK'; minScore: number; consecutiveDays: number; }
+  | { kind: 'TOTAL_VOLUME'; minVolumeKg: number; windowDays: number; };
+
 export type WorldLevel = {
   id: string;
   order: number;
@@ -10,20 +30,14 @@ export type WorldLevel = {
   description: string;
   enemy: string;
   enemyGlyph: string;
-  difficulty: number;
   xp: number;
   gold: number;
   requiredLevelId: string | null;
   playerLevelRequired: number;
-  progress: WorldLevelProgress | null;
-};
-
-export type WorldLevelProgress = {
-  id: string;
-  levelId: string;
+  requirement: LevelRequirement;
+  requirementSummary: string;
+  progress: RequirementProgress | null;
   completed: boolean;
-  attempts: number;
-  bestScore: number;
   completedAt: string | null;
 };
 

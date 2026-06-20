@@ -336,7 +336,7 @@ export function ProfilePage() {
                     present={!!previewHeight}
                   />
                   <FrameField
-                    label="Wrist"
+                    label="Wrist circumference"
                     storageKey="wristCm"
                     value={draft.wristCm ?? ''}
                     onChange={(v) => setDraftField('wristCm', v)}
@@ -346,7 +346,7 @@ export function ProfilePage() {
                     present={!!previewWrist}
                   />
                   <FrameField
-                    label="Ankle"
+                    label="Ankle circumference"
                     storageKey="ankleCm"
                     value={draft.ankleCm ?? ''}
                     onChange={(v) => setDraftField('ankleCm', v)}
@@ -356,7 +356,7 @@ export function ProfilePage() {
                     present={!!previewAnkle}
                   />
                   <FrameField
-                    label="Forearm"
+                    label="Forearm length"
                     storageKey="forearmLengthCm"
                     value={draft.forearmLengthCm ?? ''}
                     onChange={(v) => setDraftField('forearmLengthCm', v)}
@@ -364,7 +364,7 @@ export function ProfilePage() {
                     step={inImperial ? 0.25 : 0.1}
                   />
                   <FrameField
-                    label="Neck"
+                    label="Neck circumference"
                     storageKey="neckCircCm"
                     value={draft.neckCircCm ?? ''}
                     onChange={(v) => setDraftField('neckCircCm', v)}

@@ -53,8 +53,9 @@ export function Avatar({
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox={`0 0 ${w} ${h}`}
-      width={size}
-      height={size}
+      width={size ?? '100%'}
+      height={size ?? '100%'}
+      preserveAspectRatio="xMidYMid meet"
       shapeRendering="crispEdges"
       className={className}
       aria-label={`${archetype} avatar`}

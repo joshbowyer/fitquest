@@ -129,6 +129,16 @@ export function WorkoutsPage() {
       qc.invalidateQueries({ queryKey: ['user'] });
       qc.invalidateQueries({ queryKey: ['raids'] });
       qc.invalidateQueries({ queryKey: ['status'] });
+      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+      qc.invalidateQueries({ queryKey: ['quest-world'] });
+      // Auto-recheck quest thresholds so any newly-cleared levels
+      // are reflected in the UI.
+      api('/quest/check', { method: 'POST' })
+        .then(() => {
+          qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+          qc.invalidateQueries({ queryKey: ['quest-world'] });
+        })
+        .catch(() => {});
       setExercises([emptyExercise()]);
       setName('');
       setNotes('');
