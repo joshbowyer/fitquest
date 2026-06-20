@@ -73,6 +73,34 @@ export function DashboardPage() {
   const cls = user.class ? CLASS_META[user.class] : null;
   const latestByMetric = new Map<string, Measurement>();
   for (const m of measurementsQ.data?.items || []) latestByMetric.set(m.metric, m);
+  // Inject computed values for derived metrics so the gauges populate
+  // even though the user never logs them directly. LEAN_MASS and FFMI
+  // are auto-derived from weight + body fat + height; their values
+  // aren't persisted in the Measurement table.
+  if (user.weightKg != null && user.bodyFatPct != null) {
+    const lbm = user.weightKg * (1 - user.bodyFatPct / 100);
+    if (!latestByMetric.has('LEAN_MASS')) {
+      latestByMetric.set('LEAN_MASS', {
+        id: 'derived:lean_mass',
+        metric: 'LEAN_MASS',
+        value: lbm,
+        unit: 'kg',
+        notes: null,
+        recordedAt: new Date().toISOString(),
+      } as Measurement);
+    }
+    if (user.heightCm != null && !latestByMetric.has('FFMI')) {
+      const ffmi = lbm / Math.pow(user.heightCm / 100, 2);
+      latestByMetric.set('FFMI', {
+        id: 'derived:ffmi',
+        metric: 'FFMI',
+        value: ffmi,
+        unit: '',
+        notes: null,
+        recordedAt: new Date().toISOString(),
+      } as Measurement);
+    }
+  }
   const maxByMetric = new Map<string, GeneticMax>();
   for (const g of geneticQ.data?.items || []) maxByMetric.set(g.metric, g);
 
