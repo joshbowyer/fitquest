@@ -79,7 +79,11 @@ export function StatusPage() {
   const weight = user.weightKg ?? null;
   const height = user.heightCm ?? null;
   const lbm = bf != null && weight != null ? weight * (1 - bf / 100) : null;
-  const ffmi = lbm != null && height != null ? lbm / Math.pow(height / 100, 2) + 6.1 * (1.8 / (height / 100)) : null;
+  // Standard FFMI = lean mass (kg) / height (m)^2. No Kouri correction
+  // — the previous version added ~6 points to every reading because of
+  // a wrong formulation (`+ 6.1 * (1.8 / height)` is essentially +6
+  // for any normal height, not the Kouri height-normalized value).
+  const ffmi = lbm != null && height != null ? lbm / Math.pow(height / 100, 2) : null;
 
   // Aggregate stats
   const avgRecovery = data && data.recovery.length > 0

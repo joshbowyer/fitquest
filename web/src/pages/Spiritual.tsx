@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +28,7 @@ type SpiritualResponse = {
   ordained: boolean;
   ordainedAt: string | null;
   ordinalBonus: number;
+  showOrdainPicker: boolean;
   nextThreshold: number | null;
   logsThisWeek: number;
   logs: PrayerLog[];
@@ -51,11 +52,17 @@ export function SpiritualPage() {
   const [logging, setLogging] = useState<PrayerType | null>(null);
   const [duration, setDuration] = useState(20);
   const [notes, setNotes] = useState('');
+  const [showOrdainModal, setShowOrdainModal] = useState(false);
+  const [showFirstVisit, setShowFirstVisit] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['spiritual'],
     queryFn: () => api<SpiritualResponse>('/spiritual'),
   });
+
+  useEffect(() => {
+    if (data?.showOrdainPicker) setShowFirstVisit(true);
+  }, [data?.showOrdainPicker]);
 
   const logM = useDelayedMutation<
     { log: PrayerLog; newXp: number; subclass: string; promoted: boolean },
@@ -70,6 +77,19 @@ export function SpiritualPage() {
     },
   }, 600);
 
+  const ordainM = useDelayedMutation<
+    { ok: boolean; ordained: boolean },
+    boolean
+  >({
+    mutationFn: (ordained) =>
+      api('/spiritual/ordain', { method: 'PATCH', body: { ordained } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['spiritual'] });
+      setShowOrdainModal(false);
+      setShowFirstVisit(false);
+    },
+  }, 500);
+
   if (!user) return null;
 
   const currentClass = data ? SUBCLASS_INFO[data.subclass] : null;
@@ -83,19 +103,42 @@ export function SpiritualPage() {
         subtitle="Track your devotional practice. A parallel progression to your fitness class."
       />
 
+      {showFirstVisit && data && (
+        <FirstVisitPicker
+          onPick={(ordained) => ordainM.run(ordained)}
+          onSkip={() => setShowFirstVisit(false)}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <div className="space-y-4">
           {/* Subclass + XP */}
-          <Panel title="Subclass" variant="cyan">
+          <Panel
+            title="Subclass"
+            variant="cyan"
+            action={
+              data && !data.ordained ? (
+                <button
+                  onClick={() => setShowOrdainModal(true)}
+                  className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-ink-100 hover:underline"
+                  title="For those who have actually received the sacrament of Holy Orders"
+                >
+                  ☩ Ordain
+                </button>
+              ) : data?.ordained ? (
+                <span className="text-[10px] font-mono text-ink-300">☩ ORDAINED</span>
+              ) : null
+            }
+          >
             {isLoading || !data || !currentClass ? (
               <div className="text-[10px] font-mono text-ink-300">loading…</div>
             ) : (
               <div className="space-y-4">
-                {/* 3-stage progression */}
                 <div className="flex items-center gap-1 flex-wrap">
                   {(['CATECHUMEN', 'CRUSADER', 'TEMPLAR'] as const).map((stage, idx) => {
+                    const stageIdx = (['CATECHUMEN', 'CRUSADER', 'TEMPLAR'] as const).indexOf(data.subclass);
                     const isCurrent = stage === data.subclass;
-                    const isPast = (['CATECHUMEN', 'CRUSADER', 'TEMPLAR'] as const).indexOf(data.subclass) > idx;
+                    const isPast = stageIdx > idx;
                     const meta = SUBCLASS_INFO[stage];
                     return (
                       <span key={stage} className="flex items-center gap-1">
@@ -159,7 +202,7 @@ export function SpiritualPage() {
                   </div>
                   {data.ordained && (
                     <div className="text-[10px] font-mono text-ink-400 mt-2 italic">
-                      Ordained status: +5% XP on all prayers
+                      ☩ Ordained status: +5% XP on all prayers
                       {data.ordainedAt && (
                         <span className="text-ink-500 ml-1">
                           (since {new Date(data.ordainedAt).toLocaleDateString()})
@@ -286,6 +329,77 @@ export function SpiritualPage() {
           </div>
         </Modal>
       )}
+
+      {/* Ordain modal — explicit, accurate copy. Only relevant for
+          people who've actually received the sacrament IRL. */}
+      {showOrdainModal && (
+        <Modal open onClose={() => setShowOrdainModal(false)} title="☩ Holy Orders">
+          <div className="space-y-3 text-sm font-mono text-ink-200">
+            <p>
+              Holy Orders is a sacrament conferred by a bishop in real life — it's not
+              a perk you opt into here. If you've actually been ordained (priest,
+              deacon, religious brother/sister in solemn vows, etc.), flipping this on
+              grants a permanent <span className="text-ink-100">+5% XP</span> bonus on
+              all prayer logs.
+            </p>
+            <p className="text-ink-300 text-xs">
+              If that doesn't describe you, just close this and don't worry about it.
+              The app won't ask again once you've logged any prayer.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <NeonButton onClick={() => setShowOrdainModal(false)} variant="cyan">
+                Close
+              </NeonButton>
+              <NeonButton
+                variant="amber"
+                onClick={() => ordainM.run(true)}
+                loading={ordainM.isPending}
+                icon="☩"
+              >
+                Yes — I've received Holy Orders
+              </NeonButton>
+            </div>
+          </div>
+        </Modal>
+      )}
     </Layout>
+  );
+}
+
+function FirstVisitPicker({
+  onPick,
+  onSkip,
+}: {
+  onPick: (ordained: boolean) => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="mb-4 border border-ink-500/30 p-4">
+      <div className="font-display tracking-widest text-ink-100 text-base mb-2">
+        ☩ Welcome to the Spiritual Path
+      </div>
+      <div className="text-xs font-mono text-ink-300 leading-relaxed mb-3">
+        You'll progress through three stages as you build your devotional practice:
+        <br />
+        <span className="text-amber-600">Catechumen</span> →
+        <span className="text-pink-400"> Crusader</span> →
+        <span className="text-green-400"> Templar</span>.
+        <br />
+        <br />
+        One quick note: there's a button to mark yourself as <span className="text-ink-100">Ordained</span>,
+        which grants +5% XP on prayers. That flag is for people who've actually
+        received the sacrament of Holy Orders in real life — it's not a cosmetic
+        achievement. If that describes you, the Ordain button will be in the
+        Subclass panel above; otherwise, just log prayers and ignore it.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={onSkip}
+          className="px-4 py-2 text-xs font-mono uppercase tracking-widest border border-ink-500/40 text-ink-300 hover:border-ink-300"
+        >
+          Got it
+        </button>
+      </div>
+    </div>
   );
 }

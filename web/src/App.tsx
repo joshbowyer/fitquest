@@ -14,6 +14,7 @@ import { ProfilePage } from './pages/Profile';
 import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
 import { SpiritualPage } from './pages/Spiritual';
+import { AchievementsPage } from './pages/Achievements';
 import { StatusPage } from './pages/Status';
 import type { ReactNode } from 'react';
 
@@ -61,6 +62,7 @@ export default function App() {
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />
       <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />
+      <Route path="/achievements" element={<RequireAuth><AchievementsPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

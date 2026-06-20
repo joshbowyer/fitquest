@@ -258,8 +258,10 @@ export function SettingsPage() {
                     const pct = latest ? Math.min(1, latest.value / m.value) : 0;
                     return (
                       <tr key={m.id} className="border-b border-ink-500/20">
-                        <td className="p-2 text-ink-100">{meta.shortLabel}</td>
-                        <td className="p-2 text-right neon-text-cyan font-bold">
+                        <td className="p-2 text-ink-100" title={meta.description}>
+                          {meta.shortLabel}
+                        </td>
+                        <td className="p-2 text-right neon-text-cyan font-bold" title={meta.description}>
                           {displayValue(m.value, meta.unit, system)}
                         </td>
                         <td className="p-2 text-right text-[10px]">

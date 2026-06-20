@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PrayerType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { checkAchievements } from '../lib/achievements.js';
 
 // XP awarded per prayer type (base, before Ordained boost).
 const PRAYER_XP: Record<PrayerType, number> = {
@@ -86,8 +87,11 @@ const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
       ordained: me.ordained,
       ordainedAt: me.ordainedAt?.toISOString() ?? null,
       ordinalBonus,
-      // Ordained requires a one-time choice. Show the picker UI
-      // if not yet ordained AND no logs exist.
+      // First-visit reminder shows the picker card on the Spiritual
+      // tab, but ONLY for users with no prayer logs yet. We never
+      // push non-ordained people to "choose" ordination — the button
+      // is there for priests/deacons/etc. who have actually received
+      // Holy Orders IRL and want to flip it on (+5% XP).
       showOrdainPicker: !me.ordained && logs.length === 0,
       nextThreshold,
       logsThisWeek: recentCount,
@@ -124,7 +128,11 @@ const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
         spiritualSubclass: newClass,
       },
     });
-    return { log, newXp, subclass: newClass, promoted };
+    // Run achievement checks after every prayer log so spiritual
+    // achievements (First Vespers, Daily Office Devotee, etc.) unlock
+    // immediately.
+    const newly = await checkAchievements(me.id);
+    return { log, newXp, subclass: newClass, promoted, newlyUnlocked: newly };
   });
 
   // PATCH /spiritual/ordain — one-time choice: become Ordained

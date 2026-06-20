@@ -62,7 +62,7 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   L_SIT_HOLD: { type: 'L_SIT_HOLD', category: 'CALISTHENICS', label: 'L-Sit Hold', shortLabel: 'L-Sit', unit: 's', defaultMin: 5, description: 'Longest L-sit hold.' },
   PUSHUP_MAX: { type: 'PUSHUP_MAX', category: 'CALISTHENICS', label: 'Push-ups in a Row', shortLabel: 'Push-ups', unit: 'reps', defaultMin: 5, description: 'Max push-ups in a single unbroken set.' },
   PULLUP_MAX: { type: 'PULLUP_MAX', category: 'CALISTHENICS', label: 'Pull-ups in a Row', shortLabel: 'Pull-ups', unit: 'reps', defaultMin: 1, description: 'Max pull-ups in a single unbroken set.' },
-  POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best S/B/D.' },
+  POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of your best Squat + Bench + Deadlift (the powerlifting total).' },
   SLEEP_HOURS: { type: 'SLEEP_HOURS', category: 'SLEEP', label: 'Sleep Duration', shortLabel: 'Sleep', unit: 'h', defaultMin: 5, description: 'Hours slept.' },
   SLEEP_QUALITY: { type: 'SLEEP_QUALITY', category: 'SLEEP', label: 'Sleep Quality', shortLabel: 'Sleep Q', unit: '/10', defaultMin: 5, description: 'Sleep quality 1-10.' },
   CALORIES: { type: 'CALORIES', category: 'NUTRITION', label: 'Calories', shortLabel: 'Calories', unit: 'kcal', defaultMin: 1500, description: 'Daily calories.' },
