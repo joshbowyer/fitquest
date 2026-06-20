@@ -363,6 +363,7 @@ export function ProfilePage() {
                     onChange={(v) => setDraftField('forearmLengthCm', v)}
                     system={system}
                     step={inImperial ? 0.25 : 0.1}
+                    required
                     present={!!previewForearm}
                   />
                   <FrameField
@@ -372,6 +373,7 @@ export function ProfilePage() {
                     onChange={(v) => setDraftField('neckCircCm', v)}
                     system={system}
                     step={inImperial ? 0.25 : 0.1}
+                    required
                     present={!!previewNeck}
                   />
                 </div>
