@@ -24,7 +24,7 @@ import {
 } from '@/components/BodyModel';
 import { getFrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { WORLD_COLOR_HEX } from '@/lib/quest';
-import { displayUnit } from '@/lib/units';
+import { convertForDisplay, displayUnit } from '@/lib/units';
 
 type PainEntry = {
   id: string;
@@ -151,11 +151,34 @@ export function StatusPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              {height != null && <Stat label="Height" value={`${Math.round(height)} ${displayUnit('cm', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} />}
-              {weight != null && <Stat label="Weight" value={`${weight.toFixed(1)} ${displayUnit('kg', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} />}
-              {bf != null && <Stat label="Body Fat" value={`${bf.toFixed(1)}%`} color={intensityToColor(bf / 2)} />}
-              {lbm != null && <Stat label="Lean Mass" value={`${lbm.toFixed(1)} ${displayUnit('kg', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} color="#9bff5c" />}
-              {ffmi != null && <Stat label="FFMI" value={ffmi.toFixed(1)} color={ffmi > 22 ? '#9bff5c' : '#14d6e8'} />}
+              {(() => {
+                const sys = user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
+                const conv = (val: number, base: 'cm' | 'kg') =>
+                  convertForDisplay(val, base, sys);
+                // Height: imperial mode renders as feet + inches (5'11"),
+                // not raw inches (which is awkward at 71+).
+                const renderHeight = () => {
+                  if (height == null) return null;
+                  if (sys === 'IMPERIAL') {
+                    const totalIn = height * 2.54;
+                    const ft = Math.floor(totalIn / 12);
+                    const inch = Math.round(totalIn - ft * 12);
+                    return `${ft}'${inch}"`;
+                  }
+                  return `${Math.round(height)} cm`;
+                };
+                const w = weight != null ? conv(weight, 'kg') : null;
+                const lm = lbm != null ? conv(lbm, 'kg') : null;
+                return (
+                  <>
+                    {height != null && <Stat label="Height" value={renderHeight() ?? ''} />}
+                    {w != null && <Stat label="Weight" value={`${w.value.toFixed(1)} ${w.unit}`} />}
+                    {bf != null && <Stat label="Body Fat" value={`${bf.toFixed(1)}%`} color={intensityToColor(bf / 2)} />}
+                    {lm != null && <Stat label="Lean Mass" value={`${lm.value.toFixed(1)} ${lm.unit}`} color="#9bff5c" />}
+                    {ffmi != null && <Stat label="FFMI" value={ffmi.toFixed(1)} color={ffmi > 22 ? '#9bff5c' : '#14d6e8'} />}
+                  </>
+                );
+              })()}
             </div>
           </Panel>
 
