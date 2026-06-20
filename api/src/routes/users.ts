@@ -19,6 +19,11 @@ const ProfileSchema = z.object({
   weightKg: z.number().positive().max(300).optional().nullable(),
   bodyFatPct: z.number().min(2).max(60).optional().nullable(),
   birthDate: z.string().datetime().optional().nullable(),
+  // "Ordained" reflects an IRL sacrament (Holy Orders), not a
+  // game perk. The user sets it themselves from Profile → Identity
+  // because only they know whether they've actually received it.
+  // We don't prompt or surface it anywhere else.
+  ordained: z.boolean().optional(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -47,6 +52,7 @@ export async function userRoutes(app: FastifyInstance) {
       classChangedAt: user.classChangedAt,
       classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
       progress: progressInLevel(user.xp, user.level),
+      ordained: user.ordained,
     };
   });
 
@@ -86,6 +92,20 @@ export async function userRoutes(app: FastifyInstance) {
         weightKg: body.weightKg === undefined ? undefined : body.weightKg,
         bodyFatPct: body.bodyFatPct === undefined ? undefined : body.bodyFatPct,
         birthDate: body.birthDate === undefined ? undefined : (body.birthDate ? new Date(body.birthDate) : null),
+        // Stamp ordainedAt only on the true→false transition is a no-op;
+        // the true→false transition is allowed but wipes the date so the
+        // user can re-set later. We don't ever auto-ordain.
+        ...(body.ordained !== undefined
+          ? {
+              ordained: body.ordained,
+              // First time becoming ordained: stamp the date.
+              ...(body.ordained === true && me.ordainedAt == null
+                ? { ordainedAt: new Date() }
+                : body.ordained === false
+                ? { ordainedAt: null }
+                : {}),
+            }
+          : {}),
       },
     });
 

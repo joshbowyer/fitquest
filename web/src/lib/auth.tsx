@@ -57,6 +57,9 @@ export type User = {
   classChangedAt: string | null;
   classLock: ClassLockStatus;
   progress?: { current: number; needed: number; pct: number };
+  // IRL sacrament (Holy Orders). Set by the user from Profile → Identity.
+  // The app never prompts or advertises this; +5% XP on prayer logs.
+  ordained: boolean;
 };
 
 type AuthCtx = {

@@ -82,6 +82,7 @@ export function ProfilePage() {
   const [classChoice, setClassChoice] = useState<ClassName | null>(null);
   const [birthDate, setBirthDate] = useState<string | null>(null);
   const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
+  const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -117,6 +118,7 @@ export function ProfilePage() {
     if (classChoice === null) setClassChoice(user.class);
     if (birthDate === null) setBirthDate(user.birthDate);
     if (sexDraft === null) setSexDraft(user.sex);
+    setOrdainedDraft(user.ordained ?? false);
   }, [user, inImperial]);
 
   function setDraftField(key: string, raw: string) {
@@ -172,7 +174,8 @@ export function ProfilePage() {
   const classChanged = classChoice !== null && classChoice !== user?.class;
   const birthChanged = birthDate !== null && birthDate !== user?.birthDate;
   const sexChanged = sexDraft !== null && sexDraft !== user?.sex;
-  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged;
+  const ordainedChanged = ordainedDraft !== (user?.ordained ?? false);
+  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged;
 
   const saveM = useDelayedMutation<
     { recomputed: boolean; changeCount: number },
@@ -208,6 +211,7 @@ export function ProfilePage() {
       }
       if (birthChanged) body.birthDate = birthDate;
       if (sexChanged) body.sex = sexDraft;
+      if (ordainedChanged) body.ordained = ordainedDraft;
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -814,6 +818,29 @@ export function ProfilePage() {
             <Row k="Created" v={new Date(user.createdAt).toLocaleDateString()} />
             <Row k="Units" v={user.units === 'IMPERIAL' ? 'in / lb / fl oz' : 'cm / kg / ml'} />
           </div>
+
+          {/* Ordained status: an IRL fact, not a perk. Quietly settable
+              here so the app never prompts or advertises it. */}
+          <div className="mt-4 border-t border-ink-500/30 pt-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={ordainedDraft}
+                onChange={(e) => setOrdainedDraft(e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <div>
+                <div className="text-xs font-mono text-ink-100">
+                  I have received the sacrament of Holy Orders
+                </div>
+                <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-relaxed">
+                  Marks an IRL status only you can confirm. Grants a permanent +5% XP bonus on prayer logs.
+                  The app does not ask, advertise, or display this as a feature — toggle it here if it applies to you.
+                </div>
+              </div>
+            </label>
+          </div>
+
           <div className="mt-4 text-[10px] text-ink-400 font-mono leading-relaxed border-t border-neon-magenta/20 pt-3">
             // change units in <Link to="/settings" className="neon-text-cyan hover:underline">Settings → Display</Link> · account actions (password, 2FA) coming in v0.5
           </div>
