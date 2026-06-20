@@ -10,20 +10,22 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Raid } from '@/lib/types';
 import { formatRelative } from '@/lib/format';
 
-const BOSSES = [
-  { name: 'Iron Colossus', hp: 5000, emoji: '🗿' },
-  { name: 'Cardio Wyrm', hp: 8000, emoji: '🐉' },
-  { name: 'The Plateau', hp: 3000, emoji: '⛰' },
-  { name: 'Skeletal Minion', hp: 1500, emoji: '💀' },
-  { name: 'BPM Demon', hp: 6000, emoji: '👹' },
-];
+// Raid bosses are loaded from the API via /raids/bosses.
+
+type RaidBoss = {
+  id: string;
+  name: string;
+  hp: number;
+  difficulty: string;
+  icon: string;
+  description: string;
+};
 
 export function PartyPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [newPartyName, setNewPartyName] = useState('');
-  const [bossName, setBossName] = useState('Iron Colossus');
-  const [bossHp, setBossHp] = useState(5000);
+  const [bossId, setBossId] = useState<string>('iron_colossus');
   const [damage, setDamage] = useState(100);
   const [err, setErr] = useState<string | null>(null);
   const [inviteUsername, setInviteUsername] = useState('');
@@ -66,6 +68,12 @@ export function PartyPage() {
     refetchInterval: 5000,
   });
 
+  // Predefined raid bosses
+  const bossesQ = useQuery({
+    queryKey: ['raid-bosses'],
+    queryFn: () => api<{ bosses: RaidBoss[] }>('/raids/bosses'),
+  });
+
   const createM = useDelayedMutation({
     mutationFn: () => api('/parties', { method: 'POST', body: { name: newPartyName } }),
     onSuccess: () => {
@@ -88,7 +96,7 @@ export function PartyPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['party'] }),
   }, 800);
   const startRaidM = useDelayedMutation({
-    mutationFn: () => api('/raids/start', { method: 'POST', body: { bossName, bossHp } }),
+    mutationFn: () => api('/raids/start', { method: 'POST', body: { bossId } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['raid'] }),
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
   }, 1000);
@@ -301,34 +309,26 @@ export function PartyPage() {
             ) : (
               <div className="space-y-3">
                 <div className="text-xs text-ink-300 font-mono">No active raid. Start one:</div>
-                <div className="grid grid-cols-[1fr_100px_auto] gap-2 items-end">
-                  <div>
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">Boss</label>
+                {(role === 'LEADER' || role === 'OFFICER') ? (
+                  <>
                     <select
                       className="input-neon"
-                      value={bossName}
-                      onChange={(e) => {
-                        setBossName(e.target.value);
-                        const b = BOSSES.find((b) => b.name === e.target.value);
-                        if (b) setBossHp(b.hp);
-                      }}
+                      value={bossId}
+                      onChange={(e) => setBossId(e.target.value)}
                     >
-                      {BOSSES.map((b) => (
-                        <option key={b.name} value={b.name}>{b.emoji} {b.name}</option>
+                      {(bossesQ.data?.bosses ?? []).map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.icon} {b.name} · {b.hp.toLocaleString()} HP · {b.difficulty}
+                        </option>
                       ))}
                     </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">HP</label>
-                    <input
-                      className="input-neon"
-                      type="number"
-                      value={bossHp}
-                      onChange={(e) => setBossHp(Number(e.target.value))}
-                    />
-                  </div>
-                  {(role === 'LEADER' || role === 'OFFICER') ? (
+                    {(bossesQ.data?.bosses ?? []).find((b) => b.id === bossId)?.description && (
+                      <div className="text-[10px] font-mono text-ink-400 italic leading-relaxed border-l-2 border-ink-500/40 pl-2">
+                        {(bossesQ.data?.bosses ?? []).find((b) => b.id === bossId)?.description}
+                      </div>
+                    )}
                     <NeonButton
+                      fullWidth
                       onClick={() => startRaidM.run()}
                       loading={startRaidM.isPending}
                       icon="⚔"
@@ -336,10 +336,12 @@ export function PartyPage() {
                     >
                       Start
                     </NeonButton>
-                  ) : (
-                    <span className="text-[10px] text-ink-400 font-mono">leader starts</span>
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <div className="text-[10px] text-ink-400 font-mono text-center py-2 border border-ink-700/30">
+                    Only leaders/officers can start a raid
+                  </div>
+                )}
               </div>
             )}
           </Panel>

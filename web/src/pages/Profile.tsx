@@ -619,6 +619,9 @@ export function ProfilePage() {
                   <div className={`text-[10px] font-mono mt-1 ${eligible && !user.classLock?.locked ? 'text-ink-300' : 'text-ink-500'}`}>
                     {m.tagline}
                   </div>
+                  <div className={`text-[9px] font-mono mt-0.5 ${eligible && !user.classLock?.locked ? 'text-ink-400' : 'text-ink-600'}`}>
+                    {m.fitnessType}
+                  </div>
                   <div
                     className={classNames(
                       'inline-block mt-1.5 px-1.5 py-0.5 text-[9px] font-mono tracking-widest uppercase border',

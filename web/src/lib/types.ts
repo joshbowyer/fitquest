@@ -118,6 +118,8 @@ export const CLASS_META: Record<string, {
   color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'goldenrod' | 'periwinkle' | 'violet';
   tagline: string;
   description: string;
+  // Concise fitness style mapping (displayed on the Profile page).
+  fitnessType: string;
   primary: PrimaryAspect;
   ability: ClassAbility;
   // Which archetypes qualify for this class. Empty = available to all.
@@ -128,9 +130,9 @@ export const CLASS_META: Record<string, {
     color: 'magenta',
     tagline: 'Heavy hits, big gains',
     description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP. Powerlifter / bodybuilder.',
+    fitnessType: 'Powerlifting / Heavy Strength',
     primary: 'STRENGTH',
     ability: { tag: '+DMG', label: 'More raid damage' },
-    // STRENGTH primary requires solid or large-balanced build
     eligibility: ['DRAKE', 'FORGE', 'GOLEM', 'BEAR', 'BEHEMOTH'],
   },
   PHANTOM: {
@@ -138,10 +140,9 @@ export const CLASS_META: Record<string, {
     color: 'lime',
     tagline: 'Agile, lean, bodyweight mastery',
     description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar.',
+    fitnessType: 'Calisthenics / Gymnastics / Mobility',
     primary: 'AGILITY',
     ability: { tag: '+EVA', label: 'Chance to evade in raids' },
-    // AGILITY primary: lean or small/medium-balanced. "Too big"
-    // archetypes (BEAR, BEHEMOTH, GOLEM, DRAKE) aren't lithe.
     eligibility: ['WISP', 'SPRITE', 'STRIKER', 'FORGE', 'WIRED'],
   },
   SCOUT: {
@@ -149,9 +150,9 @@ export const CLASS_META: Record<string, {
     color: 'goldenrod',
     tagline: 'Long, steady, exploring',
     description: 'Explorer. Sustained effort, trail running, hiking, multi-sport. Finds items and quests faster. The first to see new areas and new enemies.',
+    fitnessType: 'Endurance / Trail Running / Hiking',
     primary: 'CONSTITUTION',
     ability: { tag: '+DISC', label: 'Faster item/quest discovery' },
-    // CONSTITUTION primary is universal
     eligibility: [],
   },
   BERSERKER: {
@@ -159,9 +160,9 @@ export const CLASS_META: Record<string, {
     color: 'magenta',
     tagline: 'All-out, no days off',
     description: 'High volume, high intensity. HIIT, tabata, all-out efforts. No metagame — just train hard. Intensity is a choice, not a build.',
+    fitnessType: 'HIIT / CrossFit / Conditioning',
     primary: 'STRENGTH',
     ability: { tag: '+CRIT', label: 'Bonus damage on crits' },
-    // STRENGTH primary is universal
     eligibility: [],
   },
   ORACLE: {
@@ -169,9 +170,9 @@ export const CLASS_META: Record<string, {
     color: 'periwinkle',
     tagline: 'Recovery, mindfulness, ritual',
     description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity. Yoga, pilates, meditation.',
+    fitnessType: 'Yoga / Recovery / Wellness',
     primary: 'MIND',
     ability: { tag: '+HEAL', label: 'Heal between rounds · see enemy stats' },
-    // MIND primary is universal
     eligibility: [],
   },
 };
