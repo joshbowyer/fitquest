@@ -63,7 +63,8 @@ export function Gauge({
   color = 'cyan',
   size = 200,
   showPct = true,
-}: Props) {
+  subtitle,
+}: Props & { subtitle?: string }) {
   const id = useId();
   const meta = METRICS[metric];
   const colorHex = COLOR_HEX[color];
@@ -276,6 +277,11 @@ export function Gauge({
         <div className={`text-[11px] font-display tracking-[0.2em] uppercase`} style={{ color: colorHex }}>
           {meta.shortLabel}
         </div>
+        {subtitle && (
+          <div className="text-[9px] text-ink-400 font-mono mt-0.5 leading-tight max-w-[120px] mx-auto">
+            {subtitle}
+          </div>
+        )}
         {noMax && (
           <div className="text-[10px] text-ink-300 font-mono mt-0.5">set body metrics →</div>
         )}

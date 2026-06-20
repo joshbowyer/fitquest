@@ -62,10 +62,11 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       return null;
     }
     case 'NECK': {
-      // Prefer the actual measured neck circumference when on file —
-      // direct measurement beats a wrist-derived estimate. Fall back to
-      // the Casey Butt ratio (2.9x wrist) if not.
-      if (neckCircCm) return round1(neckCircCm);
+      // Casey Butt's natural-ceiling ratio for neck is ~2.9x wrist or
+      // ~0.245x height. The genetic max is a *ceiling*, not a mirror
+      // of the current measurement — your current neck lives in
+      // Measurements, and you can grow into this number over time.
+      // Users who exceed the ceiling can set a MANUAL override.
       if (wristCm) return round1(wristCm * 2.9);
       if (heightCm) return round1(heightCm * 0.245);
       return null;

@@ -259,7 +259,12 @@ export function SettingsPage() {
                     return (
                       <tr key={m.id} className="border-b border-ink-500/20">
                         <td className="p-2 text-ink-100" title={meta.description}>
-                          {meta.shortLabel}
+                          <div>{meta.shortLabel}</div>
+                          {meta.description && m.metric === 'POWERLIFT_TOTAL' && (
+                            <div className="text-[9px] text-ink-400 font-mono leading-tight mt-0.5">
+                              {meta.description}
+                            </div>
+                          )}
                         </td>
                         <td className="p-2 text-right neon-text-cyan font-bold" title={meta.description}>
                           {displayValue(m.value, meta.unit, system)}

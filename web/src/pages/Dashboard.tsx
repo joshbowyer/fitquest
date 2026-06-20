@@ -82,7 +82,7 @@ export function DashboardPage() {
     <Layout>
       <PageHeader
         title="// Stat Sheet"
-        subtitle={`${cls?.label ?? 'Unclassed'} // ${user.username}`}
+        subtitle={`${user.classDisplay ?? cls?.label ?? 'Unclassed'} // ${user.username}`}
         action={
           <Link to="/settings" className="btn-ghost text-[10px]">
             ⚙ Settings
@@ -100,7 +100,8 @@ export function DashboardPage() {
                 {user.username}
               </div>
               <div className={`text-xs font-mono mt-1 ${cls ? `neon-text-${cls.color}` : 'text-ink-300'}`}>
-                {cls?.label ?? 'Unclassed'} — {cls?.tagline ?? 'pick a class in profile'}
+                {user.classDisplay ?? cls?.label ?? 'Unclassed'}
+                {cls ? <> · <span className="text-ink-400">{cls.tagline}</span></> : ' — pick a class in profile'}
               </div>
             </div>
             <div className="text-right shrink-0">
@@ -222,6 +223,25 @@ export function DashboardPage() {
                   <Gauge
                     key={m}
                     metric={m}
+                    subtitle={
+                      m === 'POWERLIFT_TOTAL' ? 'Squat + Bench + Deadlift' :
+                      m === 'BENCH_1RM' ? 'Bench press 1-rep max' :
+                      m === 'SQUAT_1RM' ? 'Back squat 1-rep max' :
+                      m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
+                      m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
+                      m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
+                      m === 'FIVE_K_TIME' ? 'Best 5K run time' :
+                      m === 'ONE_MILE_TIME' ? 'Best 1-mile run time' :
+                      m === 'PLANK_HOLD' ? 'Longest plank hold' :
+                      m === 'L_SIT_HOLD' ? 'Longest L-sit hold' :
+                      m === 'PUSHUP_MAX' ? 'Most push-ups in a row' :
+                      m === 'PULLUP_MAX' ? 'Most pull-ups in a row' :
+                      m === 'LEAN_MASS' ? 'Auto: weight × (1 − BF%)' :
+                      m === 'BODY_FAT_PCT' ? 'Current body fat %' :
+                      m === 'FFMI' ? 'Fat-Free Mass Index' :
+                      m === 'HRV' ? 'Heart rate variability (RMSSD)' :
+                      undefined
+                    }
                     value={latest?.value ?? null}
                     min={min}
                     max={max?.value ?? meta.defaultMin * 1.5}

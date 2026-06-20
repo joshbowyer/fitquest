@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -26,7 +27,6 @@ export function PartyPage() {
   const qc = useQueryClient();
   const [newPartyName, setNewPartyName] = useState('');
   const [bossId, setBossId] = useState<string>('iron_colossus');
-  const [damage, setDamage] = useState(100);
   const [err, setErr] = useState<string | null>(null);
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
@@ -100,22 +100,6 @@ export function PartyPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['raid'] }),
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
   }, 1000);
-  const contributeM = useDelayedMutation({
-    mutationFn: () => {
-      const raid = raidQ.data?.raid;
-      if (!raid) throw new Error('No active raid');
-      return api(`/raids/${raid.id}/contribute`, {
-        method: 'POST',
-        body: { damage, source: 'workout' },
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['raid'] });
-      qc.invalidateQueries({ queryKey: ['user'] });
-      qc.invalidateQueries({ queryKey: ['achievements'] });
-    },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
-  }, 600);
 
   const sendInviteM = useDelayedMutation<{ invite: unknown }, { username: string; message?: string }>({
     mutationFn: ({ username, message }) =>
@@ -281,23 +265,14 @@ export function PartyPage() {
                   </div>
                 </div>
                 {raid.status === 'ACTIVE' && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="input-neon w-32"
-                      type="number"
-                      value={damage}
-                      onChange={(e) => setDamage(Number(e.target.value))}
-                      min={1}
-                    />
-                    <NeonButton
-                      variant="magenta"
-                      onClick={() => contributeM.run()}
-                      loading={contributeM.isPending}
-                      icon="⚔"
-                      loadingText="Striking…"
-                    >
-                      Strike
-                    </NeonButton>
+                  <div className="border-t border-ink-500/30 pt-3 text-[10px] font-mono text-ink-300 italic space-y-1">
+                    <div>
+                      ⚔ Damage auto-dealt from your workouts.
+                    </div>
+                    <div className="text-ink-400">
+                      Log a workout in <Link to="/workouts" className="neon-text-cyan hover:underline">Workouts</Link> to strike this boss.
+                      Damage scales with your sets × class ability (Phantom: +EVA proc chance).
+                    </div>
                   </div>
                 )}
                 {raid.status === 'VICTORY' && (
