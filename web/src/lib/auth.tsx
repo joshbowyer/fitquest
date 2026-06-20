@@ -63,6 +63,10 @@ export type User = {
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers?: ('ROSARY' | 'MASS' | 'SCRIPTURE' | 'CONTEMPLATION' | 'LITURGY_HOURS' | 'CONFESSION' | 'OTHER')[];
+  // Creatine usage. Subtracts ~1.5 kg of intracellular water from
+  // displayed lean-mass calculations so the number reflects contractile
+  // tissue, not water.
+  creatine?: boolean;
 };
 
 type AuthCtx = {

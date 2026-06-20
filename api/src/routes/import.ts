@@ -98,6 +98,13 @@ async function persist(
         id: created_row.id,
         summary: `${w.sport} · ${Math.round(duration / 60)}m`,
       });
+
+      // Infer standard race distances from CARDIO activities. We only
+      // log when the activity is plausibly a 1mi or 5K effort (by
+      // duration) AND the distance is within a margin of the target.
+      // Margin = ±20% by default so a 1.05mi run isn't dismissed but a
+      // 1.5mi run doesn't get logged as a mile.
+      await maybeInferStandardDistance(userId, w, created_row.id);
     }
     await checkAchievements(userId);
     await checkRoutineProgress(userId);
@@ -265,4 +272,64 @@ export async function importRoutes(app: FastifyInstance) {
     ]);
     return { recentWorkouts, recentSleep, recentHrv };
   });
+}
+/**
+ * Infer a 1-mile or 5K time from an imported CARDIO activity. We
+ * compare the activity's distance to the target distance, allowing a
+ * ±20% margin so that "ran a touch over a mile" still counts as a
+ * mile (rounding-by-watch is common) but "ran a 5K loop plus an extra
+ * mile warm-up" doesn't get mis-logged as a 5K.
+ *
+ * We only log when:
+ *  - sport is running-like (run, walk, hike, trail)
+ *  - duration is plausibly a race effort (4-15 min for 1mi, 14-50 min for 5K)
+ *  - the inferred time would be FASTER than the user's existing best
+ *    (so we don't pollute the dashboard with slower times)
+ */
+async function maybeInferStandardDistance(
+  userId: string,
+  w: { sport: string; subSport?: string; distanceMeters?: number; durationSec: number; startTime: Date },
+  workoutId: string,
+): Promise<void> {
+  if (w.distanceMeters == null || w.distanceMeters <= 0) return;
+  if (w.durationSec < 60) return; // ignore ultra-short
+
+  const runningLike = ['running', 'walking', 'hiking', 'trail_running'];
+  if (!runningLike.includes(w.sport)) return;
+
+  const targets: Array<{
+    metric: 'ONE_MILE_TIME' | 'FIVE_K_TIME';
+    meters: number;
+    margin: number; // fraction
+    minSec: number;
+    maxSec: number;
+  }> = [
+    { metric: 'ONE_MILE_TIME', meters: 1609.34, margin: 0.20, minSec: 4 * 60, maxSec: 15 * 60 },
+    { metric: 'FIVE_K_TIME',    meters: 5000,    margin: 0.20, minSec: 14 * 60, maxSec: 50 * 60 },
+  ];
+
+  for (const t of targets) {
+    const low = t.meters * (1 - t.margin);
+    const high = t.meters * (1 + t.margin);
+    if (w.distanceMeters < low || w.distanceMeters > high) continue;
+    if (w.durationSec < t.minSec || w.durationSec > t.maxSec) continue;
+
+    // Only log if it's faster than the user's existing best.
+    const existing = await prisma.measurement.findFirst({
+      where: { userId, metric: t.metric },
+      orderBy: { value: 'asc' },
+    });
+    if (existing && existing.value <= w.durationSec) continue;
+
+    await prisma.measurement.create({
+      data: {
+        userId,
+        metric: t.metric,
+        value: w.durationSec,
+        unit: 's',
+        notes: `Inferred from FIT activity ${workoutId.slice(-6)} (${(w.distanceMeters / t.meters).toFixed(2)}× target distance)`,
+        recordedAt: w.startTime,
+      },
+    });
+  }
 }

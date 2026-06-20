@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Gauge } from '@/components/Gauge';
+import { IdealGauge } from '@/components/IdealGauge';
+import { MetricDetailModal } from '@/components/MetricDetailModal';
 import { Panel } from '@/components/Panel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
@@ -69,6 +71,7 @@ export function DashboardPage() {
     queryFn: () => api<{ raid: Raid | null }>('/raids/active'),
   });
   const [recomputeToast, setRecomputeToast] = useState<string | null>(null);
+  const [detailMetric, setDetailMetric] = useState<import('@/lib/types').MetricType | null>(null);
 
   if (!user) return null;
 
@@ -80,14 +83,17 @@ export function DashboardPage() {
   // are auto-derived from weight + body fat + height; their values
   // aren't persisted in the Measurement table.
   if (user.weightKg != null && user.bodyFatPct != null) {
-    const lbm = user.weightKg * (1 - user.bodyFatPct / 100);
+    // Creatine adds intracellular water (~1.5 kg); subtract from
+    // displayed lean mass so it reflects contractile tissue.
+    const creatineWaterKg = user.creatine ? 1.5 : 0;
+    const lbm = Math.max(0, user.weightKg * (1 - user.bodyFatPct / 100) - creatineWaterKg);
     if (!latestByMetric.has('LEAN_MASS')) {
       latestByMetric.set('LEAN_MASS', {
         id: 'derived:lean_mass',
         metric: 'LEAN_MASS',
         value: lbm,
         unit: 'kg',
-        notes: null,
+        notes: user.creatine ? `auto: weight × (1 − BF%) − 1.5 kg creatine water` : null,
         recordedAt: new Date().toISOString(),
       } as Measurement);
     }
@@ -251,35 +257,115 @@ export function DashboardPage() {
                 const latest = latestByMetric.get(m);
                 const max = maxByMetric.get(m);
                 const min = meta.defaultMin;
+                const value = latest?.value ?? null;
+                // Ideal-based metrics: BODY_FAT_PCT (12% ideal, 10-14 healthy),
+                // HRV (higher is generally better, ~50-80ms healthy),
+                // VO2_MAX (higher is better, but the dial is mid-anchored
+                // at the user's healthy range so it doesn't read as "0%"
+                // at first measurement).
+                if (m === 'BODY_FAT_PCT') {
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDetailMetric(m)}
+                      className="cursor-pointer hover:brightness-125 transition-all"
+                      title="Click for details"
+                    >
+                      <IdealGauge
+                        metric={m}
+                        value={value}
+                        min={3}
+                        idealMin={10}
+                        idealMax={14}
+                        max={35}
+                        subtitle="ideal 10–14%"
+                        color="lime"
+                        size={170}
+                      />
+                    </button>
+                  );
+                }
+                if (m === 'HRV') {
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDetailMetric(m)}
+                      className="cursor-pointer hover:brightness-125 transition-all"
+                      title="Click for details"
+                    >
+                      <IdealGauge
+                        metric={m}
+                        value={value}
+                        min={10}
+                        idealMin={50}
+                        idealMax={80}
+                        max={150}
+                        subtitle="ideal 50–80 ms"
+                        color="cyan"
+                        size={170}
+                      />
+                    </button>
+                  );
+                }
+                if (m === 'VO2_MAX') {
+                  return (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDetailMetric(m)}
+                      className="cursor-pointer hover:brightness-125 transition-all"
+                      title="Click for details"
+                    >
+                      <IdealGauge
+                        metric={m}
+                        value={value}
+                        min={15}
+                        idealMin={45}
+                        idealMax={60}
+                        max={85}
+                        subtitle="ideal 45–60 ml/kg/min"
+                        color="lime"
+                        size={170}
+                      />
+                    </button>
+                  );
+                }
                 return (
-                  <Gauge
+                  <button
                     key={m}
-                    metric={m}
-                    subtitle={
-                      m === 'POWERLIFT_TOTAL' ? 'Squat + Bench + Deadlift' :
-                      m === 'BENCH_1RM' ? 'Bench press 1-rep max' :
-                      m === 'SQUAT_1RM' ? 'Back squat 1-rep max' :
-                      m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
-                      m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
-                      m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
-                      m === 'FIVE_K_TIME' ? 'Best 5K run time' :
-                      m === 'ONE_MILE_TIME' ? 'Best 1-mile run time' :
-                      m === 'PLANK_HOLD' ? 'Longest plank hold' :
-                      m === 'L_SIT_HOLD' ? 'Longest L-sit hold' :
-                      m === 'PUSHUP_MAX' ? 'Most push-ups in a row' :
-                      m === 'PULLUP_MAX' ? 'Most pull-ups in a row' :
-                      m === 'LEAN_MASS' ? 'Auto: weight × (1 − BF%)' :
-                      m === 'BODY_FAT_PCT' ? 'Current body fat %' :
-                      m === 'FFMI' ? 'Fat-Free Mass Index' :
-                      m === 'HRV' ? 'Heart rate variability (RMSSD)' :
-                      undefined
-                    }
-                    value={latest?.value ?? null}
-                    min={min}
-                    max={max?.value ?? meta.defaultMin * 1.5}
-                    color={cfg.color}
-                    size={170}
-                  />
+                    type="button"
+                    onClick={() => setDetailMetric(m)}
+                    className="cursor-pointer hover:brightness-125 transition-all"
+                    title="Click for details"
+                  >
+                    <Gauge
+                      metric={m}
+                      subtitle={
+                        m === 'POWERLIFT_TOTAL' ? 'Squat + Bench + Deadlift' :
+                        m === 'BENCH_1RM' ? 'Bench press 1-rep max' :
+                        m === 'SQUAT_1RM' ? 'Back squat 1-rep max' :
+                        m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
+                        m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
+                        m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
+                        m === 'FIVE_K_TIME' ? 'Best 5K run time' :
+                        m === 'ONE_MILE_TIME' ? 'Best 1-mile run time' :
+                        m === 'PLANK_HOLD' ? 'Longest plank hold' :
+                        m === 'L_SIT_HOLD' ? 'Longest L-sit hold' :
+                        m === 'PUSHUP_MAX' ? 'Most push-ups in a row' :
+                        m === 'PULLUP_MAX' ? 'Most pull-ups in a row' :
+                        m === 'LEAN_MASS' ? `Auto: weight × (1 − BF%)` :
+                        m === 'FFMI' ? 'Fat-Free Mass Index' :
+                        undefined
+                      }
+                      value={value}
+                      min={min}
+                      max={max?.value ?? meta.defaultMin * 1.5}
+                      color={cfg.color}
+                      size={170}
+                    />
+                  </button>
                 );
               })}
             </div>
@@ -326,6 +412,12 @@ export function DashboardPage() {
           </div>
         </Panel>
       </div>
+
+      <MetricDetailModal
+        open={!!detailMetric}
+        onClose={() => setDetailMetric(null)}
+        metric={detailMetric}
+      />
     </Layout>
   );
 }

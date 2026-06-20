@@ -79,6 +79,7 @@ export async function authRoutes(app: FastifyInstance) {
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
         ordained: user.ordained,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
+        creatine: user.creatine,
       },
     });
   });
@@ -125,6 +126,7 @@ export async function authRoutes(app: FastifyInstance) {
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
         ordained: user.ordained,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
+        creatine: user.creatine,
       },
     });
   });

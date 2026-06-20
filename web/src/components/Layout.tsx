@@ -17,7 +17,7 @@ const NAV: NavItem[] = [
   { to: '/quest',       label: 'Quest',    icon: '◇', mobile: true },
   { to: '/status',      label: 'Status',   icon: '◊', mobile: true },
   { to: '/today',       label: 'Today',    icon: '◐', mobile: true },
-  { to: '/workouts',    label: 'Workouts', icon: '▣', mobile: true },
+  { to: '/activities',  label: 'Activity',  icon: '▣', mobile: true },
   { to: '/spiritual',   label: 'Spiritual', icon: '☩', mobile: false },
   { to: '/recovery',    label: 'Recovery', icon: '☾', mobile: false },
   { to: '/import',      label: 'Import',   icon: '↥', mobile: false },

@@ -3,7 +3,8 @@ import { useAuth } from './lib/auth';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { DashboardPage } from './pages/Dashboard';
-import { WorkoutsPage } from './pages/Workouts';
+import { ActivitiesPage } from './pages/Activities';
+import { ActivityDetailPage } from './pages/ActivityDetail';
 import { MeasurementsPage } from './pages/Measurements';
 import { InsightsPage } from './pages/Insights';
 import { SettingsPage } from './pages/Settings';
@@ -58,7 +59,9 @@ export default function App() {
       <Route path="/quest/:worldId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
       <Route path="/quest/:worldId/:levelId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
       <Route path="/status" element={<RequireAuth><StatusPage /></RequireAuth>} />
-      <Route path="/workouts" element={<RequireAuth><WorkoutsPage /></RequireAuth>} />
+      <Route path="/workouts" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />
+      <Route path="/activities" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />
+      <Route path="/activities/:id" element={<RequireAuth><ActivityDetailPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />

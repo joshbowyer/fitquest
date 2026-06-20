@@ -199,6 +199,11 @@ model User {
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
+  // Creatine adds intracellular water weight (~1-2 kg). When true, the
+  // user wants it accounted for in lean-mass display so a "real" LBM
+  // number doesn't include the water. Stored raw so we can compute
+  // both numbers downstream.
+  creatine     Boolean        @default(false)
   spiritualSubclass SpiritualSubclass?
   spiritualXp       Int           @default(0)
   ordained          Boolean        @default(false)

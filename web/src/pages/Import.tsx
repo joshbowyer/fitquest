@@ -137,7 +137,7 @@ export function ImportPage() {
     <Layout>
       <PageHeader
         title="// Import"
-        subtitle="Manual FIT uploads. Drop a file or many — activities become Workouts, sleep + HRV become Measurements."
+        subtitle="Manual FIT uploads. Drop a file or many — activities become Activities, sleep + HRV become Measurements."
         action={
           <NeonButton onClick={() => inputRef.current?.click()} variant="cyan" icon="↥">
             Choose files
@@ -187,7 +187,7 @@ export function ImportPage() {
         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="Imported" value={totals.imported} accent="#9bff5c" />
           <Stat label="Skipped" value={totals.skipped} accent="#f55cc4" />
-          <Stat label="Workouts" value={totals.workouts} accent="#14d6e8" />
+          <Stat label="Activities" value={totals.workouts} accent="#14d6e8" />
           <Stat label="Measurements" value={totals.measurements} accent="#ffc34d" />
         </div>
       )}
@@ -226,7 +226,7 @@ export function ImportPage() {
                       {r.created.map((c, j) => (
                         <div key={j} className="text-[10px] font-mono text-ink-300">
                           + {c.kind === 'workout' && (
-                            <Link to="/workouts" className="text-neon-cyan hover:underline">
+                            <Link to="/activities" className="text-neon-cyan hover:underline">
                               Workout: {c.summary}
                             </Link>
                           )}

@@ -83,6 +83,7 @@ export function ProfilePage() {
   const [birthDate, setBirthDate] = useState<string | null>(null);
   const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
   const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
+  const [creatineDraft, setCreatineDraft] = useState<boolean>(false);
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -119,6 +120,7 @@ export function ProfilePage() {
     if (birthDate === null) setBirthDate(user.birthDate);
     if (sexDraft === null) setSexDraft(user.sex);
     setOrdainedDraft(user.ordained ?? false);
+    setCreatineDraft(user.creatine ?? false);
   }, [user, inImperial]);
 
   function setDraftField(key: string, raw: string) {
@@ -175,6 +177,7 @@ export function ProfilePage() {
   const birthChanged = birthDate !== null && birthDate !== user?.birthDate;
   const sexChanged = sexDraft !== null && sexDraft !== user?.sex;
   const ordainedChanged = ordainedDraft !== (user?.ordained ?? false);
+  const creatineChanged = creatineDraft !== (user?.creatine ?? false);
   const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged;
 
   const saveM = useDelayedMutation<
@@ -212,6 +215,7 @@ export function ProfilePage() {
       if (birthChanged) body.birthDate = birthDate;
       if (sexChanged) body.sex = sexDraft;
       if (ordainedChanged) body.ordained = ordainedDraft;
+      if (creatineChanged) body.creatine = creatineDraft;
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -836,6 +840,28 @@ export function ProfilePage() {
                 <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-relaxed">
                   Marks an IRL status only you can confirm. Grants a permanent +5% XP bonus on prayer logs.
                   The app does not ask, advertise, or display this as a feature — toggle it here if it applies to you.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Creatine: true lean-mass accounting (subtracts intracellular water) */}
+          <div className="mt-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={creatineDraft}
+                onChange={(e) => setCreatineDraft(e.target.checked)}
+                className="mt-0.5 accent-cyan-500"
+              />
+              <div>
+                <div className="text-xs font-mono text-ink-100">
+                  I take creatine
+                </div>
+                <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-relaxed">
+                  Creatine adds ~1.5 kg of intracellular water. We'll subtract that from your displayed lean
+                  mass so the number reflects contractile tissue instead of water. (Affects Status and the
+                  body-comp dashboard gauges.)
                 </div>
               </div>
             </label>

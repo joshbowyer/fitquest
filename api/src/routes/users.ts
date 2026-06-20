@@ -24,6 +24,7 @@ const ProfileSchema = z.object({
   // because only they know whether they've actually received it.
   // We don't prompt or surface it anywhere else.
   ordained: z.boolean().optional(),
+  creatine: z.boolean().optional(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -54,6 +55,7 @@ export async function userRoutes(app: FastifyInstance) {
       progress: progressInLevel(user.xp, user.level),
       ordained: user.ordained,
       spiritualDailyPrayers: user.spiritualDailyPrayers,
+      creatine: user.creatine,
     };
   });
 
@@ -107,6 +109,7 @@ export async function userRoutes(app: FastifyInstance) {
                 : {}),
             }
           : {}),
+        ...(body.creatine !== undefined ? { creatine: body.creatine } : {}),
       },
     });
 
