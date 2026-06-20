@@ -160,7 +160,7 @@ export function StatusPage() {
                 const renderHeight = () => {
                   if (height == null) return null;
                   if (sys === 'IMPERIAL') {
-                    const totalIn = height * 2.54;
+                    const totalIn = height * 0.393701;
                     const ft = Math.floor(totalIn / 12);
                     const inch = Math.round(totalIn - ft * 12);
                     return `${ft}'${inch}"`;
