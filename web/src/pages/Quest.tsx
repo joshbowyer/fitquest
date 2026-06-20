@@ -262,8 +262,11 @@ function OverworldMap({
               >
                 <div
                   style={{
-                    width: '88%',
-                    height: '88%',
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     animation: 'avatarBob 3s ease-in-out infinite',
                   }}
                 >
@@ -271,6 +274,7 @@ function OverworldMap({
                     archetype={archetype}
                     accentColor={accentColor}
                     classStripe={classStripe}
+                    size="100%"
                   />
                 </div>
               </div>

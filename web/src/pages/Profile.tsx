@@ -138,6 +138,8 @@ export function ProfilePage() {
   const previewWrist = numFromDraft('wristCm');
   const previewAnkle = numFromDraft('ankleCm');
   const previewHeight = numFromDraft('heightCm');
+  const previewForearm = numFromDraft('forearmLengthCm');
+  const previewNeck = numFromDraft('neckCircCm');
   const previewWeight = numFromDraft('weightKg');
 
   const previewFrame = useMemo(
@@ -252,7 +254,6 @@ export function ProfilePage() {
   if (!previewWrist) missing.push('wrist');
   if (!previewAnkle) missing.push('ankle');
   const frameIncomplete = missing.length > 0;
-  const previewNeck = numFromDraft('neckCircCm');
   const previewValues = PREVIEW_METRICS.map((m) => ({
     ...m,
     value: previewMax(m.key, previewWrist, previewAnkle, previewHeight, previewNeck),
@@ -362,6 +363,7 @@ export function ProfilePage() {
                     onChange={(v) => setDraftField('forearmLengthCm', v)}
                     system={system}
                     step={inImperial ? 0.25 : 0.1}
+                    present={!!previewForearm}
                   />
                   <FrameField
                     label="Neck circumference"
@@ -370,6 +372,7 @@ export function ProfilePage() {
                     onChange={(v) => setDraftField('neckCircCm', v)}
                     system={system}
                     step={inImperial ? 0.25 : 0.1}
+                    present={!!previewNeck}
                   />
                 </div>
               </div>

@@ -11,7 +11,7 @@ export type AvatarProps = {
   shirtColor?: string;
   pantsColor?: string;
   accentColor?: string;
-  size?: number;
+  size?: number | string;
   className?: string;
   classStripe?: string | null;
 };
@@ -57,6 +57,7 @@ export function Avatar({
       height={size ?? '100%'}
       preserveAspectRatio="xMidYMid meet"
       shapeRendering="crispEdges"
+      style={{ display: 'block' }}
       className={className}
       aria-label={`${archetype} avatar`}
     >
