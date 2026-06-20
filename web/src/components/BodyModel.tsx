@@ -139,7 +139,7 @@ type Props = {
   onPartClick: (part: BodyPartMeta) => void;
   onPartHover?: (part: BodyPartMeta | null) => void;
   rotate?: boolean;
-  height?: number;
+  height?: number | string;
   className?: string;
 };
 
@@ -164,7 +164,7 @@ export function BodyModel({
   onPartClick,
   onPartHover,
   rotate = true,
-  height = 480,
+  height = 'clamp(360px, 70vh, 600px)',
   className,
 }: Props) {
   const painByPart = useMemo(() => {

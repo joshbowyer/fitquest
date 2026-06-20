@@ -150,13 +150,13 @@ export function DashboardPage() {
       </div>
 
       {/* Daily weigh-in + habits */}
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 md:gap-6 mb-4 md:mb-6">
         <WeighInPanel />
         <TodayHabitsPanel />
       </div>
 
       {/* Recovery + Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 md:gap-6 mb-4 md:mb-6">
         <RecoveryPanel />
         <InsightsPanel />
       </div>

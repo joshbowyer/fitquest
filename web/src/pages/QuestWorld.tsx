@@ -73,7 +73,7 @@ export function QuestWorldPage() {
         }
       />
 
-      <div className="grid grid-cols-[1fr_320px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <div className="space-y-4">
           {/* World flavor */}
           <Panel title={world.affiliation} variant={worldColorToVariant(world.color)}>

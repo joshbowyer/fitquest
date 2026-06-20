@@ -94,7 +94,7 @@ export function StatusPage() {
         subtitle="Holographic readout of your body. Click to log pain. Color = recovery status."
       />
 
-      <div className="grid grid-cols-[1fr_320px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <Panel
           title="Hologram"
           variant="cyan"

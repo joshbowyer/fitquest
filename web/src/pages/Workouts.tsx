@@ -143,7 +143,7 @@ export function WorkoutsPage() {
     <Layout>
       <PageHeader title="// Workouts" subtitle="Log a session. Auto-detect PRs. Gain XP." />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 md:gap-6">
         {/* Form */}
         <Panel variant="cyan" title="Log Session" scanline>
           <div className="space-y-4">
@@ -254,7 +254,10 @@ export function WorkoutsPage() {
                           key={j}
                           className={classNames(
                             'gap-2 items-center',
-                            showDuration ? 'grid grid-cols-[20px_1fr_1fr_1fr_30px]' : 'grid grid-cols-[20px_1fr_1fr_1fr_1fr_30px]',
+                            // Mobile: stack vertically. Desktop: 5 or 6 columns.
+                            showDuration
+                              ? 'grid grid-cols-1 sm:grid-cols-[20px_1fr_1fr_1fr_30px]'
+                              : 'grid grid-cols-1 sm:grid-cols-[20px_1fr_1fr_1fr_1fr_30px]',
                           )}
                         >
                           <span className="text-[10px] font-mono text-ink-400">#{j + 1}</span>

@@ -49,7 +49,7 @@ export function QuestPage() {
       {isLoading || !user ? (
         <div className="text-ink-300 font-mono">scanning grid…</div>
       ) : (
-        <div className="grid grid-cols-[1fr_320px] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
           <Panel
             title="OVERWORLD"
             variant="cyan"
@@ -213,21 +213,24 @@ function OverworldMap({
     });
   }
 
+  // Use a CSS variable so we can scale the map responsively via
+  // .map-cell-size set on the wrapper.
   const cellSize = 44;
   const cellStyle: React.CSSProperties = {
-    width: cellSize,
-    height: cellSize,
-    minWidth: cellSize,
-    minHeight: cellSize,
+    width: 'var(--map-cell-size, 44px)',
+    height: 'var(--map-cell-size, 44px)',
+    minWidth: 'var(--map-cell-size, 44px)',
+    minHeight: 'var(--map-cell-size, 44px)',
     flexShrink: 0,
   };
 
   return (
+    <div className="map-grid">
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: `repeat(${MAP_TILES_X}, ${cellSize}px)`,
-        gridTemplateRows: `repeat(${MAP_TILES_Y}, ${cellSize}px)`,
+        gridTemplateColumns: `repeat(${MAP_TILES_X}, var(--map-cell-size, ${cellSize}px))`,
+        gridTemplateRows: `repeat(${MAP_TILES_Y}, var(--map-cell-size, ${cellSize}px))`,
         gap: '1px',
         background: '#1a1c26',
         border: '1px solid rgba(20,214,232,0.3)',
@@ -354,6 +357,7 @@ function OverworldMap({
           );
         }),
       )}
+    </div>
     </div>
   );
 }
