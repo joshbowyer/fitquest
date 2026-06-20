@@ -188,6 +188,8 @@ model User {
   painLogs         PainLog[]
   routine          Routine?
   worldBosses      WorldBoss[]
+  sentInvites      PartyInvite[] @relation("Inviter")
+  receivedInvites  PartyInvite[] @relation("Invitee")
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -324,6 +326,7 @@ model Party {
   createdAt DateTime      @default(now())
   members   PartyMember[]
   raids     Raid[]
+  invites   PartyInvite[]
 }
 
 model PartyMember {
@@ -521,4 +524,32 @@ model WorldBoss {
 
   @@unique([userId, worldId])
   @@index([userId])
+}
+
+enum PartyInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model PartyInvite {
+  id              String             @id @default(cuid())
+  partyId         String
+  party           Party              @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  inviterId       String
+  inviter         User               @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  // Resolved to a user at create time. If null, the invite was sent
+  // to a username that doesn't exist (yet).
+  inviteeId       String?
+  invitee         User?              @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  inviteeUsername String             // captured at send time for display
+  status          PartyInviteStatus  @default(PENDING)
+  message         String?            // optional message from inviter
+  createdAt       DateTime           @default(now())
+  respondedAt     DateTime?
+  expiresAt       DateTime           // 7 days from creation
+
+  @@index([inviteeId, status])
+  @@index([partyId])
 }

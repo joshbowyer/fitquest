@@ -26,6 +26,8 @@ export function PartyPage() {
   const [bossHp, setBossHp] = useState(5000);
   const [damage, setDamage] = useState(100);
   const [err, setErr] = useState<string | null>(null);
+  const [inviteUsername, setInviteUsername] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
 
   const partyQ = useQuery({
     queryKey: ['party', 'me'],
@@ -44,6 +46,24 @@ export function PartyPage() {
   const historyQ = useQuery({
     queryKey: ['raid', 'history'],
     queryFn: () => api<{ items: any[] }>('/raids/history'),
+  });
+
+  // Pending invites sent TO me. Always polled so I see them quickly
+  // when someone adds me.
+  const invitesQ = useQuery({
+    queryKey: ['party-invites'],
+    queryFn: () => api<{
+      invites: Array<{
+        id: string;
+        partyId: string;
+        party: { id: string; name: string };
+        inviter: { id: string; username: string; class: string | null; level: number };
+        message: string | null;
+        createdAt: string;
+        expiresAt: string;
+      }>;
+    }>('/parties/invites'),
+    refetchInterval: 5000,
   });
 
   const createM = useDelayedMutation({
@@ -89,6 +109,36 @@ export function PartyPage() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed'),
   }, 600);
 
+  const sendInviteM = useDelayedMutation<{ invite: unknown }, { username: string; message?: string }>({
+    mutationFn: ({ username, message }) =>
+      api(`/parties/${party?.id}/invite`, {
+        method: 'POST',
+        body: { username, message },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['party-invites-sent'] });
+      setInviteUsername('');
+      setInviteMessage('');
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to send invite'),
+  }, 800);
+
+  const acceptInviteM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/parties/invites/${id}/accept`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['party-invites'] });
+      qc.invalidateQueries({ queryKey: ['party'] });
+      qc.invalidateQueries({ queryKey: ['achievements'] });
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to accept'),
+  }, 600);
+
+  const declineInviteM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/parties/invites/${id}/decline`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['party-invites'] }),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to decline'),
+  }, 600);
+
   const party = partyQ.data?.party;
   const role = partyQ.data?.role;
   const raid = raidQ.data?.raid;
@@ -100,6 +150,48 @@ export function PartyPage() {
       {err && (
         <div className="mb-4 text-xs font-mono text-neon-magenta border border-neon-magenta/30 bg-neon-magenta/5 p-2">
           ! {err}
+        </div>
+      )}
+
+      {/* Pending invitations received — shown at the top so the user
+          always sees them, even if they're already in a party. */}
+      {(invitesQ.data?.invites ?? []).length > 0 && (
+        <div className="mb-4 space-y-2">
+          {(invitesQ.data?.invites ?? []).map((inv) => (
+            <div
+              key={inv.id}
+              className="border border-neon-cyan/50 bg-neon-cyan/5 p-3 flex items-center gap-3 flex-wrap"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-display tracking-widest text-sm neon-text-cyan uppercase">
+                  ⚑ {inv.inviter.username} invited you to <span className="text-neon-amber">{inv.party.name}</span>
+                </div>
+                {inv.message && (
+                  <div className="text-[10px] font-mono text-ink-300 mt-1 italic">"{inv.message}"</div>
+                )}
+                <div className="text-[10px] font-mono text-ink-500 mt-1">
+                  Lvl {inv.inviter.level} {inv.inviter.class ? `· ${inv.inviter.class}` : ''} ·{' '}
+                  expires {new Date(inv.expiresAt).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <NeonButton
+                  variant="lime"
+                  loading={acceptInviteM.isPending}
+                  onClick={() => acceptInviteM.run(inv.id)}
+                >
+                  Accept
+                </NeonButton>
+                <button
+                  onClick={() => declineInviteM.run(inv.id)}
+                  disabled={declineInviteM.isPending}
+                  className="px-3 h-10 text-xs font-mono border border-ink-500/40 text-ink-300 hover:border-neon-magenta"
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -268,6 +360,39 @@ export function PartyPage() {
                 </div>
               ))}
             </div>
+
+            {/* Invite by username — type the user's handle to send an
+                invite. They see it in their Party tab pending-invites
+                section and can accept/decline. */}
+            <div className="mt-4 pt-3 border-t border-ink-700/30 space-y-2">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+                Invite a friend
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="input-neon flex-1 text-xs"
+                  placeholder="username"
+                  value={inviteUsername}
+                  onChange={(e) => setInviteUsername(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => sendInviteM.run({ username: inviteUsername.trim(), message: inviteMessage.trim() || undefined })}
+                  disabled={sendInviteM.isPending || inviteUsername.trim().length === 0}
+                  className="px-3 h-11 text-xs font-mono border border-neon-cyan/60 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10 disabled:opacity-40"
+                >
+                  {sendInviteM.isPending ? '…' : 'Send'}
+                </button>
+              </div>
+              <input
+                className="input-neon w-full text-xs"
+                placeholder="Optional message"
+                value={inviteMessage}
+                onChange={(e) => setInviteMessage(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+
             <button
               onClick={() => leaveM.run()}
               disabled={leaveM.isPending}
