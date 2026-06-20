@@ -9,8 +9,10 @@ type Props = {
  * Rest timer with preset durations. Counts down from the selected
  * preset, plays a beep when it hits 0, and can be paused/reset.
  *
- * Use the `compact` prop for an inline variant that fits next to
- * the set row (small, single-button form).
+ * Presets can be set externally via the `set-rest` window event:
+ *   window.dispatchEvent(new CustomEvent('set-rest', { detail: 60 }));
+ * This lets the page's preset buttons drive the timer without
+ * having to thread a ref down through the DOM.
  */
 export function RestTimer({ onTick, onComplete }: Props) {
   const [seconds, setSeconds] = useState(90);
@@ -19,6 +21,20 @@ export function RestTimer({ onTick, onComplete }: Props) {
   const intervalRef = useRef<number | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+
+  // Listen for external preset events
+  useEffect(() => {
+    function handler(e: Event) {
+      const ce = e as CustomEvent<number>;
+      if (typeof ce.detail === 'number' && ce.detail > 0) {
+        setRunning(false);
+        setSeconds(ce.detail);
+        setInitial(ce.detail);
+      }
+    }
+    window.addEventListener('set-rest', handler);
+    return () => window.removeEventListener('set-rest', handler);
+  }, []);
 
   useEffect(() => {
     if (!running) return;
@@ -49,11 +65,6 @@ export function RestTimer({ onTick, onComplete }: Props) {
     setRunning(true);
   }
   function reset(s = initial) {
-    setRunning(false);
-    setSeconds(s);
-    setInitial(s);
-  }
-  function setPreset(s: number) {
     setRunning(false);
     setSeconds(s);
     setInitial(s);

@@ -11,6 +11,12 @@ import { formatDate, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
+// Metrics that are derived from other data and shouldn't be
+// user-enterable. LEAN_MASS = weight × (1 - bf%). FFMI is computed
+// from LBM and height in the Status panel. We hide these from
+// the manual entry picker so users don't enter conflicting values.
+const DERIVED_METRICS: MetricType[] = ['LEAN_MASS', 'FFMI'];
+
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 
 function stepForUnit(unit: string, system: UnitSystem): number {
@@ -136,7 +142,9 @@ export function MeasurementsPage() {
                   {cat.replace('_', ' ')}
                 </div>
                 <div className="space-y-0.5">
-                  {METRICS_BY_CATEGORY[cat].map((m) => (
+                  {METRICS_BY_CATEGORY[cat]
+                    .filter((m) => !DERIVED_METRICS.includes(m))
+                    .map((m) => (
                     <button
                       key={m}
                       onClick={() => setSelected(m)}

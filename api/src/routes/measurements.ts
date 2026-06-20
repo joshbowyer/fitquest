@@ -13,8 +13,16 @@ import {
   getTodayHabitStatus,
 } from '../lib/streaks.js';
 
+// Metrics that are derived from other data — not user-enterable.
+// LEAN_MASS = weight × (1 - bf%); FFMI = lean mass / height² (with
+// a height adjustment). Reject attempts to log these directly.
+const DERIVED_METRICS: string[] = ['LEAN_MASS', 'FFMI'];
+
 const CreateSchema = z.object({
-  metric: z.nativeEnum(MetricType),
+  metric: z.nativeEnum(MetricType).refine(
+    (m) => !DERIVED_METRICS.includes(m),
+    { message: 'LEAN_MASS and FFMI are auto-calculated — see the Status panel' },
+  ),
   value: z.number().positive().max(10000),
   unit: z.string().max(16).optional(),
   notes: z.string().max(500).optional(),

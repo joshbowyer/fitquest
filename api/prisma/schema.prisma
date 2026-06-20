@@ -20,6 +20,7 @@ enum MetricType {
   // Hypertrophy (circumferences in cm)
   BICEP
   CHEST
+  // SHOULDER is the shoulder-to-shoulder BREADTH (not circumference)
   SHOULDER
   QUAD
   CALF
@@ -32,19 +33,23 @@ enum MetricType {
   DEADLIFT_1RM
   OHP_1RM
   PULLUP_1RM
-  // Body composition
+  // Body composition (LEAN_MASS, FFMI are derived — see User)
   BODY_FAT_PCT
   LEAN_MASS
   FFMI
   WEIGHT
-  // Cardio / endurance
+  // Cardio / endurance (times in seconds)
   VO2_MAX
   RESTING_HR
   HRV
   FIVE_K_TIME
+  ONE_MILE_TIME
   // Calisthenics
   PLANK_HOLD
   L_SIT_HOLD
+  // Max-reps calisthenics (single-set max)
+  PUSHUP_MAX
+  PULLUP_MAX
   // Powerlifts (composite)
   POWERLIFT_TOTAL
   // Sleep

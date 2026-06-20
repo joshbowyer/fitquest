@@ -1,0 +1,4 @@
+-- Add new metrics to the MetricType enum.
+ALTER TYPE "MetricType" ADD VALUE IF NOT EXISTS 'ONE_MILE_TIME';
+ALTER TYPE "MetricType" ADD VALUE IF NOT EXISTS 'PUSHUP_MAX';
+ALTER TYPE "MetricType" ADD VALUE IF NOT EXISTS 'PULLUP_MAX';

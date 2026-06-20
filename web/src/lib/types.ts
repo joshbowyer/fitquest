@@ -9,8 +9,8 @@ export type MetricType =
   | 'BICEP' | 'CHEST' | 'SHOULDER' | 'QUAD' | 'CALF' | 'FOREARM' | 'NECK' | 'WAIST'
   | 'BENCH_1RM' | 'SQUAT_1RM' | 'DEADLIFT_1RM' | 'OHP_1RM' | 'PULLUP_1RM'
   | 'BODY_FAT_PCT' | 'LEAN_MASS' | 'FFMI' | 'WEIGHT'
-  | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME'
-  | 'PLANK_HOLD' | 'L_SIT_HOLD'
+  | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME' | 'ONE_MILE_TIME'
+  | 'PLANK_HOLD' | 'L_SIT_HOLD' | 'PUSHUP_MAX' | 'PULLUP_MAX'
   | 'POWERLIFT_TOTAL'
   | 'SLEEP_HOURS' | 'SLEEP_QUALITY'
   | 'CALORIES' | 'PROTEIN_G' | 'WATER_ML'
@@ -33,7 +33,9 @@ export type MetricMeta = {
 export const METRICS: Record<MetricType, MetricMeta> = {
   BICEP: { type: 'BICEP', category: 'HYPERTROPHY', label: 'Bicep Circumference', shortLabel: 'Bicep', unit: 'cm', defaultMin: 30, description: 'Flexed bicep circumference.' },
   CHEST: { type: 'CHEST', category: 'HYPERTROPHY', label: 'Chest Circumference', shortLabel: 'Chest', unit: 'cm', defaultMin: 90, description: 'Chest circumference at nipple line.' },
-  SHOULDER: { type: 'SHOULDER', category: 'HYPERTROPHY', label: 'Shoulder Circumference', shortLabel: 'Shoulder', unit: 'cm', defaultMin: 105, description: 'Deltoid circumference.' },
+  // SHOULDER is shoulder-to-shoulder BREADTH (the "biacromial
+  // breadth"), NOT the deltoid circumference.
+  SHOULDER: { type: 'SHOULDER', category: 'HYPERTROPHY', label: 'Shoulder Width', shortLabel: 'Shoulder', unit: 'cm', defaultMin: 38, description: 'Shoulder-to-shoulder breadth (biacromial).' },
   QUAD: { type: 'QUAD', category: 'HYPERTROPHY', label: 'Quad Circumference', shortLabel: 'Quad', unit: 'cm', defaultMin: 50, description: 'Quad circumference 15cm above patella.' },
   CALF: { type: 'CALF', category: 'HYPERTROPHY', label: 'Calf Circumference', shortLabel: 'Calf', unit: 'cm', defaultMin: 35, description: 'Calf circumference at widest point.' },
   FOREARM: { type: 'FOREARM', category: 'HYPERTROPHY', label: 'Forearm Circumference', shortLabel: 'Forearm', unit: 'cm', defaultMin: 27, description: 'Forearm circumference, flexed.' },
@@ -45,15 +47,21 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   OHP_1RM: { type: 'OHP_1RM', category: 'STRENGTH', label: 'Overhead Press 1RM', shortLabel: 'OHP', unit: 'kg', defaultMin: 25, description: 'Estimated 1RM OHP.' },
   PULLUP_1RM: { type: 'PULLUP_1RM', category: 'STRENGTH', label: 'Pull-up 1RM', shortLabel: 'Pull-up', unit: 'kg', defaultMin: 0, description: 'Heaviest weighted pull-up.' },
   BODY_FAT_PCT: { type: 'BODY_FAT_PCT', category: 'BODY_COMP', label: 'Body Fat %', shortLabel: 'Body Fat', unit: '%', defaultMin: 8, description: 'Body fat percentage.' },
-  LEAN_MASS: { type: 'LEAN_MASS', category: 'BODY_COMP', label: 'Lean Mass', shortLabel: 'Lean Mass', unit: 'kg', defaultMin: 50, description: 'Lean body mass.' },
-  FFMI: { type: 'FFMI', category: 'BODY_COMP', label: 'FFMI', shortLabel: 'FFMI', unit: '', defaultMin: 18, description: 'Fat-Free Mass Index.' },
+  // LEAN_MASS is derived from weight × (1 - bf%). It's shown in
+  // the UI but never logged directly. The Measurements page and
+  // WeighIn panel hide the entry UI for this metric.
+  LEAN_MASS: { type: 'LEAN_MASS', category: 'BODY_COMP', label: 'Lean Mass (auto)', shortLabel: 'Lean Mass', unit: 'kg', defaultMin: 50, description: 'Auto-calculated: weight × (1 − body fat %).' },
+  FFMI: { type: 'FFMI', category: 'BODY_COMP', label: 'FFMI', shortLabel: 'FFMI', unit: '', defaultMin: 18, description: 'Fat-Free Mass Index (auto).' },
   WEIGHT: { type: 'WEIGHT', category: 'BODY_COMP', label: 'Body Weight', shortLabel: 'Weight', unit: 'kg', defaultMin: 50, description: 'Total body weight.' },
   VO2_MAX: { type: 'VO2_MAX', category: 'CARDIO', label: 'VO2 Max', shortLabel: 'VO2 Max', unit: 'ml/kg/min', defaultMin: 30, description: 'Maximal oxygen uptake.' },
   RESTING_HR: { type: 'RESTING_HR', category: 'CARDIO', label: 'Resting Heart Rate', shortLabel: 'Resting HR', unit: 'bpm', defaultMin: 50, description: 'Resting heart rate.' },
   HRV: { type: 'HRV', category: 'CARDIO', label: 'HRV (RMSSD)', shortLabel: 'HRV', unit: 'ms', defaultMin: 30, description: 'Heart rate variability.' },
-  FIVE_K_TIME: { type: 'FIVE_K_TIME', category: 'CARDIO', label: '5K Time', shortLabel: '5K', unit: 's', defaultMin: 1500, description: 'Best 5K time in seconds.' },
+  FIVE_K_TIME: { type: 'FIVE_K_TIME', category: 'CARDIO', label: '5K Time', shortLabel: '5K', unit: 's', defaultMin: 1500, description: 'Best 5K run time in seconds.' },
+  ONE_MILE_TIME: { type: 'ONE_MILE_TIME', category: 'CARDIO', label: '1 Mile Time', shortLabel: '1 Mile', unit: 's', defaultMin: 360, description: 'Best 1 mile run time in seconds.' },
   PLANK_HOLD: { type: 'PLANK_HOLD', category: 'CALISTHENICS', label: 'Plank Hold', shortLabel: 'Plank', unit: 's', defaultMin: 30, description: 'Longest plank hold.' },
   L_SIT_HOLD: { type: 'L_SIT_HOLD', category: 'CALISTHENICS', label: 'L-Sit Hold', shortLabel: 'L-Sit', unit: 's', defaultMin: 5, description: 'Longest L-sit hold.' },
+  PUSHUP_MAX: { type: 'PUSHUP_MAX', category: 'CALISTHENICS', label: 'Push-ups in a Row', shortLabel: 'Push-ups', unit: 'reps', defaultMin: 5, description: 'Max push-ups in a single unbroken set.' },
+  PULLUP_MAX: { type: 'PULLUP_MAX', category: 'CALISTHENICS', label: 'Pull-ups in a Row', shortLabel: 'Pull-ups', unit: 'reps', defaultMin: 1, description: 'Max pull-ups in a single unbroken set.' },
   POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best S/B/D.' },
   SLEEP_HOURS: { type: 'SLEEP_HOURS', category: 'SLEEP', label: 'Sleep Duration', shortLabel: 'Sleep', unit: 'h', defaultMin: 5, description: 'Hours slept.' },
   SLEEP_QUALITY: { type: 'SLEEP_QUALITY', category: 'SLEEP', label: 'Sleep Quality', shortLabel: 'Sleep Q', unit: '/10', defaultMin: 5, description: 'Sleep quality 1-10.' },
@@ -70,8 +78,8 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   HYPERTROPHY: ['BICEP', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
   STRENGTH: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'OHP_1RM', 'PULLUP_1RM', 'POWERLIFT_TOTAL'],
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
-  CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME'],
-  CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD'],
+  CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],
+  CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'PUSHUP_MAX', 'PULLUP_MAX'],
   SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
   NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
   WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],
