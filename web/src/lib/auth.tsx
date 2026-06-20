@@ -67,6 +67,13 @@ export type User = {
   // displayed lean-mass calculations so the number reflects contractile
   // tissue, not water.
   creatine?: boolean;
+  // Auto-derived: true when the user has logged Creatine on ≥3 of the
+  // last 7 days. Server-side check; the lean-mass display uses this
+  // rather than the boolean `creatine` flag.
+  creatineActive?: boolean;
+  // IANA timezone name (e.g. "America/New_York"). Used to render
+  // absolute timestamps in the user's local time.
+  timezone?: string | null;
 };
 
 type AuthCtx = {

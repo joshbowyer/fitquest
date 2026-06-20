@@ -16,7 +16,7 @@ const COLOR_HEX: Record<GaugeColor, string> = {
 
 const START_ANGLE = 135; // bottom-left
 const SWEEP = 270;
-const TOP_ANGLE = START_ANGLE + SWEEP / 2; // 270 → directly up
+const TOP_ANGLE = START_ANGLE + SWEEP / 2; // top
 
 function polar(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -32,20 +32,25 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 }
 
 /**
- * Ideal-based gauge for metrics where the goal is in the middle of
- * the range — body fat, HRV, VO2 max. The TOP CENTER of the arc is
- * the ideal point; values fan outward toward "too low" on the left
- * and "too high" on the right. The fill is colored by how far you
- * are from the ideal range:
- *   - inside [idealMin, idealMax] = lime (ideal)
- *   - within warn margin          = amber
- *   - outside warn margin         = magenta
+ * Elite-based radial gauge.
+ *
+ * Zones (in order of goodness):
+ *   - elite   : the green band centered on the top of the dial. Values
+ *               here are world-class.
+ *   - healthy : the wider band around elite. Values here are fine.
+ *   - warn    : outside the healthy band but not extreme. Sub-healthy.
+ *   - far     : the rest — too low or too high.
+ *
+ * Top of the dial is `idealMid` (the middle of the elite band).
+ * Values fan outward symmetrically.
  */
 type Props = {
   value: number | null;
   min: number;
-  idealMin: number;
-  idealMax: number;
+  eliteMin: number;
+  eliteMax: number;
+  healthyMin: number;
+  healthyMax: number;
   max: number;
   metric: MetricType;
   color?: GaugeColor;
@@ -57,8 +62,10 @@ type Props = {
 export function IdealGauge({
   value,
   min,
-  idealMin,
-  idealMax,
+  eliteMin,
+  eliteMax,
+  healthyMin,
+  healthyMax,
   max,
   metric,
   color = 'cyan',
@@ -78,79 +85,93 @@ export function IdealGauge({
   const rInner = 70;
 
   const range = max - min;
-  const idealMid = (idealMin + idealMax) / 2;
-  const idealSpan = idealMax - idealMin;
+  const idealMid = (eliteMin + eliteMax) / 2;
 
-  // Map a numeric value to an angle on the gauge. The top center
-  // (270° = TOP_ANGLE) is `idealMid`. Linear stretch outward to
-  // min/max at the edges (135° and 405°).
+  // Angle mapping: t in [-1, +1] maps linearly to the dial.
   const angleOf = (v: number) => {
     const t = (v - idealMid) / Math.max(range / 2, 0.0001);
-    // t = -1 → bottom-left, t = +1 → bottom-right, t = 0 → top
     const half = SWEEP / 2;
-    return TOP_ANGLE - t * half; // t=-1 → +half = bottom-left, t=+1 → -half = bottom-right
+    return TOP_ANGLE - t * half;
   };
 
   const valueAngle = value != null && Number.isFinite(value) ? angleOf(value) : null;
-  const idealMinAngle = angleOf(idealMin);
-  const idealMaxAngle = angleOf(idealMax);
+  const eliteMinAngle = angleOf(eliteMin);
+  const eliteMaxAngle = angleOf(eliteMax);
+  const healthyMinAngle = angleOf(healthyMin);
+  const healthyMaxAngle = angleOf(healthyMax);
 
-  // "How close to ideal": 0 at ideal midpoint, 1 at the edges of
-  // the ideal range, increasing past it. Used for fill color.
-  const distance = value != null && Number.isFinite(value)
-    ? Math.abs(value - idealMid)
-    : null;
-  const inIdealRange = value != null && value >= idealMin && value <= idealMax;
-  // Warning margin = 50% of the ideal span, capped to remaining
-  // range on each side.
-  const warnMargin = idealSpan * 0.5;
-  const warnLow = Math.max(min, idealMin - warnMargin);
-  const warnHigh = Math.min(max, idealMax + warnMargin);
+  // Status classification.
+  const status = (() => {
+    if (value == null) return '—';
+    if (value >= eliteMin && value <= eliteMax) return 'elite';
+    if (value >= healthyMin && value <= healthyMax) return 'healthy';
+    // Anything outside healthy is "warn" (mild) or "far" (extreme).
+    // Use a 25% buffer of the healthy span to differentiate.
+    const span = healthyMax - healthyMin;
+    const buf = span * 0.25;
+    if (value < healthyMin - buf || value > healthyMax + buf) return 'far';
+    return 'warn';
+  })();
 
-  let fillColor = '#9bff5c'; // lime — ideal
-  if (value != null) {
-    if (!inIdealRange) {
-      if (value < warnLow || value > warnHigh) {
-        fillColor = '#ff2bd6'; // magenta — bad
-      } else {
-        fillColor = '#ffc34d'; // amber — warning
-      }
+  const statusColor = (() => {
+    switch (status) {
+      case 'elite': return '#9bff5c';
+      case 'healthy': return '#14d6e8';
+      case 'warn': return '#ffc34d';
+      case 'far': return '#ff2bd6';
+      default: return colorHex;
     }
-  }
+  })();
 
   // Convert to display unit for the labels/center text.
   const valueDisp = value != null ? convertForDisplay(value, meta.unit, system) : null;
-  const idealMinDisp = convertForDisplay(idealMin, meta.unit, system);
-  const idealMaxDisp = convertForDisplay(idealMax, meta.unit, system);
+  const eliteMinDisp = convertForDisplay(eliteMin, meta.unit, system);
+  const eliteMaxDisp = convertForDisplay(eliteMax, meta.unit, system);
+  const healthyMinDisp = convertForDisplay(healthyMin, meta.unit, system);
+  const healthyMaxDisp = convertForDisplay(healthyMax, meta.unit, system);
   const minDisp = convertForDisplay(min, meta.unit, system);
   const maxDisp = convertForDisplay(max, meta.unit, system);
   const displayUnitLabel = displayUnit(meta.unit, system);
-  const fmt = (v: number | null) =>
-    v == null
-      ? '—'
-      : formatNumber(
-          v,
-          displayUnitLabel === 's' ||
-            displayUnitLabel === '%' ||
-            displayUnitLabel === '/10' ||
-            displayUnitLabel === 'ms' ||
-            displayUnitLabel === 'bpm'
-            ? 0
-            : 1,
-        );
 
-  // Ideal-band arc (lime, full opacity)
-  const idealArc = arcPath(cx, cy, (rOuter + rInner) / 2, idealMaxAngle, idealMinAngle);
-  // Outer warning band on each side (amber)
-  const leftWarnArc =
-    value != null && value < idealMin
-      ? arcPath(cx, cy, (rOuter + rInner) / 2, angleOf(warnLow), idealMinAngle)
-      : null;
-  const rightWarnArc =
-    value != null && value > idealMax
-      ? arcPath(cx, cy, (rOuter + rInner) / 2, idealMaxAngle, angleOf(warnHigh))
-      : null;
-  // Indicator arc (current value to ideal midpoint) — colored by status
+  // Time durations (seconds) display as M:SS; everything else uses
+  // formatNumber().
+  const isTimeUnit =
+    meta.unit === 's' &&
+    (metric === 'ONE_MILE_TIME' ||
+      metric === 'FIVE_K_TIME' ||
+      metric === 'PLANK_HOLD' ||
+      metric === 'L_SIT_HOLD');
+
+  const fmtValue = (v: number | null): string => {
+    if (v == null) return '—';
+    if (isTimeUnit) {
+      const total = Math.max(0, Math.round(v));
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+    const decimals =
+      displayUnitLabel === 's' ||
+      displayUnitLabel === '%' ||
+      displayUnitLabel === '/10' ||
+      displayUnitLabel === 'ms' ||
+      displayUnitLabel === 'bpm'
+        ? 0
+        : 1;
+    return formatNumber(v, decimals);
+  };
+
+  // Background zones
+  const eliteArc = arcPath(cx, cy, (rOuter + rInner) / 2, eliteMaxAngle, eliteMinAngle);
+  const healthyArc = arcPath(
+    cx,
+    cy,
+    (rOuter + rInner) / 2,
+    healthyMaxAngle,
+    healthyMinAngle,
+  );
+
+  // Indicator (current value → ideal midpoint), colored by status
   const indicatorArc =
     valueAngle != null
       ? arcPath(cx, cy, (rOuter + rInner) / 2, valueAngle, TOP_ANGLE)
@@ -159,14 +180,6 @@ export function IdealGauge({
   const indicatorPos = valueAngle != null
     ? polar(cx, cy, (rOuter + rInner) / 2, valueAngle)
     : null;
-
-  const statusLabel = (() => {
-    if (value == null) return '—';
-    if (inIdealRange) return 'ideal';
-    if (value < warnLow) return 'too low';
-    if (value > warnHigh) return 'too high';
-    return 'warn';
-  })();
 
   return (
     <div className="inline-flex flex-col items-center" style={{ width: size }}>
@@ -188,52 +201,39 @@ export function IdealGauge({
           </filter>
         </defs>
 
-        {/* Track (dim full arc) */}
+        {/* Full track */}
         <path
           d={arcPath(cx, cy, (rOuter + rInner) / 2, START_ANGLE, START_ANGLE + SWEEP)}
-          stroke="rgba(255,255,255,0.05)"
+          stroke="rgba(255,255,255,0.04)"
           strokeWidth={rOuter - rInner}
           fill="none"
           strokeLinecap="round"
         />
 
-        {/* Ideal band (lime, subtle) */}
+        {/* Healthy band (wider) */}
         <path
-          d={idealArc}
+          d={healthyArc}
+          stroke="#14d6e8"
+          strokeOpacity="0.10"
+          strokeWidth={rOuter - rInner - 2}
+          fill="none"
+          strokeLinecap="round"
+        />
+        {/* Elite band (narrower, lime) */}
+        <path
+          d={eliteArc}
           stroke="#9bff5c"
-          strokeOpacity="0.22"
-          strokeWidth={rOuter - rInner}
+          strokeOpacity="0.30"
+          strokeWidth={rOuter - rInner - 4}
           fill="none"
           strokeLinecap="round"
         />
 
-        {/* Warning bands (amber) — left + right of ideal */}
-        {leftWarnArc && (
-          <path
-            d={leftWarnArc}
-            stroke="#ffc34d"
-            strokeOpacity="0.18"
-            strokeWidth={rOuter - rInner - 6}
-            fill="none"
-            strokeLinecap="round"
-          />
-        )}
-        {rightWarnArc && (
-          <path
-            d={rightWarnArc}
-            stroke="#ffc34d"
-            strokeOpacity="0.18"
-            strokeWidth={rOuter - rInner - 6}
-            fill="none"
-            strokeLinecap="round"
-          />
-        )}
-
-        {/* Indicator (current value → ideal midpoint), colored by status */}
+        {/* Indicator */}
         {indicatorArc && (
           <path
             d={indicatorArc}
-            stroke={fillColor}
+            stroke={statusColor}
             strokeWidth={rOuter - rInner}
             fill="none"
             strokeLinecap="round"
@@ -242,14 +242,20 @@ export function IdealGauge({
           />
         )}
 
-        {/* Tick marks */}
+        {/* Tick marks at elite/healthy boundaries + edges */}
         {useMemo(() => {
-          return Array.from({ length: 9 }, (_, i) => {
-            const t = (i / 8) * 2 - 1; // -1 .. +1
-            const a = angleOf(min + (range / 2) * (1 + t));
+          const stops = [
+            { v: min, big: false },
+            { v: healthyMin, big: true },
+            { v: eliteMin, big: true },
+            { v: eliteMax, big: true },
+            { v: healthyMax, big: true },
+            { v: max, big: false },
+          ];
+          return stops.map((s, i) => {
+            const a = angleOf(s.v);
             const outer = polar(cx, cy, rOuter + 4, a);
             const inner = polar(cx, cy, rInner - 4, a);
-            const isIdeal = t >= -0.15 && t <= 0.15;
             return (
               <line
                 key={i}
@@ -257,34 +263,34 @@ export function IdealGauge({
                 y1={outer.y}
                 x2={inner.x}
                 y2={inner.y}
-                stroke={isIdeal ? '#9bff5c' : colorHex}
-                strokeOpacity={i % 2 === 0 ? 0.5 : 0.2}
-                strokeWidth={i % 2 === 0 ? 1.2 : 0.7}
+                stroke={s.big ? '#9bff5c' : colorHex}
+                strokeOpacity={s.big ? 0.55 : 0.18}
+                strokeWidth={s.big ? 1.2 : 0.7}
               />
             );
           });
-        }, [min, max, colorHex])}
+        }, [min, max, healthyMin, healthyMax, eliteMin, eliteMax, colorHex])}
 
-        {/* Indicator dot at current value */}
+        {/* Indicator dot */}
         {indicatorPos && (
           <g>
-            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="6" fill={fillColor} filter={`url(#glow-${id})`} />
+            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="6" fill={statusColor} filter={`url(#glow-${id})`} />
             <circle cx={indicatorPos.x} cy={indicatorPos.y} r="3" fill="#0a0a14" />
           </g>
         )}
 
-        {/* Center text */}
+        {/* Center text — value + unit + status */}
         <text
           x={cx}
-          y={cy - 6}
+          y={cy - 4}
           textAnchor="middle"
           className="font-mono"
           fontSize="28"
           fontWeight="700"
-          fill={fillColor}
-          style={{ filter: `drop-shadow(0 0 4px ${fillColor})` }}
+          fill={statusColor}
+          style={{ filter: `drop-shadow(0 0 4px ${statusColor})` }}
         >
-          {fmt(valueDisp?.value ?? null)}
+          {fmtValue(valueDisp?.value ?? null)}
         </text>
         <text
           x={cx}
@@ -302,23 +308,20 @@ export function IdealGauge({
             y={cy + 26}
             textAnchor="middle"
             fontSize="9"
-            fill={fillColor}
+            fill={statusColor}
             fillOpacity="0.85"
             className="font-mono"
           >
-            {statusLabel.toUpperCase()}
+            {status.toUpperCase()}
           </text>
         )}
 
-        {/* Min / ideal-range labels */}
+        {/* Min / max labels (subtle) */}
         <text x={20} y={170} fontSize="9" fill="rgba(180,180,210,0.55)" className="font-mono">
-          {fmt(minDisp.value)}
-        </text>
-        <text x={100} y={28} textAnchor="middle" fontSize="9" fill="#9bff5c" fillOpacity="0.85" className="font-mono">
-          ideal {fmt(idealMinDisp.value)}–{fmt(idealMaxDisp.value)}
+          {fmtValue(minDisp.value)}
         </text>
         <text x={180} y={170} textAnchor="end" fontSize="9" fill="rgba(180,180,210,0.55)" className="font-mono">
-          {fmt(maxDisp.value)}
+          {fmtValue(maxDisp.value)}
         </text>
       </svg>
 
@@ -327,7 +330,7 @@ export function IdealGauge({
           {meta.shortLabel}
         </div>
         {subtitle && (
-          <div className="text-[9px] text-ink-400 font-mono mt-0.5 leading-tight max-w-[120px] mx-auto">
+          <div className="text-[9px] text-ink-400 font-mono mt-0.5 leading-tight max-w-[140px] mx-auto">
             {subtitle}
           </div>
         )}

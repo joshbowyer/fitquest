@@ -26,6 +26,7 @@ import { spiritualRoutes } from './routes/spiritual.js';
 import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
 import { importRoutes } from './routes/import.js';
+import { supplementRoutes } from './routes/supplements.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
 
@@ -66,6 +67,7 @@ async function build() {
   await app.register(routineRoutes, { prefix: '/routine' });
   await app.register(bossRoutes, { prefix: '/bosses' });
   await app.register(importRoutes, { prefix: '/import' });
+  await app.register(supplementRoutes, { prefix: '/supplements' });
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
   await app.register(habitRoutes, { prefix: '/habits' });
   await app.register(dailyRoutes, { prefix: '/dailies' });

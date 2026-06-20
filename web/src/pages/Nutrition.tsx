@@ -230,6 +230,8 @@ export function NutritionPage() {
         })}
       </div>
 
+      <SupplementsPanel />
+
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80">
           <div className="bg-bg-800 border border-neon-cyan/40 max-w-md w-full mx-4 p-5">
@@ -276,5 +278,187 @@ function QuickBtn({ label, onClick }: { label: string; onClick: () => void }) {
     >
       {label}
     </button>
+  );
+}
+// ============================================================
+// Supplements — daily checkbox tracker. Creatine specifically
+// affects lean-mass display (subtracts ~1.5 kg water when logged on
+// ≥3 of the last 7 days, server-derived in /me).
+// ============================================================
+
+type SupplementItem = {
+  name: string;
+  daysLast7: number;
+  latestDoseMg: number | null;
+  latestAt: string;
+};
+
+type SupplementSummary = {
+  items: SupplementItem[];
+  creatine: SupplementItem | null;
+  creatineActive: boolean;
+};
+
+const QUICK_SUPPLEMENTS = [
+  { name: 'Creatine',    defaultDoseMg: 5000 },
+  { name: 'Vitamin D3',  defaultDoseMg: 2000 },
+  { name: 'Omega-3',     defaultDoseMg: 1000 },
+  { name: 'Magnesium',   defaultDoseMg: 300 },
+  { name: 'Zinc',        defaultDoseMg: 15 },
+];
+
+function SupplementsPanel() {
+  const qc = useQueryClient();
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [customName, setCustomName] = useState('');
+  const [customDose, setCustomDose] = useState('');
+
+  const summaryQ = useQuery({
+    queryKey: ['supplements', 'summary'],
+    queryFn: () => api<SupplementSummary>('/supplements/summary'),
+    refetchInterval: 60_000,
+  });
+
+  const logM = useDelayedMutation<{ log: { id: string } }, { name: string; doseMg?: number | null }>({
+    mutationFn: (body) => api('/supplements', { method: 'POST', body }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['supplements'] });
+      qc.invalidateQueries({ queryKey: ['auth'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
+    },
+  }, 400);
+
+  // Was the user already credited with this supplement today?
+  const creatine = summaryQ.data?.creatine;
+  const creatineDoneToday =
+    !!creatine &&
+    new Date(creatine.latestAt).toDateString() === new Date().toDateString();
+
+  function isDoneToday(name: string, item?: SupplementItem | null): boolean {
+    if (!item) return false;
+    return new Date(item.latestAt).toDateString() === new Date().toDateString();
+  }
+
+  function togglePick(name: string) {
+    setPicked((p) => {
+      const next = new Set(p);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function logOne(name: string, doseMg: number | null) {
+    logM.run({ name, doseMg });
+    setPicked((p) => {
+      const next = new Set(p);
+      next.delete(name);
+      return next;
+    });
+  }
+
+  function logCustom() {
+    const name = customName.trim();
+    if (!name) return;
+    const dose = Number(customDose);
+    logM.run({ name, doseMg: Number.isFinite(dose) && dose > 0 ? dose : null });
+    setCustomName('');
+    setCustomDose('');
+  }
+
+  const creatineDays = summaryQ.data?.creatine?.daysLast7 ?? 0;
+
+  return (
+    <Panel variant="violet" title="Supplements" className="mt-4">
+      <div className="text-[10px] font-mono text-ink-300 mb-3">
+        Tap to log a dose. Creatine active = logged on ≥3 of the last 7 days
+        (auto-applies to lean-mass display).
+      </div>
+
+      {/* Quick chips */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        {QUICK_SUPPLEMENTS.map((s) => {
+          const item = summaryQ.data?.items.find((i) => i.name.toLowerCase() === s.name.toLowerCase());
+          const doneToday = isDoneToday(s.name, item);
+          return (
+            <button
+              key={s.name}
+              onClick={() => logOne(s.name, s.defaultDoseMg)}
+              disabled={logM.isPending}
+              className={classNames(
+                'px-3 py-2 text-xs font-mono border transition-all',
+                doneToday
+                  ? 'border-neon-lime/60 bg-neon-lime/10 text-neon-lime'
+                  : picked.has(s.name)
+                  ? 'border-neon-violet bg-neon-violet/10 text-neon-violet'
+                  : 'border-ink-500/30 text-ink-200 hover:border-neon-violet/60',
+              )}
+              title={doneToday ? `Logged today (${s.defaultDoseMg} mg)` : `Log ${s.name} ${s.defaultDoseMg} mg`}
+            >
+              {doneToday ? '✓ ' : '+ '}{s.name} · {s.defaultDoseMg}mg
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Custom entry */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input
+          className="input-neon flex-1 min-w-[160px] text-xs"
+          placeholder="Custom supplement…"
+          value={customName}
+          onChange={(e) => setCustomName(e.target.value)}
+        />
+        <input
+          className="input-neon w-24 text-xs"
+          type="number"
+          min={0}
+          placeholder="mg"
+          value={customDose}
+          onChange={(e) => setCustomDose(e.target.value)}
+        />
+        <NeonButton
+          onClick={logCustom}
+          loading={logM.isPending}
+          disabled={!customName.trim()}
+          variant="violet"
+          icon="+"
+          loadingText="Logging…"
+        >
+          Log
+        </NeonButton>
+      </div>
+
+      {/* Creatine active summary */}
+      <div
+        className={classNames(
+          'border p-3 flex items-center justify-between',
+          creatineDays >= 3 ? 'border-neon-lime/50 bg-neon-lime/5' : 'border-ink-500/30',
+        )}
+      >
+        <div>
+          <div className="text-xs font-mono text-ink-100">
+            Creatine ·{' '}
+            <span className={creatineDays >= 3 ? 'text-neon-lime' : 'text-ink-300'}>
+              {creatineDays} of last 7 days
+            </span>
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 mt-0.5">
+            {creatineDays >= 3
+              ? 'Creatine active — ~1.5 kg water weight subtracted from lean mass.'
+              : `Log on ${3 - creatineDays} more day${3 - creatineDays === 1 ? '' : 's'} for water-weight accounting to apply.`}
+          </div>
+        </div>
+        <div
+          className="text-[10px] font-mono px-2 py-1 border"
+          style={{
+            color: creatineDays >= 3 ? '#9bff5c' : '#3f3f46',
+            borderColor: creatineDays >= 3 ? '#9bff5c66' : '#27272a',
+          }}
+        >
+          {creatineDoneToday ? '✓ TODAY' : 'NOT YET'}
+        </div>
+      </div>
+    </Panel>
   );
 }

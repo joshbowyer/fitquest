@@ -78,12 +78,15 @@ export function StatusPage() {
   const bf = user.bodyFatPct ?? null;
   const weight = user.weightKg ?? null;
   const height = user.heightCm ?? null;
-  // Creatine adds ~1-2 kg of intracellular water (mostly muscle cells).
-  // Subtract that from displayed LBM so the number reflects contractile
-  // tissue, not water. We approximate as 1.5 kg (mid-range).
-  const creatineWaterKg = user.creatine ? 1.5 : 0;
+  // Creatine: water-weight subtraction kicks in only when the user has
+  // logged Creatine on ≥3 of the last 7 days. The auto-derived flag
+  // (`creatineActive`) is recomputed server-side per /me call, so we
+  // trust it rather than reimplementing the rule here.
+  const creatineActive = user.creatineActive ?? false;
   const lbmRaw = bf != null && weight != null ? weight * (1 - bf / 100) : null;
-  const lbm = lbmRaw != null ? Math.max(0, lbmRaw - creatineWaterKg) : null;
+  const lbm = lbmRaw != null && bf != null && weight != null
+    ? Math.max(0, weight * (1 - bf / 100) - (creatineActive ? 1.5 : 0))
+    : null;
   // Standard FFMI = lean mass (kg) / height (m)^2. No Kouri correction
   // — the previous version added ~6 points to every reading because of
   // a wrong formulation (`+ 6.1 * (1.8 / height)` is essentially +6

@@ -30,7 +30,22 @@ import {
 } from '@/lib/types';
 import { formatRelative, formatSeconds } from '@/lib/format';
 import { displayUnit } from '@/lib/units';
+import { WORLD_COLOR_HEX as CLASS_COLOR_HEX } from '@/lib/quest';
+import { bandsFor } from '@/lib/metricBands';
 import { Link } from 'react-router-dom';
+
+// Metrics that use the IdealGauge (top-center = elite, fan-out
+// bands). The bands themselves come from lib/metricBands.
+const idealMetricKeys = new Set([
+  'BODY_FAT_PCT',
+  'HRV',
+  'VO2_MAX',
+  'ONE_MILE_TIME',
+  'FIVE_K_TIME',
+  'PLANK_HOLD',
+  'PUSHUP_MAX',
+  'PULLUP_MAX',
+]);
 
 // Categories displayed as gauges on the stat sheet. New habit categories
 // (SLEEP/NUTRITION/WELLNESS) are surfaced in TodayHabitsPanel instead.
@@ -83,17 +98,21 @@ export function DashboardPage() {
   // are auto-derived from weight + body fat + height; their values
   // aren't persisted in the Measurement table.
   if (user.weightKg != null && user.bodyFatPct != null) {
-    // Creatine adds intracellular water (~1.5 kg); subtract from
-    // displayed lean mass so it reflects contractile tissue.
-    const creatineWaterKg = user.creatine ? 1.5 : 0;
-    const lbm = Math.max(0, user.weightKg * (1 - user.bodyFatPct / 100) - creatineWaterKg);
+    // Creatine water subtraction only applies when the user has logged
+    // Creatine on ≥3 of the last 7 days. The flag is server-derived so
+    // we trust it; creatine the boolean is just legacy.
+    const creatineActive = user.creatineActive ?? false;
+    const lbm = Math.max(
+      0,
+      user.weightKg * (1 - user.bodyFatPct / 100) - (creatineActive ? 1.5 : 0),
+    );
     if (!latestByMetric.has('LEAN_MASS')) {
       latestByMetric.set('LEAN_MASS', {
         id: 'derived:lean_mass',
         metric: 'LEAN_MASS',
         value: lbm,
         unit: 'kg',
-        notes: user.creatine ? `auto: weight × (1 − BF%) − 1.5 kg creatine water` : null,
+        notes: creatineActive ? `auto: weight × (1 − BF%) − 1.5 kg creatine water` : null,
         recordedAt: new Date().toISOString(),
       } as Measurement);
     }
@@ -135,9 +154,23 @@ export function DashboardPage() {
               <div className="font-display text-2xl md:text-3xl tracking-widest neon-text-cyan mt-1 truncate">
                 {user.username}
               </div>
-              <div className={`text-xs font-mono mt-1 ${cls ? `neon-text-${cls.color}` : 'text-ink-300'}`}>
-                {user.classDisplay ?? cls?.label ?? 'Unclassed'}
-                {cls ? <> · <span className="text-ink-400">{cls.tagline}</span></> : ' — pick a class in profile'}
+              <div className="mt-1.5">
+                <span
+                  className="font-display text-base tracking-wider text-white"
+                  style={{
+                    color: cls ? CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fafafd' : '#fafafd',
+                    textShadow: cls
+                      ? `0 0 6px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}80, 0 0 2px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}`
+                      : undefined,
+                  }}
+                >
+                  {user.classDisplay ?? cls?.label ?? 'Unclassed'}
+                </span>
+                {cls?.tagline && (
+                  <div className="text-[10px] font-mono text-ink-400 italic mt-0.5">
+                    {cls.tagline}
+                  </div>
+                )}
               </div>
             </div>
             <div className="text-right shrink-0">
@@ -258,12 +291,13 @@ export function DashboardPage() {
                 const max = maxByMetric.get(m);
                 const min = meta.defaultMin;
                 const value = latest?.value ?? null;
-                // Ideal-based metrics: BODY_FAT_PCT (12% ideal, 10-14 healthy),
-                // HRV (higher is generally better, ~50-80ms healthy),
-                // VO2_MAX (higher is better, but the dial is mid-anchored
-                // at the user's healthy range so it doesn't read as "0%"
-                // at first measurement).
-                if (m === 'BODY_FAT_PCT') {
+                const bands = bandsFor(m);
+                // Ideal-radial metrics get the IdealGauge (top-center is
+                // elite, fans out to too-high / too-low). The metric-specific
+                // bands (world record for time events, fitness-test standards
+                // for reps) live in lib/metricBands so they stay consistent
+                // across pages.
+                if (idealMetricKeys.has(m) && bands) {
                   return (
                     <button
                       key={m}
@@ -275,57 +309,13 @@ export function DashboardPage() {
                       <IdealGauge
                         metric={m}
                         value={value}
-                        min={3}
-                        idealMin={10}
-                        idealMax={14}
-                        max={35}
-                        subtitle="ideal 10–14%"
-                        color="lime"
-                        size={170}
-                      />
-                    </button>
-                  );
-                }
-                if (m === 'HRV') {
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setDetailMetric(m)}
-                      className="cursor-pointer hover:brightness-125 transition-all"
-                      title="Click for details"
-                    >
-                      <IdealGauge
-                        metric={m}
-                        value={value}
-                        min={10}
-                        idealMin={50}
-                        idealMax={80}
-                        max={150}
-                        subtitle="ideal 50–80 ms"
-                        color="cyan"
-                        size={170}
-                      />
-                    </button>
-                  );
-                }
-                if (m === 'VO2_MAX') {
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setDetailMetric(m)}
-                      className="cursor-pointer hover:brightness-125 transition-all"
-                      title="Click for details"
-                    >
-                      <IdealGauge
-                        metric={m}
-                        value={value}
-                        min={15}
-                        idealMin={45}
-                        idealMax={60}
-                        max={85}
-                        subtitle="ideal 45–60 ml/kg/min"
+                        min={bands.min}
+                        eliteMin={bands.eliteMin}
+                        eliteMax={bands.eliteMax}
+                        healthyMin={bands.healthyMin}
+                        healthyMax={bands.healthyMax}
+                        max={bands.max}
+                        subtitle={bands.subtitle}
                         color="lime"
                         size={170}
                       />
@@ -349,14 +339,6 @@ export function DashboardPage() {
                         m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
                         m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
                         m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
-                        m === 'FIVE_K_TIME' ? 'Best 5K run time' :
-                        m === 'ONE_MILE_TIME' ? 'Best 1-mile run time' :
-                        m === 'PLANK_HOLD' ? 'Longest plank hold' :
-                        m === 'L_SIT_HOLD' ? 'Longest L-sit hold' :
-                        m === 'PUSHUP_MAX' ? 'Most push-ups in a row' :
-                        m === 'PULLUP_MAX' ? 'Most pull-ups in a row' :
-                        m === 'LEAN_MASS' ? `Auto: weight × (1 − BF%)` :
-                        m === 'FFMI' ? 'Fat-Free Mass Index' :
                         undefined
                       }
                       value={value}

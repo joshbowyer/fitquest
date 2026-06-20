@@ -193,6 +193,7 @@ model User {
   prayerLogs       PrayerLog[]
   habits           Habit[]
   habitLogs        HabitLog[]
+  supplements      SupplementLog[]
   routineDays      RoutineDay[]
   dailies          Daily[]
   dailyLogs        DailyLog[]
@@ -204,6 +205,9 @@ model User {
   // number doesn't include the water. Stored raw so we can compute
   // both numbers downstream.
   creatine     Boolean        @default(false)
+  // IANA timezone name (e.g. "America/New_York"). Used to render
+  // absolute timestamps in the user's local time. Defaults to UTC.
+  timezone     String?
   spiritualSubclass SpiritualSubclass?
   spiritualXp       Int           @default(0)
   ordained          Boolean        @default(false)
@@ -685,6 +689,27 @@ model DailyLog {
   @@index([userId, dailyKey, loggedAt])
   @@index([userId, loggedAt])
   @@index([dailyId, loggedAt])
+}
+
+// ============================================================
+// Supplements — daily-tracked intakes (creatine, vitamin D, etc.).
+// The "creatine on ≥3 of last 7 days" check pulls from this table
+// rather than a free-floating User.creatine boolean, so it stays
+// honest even when the user skips days.
+// ============================================================
+
+model SupplementLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Free-form name (e.g. "Creatine", "Vitamin D3", "Fish Oil").
+  // Matched case-insensitively for the "creatine active" check.
+  name      String
+  // Optional dose (mg). For creatine the common dose is 5000.
+  doseMg    Int?
+  takenAt   DateTime @default(now())
+
+  @@index([userId, name, takenAt])
 }
 
 // ============================================================

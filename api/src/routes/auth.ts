@@ -13,6 +13,7 @@ import {
 } from '../lib/auth.js';
 import { config } from '../lib/config.js';
 import { getClassLockStatus, getClassDisplayName, getNextPromotion } from '../lib/classLock.js';
+import { isCreatineActive } from './supplements.js';
 
 const RegisterSchema = z.object({
   email: z.string().email().max(120),
@@ -80,6 +81,8 @@ export async function authRoutes(app: FastifyInstance) {
         ordained: user.ordained,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
         creatine: user.creatine,
+        timezone: user.timezone,
+        creatineActive: await isCreatineActive(user.id),
       },
     });
   });
@@ -127,6 +130,8 @@ export async function authRoutes(app: FastifyInstance) {
         ordained: user.ordained,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
         creatine: user.creatine,
+        timezone: user.timezone,
+        creatineActive: await isCreatineActive(user.id),
       },
     });
   });

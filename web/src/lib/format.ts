@@ -21,6 +21,40 @@ export function formatDate(s: string | Date): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Format an ISO date in the user's preferred timezone (IANA name).
+ *  Returns absolute date + 24h time, e.g. "Jun 20, 2026, 09:46 EDT".
+ *  If `tz` is null/undefined, falls back to the browser's local zone. */
+export function formatAbsolute(
+  s: string | Date,
+  tz: string | null | undefined,
+): string {
+  const d = typeof s === 'string' ? new Date(s) : s;
+  if (!tz) {
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+  try {
+    return d.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: tz,
+      timeZoneName: 'short',
+    });
+  } catch {
+    return d.toLocaleString();
+  }
+}
+
 export function formatRelative(s: string | Date): string {
   const d = typeof s === 'string' ? new Date(s) : s;
   const diff = Date.now() - d.getTime();

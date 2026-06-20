@@ -83,7 +83,7 @@ export function ProfilePage() {
   const [birthDate, setBirthDate] = useState<string | null>(null);
   const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
   const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
-  const [creatineDraft, setCreatineDraft] = useState<boolean>(false);
+  const [timezoneDraft, setTimezoneDraft] = useState<string>('');
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -120,7 +120,7 @@ export function ProfilePage() {
     if (birthDate === null) setBirthDate(user.birthDate);
     if (sexDraft === null) setSexDraft(user.sex);
     setOrdainedDraft(user.ordained ?? false);
-    setCreatineDraft(user.creatine ?? false);
+    setTimezoneDraft(user.timezone ?? '');
   }, [user, inImperial]);
 
   function setDraftField(key: string, raw: string) {
@@ -177,8 +177,8 @@ export function ProfilePage() {
   const birthChanged = birthDate !== null && birthDate !== user?.birthDate;
   const sexChanged = sexDraft !== null && sexDraft !== user?.sex;
   const ordainedChanged = ordainedDraft !== (user?.ordained ?? false);
-  const creatineChanged = creatineDraft !== (user?.creatine ?? false);
-  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged;
+  const timezoneChanged = timezoneDraft !== (user?.timezone ?? '');
+  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged || timezoneChanged;
 
   const saveM = useDelayedMutation<
     { recomputed: boolean; changeCount: number },
@@ -215,7 +215,7 @@ export function ProfilePage() {
       if (birthChanged) body.birthDate = birthDate;
       if (sexChanged) body.sex = sexDraft;
       if (ordainedChanged) body.ordained = ordainedDraft;
-      if (creatineChanged) body.creatine = creatineDraft;
+      if (timezoneChanged) body.timezone = timezoneDraft || null;
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -823,46 +823,38 @@ export function ProfilePage() {
             <Row k="Units" v={user.units === 'IMPERIAL' ? 'in / lb / fl oz' : 'cm / kg / ml'} />
           </div>
 
-          {/* Ordained status: an IRL fact, not a perk. Quietly settable
-              here so the app never prompts or advertises it. */}
+          {/* Timezone — used to render absolute timestamps in your local time. */}
           <div className="mt-4 border-t border-ink-500/30 pt-3">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={ordainedDraft}
-                onChange={(e) => setOrdainedDraft(e.target.checked)}
-                className="mt-0.5 accent-amber-500"
-              />
-              <div>
-                <div className="text-xs font-mono text-ink-100">
-                  I have received the sacrament of Holy Orders
-                </div>
-                <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-relaxed">
-                  Marks an IRL status only you can confirm. Grants a permanent +5% XP bonus on prayer logs.
-                  The app does not ask, advertise, or display this as a feature — toggle it here if it applies to you.
-                </div>
+            <label className="block">
+              <div className="text-xs font-mono text-ink-100 mb-1">
+                Timezone
               </div>
-            </label>
-          </div>
-
-          {/* Creatine: true lean-mass accounting (subtracts intracellular water) */}
-          <div className="mt-3">
-            <label className="flex items-start gap-2 cursor-pointer">
               <input
-                type="checkbox"
-                checked={creatineDraft}
-                onChange={(e) => setCreatineDraft(e.target.checked)}
-                className="mt-0.5 accent-cyan-500"
+                className="input-neon w-full text-xs"
+                value={timezoneDraft}
+                onChange={(e) => setTimezoneDraft(e.target.value)}
+                placeholder="e.g. America/New_York"
+                list="tz-list"
               />
-              <div>
-                <div className="text-xs font-mono text-ink-100">
-                  I take creatine
-                </div>
-                <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-relaxed">
-                  Creatine adds ~1.5 kg of intracellular water. We'll subtract that from your displayed lean
-                  mass so the number reflects contractile tissue instead of water. (Affects Status and the
-                  body-comp dashboard gauges.)
-                </div>
+              <datalist id="tz-list">
+                <option value="America/New_York" />
+                <option value="America/Chicago" />
+                <option value="America/Denver" />
+                <option value="America/Los_Angeles" />
+                <option value="America/Toronto" />
+                <option value="Europe/London" />
+                <option value="Europe/Paris" />
+                <option value="Europe/Berlin" />
+                <option value="Europe/Madrid" />
+                <option value="Asia/Tokyo" />
+                <option value="Asia/Singapore" />
+                <option value="Australia/Sydney" />
+                <option value="Pacific/Auckland" />
+                <option value="UTC" />
+              </datalist>
+              <div className="text-[10px] font-mono text-ink-400 mt-1 leading-relaxed">
+                IANA timezone name (e.g. <code className="text-ink-200">America/New_York</code>). Activities,
+                achievements, and logs render absolute dates in this zone. Leave blank for UTC.
               </div>
             </label>
           </div>

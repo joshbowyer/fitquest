@@ -5,7 +5,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { api, ApiError } from '@/lib/api';
-import { classNames, formatRelative, formatSeconds, formatMetricWithUnit } from '@/lib/format';
+import { classNames, formatRelative, formatSeconds, formatMetricWithUnit, formatAbsolute } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
@@ -83,7 +83,7 @@ export function ActivityDetailPage() {
 
   const q = useQuery({
     queryKey: ['workout', params.id],
-    queryFn: () => api<Workout>(`/workouts/${params.id}`),
+    queryFn: () => api<{ item: Workout | null; error?: string }>(`/workouts/${params.id}`),
     enabled: !!params.id,
   });
 
@@ -106,7 +106,7 @@ export function ActivityDetailPage() {
       </Layout>
     );
   }
-  if (!q.data) {
+  if (!q.data || !q.data.item) {
     return (
       <Layout>
         <PageHeader title="// Activity" />
@@ -122,7 +122,7 @@ export function ActivityDetailPage() {
     );
   }
 
-  const w = q.data;
+  const w = q.data.item;
   const isFit = typeof w.notes === 'string' && w.notes.startsWith('[FIT]');
   const fit = isFit && w.notes ? parseFitNotes(w.notes) : null;
 
@@ -145,7 +145,11 @@ export function ActivityDetailPage() {
     <Layout>
       <PageHeader
         title={w.name || `Activity ${w.id.slice(-6)}`}
-        subtitle={`${w.type} · ${formatRelative(w.performedAt)} · ${new Date(w.performedAt).toLocaleString()}`}
+        subtitle={
+          `${w.type} · ` +
+          formatAbsolute(w.performedAt, user?.timezone ?? null) +
+          ` (${user?.timezone ? user.timezone : 'UTC'})`
+        }
         action={
           <Link
             to="/activities"

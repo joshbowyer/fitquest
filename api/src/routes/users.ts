@@ -6,6 +6,7 @@ import { requireUser } from '../lib/auth.js';
 import { computeAllGeneticMaxes } from '../lib/geneticMax.js';
 import { levelFromXp, progressInLevel } from '../lib/xp.js';
 import { assertCanChangeClass, getClassLockStatus } from '../lib/classLock.js';
+import { isCreatineActive } from './supplements.js';
 
 const ProfileSchema = z.object({
   class: z.nativeEnum(ClassName).optional(),
@@ -25,6 +26,7 @@ const ProfileSchema = z.object({
   // We don't prompt or surface it anywhere else.
   ordained: z.boolean().optional(),
   creatine: z.boolean().optional(),
+  timezone: z.string().max(100).optional().nullable(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -55,7 +57,12 @@ export async function userRoutes(app: FastifyInstance) {
       progress: progressInLevel(user.xp, user.level),
       ordained: user.ordained,
       spiritualDailyPrayers: user.spiritualDailyPrayers,
+      // `creatine` (boolean) is the legacy User field; `creatineActive`
+      // is the new auto-derived flag (true when ≥3 of last 7 days have
+      // a Creatine log). The lean-mass calc uses creatineActive.
       creatine: user.creatine,
+      creatineActive: await isCreatineActive(user.id),
+      timezone: user.timezone,
     };
   });
 
@@ -110,6 +117,7 @@ export async function userRoutes(app: FastifyInstance) {
             }
           : {}),
         ...(body.creatine !== undefined ? { creatine: body.creatine } : {}),
+        ...(body.timezone !== undefined ? { timezone: body.timezone || null } : {}),
       },
     });
 

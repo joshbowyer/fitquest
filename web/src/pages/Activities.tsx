@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { formatRelative, formatSeconds, classNames } from '@/lib/format';
+import { formatRelative, formatSeconds, classNames, formatAbsolute } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
 import { type UnitSystem } from '@/lib/units';
@@ -590,7 +590,7 @@ export function ActivitiesPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
           {filteredHistory.map((w) => (
-            <ActivityCard key={w.id} workout={w} units={units} />
+            <ActivityCard key={w.id} workout={w} units={units} timezone={user?.timezone ?? null} />
           ))}
           {(list.data?.items || []).length === 0 && (
             <div className="col-span-full text-xs text-ink-300 font-mono text-center py-6 border border-dashed border-ink-700/30">
@@ -603,11 +603,11 @@ export function ActivitiesPage() {
   );
 }
 
-function ActivityCard({ workout: w, units }: { workout: any; units: UnitSystem }) {
+function ActivityCard({ workout: w, units, timezone }: { workout: any; units: UnitSystem; timezone?: string | null }) {
   const navigate = useNavigate();
   const totalVolume = w.exercises.reduce((acc: number, ex: any) => {
     return acc + ex.sets.reduce((s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0);
-  }, 0);
+  });
   const volDisplay = units === 'IMPERIAL'
     ? Math.round(kgToLb(totalVolume))
     : Math.round(totalVolume);
@@ -625,12 +625,12 @@ function ActivityCard({ workout: w, units }: { workout: any; units: UnitSystem }
           : 'border-ink-500/30 bg-bg-700/40',
       )}
     >
-      <div className="flex justify-between items-baseline mb-1">
+      <div className="flex justify-between items-baseline mb-1 gap-2">
         <span className="font-display tracking-wider text-sm text-neon-cyan truncate">
           {w.name || w.type}
         </span>
-        <span className="text-[10px] font-mono text-ink-400 shrink-0 ml-2">
-          {formatRelative(w.performedAt)}
+        <span className="text-[10px] font-mono text-ink-400 shrink-0 text-right" title={`${new Date(w.performedAt).toISOString()} (UTC)`}>
+          {formatAbsolute(w.performedAt, timezone ?? null)}
         </span>
       </div>
 
@@ -647,7 +647,14 @@ function ActivityCard({ workout: w, units }: { workout: any; units: UnitSystem }
       {fitMetrics && (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono text-ink-300 mb-1">
           {fitMetrics.distance != null && (
-            <span>{(fitMetrics.distance / 1000).toFixed(2)} km</span>
+            <span>{(() => {
+              // distance stored in meters; convert to user units
+              if (units === 'IMPERIAL') {
+                const mi = fitMetrics.distance / 1609.34;
+                return `${mi.toFixed(2)} mi`;
+              }
+              return `${(fitMetrics.distance / 1000).toFixed(2)} km`;
+            })()}</span>
           )}
           {fitMetrics.avgHr != null && <span>avg HR {fitMetrics.avgHr}</span>}
           {fitMetrics.maxHr != null && <span>max HR {fitMetrics.maxHr}</span>}
