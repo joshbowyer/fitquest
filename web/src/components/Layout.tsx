@@ -79,7 +79,7 @@ export function Layout({ children }: Props) {
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] uppercase tracking-widest ${colorClass}`}>
-                  {cls?.label ?? 'No class'}
+                  {user.classDisplay ?? cls?.label ?? 'No class'}
                 </span>
               </div>
               <button onClick={handleLogout} className="btn-ghost text-[10px]">

@@ -9,7 +9,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName } from '@/lib/types';
+import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, roundForUnits, type UnitSystem } from '@/lib/units';
 import {
@@ -512,6 +512,63 @@ export function ProfilePage() {
             Your class determines which skill tree you can unlock and which stats get the most XP from training.
             Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
           </div>
+
+          {/* Current class evolution. If picked, show the 3-stage
+              progression with the current stage highlighted. */}
+          {user.class && (
+            <div className="mb-3 border border-neon-cyan/30 bg-neon-cyan/5 p-3">
+              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+                Your evolution
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {CLASS_EVOLUTION[user.class].stages.map((stageName, idx) => {
+                  const stageNum = idx + 1;
+                  const isCurrent = stageNum === user.classStage;
+                  const isPast = user.classStage != null && stageNum < user.classStage;
+                  const isFuture = user.classStage != null && stageNum > user.classStage;
+                  const meta = CLASS_META[user.class!];
+                  return (
+                    <span key={stageName} className="flex items-center gap-1">
+                      <span
+                        className={classNames(
+                          'px-2 py-1 text-[10px] font-mono tracking-widest uppercase border',
+                          isCurrent
+                            ? `border-neon-${meta.color}/80 text-neon-${meta.color} bg-neon-${meta.color}/10`
+                            : isPast
+                            ? 'border-ink-500/40 text-ink-300 bg-ink-500/5 line-through'
+                            : isFuture
+                            ? 'border-ink-700/40 text-ink-500'
+                            : 'border-ink-500/40 text-ink-300',
+                        )}
+                        style={isCurrent ? { textShadow: `0 0 6px currentColor` } : undefined}
+                        title={
+                          stageNum === 1
+                            ? 'Lv 1-9: starter form'
+                            : stageNum === 2
+                            ? 'Lv 10-24: promoted form'
+                            : 'Lv 25+: final form'
+                        }
+                      >
+                        {stageName}
+                      </span>
+                      {idx < 2 && (
+                        <span className="text-ink-500 text-[10px]">→</span>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+              {user.nextPromotion && (
+                <div className="text-[10px] font-mono text-ink-400 mt-2">
+                  Next promotion:{' '}
+                  <span className={`neon-text-${CLASS_META[user.class].color}`}>
+                    {CLASS_EVOLUTION[user.class].stages[user.nextPromotion.nextStage - 1]}
+                  </span>{' '}
+                  at <span className="text-ink-50">Lvl {user.nextPromotion.threshold}</span>
+                </div>
+              )}
+            </div>
+          )}
           {user.classLock?.locked && (
             <div className="mb-3 border border-neon-amber/40 bg-neon-amber/5 p-3 text-[10px] font-mono space-y-1">
               <div>
@@ -675,7 +732,7 @@ export function ProfilePage() {
                 <p>
                   You're switching from{' '}
                   <span className={`neon-text-${CLASS_META[user.class].color}`}>
-                    {CLASS_META[user.class].label}
+                    {user.classDisplay ?? CLASS_META[user.class].label}
                   </span>{' '}
                   to{' '}
                   <span className={`neon-text-${CLASS_META[pendingClass].color}`}>

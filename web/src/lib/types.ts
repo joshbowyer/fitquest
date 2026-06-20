@@ -113,6 +113,79 @@ export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
   ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS', 'SLEEP_QUALITY'],
 };
 
+// ====================================================================
+//  Class Evolution Tree
+// ====================================================================
+// Each class line has 3 stages. Stage is purely derived from the
+// user's level, so a "Bruiser" automatically becomes a "Strongman"
+// when they cross level 10, and a "Juggernaut" at level 25.
+//
+//   Stage 1 (Lv 1-9):     beginner name
+//   Stage 2 (Lv 10-24):   intermediate name
+//   Stage 3 (Lv 25+):     final / advanced name
+//
+// The 5 lines map to the 5 ClassName values that already exist in
+// the schema. The display name changes; the underlying ClassName
+// (used by raid damage, etc.) stays the same.
+
+export type ClassStage = 1 | 2 | 3;
+
+export const CLASS_EVOLUTION: Record<string, {
+  line: string;          // matches ClassName
+  stages: [string, string, string]; // [stage1, stage2, stage3]
+  // Level thresholds for promotion. index i = threshold to promote FROM i TO i+1.
+  thresholds: [number, number];
+}> = {
+  JUGGERNAUT: {
+    line: 'JUGGERNAUT',
+    stages: ['Bruiser', 'Strongman', 'Juggernaut'],
+    thresholds: [10, 25],
+  },
+  PHANTOM: {
+    line: 'PHANTOM',
+    stages: ['Striker', 'Acrobat', 'Phantom'],
+    thresholds: [10, 25],
+  },
+  SCOUT: {
+    line: 'SCOUT',
+    stages: ['Hiker', 'Trailblazer', 'Scout'],
+    thresholds: [10, 25],
+  },
+  BERSERKER: {
+    line: 'BERSERKER',
+    stages: ['Brawler', 'Marauder', 'Berserker'],
+    thresholds: [10, 25],
+  },
+  ORACLE: {
+    line: 'ORACLE',
+    stages: ['Initiate', 'Acolyte', 'Oracle'],
+    thresholds: [10, 25],
+  },
+};
+
+export function getClassStage(level: number): ClassStage {
+  if (level >= 25) return 3;
+  if (level >= 10) return 2;
+  return 1;
+}
+
+export function getClassDisplayName(line: string | null, level: number): string {
+  if (!line) return 'Unclassed';
+  const evo = CLASS_EVOLUTION[line];
+  if (!evo) return line;
+  const stage = getClassStage(level);
+  return evo.stages[stage - 1];
+}
+
+export function getNextPromotion(line: string | null, level: number): { nextStage: ClassStage; threshold: number } | null {
+  if (!line) return null;
+  const evo = CLASS_EVOLUTION[line];
+  if (!evo) return null;
+  const stage = getClassStage(level);
+  if (stage >= 3) return null;
+  return { nextStage: (stage + 1) as ClassStage, threshold: evo.thresholds[stage - 1] };
+}
+
 export const CLASS_META: Record<string, {
   label: string;
   color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'goldenrod' | 'periwinkle' | 'violet';

@@ -12,7 +12,7 @@ import {
   requireUser,
 } from '../lib/auth.js';
 import { config } from '../lib/config.js';
-import { getClassLockStatus } from '../lib/classLock.js';
+import { getClassLockStatus, getClassDisplayName, getNextPromotion } from '../lib/classLock.js';
 
 const RegisterSchema = z.object({
   email: z.string().email().max(120),
@@ -70,6 +70,9 @@ export async function authRoutes(app: FastifyInstance) {
         gold: user.gold,
         soulstones: user.soulstones,
         class: user.class,
+        classDisplay: getClassDisplayName(user.class, user.level),
+        classStage: user.class ? (user.level >= 25 ? 3 : user.level >= 10 ? 2 : 1) : null,
+        nextPromotion: getNextPromotion(user.class, user.level),
         units: user.units,
         createdAt: user.createdAt,
         classChangedAt: user.classChangedAt,
@@ -102,6 +105,9 @@ export async function authRoutes(app: FastifyInstance) {
         gold: user.gold,
         soulstones: user.soulstones,
         class: user.class,
+        classDisplay: getClassDisplayName(user.class, user.level),
+        classStage: user.class ? (user.level >= 25 ? 3 : user.level >= 10 ? 2 : 1) : null,
+        nextPromotion: getNextPromotion(user.class, user.level),
         units: user.units,
         heightCm: user.heightCm,
         wristCm: user.wristCm,

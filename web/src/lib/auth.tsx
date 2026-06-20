@@ -36,6 +36,13 @@ export type User = {
   gold: number;
   soulstones: number;
   class: ClassName | null;
+  // Class evolution: 3 stages per line, derived from level.
+  // Stage 1 (Lv 1-9): beginner name (e.g., Bruiser)
+  // Stage 2 (Lv 10-24): intermediate (e.g., Strongman)
+  // Stage 3 (Lv 25+): final (e.g., Juggernaut)
+  classDisplay: string | null;
+  classStage: 1 | 2 | 3 | null;
+  nextPromotion: { nextStage: 2 | 3; threshold: number } | null;
   units: UnitSystem;
   sex: UserSex | null;
   heightCm: number | null;

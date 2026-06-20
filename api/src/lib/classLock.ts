@@ -78,6 +78,39 @@ function firstBirthdayAfter(
   return candidate;
 }
 
+// Class Evolution Tree — mirrors the web side.
+// Each line has 3 stages; stage is derived from user level.
+const CLASS_EVOLUTION: Record<string, [string, string, string]> = {
+  JUGGERNAUT: ['Bruiser', 'Strongman', 'Juggernaut'],
+  PHANTOM:    ['Striker', 'Acrobat', 'Phantom'],
+  SCOUT:      ['Hiker', 'Trailblazer', 'Scout'],
+  BERSERKER:  ['Brawler', 'Marazer', 'Berserker'],
+  ORACLE:     ['Initiate', 'Acolyte', 'Oracle'],
+};
+
+function getStage(level: number): 1 | 2 | 3 {
+  if (level >= 25) return 3;
+  if (level >= 10) return 2;
+  return 1;
+}
+
+export function getClassDisplayName(line: string | null, level: number): string {
+  if (!line) return 'Unclassed';
+  const evo = CLASS_EVOLUTION[line as keyof typeof CLASS_EVOLUTION];
+  if (!evo) return line;
+  const stage = getStage(level);
+  return stage >= 1 && stage <= 3 ? evo[stage - 1]! : evo[0]!;
+}
+
+export function getNextPromotion(line: string | null, level: number): { nextStage: number; threshold: number } | null {
+  if (!line) return null;
+  const stage = getStage(level);
+  if (stage >= 3) return null;
+  const ths: [number, number] = [10, 25];
+  const idx = stage - 1;
+  return { nextStage: stage + 1, threshold: ths[idx]! };
+}
+
 export function getClassLockStatus(
   userClass: string | null,
   classChangedAt: Date | null | undefined,
