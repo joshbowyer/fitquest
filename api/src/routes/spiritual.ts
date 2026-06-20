@@ -71,10 +71,12 @@ export async function spiritualRoutes(app: FastifyInstance) {
 
     const currentClass = me.spiritualSubclass ?? computeSpiritualSubclass(me.spiritualXp, me.ordained);
     // For the threshold, show the next promotion's required XP.
-    const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
+// SPIRITUAL_THRESHOLDS[idx].max = XP needed to LEAVE the current stage.
+// So if you're CATECHUMEN (idx=0), the next promotion threshold is 500.
+const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
     const nextThreshold =
       idx >= 0 && idx < SPIRITUAL_THRESHOLDS.length - 1
-        ? SPIRITUAL_THRESHOLDS[idx + 1]!.max
+        ? SPIRITUAL_THRESHOLDS[idx]!.max
         : null;
     const ordinalBonus = me.ordained ? 1.05 : 1.0;
 
