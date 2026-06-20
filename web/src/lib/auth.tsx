@@ -60,6 +60,9 @@ export type User = {
   // IRL sacrament (Holy Orders). Set by the user from Profile → Identity.
   // The app never prompts or advertises this; +5% XP on prayer logs.
   ordained: boolean;
+  // Prayer types the user commits to perform daily. Drives the
+  // built-in SPIRITUAL dailies shown on the /today page.
+  spiritualDailyPrayers?: ('ROSARY' | 'MASS' | 'SCRIPTURE' | 'CONTEMPLATION' | 'LITURGY_HOURS' | 'CONFESSION' | 'OTHER')[];
 };
 
 type AuthCtx = {

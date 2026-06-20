@@ -1,8 +1,10 @@
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { classNames } from '@/lib/format';
 
 type RoutineResponse = {
   weeklyGoal: number;
@@ -17,7 +19,23 @@ type RoutineResponse = {
   progress: number;
 };
 
+type RoutineDay = {
+  day: 'SUN' | 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT';
+  workout: boolean;
+  notes: string | null;
+};
+
 const GOAL_OPTIONS = [1, 2, 3, 4, 5, 6, 7] as const;
+
+const DAY_META: Array<{ code: RoutineDay['day']; short: string; long: string }> = [
+  { code: 'SUN', short: 'Sun', long: 'Sunday' },
+  { code: 'MON', short: 'Mon', long: 'Monday' },
+  { code: 'TUE', short: 'Tue', long: 'Tuesday' },
+  { code: 'WED', short: 'Wed', long: 'Wednesday' },
+  { code: 'THU', short: 'Thu', long: 'Thursday' },
+  { code: 'FRI', short: 'Fri', long: 'Friday' },
+  { code: 'SAT', short: 'Sat', long: 'Saturday' },
+];
 
 export function RoutinePanel() {
   const qc = useQueryClient();
@@ -25,12 +43,34 @@ export function RoutinePanel() {
     queryKey: ['routine'],
     queryFn: () => api<RoutineResponse>('/routine'),
   });
+  const daysQ = useQuery({
+    queryKey: ['routine', 'days'],
+    queryFn: () => api<{ days: RoutineDay[] }>('/routine/days'),
+  });
+  const [draft, setDraft] = useState<Record<string, RoutineDay>>({});
+
+  // Initialize draft when days load
+  useEffect(() => {
+    if (daysQ.data) {
+      const m: Record<string, RoutineDay> = {};
+      for (const d of daysQ.data.days) m[d.day] = d;
+      setDraft(m);
+    }
+  }, [daysQ.data]);
 
   const setGoal = useDelayedMutation<{ weeklyGoal: number }, number>({
     mutationFn: (g) =>
       api('/routine', { method: 'PATCH', body: { weeklyGoal: g } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['routine'] }),
   }, 400);
+
+  const saveDays = useDelayedMutation<{ ok: boolean }, Array<{ day: string; workout: boolean; notes: string | null }>>({
+    mutationFn: (days) => api('/routine/days', { method: 'PUT', body: { days } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['routine', 'days'] });
+      qc.invalidateQueries({ queryKey: ['dailies'] });
+    },
+  }, 600);
 
   if (isLoading || !data) {
     return (
@@ -43,6 +83,32 @@ export function RoutinePanel() {
   const goalOptions: readonly number[] = GOAL_OPTIONS.includes(data.weeklyGoal as 1 | 2 | 3 | 4 | 5 | 6 | 7)
     ? [...GOAL_OPTIONS]
     : [...GOAL_OPTIONS, data.weeklyGoal as number].sort((a, b) => a - b);
+
+  // Count days marked as workout in draft (unsaved)
+  const draftWorkoutCount = Object.values(draft).filter((d) => d.workout).length;
+  const savedWorkoutCount = daysQ.data?.days.filter((d) => d.workout).length ?? 0;
+  const dirty =
+    JSON.stringify(Object.values(draft).sort((a, b) => a.day.localeCompare(b.day))) !==
+    JSON.stringify((daysQ.data?.days ?? []).slice().sort((a, b) => a.day.localeCompare(b.day)));
+
+  function toggleDay(code: RoutineDay['day']) {
+    setDraft((d) => ({
+      ...d,
+      [code]: { ...d[code], workout: !d[code]?.workout, day: code, notes: d[code]?.notes ?? null },
+    }));
+  }
+
+  function setNote(code: RoutineDay['day'], notes: string) {
+    setDraft((d) => ({
+      ...d,
+      [code]: { ...d[code], workout: d[code]?.workout ?? false, day: code, notes: notes || null },
+    }));
+  }
+
+  function commitDays() {
+    const days = DAY_META.map((m) => draft[m.code]).filter(Boolean);
+    saveDays.run(days);
+  }
 
   return (
     <Panel
@@ -59,10 +125,74 @@ export function RoutinePanel() {
         ) : null
       }
     >
-      <div className="space-y-3">
+      <div className="space-y-4">
+        {/* Day-of-week schedule */}
         <div>
           <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-            Weekly goal
+            Weekly schedule ({draftWorkoutCount} workout days)
+          </div>
+          <div className="space-y-1.5">
+            {DAY_META.map((m) => {
+              const d = draft[m.code];
+              return (
+                <div
+                  key={m.code}
+                  className={classNames(
+                    'flex items-center gap-2 border p-1.5 transition-all',
+                    d?.workout
+                      ? 'border-neon-magenta/50 bg-neon-magenta/5'
+                      : 'border-ink-500/30',
+                  )}
+                >
+                  <button
+                    onClick={() => toggleDay(m.code)}
+                    className={classNames(
+                      'shrink-0 w-14 h-9 text-xs font-mono uppercase border transition-all',
+                      d?.workout
+                        ? 'border-neon-magenta text-neon-magenta bg-neon-magenta/10'
+                        : 'border-ink-500/30 text-ink-300 hover:border-ink-300',
+                    )}
+                  >
+                    {m.short}
+                  </button>
+                  <input
+                    className="input-neon flex-1 text-xs"
+                    placeholder={d?.workout ? 'e.g., Upper, Push, Heavy' : 'rest day'}
+                    value={d?.notes ?? ''}
+                    onChange={(e) => setNote(m.code, e.target.value)}
+                    maxLength={120}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          {dirty && (
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <span className="text-[10px] font-mono text-ink-400">
+                {draftWorkoutCount} days · unsaved
+              </span>
+              <NeonButton
+                onClick={commitDays}
+                loading={saveDays.isPending}
+                variant="magenta"
+                icon="⚡"
+                loadingText="Saving…"
+              >
+                Save schedule
+              </NeonButton>
+            </div>
+          )}
+          {!dirty && savedWorkoutCount > 0 && (
+            <div className="mt-2 text-[10px] font-mono text-ink-400">
+              {savedWorkoutCount} workout days configured. These become built-in "Workout" dailies on /today.
+            </div>
+          )}
+        </div>
+
+        {/* Weekly goal (auto-derived from schedule count) */}
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+            Streak threshold (workouts needed / wk)
           </div>
           <div className="flex flex-wrap items-center gap-1">
             {goalOptions.map((g) => (

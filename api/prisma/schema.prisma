@@ -193,6 +193,12 @@ model User {
   prayerLogs       PrayerLog[]
   habits           Habit[]
   habitLogs        HabitLog[]
+  routineDays      RoutineDay[]
+  dailies          Daily[]
+  dailyLogs        DailyLog[]
+  // Prayer types the user commits to perform daily. Drives the
+  // built-in SPIRITUAL dailies shown on the /today page.
+  spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
   spiritualSubclass SpiritualSubclass?
   spiritualXp       Int           @default(0)
   ordained          Boolean        @default(false)
@@ -588,6 +594,92 @@ model PrayerLog {
   loggedAt   DateTime    @default(now())
 
   @@index([userId, loggedAt])
+}
+
+// ============================================================
+// Daily routine — per-user-per-day-of-week workout schedule + notes.
+// Days are stored as 0-6 (Sun-Sat). One RoutineDay row per user-day.
+// workout=false is a rest day but the user can still complete the
+// daily (it's just "did I show up today" tracking).
+// ============================================================
+
+enum DayOfWeek {
+  SUN
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+}
+
+model RoutineDay {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day       DayOfWeek
+  workout   Boolean   @default(false)
+  notes     String?
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, day])
+  @@index([userId])
+}
+
+// ============================================================
+// Dailies — user-defined recurring tasks (Habitica-style).
+// Each Daily has a name, optional category, and per-day-of-week
+// schedule. The built-in "Workout" daily is auto-generated from
+// RoutineDay rows and surfaced alongside user dailies.
+// ============================================================
+
+enum DailyCategory {
+  USER        // generic user-defined daily
+  WORKOUT     // derived from RoutineDay (read-only here)
+  SPIRITUAL   // derived from User.spiritualDailyPrayers
+  SLEEP       // optional sleep-related dailies (auto-derived)
+}
+
+model Daily {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  category    DailyCategory @default(USER)
+  // Days this daily is due on (0-6 Sun-Sat). If empty array, due every day.
+  // Built-in dailies (WORKOUT/SPIRITUAL/SLEEP) auto-populate this.
+  days        DayOfWeek[]
+  notes       String?
+  // Reward on completion (gold/xp). 0 = no reward. Default 5/2.
+  goldReward  Int           @default(5)
+  xpReward    Int           @default(2)
+  // Ordering for display
+  sortOrder   Int           @default(0)
+  archived    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  logs        DailyLog[]
+
+  @@index([userId, archived])
+}
+
+model DailyLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyId     String
+  daily       Daily    @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  // Stored so built-in dailies (which aren't real Daily rows) can
+  // still be logged. Format e.g. "WORKOUT:MON".
+  dailyKey    String
+  goldDelta   Int      @default(0)
+  xpDelta     Int      @default(0)
+  loggedAt    DateTime @default(now())
+
+  @@index([userId, dailyKey, loggedAt])
+  @@index([userId, loggedAt])
+  @@index([dailyId, loggedAt])
 }
 
 // ============================================================

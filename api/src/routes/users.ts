@@ -53,6 +53,7 @@ export async function userRoutes(app: FastifyInstance) {
       classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
       progress: progressInLevel(user.xp, user.level),
       ordained: user.ordained,
+      spiritualDailyPrayers: user.spiritualDailyPrayers,
     };
   });
 

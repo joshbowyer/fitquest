@@ -1,10 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { DayOfWeek } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 
 const patchSchema = z.object({
   weeklyGoal: z.number().int().min(1).max(14).optional(),
+});
+
+const dayUpdateSchema = z.object({
+  day: z.nativeEnum(DayOfWeek),
+  workout: z.boolean(),
+  notes: z.string().max(200).optional().nullable(),
 });
 
 // Returns the Monday (00:00 UTC) of the week containing `date`.
@@ -96,6 +103,47 @@ export async function routineRoutes(app: FastifyInstance) {
       update: { weeklyGoal: body.weeklyGoal },
     });
     return { weeklyGoal: routine.weeklyGoal };
+  });
+
+  // GET /routine/days — per-day-of-week schedule (Sun-Sat)
+  app.get('/days', async (req) => {
+    const me = await requireUser(req);
+    const rows = await prisma.routineDay.findMany({ where: { userId: me.id } });
+    // Ensure all 7 days are present (default workout=false) so the
+    // frontend can render the full week even on a fresh account.
+    const allDays: Array<DayOfWeek> = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const map = new Map(rows.map((r) => [r.day, r]));
+    return {
+      days: allDays.map((d) => ({
+        day: d,
+        workout: map.get(d)?.workout ?? false,
+        notes: map.get(d)?.notes ?? null,
+      })),
+    };
+  });
+
+  // PUT /routine/days — replace the full schedule (idempotent upsert).
+  app.put('/days', async (req) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      days: z.array(dayUpdateSchema),
+    }).parse(req.body);
+    for (const d of body.days) {
+      await prisma.routineDay.upsert({
+        where: { userId_day: { userId: me.id, day: d.day } },
+        create: {
+          userId: me.id,
+          day: d.day,
+          workout: d.workout,
+          notes: d.notes ?? null,
+        },
+        update: {
+          workout: d.workout,
+          notes: d.notes ?? null,
+        },
+      });
+    }
+    return { ok: true };
   });
 }
 

@@ -106,6 +106,7 @@ export function SpiritualPage() {
       api('/spiritual/log', { method: 'POST', body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['spiritual'] });
+      qc.invalidateQueries({ queryKey: ['dailies'] });
       setLogging(null);
       setNotes('');
     },
@@ -256,24 +257,48 @@ export function SpiritualPage() {
           <Panel title="Log a Prayer" variant="violet">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {data &&
-                Object.entries(data.prayerTypes).map(([type, info]) => (
-                  <button
-                    key={type}
-                    onClick={() => {
-                      setLogging(type as PrayerType);
-                      setDuration(info.defaultMinutes);
-                    }}
-                    className="p-3 border border-ink-500/30 hover:border-neon-violet hover:bg-neon-violet/5 text-left transition-all"
-                  >
-                    <div className="text-2xl mb-1">{info.icon}</div>
-                    <div className="text-xs font-display tracking-wider text-ink-100">{info.label}</div>
-                    <div className="text-[10px] font-mono text-ink-400 mt-0.5">
-                      +{Math.round(info.defaultMinutes * 2.5)} XP · {info.defaultMinutes}m
-                    </div>
-                  </button>
-                ))}
+                Object.entries(data.prayerTypes).map(([type, info]) => {
+                  const isDaily = (user?.spiritualDailyPrayers ?? []).includes(type as PrayerType);
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        setLogging(type as PrayerType);
+                        setDuration(info.defaultMinutes);
+                      }}
+                      className={`relative p-3 border text-left transition-all ${
+                        isDaily
+                          ? 'border-neon-violet bg-neon-violet/5'
+                          : 'border-ink-500/30 hover:border-neon-violet hover:bg-neon-violet/5'
+                      }`}
+                    >
+                      {isDaily && (
+                        <span className="absolute top-1 right-1 text-[8px] font-mono uppercase neon-text-violet">
+                          ☩ daily
+                        </span>
+                      )}
+                      <div className="text-2xl mb-1">{info.icon}</div>
+                      <div className="text-xs font-display tracking-wider text-ink-100">{info.label}</div>
+                      <div className="text-[10px] font-mono text-ink-400 mt-0.5">
+                        +{Math.round(info.defaultMinutes * 2.5)} XP · {info.defaultMinutes}m
+                      </div>
+                    </button>
+                  );
+                })}
             </div>
           </Panel>
+
+          {/* Daily prayer obligations — toggle which prayers become dailies */}
+          <DailyPrayerConfig
+            current={user?.spiritualDailyPrayers ?? []}
+            prayerTypes={data ? (Object.keys(data.prayerTypes) as PrayerType[]) : []}
+            prayerInfo={data?.prayerTypes}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['user'] });
+              qc.invalidateQueries({ queryKey: ['auth'] });
+              qc.invalidateQueries({ queryKey: ['dailies'] });
+            }}
+          />
         </div>
 
         {/* Recent logs */}
@@ -400,6 +425,78 @@ export function SpiritualPage() {
         </Modal>
       )}
     </Layout>
+  );
+}
+
+function DailyPrayerConfig({
+  current,
+  prayerTypes,
+  prayerInfo,
+  onSaved,
+}: {
+  current: PrayerType[];
+  prayerTypes: PrayerType[];
+  prayerInfo: SpiritualResponse['prayerTypes'] | undefined;
+  onSaved: () => void;
+}) {
+  const [draft, setDraft] = useState<PrayerType[]>(current);
+  const dirty =
+    draft.length !== current.length ||
+    draft.some((d) => !current.includes(d));
+
+  const saveM = useDelayedMutation<{ ok: boolean }, PrayerType[]>({
+    mutationFn: (prayers) =>
+      api('/spiritual/dailies', { method: 'PATCH', body: { prayers } }),
+    onSuccess: () => onSaved(),
+  }, 400);
+
+  function toggle(t: PrayerType) {
+    setDraft((d) => (d.includes(t) ? d.filter((x) => x !== t) : [...d, t]));
+  }
+
+  return (
+    <Panel title="Daily prayers" variant="violet">
+      <div className="text-[10px] font-mono text-ink-300 mb-3">
+        Toggle which prayers become built-in dailies on <span className="neon-text-cyan">/today</span>.
+        Daily prayers still earn full XP when you log them; they just also appear in your daily checklist.
+        Confession is monthly-ish in practice — leave it off unless you go weekly.
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {prayerTypes.map((t) => {
+          const info = prayerInfo?.[t];
+          const on = draft.includes(t);
+          return (
+            <button
+              key={t}
+              onClick={() => toggle(t)}
+              className={
+                'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono border transition-all ' +
+                (on
+                  ? 'border-neon-violet text-neon-violet bg-neon-violet/10'
+                  : 'border-ink-500/30 text-ink-300 hover:border-ink-300')
+              }
+            >
+              <span>{info?.icon ?? '○'}</span>
+              <span>{info?.label ?? t}</span>
+              <span className={on ? 'text-neon-violet' : 'text-ink-500'}>{on ? '✓ daily' : '+ add'}</span>
+            </button>
+          );
+        })}
+      </div>
+      {dirty && (
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <NeonButton
+            onClick={() => saveM.run(draft)}
+            loading={saveM.isPending}
+            variant="violet"
+            icon="☩"
+            loadingText="Saving…"
+          >
+            Save daily prayers
+          </NeonButton>
+        </div>
+      )}
+    </Panel>
   );
 }
 

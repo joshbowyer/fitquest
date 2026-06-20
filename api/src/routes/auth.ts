@@ -77,6 +77,8 @@ export async function authRoutes(app: FastifyInstance) {
         createdAt: user.createdAt,
         classChangedAt: user.classChangedAt,
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
+        ordained: user.ordained,
+        spiritualDailyPrayers: user.spiritualDailyPrayers,
       },
     });
   });
@@ -121,6 +123,8 @@ export async function authRoutes(app: FastifyInstance) {
         createdAt: user.createdAt,
         classChangedAt: user.classChangedAt,
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
+        ordained: user.ordained,
+        spiritualDailyPrayers: user.spiritualDailyPrayers,
       },
     });
   });

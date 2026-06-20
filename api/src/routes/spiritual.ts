@@ -12,7 +12,7 @@ const PRAYER_XP: Record<PrayerType, number> = {
   SCRIPTURE: 30,
   CONTEMPLATION: 25,
   LITURGY_HOURS: 40,
-  CONFESSION: 35,
+  CONFESSION: 75,
   OTHER: 20,
 };
 
@@ -150,5 +150,19 @@ const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
       },
     });
     return { ok: true, ordained: updated.ordained };
+  });
+
+  // PATCH /spiritual/dailies — choose which prayers are daily obligations.
+  // These surface as built-in dailies on /today.
+  app.patch('/dailies', async (req) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      prayers: z.array(z.nativeEnum(PrayerType)).max(7),
+    }).parse(req.body);
+    await prisma.user.update({
+      where: { id: me.id },
+      data: { spiritualDailyPrayers: body.prayers },
+    });
+    return { ok: true, prayers: body.prayers };
   });
 }
