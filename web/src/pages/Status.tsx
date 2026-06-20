@@ -24,6 +24,7 @@ import {
 } from '@/components/BodyModel';
 import { getFrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { WORLD_COLOR_HEX } from '@/lib/quest';
+import { displayUnit } from '@/lib/units';
 
 type PainEntry = {
   id: string;
@@ -146,10 +147,10 @@ export function StatusPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-              {height != null && <Stat label="Height" value={`${Math.round(height)} cm`} />}
-              {weight != null && <Stat label="Weight" value={`${weight.toFixed(1)} kg`} />}
+              {height != null && <Stat label="Height" value={`${Math.round(height)} ${displayUnit('cm', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} />}
+              {weight != null && <Stat label="Weight" value={`${weight.toFixed(1)} ${displayUnit('kg', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} />}
               {bf != null && <Stat label="Body Fat" value={`${bf.toFixed(1)}%`} color={intensityToColor(bf / 2)} />}
-              {lbm != null && <Stat label="Lean Mass" value={`${lbm.toFixed(1)} kg`} color="#9bff5c" />}
+              {lbm != null && <Stat label="Lean Mass" value={`${lbm.toFixed(1)} ${displayUnit('kg', user.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`} color="#9bff5c" />}
               {ffmi != null && <Stat label="FFMI" value={ffmi.toFixed(1)} color={ffmi > 22 ? '#9bff5c' : '#14d6e8'} />}
             </div>
           </Panel>

@@ -226,6 +226,8 @@ export function QuestWorldPage() {
 }
 
 function LevelDetail({ world, level }: { world: World; level: WorldLevel }) {
+  const { user } = useAuth();
+  const units: 'METRIC' | 'IMPERIAL' = (user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC');
   const hex = WORLD_COLOR_HEX[world.color];
   return (
     <Panel title={level.name} variant={worldColorToVariant(world.color)}>
@@ -289,7 +291,7 @@ function LevelDetail({ world, level }: { world: World; level: WorldLevel }) {
             <div className="mt-3">
               <ProgressBar progress={level.progress} large />
               <div className="mt-2 text-[10px] font-mono text-ink-400 leading-relaxed">
-                {progressSummary(level.progress, level.requirementSummary)}
+                {progressSummary(level.progress, level.requirementSummary, units)}
               </div>
             </div>
           )}
@@ -345,20 +347,21 @@ function ProgressBar({ progress, large = false }: { progress: RequirementProgres
   );
 }
 
-function progressSummary(p: RequirementProgress, summary: string): string {
+function progressSummary(p: RequirementProgress, summary: string, units: 'METRIC' | 'IMPERIAL' = 'METRIC'): string {
   if (p.cleared) return `✓ threshold met — ${summary}`;
   if (p.current == null) return `No data yet. Log a relevant workout to start tracking.`;
-  return `Progress: ${formatProgress(p.current, p.target)} of target. Keep going!`;
+  return `Progress: ${formatProgress(p.current, p.target, units)} of target. Keep going!`;
 }
 
-function formatProgress(current: number, target: number): string {
+function formatProgress(current: number, target: number, units: 'METRIC' | 'IMPERIAL' = 'METRIC'): string {
   // If target looks like seconds (> 100), format as time
   if (target >= 60 && target <= 60 * 60 * 4) {
     return `${Math.round(current / 60)}min / ${Math.round(target / 60)}min`;
   }
-  // If kg / volume range
+  // If kg / volume range (use user's unit preference)
   if (target >= 20 && target <= 2000) {
-    return `${Math.round(current)}kg / ${Math.round(target)}kg`;
+    const u = units === 'IMPERIAL' ? 'lb' : 'kg';
+    return `${Math.round(current)}${u} / ${Math.round(target)}${u}`;
   }
   // If reps
   if (target >= 5 && target <= 200) {

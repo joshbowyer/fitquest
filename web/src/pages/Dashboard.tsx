@@ -25,6 +25,7 @@ import {
   type Skill,
 } from '@/lib/types';
 import { formatRelative, formatSeconds } from '@/lib/format';
+import { displayUnit } from '@/lib/units';
 import { Link } from 'react-router-dom';
 
 // Categories displayed as gauges on the stat sheet. New habit categories
@@ -245,7 +246,7 @@ export function DashboardPage() {
                 <span className="neon-text-lime">
                   {p.exercise.toLowerCase().includes('plank') || p.exercise.toLowerCase().includes('l-sit')
                     ? formatSeconds(p.value)
-                    : `${p.value.toFixed(1)} kg`}
+                    : `${p.value.toFixed(1)} ${displayUnit('kg', user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`}
                 </span>
                 <span className="text-ink-400 text-[10px]">{formatRelative(p.achievedAt)}</span>
               </div>
