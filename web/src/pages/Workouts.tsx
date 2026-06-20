@@ -11,6 +11,7 @@ import type { Workout, WorkoutType } from '@/lib/types';
 import { type UnitSystem } from '@/lib/units';
 import { musclesForExercise, loadForExercise } from '@/lib/muscles';
 import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
+import { RestTimer, REST_PRESETS } from '@/components/RestTimer';
 
 function kgToLb(kg: number): number {
   return kg * 2.20462;
@@ -39,6 +40,24 @@ type DraftExercise = { name: string; sets: DraftSet[] };
 
 function emptyExercise(): DraftExercise {
   return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0 }] };
+}
+
+// Convert a stored workout into DraftExercise[] for the form.
+function workoutToDraft(
+  w: { exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number | null; duration: number | null; rpe: number | null }> }> },
+  units: UnitSystem,
+): DraftExercise[] {
+  return w.exercises.map((ex) => ({
+    name: ex.name,
+    sets: ex.sets.map((s) => ({
+      reps: s.reps,
+      weight: s.weight != null
+        ? (units === 'IMPERIAL' ? Math.round(kgToLb(s.weight) * 10) / 10 : Math.round(s.weight * 10) / 10)
+        : 0,
+      duration: s.duration ?? 0,
+      rpe: s.rpe ?? 0,
+    })),
+  }));
 }
 
 // Convert weight entered in user's preferred unit back to kg for storage.
@@ -70,9 +89,37 @@ export function WorkoutsPage() {
   const [result, setResult] = useState<any | null>(null);
   const [selectedExerciseIdx, setSelectedExerciseIdx] = useState<number | null>(null);
 
+  // History filters
+  const [historyFilter, setHistoryFilter] = useState<'all' | '7d' | '30d' | '90d'>('30d');
+  const [exerciseFilter, setExerciseFilter] = useState('');
+
   const list = useQuery({
     queryKey: ['workouts'],
-    queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=50'),
+    queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=100'),
+  });
+
+  // Copy last session helper
+  function copyLastSession() {
+    if (!list.data?.items.length) return;
+    const last = list.data.items[0];
+    setExercises(workoutToDraft(last, units));
+    setName(last.name ? `${last.name} (copy)` : '');
+    setDuration(last.duration ?? 60);
+    setNotes(last.notes ?? '');
+  }
+
+  // Apply date + exercise filters to the history list
+  const filteredHistory = (list.data?.items ?? []).filter((w) => {
+    if (historyFilter !== 'all') {
+      const days = historyFilter === '7d' ? 7 : historyFilter === '30d' ? 30 : 90;
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      if (new Date(w.performedAt).getTime() < cutoff) return false;
+    }
+    if (exerciseFilter.trim()) {
+      const q = exerciseFilter.toLowerCase();
+      if (!w.exercises.some((ex) => ex.name.toLowerCase().includes(q))) return false;
+    }
+    return true;
   });
 
   const createM = useDelayedMutation({
@@ -155,8 +202,53 @@ export function WorkoutsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 md:gap-6">
         {/* Form */}
-        <Panel variant="cyan" title="Log Session" scanline>
+        <Panel
+          variant="cyan"
+          title="Log Session"
+          scanline
+          action={
+            list.data?.items && list.data.items.length > 0 ? (
+              <button
+                type="button"
+                onClick={copyLastSession}
+                className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
+                title="Duplicate your most recent workout into the form"
+              >
+                ⎘ copy last
+              </button>
+            ) : null
+          }
+        >
           <div className="space-y-4">
+            {/* Rest timer — useful between sets */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
+                  Rest timer
+                </div>
+                <div className="text-[9px] font-mono text-ink-400">30s · 60s · 90s · 2m · 3m · 5m</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <RestTimer />
+                <div className="flex gap-1">
+                  {REST_PRESETS.map((p) => (
+                    <button
+                      key={p.seconds}
+                      type="button"
+                      onClick={() => {
+                        const ev = new CustomEvent('set-rest', { detail: p.seconds });
+                        window.dispatchEvent(ev);
+                      }}
+                      className="px-2 h-8 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                      title={`Set timer to ${p.label}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div>
               <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 mb-1.5">Type</div>
               <div className="flex flex-wrap gap-2">
@@ -459,9 +551,45 @@ export function WorkoutsPage() {
         </Panel>
 
         {/* History */}
-        <Panel variant="magenta" title="History">
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-            {(list.data?.items || []).map((w) => {
+        <Panel
+          variant="magenta"
+          title="History"
+          action={
+            <span className="text-[10px] font-mono text-ink-300 tracking-widest">
+              {filteredHistory.length} sessions
+            </span>
+          }
+        >
+          {/* Filters */}
+          <div className="space-y-2 mb-3">
+            <div className="flex gap-1 flex-wrap">
+              {(['7d', '30d', '90d', 'all'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setHistoryFilter(f)}
+                  className={classNames(
+                    'px-2 py-1 text-[10px] font-mono uppercase tracking-widest border',
+                    historyFilter === f
+                      ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                      : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+                  )}
+                >
+                  {f === 'all' ? 'All' : f}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="filter by exercise…"
+              value={exerciseFilter}
+              onChange={(e) => setExerciseFilter(e.target.value)}
+              className="input-neon text-xs"
+            />
+          </div>
+
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {filteredHistory.map((w) => {
               const totalVolume = w.exercises.reduce((acc, ex) => {
                 return acc + ex.sets.reduce((s, set) => s + (set.weight ?? 0) * set.reps, 0);
               }, 0);

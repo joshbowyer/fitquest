@@ -13,7 +13,7 @@ type NavItem = { to: string; label: string; icon: string; mobile?: boolean };
 // Desktop sidebar shows all items.
 // Items not in `mobile` only appear on tablet+ via the "More" drawer.
 const NAV: NavItem[] = [
-  { to: '/dashboard',   label: 'Sheet',    icon: '◆', mobile: true },
+  { to: '/dashboard',   label: 'Dashboard', icon: '◆', mobile: true },
   { to: '/quest',       label: 'Quest',    icon: '◇', mobile: true },
   { to: '/status',      label: 'Status',   icon: '◊', mobile: true },
   { to: '/workouts',    label: 'Workouts', icon: '▣', mobile: true },
