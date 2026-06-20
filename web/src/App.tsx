@@ -18,6 +18,7 @@ import { TodayPage } from './pages/Today';
 import { HabitsPage } from './pages/Habits';
 import { NutritionPage } from './pages/Nutrition';
 import { RecoveryPage } from './pages/Recovery';
+import { ImportPage } from './pages/Import';
 import { StatusPage } from './pages/Status';
 import type { ReactNode } from 'react';
 
@@ -63,6 +64,7 @@ export default function App() {
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
       <Route path="/nutrition" element={<RequireAuth><NutritionPage /></RequireAuth>} />
       <Route path="/recovery" element={<RequireAuth><RecoveryPage /></RequireAuth>} />
+      <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
       <Route path="/insights" element={<RequireAuth><InsightsPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />

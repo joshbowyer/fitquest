@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { to: '/workouts',    label: 'Workouts', icon: '▣', mobile: true },
   { to: '/spiritual',   label: 'Spiritual', icon: '☩', mobile: false },
   { to: '/recovery',    label: 'Recovery', icon: '☾', mobile: false },
+  { to: '/import',      label: 'Import',   icon: '↥', mobile: false },
   { to: '/nutrition',   label: 'Nutrition', icon: '⌬', mobile: false },
   { to: '/habits',      label: 'Habits',   icon: '✓', mobile: false },
   { to: '/measurements', label: 'Measure',  icon: '◎', mobile: false },

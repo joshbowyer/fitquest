@@ -158,6 +158,7 @@ export function TodayPage() {
                   <DailyRow
                     key={d.id}
                     daily={d}
+                    isPending={completeM.isPending}
                     onToggle={() => {
                       setPendingId(d.id);
                       completeM.run(d.id);

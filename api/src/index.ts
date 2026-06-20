@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import { config } from './lib/config.js';
 import { prisma } from './lib/prisma.js';
 import { authRoutes } from './routes/auth.js';
@@ -24,6 +25,7 @@ import { bossRoutes } from './routes/bosses.js';
 import { spiritualRoutes } from './routes/spiritual.js';
 import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
+import { importRoutes } from './routes/import.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
 
@@ -38,6 +40,9 @@ async function build() {
   await app.register(cors, {
     origin: config.webOrigin,
     credentials: true,
+  });
+  await app.register(multipart, {
+    limits: { fileSize: 50 * 1024 * 1024, files: 50 },
   });
 
   app.get('/health', async () => ({ ok: true, ts: Date.now() }));
@@ -60,6 +65,7 @@ async function build() {
   await app.register(statusRoutes, { prefix: '/status' });
   await app.register(routineRoutes, { prefix: '/routine' });
   await app.register(bossRoutes, { prefix: '/bosses' });
+  await app.register(importRoutes, { prefix: '/import' });
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
   await app.register(habitRoutes, { prefix: '/habits' });
   await app.register(dailyRoutes, { prefix: '/dailies' });
