@@ -5,7 +5,6 @@ import { RegisterPage } from './pages/Register';
 import { DashboardPage } from './pages/Dashboard';
 import { WorkoutsPage } from './pages/Workouts';
 import { MeasurementsPage } from './pages/Measurements';
-import { HabitsPage } from './pages/Habits';
 import { InsightsPage } from './pages/Insights';
 import { SettingsPage } from './pages/Settings';
 import { SkillsPage } from './pages/Skills';
@@ -15,6 +14,9 @@ import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
 import { SpiritualPage } from './pages/Spiritual';
 import { AchievementsPage } from './pages/Achievements';
+import { TodayPage } from './pages/Today';
+import { HabitsPage } from './pages/Habits';
+import { NutritionPage } from './pages/Nutrition';
 import { StatusPage } from './pages/Status';
 import type { ReactNode } from 'react';
 
@@ -56,7 +58,9 @@ export default function App() {
       <Route path="/status" element={<RequireAuth><StatusPage /></RequireAuth>} />
       <Route path="/workouts" element={<RequireAuth><WorkoutsPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
+      <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
+      <Route path="/nutrition" element={<RequireAuth><NutritionPage /></RequireAuth>} />
       <Route path="/insights" element={<RequireAuth><InsightsPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />

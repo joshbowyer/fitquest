@@ -191,6 +191,8 @@ model User {
   sentInvites      PartyInvite[] @relation("Inviter")
   receivedInvites  PartyInvite[] @relation("Invitee")
   prayerLogs       PrayerLog[]
+  habits           Habit[]
+  habitLogs        HabitLog[]
   spiritualSubclass SpiritualSubclass?
   spiritualXp       Int           @default(0)
   ordained          Boolean        @default(false)
@@ -586,4 +588,59 @@ model PrayerLog {
   loggedAt   DateTime    @default(now())
 
   @@index([userId, loggedAt])
+}
+
+// ============================================================
+// Habits — user-defined Habitica-style +/- behaviors.
+// "POSITIVE" habits reward gold/XP when checked (e.g., "drank
+// water"). "NEGATIVE" habits penalize when checked (e.g., "ate
+// junk food"). Each press is logged once per day; multiple
+// presses per day accumulate reward/penalty.
+// ============================================================
+
+enum HabitDirection {
+  POSITIVE  // checking gives reward
+  NEGATIVE  // checking takes a penalty
+}
+
+model Habit {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  notes       String?
+  direction   HabitDirection
+  // Reward/penalty applied per check. Kept simple: gold + xp only.
+  // For POSITIVE habits this is what you GAIN; for NEGATIVE it's
+  // what you LOSE (the system applies the opposite sign).
+  goldReward  Int            @default(5)
+  xpReward    Int            @default(2)
+  // Display icon (single char/glyph). Defaults are picked by the
+  // UI based on direction.
+  icon        String?
+  archived    Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  logs        HabitLog[]
+
+  @@index([userId, archived])
+}
+
+model HabitLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habitId     String
+  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  // +1 for POSITIVE check (reward), -1 for NEGATIVE check (penalty).
+  // Direction is on Habit; we keep the log signed so we can sum
+  // today's contributions cleanly.
+  delta       Int
+  goldDelta   Int      @default(0)
+  xpDelta     Int      @default(0)
+  loggedAt    DateTime @default(now())
+
+  @@index([userId, loggedAt])
+  @@index([habitId, loggedAt])
 }

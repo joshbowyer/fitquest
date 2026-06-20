@@ -12,6 +12,8 @@ import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
 import { RoutinePanel } from '@/components/RoutinePanel';
+import { NutritionWidget } from '@/components/NutritionWidget';
+import { HabitsWidget } from '@/components/HabitsWidget';
 import { WaistDisplay } from '@/components/WaistDisplay';
 import { useAuth } from '@/lib/auth';
 import {
@@ -180,10 +182,12 @@ export function DashboardPage() {
         </Panel>
       </div>
 
-      {/* Daily weigh-in + habits */}
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 md:gap-6 mb-4 md:mb-6">
+      {/* Daily weigh-in + today + nutrition + habits — quick indicators. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-4 md:mb-6">
         <WeighInPanel />
         <TodayHabitsPanel />
+        <NutritionWidget />
+        <HabitsWidget />
       </div>
 
       {/* Routine (weekly training goal + streak) */}

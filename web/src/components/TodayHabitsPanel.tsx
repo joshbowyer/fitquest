@@ -4,27 +4,27 @@ import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
-import { classNames, formatRelative, formatMetricWithUnit } from '@/lib/format';
+import { classNames, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
 
 type HabitStatus = Record<string, { logged: boolean; value: number | null; recordedAt: string | null }>;
 
-const ALL_HABITS: MetricType[] = [
+// "Today" widget on Dashboard: sleep + wellness only (subjective).
+// Nutrition lives on /nutrition with its own widget, and user-defined
+// habits live on /habits with their own widget.
+const TODAY_METRICS: MetricType[] = [
   ...METRICS_BY_CATEGORY.SLEEP,
-  ...METRICS_BY_CATEGORY.NUTRITION,
   ...METRICS_BY_CATEGORY.WELLNESS,
 ];
 
 const CATEGORY_ICON: Record<string, string> = {
   SLEEP: '☾',
-  NUTRITION: '⌬',
   WELLNESS: '♥',
 };
 
-const CATEGORY_COLOR: Record<string, string> = {
+const CATEGORY_COLOR: Record<string, 'violet' | 'magenta'> = {
   SLEEP: 'violet',
-  NUTRITION: 'lime',
   WELLNESS: 'magenta',
 };
 
@@ -36,7 +36,7 @@ export function TodayHabitsPanel() {
   const system: UnitSystem = user?.units ?? 'METRIC';
 
   const statusQ = useQuery({
-    queryKey: ['habits', 'today'],
+    queryKey: ['today', 'status'],
     queryFn: () => api<{ status: HabitStatus }>('/measurements/habits/today'),
   });
   const status = statusQ.data?.status || {};
@@ -45,7 +45,7 @@ export function TodayHabitsPanel() {
     mutationFn: (items: Array<{ metric: MetricType; value: number }>) =>
       api('/measurements/batch', { method: 'POST', body: { items } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['habits'] });
+      qc.invalidateQueries({ queryKey: ['today'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
       setEditing(null);
@@ -53,27 +53,26 @@ export function TodayHabitsPanel() {
     },
   });
 
-  const completed = ALL_HABITS.filter((m) => status[m]?.logged).length;
-  const pct = completed / ALL_HABITS.length;
+  const completed = TODAY_METRICS.filter((m) => status[m]?.logged).length;
+  const pct = TODAY_METRICS.length > 0 ? completed / TODAY_METRICS.length : 0;
 
   function quickLog(m: MetricType) {
     if (!draft) return;
     const value = Number(draft);
     if (!Number.isFinite(value) || value < 0) return;
-    // Convert input from display unit back to metric
     const stored = convertForStorage(value, displayUnit(METRICS[m].unit, system), system);
     batchM.mutate([{ metric: m, value: stored.value }]);
   }
 
   return (
-    <Panel variant="cyan" title="Today's Habits">
+    <Panel variant="cyan" title="Today">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono text-ink-300">
-            {completed}/{ALL_HABITS.length} logged
+            {completed}/{TODAY_METRICS.length} logged
           </div>
           <Link
-            to="/habits"
+            to="/today"
             className="text-[10px] font-display tracking-widest neon-text-cyan hover:underline"
           >
             → ALL
@@ -83,13 +82,13 @@ export function TodayHabitsPanel() {
           <div
             className={classNames(
               'h-full transition-all duration-500',
-              completed === ALL_HABITS.length ? 'bg-neon-lime' : 'bg-neon-cyan'
+              completed === TODAY_METRICS.length ? 'bg-neon-lime' : 'bg-neon-cyan'
             )}
             style={{ width: `${pct * 100}%`, boxShadow: '0 0 6px currentColor' }}
           />
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {(['SLEEP', 'NUTRITION', 'WELLNESS'] as const).map((cat) => {
+        <div className="grid grid-cols-2 gap-1.5">
+          {(['SLEEP', 'WELLNESS'] as const).map((cat) => {
             const metrics = METRICS_BY_CATEGORY[cat];
             const done = metrics.filter((m) => status[m]?.logged).length;
             const color = CATEGORY_COLOR[cat];
@@ -110,7 +109,7 @@ export function TodayHabitsPanel() {
           })}
         </div>
         <div className="space-y-1 pt-1">
-          {ALL_HABITS.map((m) => {
+          {TODAY_METRICS.map((m) => {
             const s = status[m];
             const meta = METRICS[m];
             const isEditing = editing === m;

@@ -1,320 +1,434 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
-import { classNames, formatDate, formatMetricWithUnit, formatNumber, formatRelative } from '@/lib/format';
+import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { classNames } from '@/lib/format';
 
-const CATEGORY_VARIANT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'> = {
-  SLEEP: 'violet',
-  NUTRITION: 'lime',
-  WELLNESS: 'magenta',
+type Habit = {
+  id: string;
+  name: string;
+  notes: string | null;
+  direction: 'POSITIVE' | 'NEGATIVE';
+  goldReward: number;
+  xpReward: number;
+  icon: string | null;
+  archived: boolean;
+  createdAt: string;
+  todayCount: number;
+  todayGold: number;
+  todayXp: number;
 };
 
-const CATEGORY_TITLES: Record<string, string> = {
-  SLEEP: 'Sleep',
-  NUTRITION: 'Nutrition',
-  WELLNESS: 'Wellness',
-};
+type ListResp = { items: Habit[] };
 
-type HabitStatus = Record<string, { logged: boolean; value: number | null; recordedAt: string | null }>;
-
-const SUBJECTIVE = new Set<MetricType>([
-  'SLEEP_QUALITY', 'MOOD', 'ENERGY', 'SORENESS', 'STRESS',
-]);
+const ICONS_POS = ['✦', '☀', '♥', '◆', '⚡', '☕', '◉', '★', '✓', '☂'];
+const ICONS_NEG = ['✕', '☠', '⚠', '✗', '◬', '☢', '✘', '⚞'];
 
 export function HabitsPage() {
+  const { user } = useAuth();
   const qc = useQueryClient();
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [unlockedToast, setUnlockedToast] = useState<string[] | null>(null);
-  const [selected, setSelected] = useState<MetricType>('SLEEP_HOURS');
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Habit | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'POSITIVE' | 'NEGATIVE'>('ALL');
 
-  const statusQ = useQuery({
-    queryKey: ['habits', 'today'],
-    queryFn: () => api<{ status: HabitStatus }>('/measurements/habits/today'),
-  });
-  const allQ = useQuery({
-    queryKey: ['measurements', 'all'],
-    queryFn: () => api<{ items: Array<{ id: string; metric: MetricType; value: number; recordedAt: string }> }>(
-      '/measurements?limit=200'
-    ),
+  const { data, isLoading } = useQuery({
+    queryKey: ['habits', 'custom'],
+    queryFn: () => api<ListResp>('/habits'),
   });
 
-  const batchM = useDelayedMutation({
-    mutationFn: (items: Array<{ metric: MetricType; value: number }>) =>
-      api<{ items: any[]; unlocked: string[] }>('/measurements/batch', {
-        method: 'POST',
-        body: { items },
-      }),
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['habits'] });
-      qc.invalidateQueries({ queryKey: ['measurements'] });
+  const list = (data?.items ?? []).filter((h) => {
+    if (filter === 'POSITIVE') return h.direction === 'POSITIVE';
+    if (filter === 'NEGATIVE') return h.direction === 'NEGATIVE';
+    return true;
+  });
+
+  const positiveCount = (data?.items ?? []).filter((h) => h.direction === 'POSITIVE').length;
+  const negativeCount = (data?.items ?? []).filter((h) => h.direction === 'NEGATIVE').length;
+  const todayPositive = (data?.items ?? []).filter((h) => h.direction === 'POSITIVE' && h.todayCount > 0).length;
+  const todayNegative = (data?.items ?? []).filter((h) => h.direction === 'NEGATIVE' && h.todayCount > 0).length;
+
+  const logM = useDelayedMutation<
+    { goldDelta: number; xpDelta: number; gold: number; xp: number; level: number },
+    string
+  >({
+    mutationFn: (id) => api(`/habits/${id}/log`, { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['habits', 'custom'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
-      if (r.unlocked && r.unlocked.length > 0) {
-        setUnlockedToast(r.unlocked);
-        setTimeout(() => setUnlockedToast(null), 4000);
-      }
     },
-  }, 1200);
+  }, 350);
 
-  const status = statusQ.data?.status || {};
+  const archiveM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/habits/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['habits', 'custom'] }),
+  }, 400);
 
-  function setDraft(metric: string, v: string) {
-    setDrafts((d) => ({ ...d, [metric]: v }));
-  }
+  if (!user) return null;
 
-  function commitOne(metric: MetricType) {
-    const raw = drafts[metric];
-    if (!raw) return;
-    const value = Number(raw);
-    if (!Number.isFinite(value) || value < 0) return;
-    batchM.run([{ metric, value }]).then(() => setDraft(metric, ''));
-  }
-
-  function commitAll() {
-    const items: Array<{ metric: MetricType; value: number }> = [];
-    for (const [metric, raw] of Object.entries(drafts)) {
-      if (raw === '' || raw == null) continue;
-      const v = Number(raw);
-      if (!Number.isFinite(v) || v < 0) continue;
-      items.push({ metric: metric as MetricType, value: v });
-    }
-    if (items.length === 0) return;
-    batchM.run(items).then(() => setDrafts({}));
-  }
-
-  const dirtyCount = Object.values(drafts).filter((v) => v !== '' && v != null).length;
-  const allHabitMetrics: MetricType[] = useMemo(
-    () => [...METRICS_BY_CATEGORY.SLEEP, ...METRICS_BY_CATEGORY.NUTRITION, ...METRICS_BY_CATEGORY.WELLNESS],
-    []
-  );
-  const completedToday = allHabitMetrics.filter((m) => status[m]?.logged).length;
-
-  // History chart for selected metric
-  const filteredHistory = (allQ.data?.items || [])
-    .filter((m) => m.metric === selected)
-    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-  const chartData = filteredHistory.map((m) => ({
-    date: new Date(m.recordedAt).getTime(),
-    value: m.value,
-  })).slice(-30);
-  const meta = METRICS[selected];
-  const avg =
-    chartData.length > 0
-      ? chartData.reduce((a, b) => a + b.value, 0) / chartData.length
-      : null;
+  const netGoldToday = (data?.items ?? []).reduce((s, h) => s + h.todayGold, 0);
 
   return (
     <Layout>
       <PageHeader
         title="// Habits"
-        subtitle="Daily check-in for sleep, nutrition, and wellness."
+        subtitle="User-defined behaviors. Positive habits reward gold + XP. Negative habits penalize."
         action={
-          <div className="font-mono text-sm">
-            <span className="text-ink-300 text-xs uppercase tracking-widest">Today: </span>
-            <span className={`text-xl ml-1 ${completedToday === allHabitMetrics.length ? 'neon-text-lime' : 'neon-text-cyan'}`}>
-              {completedToday}/{allHabitMetrics.length}
-            </span>
-          </div>
+          <NeonButton onClick={() => setCreating(true)} icon="+">
+            New Habit
+          </NeonButton>
         }
       />
 
-      {unlockedToast && (
-        <div className="mb-4 text-xs font-mono neon-text-amber border border-neon-amber/30 bg-neon-amber/5 p-2">
-          ✦ Unlocked: {unlockedToast.join(', ')}
-        </div>
-      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <Stat label="Active" value={String((data?.items ?? []).length)} accent="#14d6e8" />
+        <Stat label="Positive ✓" value={`${todayPositive} / ${positiveCount}`} accent="#9bff5c" />
+        <Stat label="Negative ✕" value={`${todayNegative} / ${negativeCount}`} accent="#f55cc4" />
+        <Stat label="Net Today" value={`${netGoldToday >= 0 ? '+' : ''}${netGoldToday} g`} accent="#ffc34d" />
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {(['SLEEP', 'NUTRITION', 'WELLNESS'] as const).map((cat) => (
-          <Panel
-            key={cat}
-            variant={CATEGORY_VARIANT[cat]}
-            title={CATEGORY_TITLES[cat]}
-            className={cat === 'WELLNESS' ? 'lg:col-span-2' : undefined}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {(['ALL', 'POSITIVE', 'NEGATIVE'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={classNames(
+              'px-3 py-1 text-[10px] font-mono uppercase tracking-widest border transition-all',
+              filter === f
+                ? 'border-neon-cyan/80 text-neon-cyan bg-neon-cyan/10'
+                : 'border-ink-500/30 text-ink-300 hover:border-ink-300',
+            )}
           >
-            <div className="space-y-3">
-              {METRICS_BY_CATEGORY[cat].map((m) => {
-                const meta = METRICS[m];
-                const s = status[m];
-                const draft = drafts[m] ?? '';
-                const isSubjective = SUBJECTIVE.has(m);
-                return (
-                  <div key={m} className="grid grid-cols-[140px_1fr_80px_auto] gap-2 items-center">
-                    <div>
-                      <div className="font-display tracking-wider text-sm text-ink-50">
-                        {meta.shortLabel}
-                      </div>
-                      <div className="text-[10px] font-mono text-ink-300">
-                        {s?.logged && s.value != null
-                          ? `✓ ${formatMetricWithUnit(s.value, meta.unit)} · ${s.recordedAt ? formatRelative(s.recordedAt) : ''}`
-                          : 'not logged'}
-                      </div>
-                    </div>
-                    {isSubjective ? (
-                      <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={draft || (s?.value ? String(s.value) : '5')}
-                        onChange={(e) => setDraft(m, e.target.value)}
-                        onMouseUp={() => {
-                          if (draft) commitOne(m);
-                        }}
-                        onTouchEnd={() => {
-                          if (draft) commitOne(m);
-                        }}
-                        className="w-full accent-current"
-                        style={{ accentColor: 'currentcolor' }}
-                      />
-                    ) : (
-                      <input
-                        className="input-neon"
-                        type="number"
-                        step={meta.unit === 'kcal' || meta.unit === 'ml' || meta.unit === 'g' ? 1 : 0.1}
-                        placeholder={s?.value ? String(s.value) : `e.g. ${meta.defaultMin}`}
-                        value={draft}
-                        onChange={(e) => setDraft(m, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && draft) commitOne(m);
-                        }}
-                      />
-                    )}
-                    <div className="text-[10px] font-mono text-ink-300 text-right">
-                      {meta.unit}
-                    </div>
-                    {isSubjective ? (
-                      <div className="text-sm font-display neon-text-cyan w-10 text-center">
-                        {draft || (s?.value ? String(s.value) : '—')}
-                      </div>
-                    ) : (
-                      <NeonButton
-                        variant={CATEGORY_VARIANT[cat]}
-                        onClick={() => commitOne(m)}
-                        loading={batchM.isPending}
-                        disabled={!draft}
-                        className="text-[10px] px-2 py-1"
-                      >
-                        ⚡
-                      </NeonButton>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
+            {f === 'ALL' ? `All (${(data?.items ?? []).length})` : f === 'POSITIVE' ? `+ Positive (${positiveCount})` : `− Negative (${negativeCount})`}
+          </button>
         ))}
       </div>
 
-      {/* Save all bar */}
-      <div className="mt-4 flex items-center justify-end gap-3">
-        {dirtyCount > 0 && (
-          <div className="text-xs font-mono text-ink-300">
-            {dirtyCount} unsaved
+      {isLoading ? (
+        <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
+      ) : list.length === 0 ? (
+        <Panel>
+          <div className="text-center py-6 space-y-2">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">No habits yet</div>
+            <div className="text-xs text-ink-400 font-mono">
+              Create your first one — e.g., "+ Drank water" or "− Ate junk food."
+            </div>
+            <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
+              New Habit
+            </NeonButton>
+          </div>
+        </Panel>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {list.map((h) => (
+            <HabitCard
+              key={h.id}
+              habit={h}
+              onLog={() => logM.run(h.id)}
+              onEdit={() => setEditing(h)}
+              onArchive={() => archiveM.run(h.id)}
+              logPending={logM.isPending}
+              archivePending={archiveM.isPending}
+            />
+          ))}
+        </div>
+      )}
+
+      {creating && (
+        <HabitEditor
+          mode="create"
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            qc.invalidateQueries({ queryKey: ['habits', 'custom'] });
+          }}
+        />
+      )}
+      {editing && (
+        <HabitEditor
+          mode="edit"
+          habit={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            qc.invalidateQueries({ queryKey: ['habits', 'custom'] });
+          }}
+        />
+      )}
+    </Layout>
+  );
+}
+
+function HabitCard({
+  habit,
+  onLog,
+  onEdit,
+  onArchive,
+  logPending,
+  archivePending,
+}: {
+  habit: Habit;
+  onLog: () => void;
+  onEdit: () => void;
+  onArchive: () => void;
+  logPending: boolean;
+  archivePending: boolean;
+}) {
+  const isPos = habit.direction === 'POSITIVE';
+  const accent = isPos ? '#9bff5c' : '#f55cc4';
+  const sign = isPos ? '+' : '−';
+  return (
+    <div
+      className="border p-3 transition-all"
+      style={{
+        borderColor: `${accent}40`,
+        background: `${accent}08`,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="shrink-0 w-12 h-12 grid place-items-center font-display text-2xl border"
+          style={{
+            color: accent,
+            borderColor: `${accent}66`,
+            background: `${accent}10`,
+            textShadow: `0 0 6px ${accent}`,
+          }}
+        >
+          {habit.icon ?? (isPos ? '✦' : '✕')}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-display tracking-wider text-sm truncate"
+            style={{ color: accent, textShadow: `0 0 4px ${accent}` }}
+          >
+            {habit.name}
+          </div>
+          <div className="text-[10px] font-mono text-ink-300 mt-0.5">
+            {sign} {habit.goldReward} gold · {sign} {habit.xpReward} XP per check
+          </div>
+          {habit.notes && (
+            <div className="text-[10px] font-mono text-ink-400 italic mt-1 leading-snug">
+              "{habit.notes}"
+            </div>
+          )}
+          {habit.todayCount > 0 && (
+            <div className="text-[10px] font-mono mt-1" style={{ color: accent }}>
+              ✓ {habit.todayCount} today ({habit.todayGold >= 0 ? '+' : ''}{habit.todayGold} gold · {habit.todayXp >= 0 ? '+' : ''}{habit.todayXp} XP)
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <NeonButton
+          onClick={onLog}
+          loading={logPending}
+          variant={isPos ? 'lime' : 'magenta'}
+          icon={isPos ? '+' : '−'}
+          loadingText="…"
+          className="flex-1"
+        >
+          Check
+        </NeonButton>
+        <button
+          onClick={onEdit}
+          className="text-[10px] font-mono px-2 py-2 border border-ink-500/30 text-ink-300 hover:border-ink-300 hover:text-ink-100"
+          title="Edit habit"
+        >
+          ✎
+        </button>
+        <button
+          onClick={onArchive}
+          disabled={archivePending}
+          className="text-[10px] font-mono px-2 py-2 border border-ink-500/30 text-ink-400 hover:border-neon-magenta hover:text-neon-magenta disabled:opacity-40"
+          title="Archive habit"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HabitEditor({
+  mode,
+  habit,
+  onClose,
+  onSaved,
+}: {
+  mode: 'create' | 'edit';
+  habit?: Habit;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(habit?.name ?? '');
+  const [direction, setDirection] = useState<'POSITIVE' | 'NEGATIVE'>(habit?.direction ?? 'POSITIVE');
+  const [goldReward, setGoldReward] = useState<number>(habit?.goldReward ?? 5);
+  const [xpReward, setXpReward] = useState<number>(habit?.xpReward ?? 2);
+  const [notes, setNotes] = useState(habit?.notes ?? '');
+  const [icon, setIcon] = useState(habit?.icon ?? '');
+
+  const saveM = useDelayedMutation<unknown, void>({
+    mutationFn: () => {
+      const body =
+        mode === 'create'
+          ? { name, direction, goldReward, xpReward, notes: notes || undefined, icon: icon || undefined }
+          : { name, goldReward, xpReward, notes: notes || null, icon: icon || null };
+      return mode === 'create'
+        ? api('/habits', { method: 'POST', body })
+        : api(`/habits/${habit!.id}`, { method: 'PATCH', body });
+    },
+    onSuccess: () => onSaved(),
+  }, 400);
+
+  const iconChoices = direction === 'POSITIVE' ? ICONS_POS : ICONS_NEG;
+
+  return (
+    <Modal open onClose={onClose} title={mode === 'create' ? 'New Habit' : 'Edit Habit'}>
+      <div className="space-y-4">
+        {mode === 'create' && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => { setDirection('POSITIVE'); setIcon(''); }}
+              className={classNames(
+                'p-3 border-2 text-left transition-all',
+                direction === 'POSITIVE'
+                  ? 'border-neon-lime/80 bg-neon-lime/10 text-neon-lime'
+                  : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+              )}
+            >
+              <div className="font-display tracking-wider">+ Positive</div>
+              <div className="text-[10px] font-mono mt-0.5">Reward when checked.</div>
+            </button>
+            <button
+              onClick={() => { setDirection('NEGATIVE'); setIcon(''); }}
+              className={classNames(
+                'p-3 border-2 text-left transition-all',
+                direction === 'NEGATIVE'
+                  ? 'border-neon-magenta/80 bg-neon-magenta/10 text-neon-magenta'
+                  : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+              )}
+            >
+              <div className="font-display tracking-wider">− Negative</div>
+              <div className="text-[10px] font-mono mt-0.5">Penalty when checked.</div>
+            </button>
           </div>
         )}
-        <NeonButton
-          onClick={commitAll}
-          loading={batchM.isPending}
-          disabled={dirtyCount === 0}
-          icon="⚡"
-          loadingText="Saving…"
-        >
-          {`Save ${dirtyCount || ''}`.trim()}
-        </NeonButton>
-      </div>
 
-      {/* History viewer */}
-      <Panel variant="cyan" title="History" className="mt-4">
-        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            {allHabitMetrics.map((m) => (
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Name
+          </label>
+          <input
+            className="input-neon w-full"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={80}
+            placeholder={direction === 'POSITIVE' ? 'e.g., Drank water' : 'e.g., Ate junk food'}
+            autoFocus={mode === 'create'}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+              Gold {direction === 'POSITIVE' ? 'reward' : 'penalty'}
+            </label>
+            <input
+              className="input-neon w-full"
+              type="number"
+              min={0}
+              max={1000}
+              value={goldReward}
+              onChange={(e) => setGoldReward(Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+              XP {direction === 'POSITIVE' ? 'reward' : 'penalty'}
+            </label>
+            <input
+              className="input-neon w-full"
+              type="number"
+              min={0}
+              max={1000}
+              value={xpReward}
+              onChange={(e) => setXpReward(Number(e.target.value))}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Icon (optional)
+          </label>
+          <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => setIcon('')}
+              className={classNames(
+                'w-8 h-8 text-xs border font-mono',
+                !icon ? 'border-neon-cyan/80 text-neon-cyan' : 'border-ink-500/30 text-ink-300',
+              )}
+              title="Default"
+            >
+              {direction === 'POSITIVE' ? '✦' : '✕'}
+            </button>
+            {iconChoices.map((g) => (
               <button
-                key={m}
-                onClick={() => setSelected(m)}
+                key={g}
+                onClick={() => setIcon(g)}
                 className={classNames(
-                  'w-full text-left px-2 py-1.5 text-xs font-mono border transition-all',
-                  selected === m
-                    ? 'border-neon-cyan/80 bg-neon-cyan/10 text-neon-cyan'
-                    : 'border-transparent text-ink-200 hover:bg-bg-700'
+                  'w-8 h-8 text-base border font-display',
+                  icon === g ? 'border-neon-cyan/80 text-neon-cyan' : 'border-ink-500/30 text-ink-200 hover:border-ink-300',
                 )}
               >
-                {METRICS[m].shortLabel}
-                <span className="text-ink-400 text-[10px] ml-1">({METRICS[m].unit})</span>
+                {g}
               </button>
             ))}
           </div>
-          <div>
-            <div className="flex items-baseline justify-between mb-2">
-              <div className="font-display tracking-wider text-ink-50">{meta.label}</div>
-                    {avg != null && (
-                  <div className="text-[10px] font-mono text-ink-300">
-                    30-day avg: <span className="neon-text-cyan">{formatMetricWithUnit(avg, meta.unit)}</span>
-                  </div>
-                )}
-            </div>
-            <div className="h-48">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer>
-                  <LineChart data={chartData}>
-                    <XAxis
-                      dataKey="date"
-                      type="number"
-                      domain={['dataMin', 'dataMax']}
-                      tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-                      stroke="#3a3a55"
-                    />
-                    <YAxis tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }} stroke="#3a3a55" domain={['auto', 'auto']} />
-                    {avg != null && <ReferenceLine y={avg} stroke="#00f0ff" strokeOpacity="0.3" strokeDasharray="3 3" />}
-                    <Tooltip
-                      contentStyle={{ background: '#0a0a14', border: '1px solid rgba(0,240,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 12 }}
-                      labelStyle={{ color: '#00f0ff' }}
-                      labelFormatter={(d) => new Date(d as number).toLocaleString()}
-                      formatter={(v: number) => [formatMetricWithUnit(v, meta.unit), meta.shortLabel]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#00f0ff"
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: '#00f0ff' }}
-                      style={{ filter: 'drop-shadow(0 0 4px #00f0ff)' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs text-ink-300 font-mono">
-                  No history yet.
-                </div>
-              )}
-            </div>
-            <div className="max-h-40 overflow-y-auto mt-3">
-              <table className="w-full text-xs font-mono">
-                <thead>
-                  <tr className="text-ink-300 text-[10px] uppercase tracking-widest">
-                    <th className="text-left py-1">When</th>
-                    <th className="text-right py-1">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                    {filteredHistory.slice().reverse().slice(0, 12).map((m) => (
-                    <tr key={m.id} className="border-b border-ink-500/20">
-                      <td className="py-1">{formatDate(m.recordedAt)}</td>
-                      <td className="text-right neon-text-cyan">{formatMetricWithUnit(m.value, meta.unit)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
-      </Panel>
-    </Layout>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Notes (optional)
+          </label>
+          <textarea
+            className="w-full bg-bg-900/80 border border-ink-500/40 px-2 py-1 text-xs font-mono"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <NeonButton onClick={onClose} variant="cyan">Cancel</NeonButton>
+          <NeonButton
+            onClick={() => saveM.run()}
+            disabled={!name.trim()}
+            loading={saveM.isPending}
+            icon="⚡"
+            loadingText="Saving…"
+            variant={direction === 'POSITIVE' ? 'lime' : 'magenta'}
+          >
+            {mode === 'create' ? 'Create' : 'Save'}
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <div className="border border-ink-500/30 p-2">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">{label}</div>
+      <div className="font-display text-xl" style={{ color: accent, textShadow: `0 0 6px ${accent}` }}>{value}</div>
+    </div>
   );
 }
