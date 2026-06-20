@@ -51,6 +51,12 @@ export type World = {
   levelRequired: number;
   icon: string;
   levels: WorldLevel[];
+  boss: {
+    name: string;
+    glyph: string;
+    maxHp: number;
+    lore: string;
+  };
 };
 
 export const WORLD_COLOR_HEX: Record<WorldColor, string> = {

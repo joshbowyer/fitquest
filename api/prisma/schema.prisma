@@ -187,6 +187,7 @@ model User {
   worldProgress    UserWorldProgress[]
   painLogs         PainLog[]
   routine          Routine?
+  worldBosses      WorldBoss[]
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -495,4 +496,29 @@ model Routine {
   streakUpdatedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+enum WorldBossStatus {
+  LOCKED     // world not yet cleared
+  ACTIVE     // unlocked, taking damage
+  DEFEATED   // hp <= 0
+}
+
+model WorldBoss {
+  id            String           @id @default(cuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  worldId       String           // 'spire', 'glade', etc.
+  bossName      String
+  bossGlyph     String           // single character icon
+  bossHp        Int              // current HP (decreases as damaged)
+  bossMaxHp     Int              // total HP
+  status        WorldBossStatus  @default(LOCKED)
+  unlockedAt    DateTime?
+  defeatedAt    DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([userId, worldId])
+  @@index([userId])
 }

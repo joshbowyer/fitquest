@@ -64,6 +64,13 @@ export type World = {
   levelRequired: number;
   icon: string;
   levels: WorldLevel[];
+  // Boss that unlocks once all 5 levels in this world are cleared.
+  boss: {
+    name: string;
+    glyph: string;
+    maxHp: number;
+    lore: string;
+  };
 };
 
 // Frame-relative threshold builder. All level requirements are
@@ -93,6 +100,12 @@ export const WORLDS: World[] = [
     description: 'A tower of stone, climbing forever. Each floor houses a heavier golem. The path of the strong.',
     levelRequired: 1,
     icon: '▣',
+    boss: {
+      name: 'The Stone Titan',
+      glyph: '◈',
+      maxHp: 1000,
+      lore: 'At the peak of the Spire waits the Stone Titan — every floor you climbed, every set you ground out, was a step toward this. Defeat it to prove the path of the strong.',
+    },
     // Thresholds are absolute beginner values — a 60kg bench is
     // achievable for most within a few months of training.
     levels: [
@@ -129,6 +142,12 @@ export const WORLDS: World[] = [
     description: 'A forest of moving shadows. Things that should not move, do. The path of the unseen.',
     levelRequired: 1,
     icon: '✦',
+    boss: {
+      name: 'The Old Shade',
+      glyph: '◈',
+      maxHp: 1200,
+      lore: 'The forest was never a place. It is one creature, vast and patient. The Old Shade has been waiting for someone quiet enough to hear it.',
+    },
     // Cardio times are absolute seconds. 30min 5K = 1800s, 25min = 1500s.
     levels: [
       { id: 'glade-1', order: 1, name: 'First Steps Quiet', description: 'A wisp circles the path. Catch it without being seen.', enemy: 'Shadow Wisp', enemyGlyph: '✦',
@@ -162,6 +181,12 @@ export const WORLDS: World[] = [
     description: 'A fortress that attacks endlessly. Hold the line. The path of the unbreakable.',
     levelRequired: 1,
     icon: '◆',
+    boss: {
+      name: 'The Iron Lord',
+      glyph: '◈',
+      maxHp: 1500,
+      lore: 'Inside the citadel, the enemy is past caring about victory. The Iron Lord has held these walls since before anyone can remember. Show them that walls can fall.',
+    },
     // Calisthenics reps and plank holds are absolute.
     levels: [
       { id: 'citadel-1', order: 1, name: 'The Long Watch', description: 'A siege that lasts three days. Do not sleep.', enemy: 'Siege Wave', enemyGlyph: '◆',
@@ -195,6 +220,12 @@ export const WORLDS: World[] = [
     description: 'A library that reads you. The walls remember what you have not yet done. The path of the prepared.',
     levelRequired: 1,
     icon: '✴',
+    boss: {
+      name: 'The Reader',
+      glyph: '◈',
+      maxHp: 1000,
+      lore: 'A library that reads you. The walls remember what you have not yet done. Answer the question the Reader has been asking all along.',
+    },
     // Sleep and recovery streaks. No punishment for missing — just
     // a target to work toward.
     levels: [

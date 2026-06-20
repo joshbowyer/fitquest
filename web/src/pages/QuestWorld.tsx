@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Avatar } from '@/components/Avatar';
+import { BossCard } from '@/components/BossCard';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   type World,
@@ -191,6 +192,15 @@ export function QuestWorldPage() {
               </div>
             </div>
           </Panel>
+
+          {/* Boss — unlocks once all 5 levels are cleared */}
+          <BossCard
+            worldId={world.id}
+            bossName={world.boss.name}
+            bossGlyph={world.boss.glyph}
+            worldColor={world.color}
+            allCleared={completed === world.levels.length}
+          />
 
           <Panel title="HOW IT WORKS" variant="violet">
             <div className="text-[10px] font-mono text-ink-300 leading-relaxed space-y-2">
