@@ -9,6 +9,30 @@ import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { formatRelative } from '@/lib/format';
 
+// Persist the dismissal across remounts (tab switches) and reloads.
+// The server-side showOrdainPicker stays true until the user logs a
+// prayer, so without this the banner reappears every time you navigate
+// back to the tab. Once dismissed, the Ordain button is still in the
+// Subclass panel for anyone who actually needs it.
+const FIRST_VISIT_DISMISSED_KEY = 'fitquest:spiritual:firstVisitDismissed';
+
+function isFirstVisitDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(FIRST_VISIT_DISMISSED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function dismissFirstVisit() {
+  try {
+    localStorage.setItem(FIRST_VISIT_DISMISSED_KEY, 'true');
+  } catch {
+    /* localStorage unavailable — banner will reappear next mount */
+  }
+}
+
 type PrayerType =
   | 'ROSARY' | 'MASS' | 'SCRIPTURE' | 'CONTEMPLATION'
   | 'LITURGY_HOURS' | 'CONFESSION' | 'OTHER';
@@ -61,7 +85,17 @@ export function SpiritualPage() {
   });
 
   useEffect(() => {
-    if (data?.showOrdainPicker) setShowFirstVisit(true);
+    // Only show the welcome card if (a) the server says we're a fresh
+    // visitor, AND (b) the user hasn't dismissed it in this browser
+    // before. Dismissal persists via localStorage so navigating away
+    // and back, or reloading the page, doesn't bring it back.
+    if (data?.showOrdainPicker && !isFirstVisitDismissed()) {
+      setShowFirstVisit(true);
+    } else if (!data?.showOrdainPicker) {
+      // Once the user has logged a prayer (server flips to false),
+      // ensure we don't have a stale banner visible.
+      setShowFirstVisit(false);
+    }
   }, [data?.showOrdainPicker]);
 
   const logM = useDelayedMutation<
@@ -106,7 +140,10 @@ export function SpiritualPage() {
       {showFirstVisit && data && (
         <FirstVisitPicker
           onPick={(ordained) => ordainM.run(ordained)}
-          onSkip={() => setShowFirstVisit(false)}
+          onSkip={() => {
+            dismissFirstVisit();
+            setShowFirstVisit(false);
+          }}
         />
       )}
 
