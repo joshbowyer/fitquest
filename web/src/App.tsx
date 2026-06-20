@@ -13,6 +13,7 @@ import { PartyPage } from './pages/Party';
 import { ProfilePage } from './pages/Profile';
 import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
+import { SpiritualPage } from './pages/Spiritual';
 import { StatusPage } from './pages/Status';
 import type { ReactNode } from 'react';
 
@@ -59,6 +60,7 @@ export default function App() {
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />
+      <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

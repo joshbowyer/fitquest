@@ -17,11 +17,12 @@ const NAV: NavItem[] = [
   { to: '/quest',       label: 'Quest',    icon: '◇', mobile: true },
   { to: '/status',      label: 'Status',   icon: '◊', mobile: true },
   { to: '/workouts',    label: 'Workouts', icon: '▣', mobile: true },
+  { to: '/spiritual',   label: 'Spiritual', icon: '☩', mobile: true },
   { to: '/measurements', label: 'Measure',  icon: '◎', mobile: false },
   { to: '/habits',      label: 'Habits',   icon: '◐', mobile: false },
   { to: '/insights',    label: 'Insights', icon: '◈', mobile: false },
   { to: '/skills',      label: 'Skills',   icon: '✦', mobile: false },
-  { to: '/party',       label: 'Party',    icon: '⚑', mobile: true },
+  { to: '/party',       label: 'Party',    icon: '⚑', mobile: false },
   { to: '/profile',     label: 'Profile',  icon: '◉', mobile: false },
   { to: '/settings',    label: 'Settings', icon: '⚙', mobile: false },
 ];

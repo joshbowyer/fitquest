@@ -190,6 +190,11 @@ model User {
   worldBosses      WorldBoss[]
   sentInvites      PartyInvite[] @relation("Inviter")
   receivedInvites  PartyInvite[] @relation("Invitee")
+  prayerLogs       PrayerLog[]
+  spiritualSubclass SpiritualSubclass?
+  spiritualXp       Int           @default(0)
+  ordained          Boolean        @default(false)
+  ordainedAt        DateTime?
   sex              Sex?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -552,4 +557,33 @@ model PartyInvite {
 
   @@index([inviteeId, status])
   @@index([partyId])
+}
+
+enum SpiritualSubclass {
+  CATECHUMEN   // Stage 1: novice preparing
+  CRUSADER      // Stage 2: vowed fighter
+  TEMPLAR       // Stage 3: elite religious order
+}
+
+enum PrayerType {
+  ROSARY
+  MASS
+  SCRIPTURE
+  CONTEMPLATION
+  LITURGY_HOURS
+  CONFESSION
+  OTHER
+}
+
+model PrayerLog {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       PrayerType
+  durationMin Int        @default(15)
+  notes      String?
+  xpAwarded  Int         @default(0)
+  loggedAt   DateTime    @default(now())
+
+  @@index([userId, loggedAt])
 }
