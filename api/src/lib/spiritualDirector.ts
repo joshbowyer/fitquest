@@ -201,7 +201,7 @@ async function gatherUserState(userId: string) {
     where: { id: userId },
     select: { class: true, level: true, ordained: true, timezone: true },
   });
-  const [sleepLogs, recovery, prayers, skipSets, workouts] = await Promise.all([
+  const [sleepLogs, prayers, skipSets, workouts] = await Promise.all([
     prisma.measurement.findMany({
       where: { userId, metric: 'SLEEP_HOURS', recordedAt: { gte: since3 } },
       select: { value: true },

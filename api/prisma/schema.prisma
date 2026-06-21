@@ -210,6 +210,9 @@ model User {
   inventoryItems   InventoryItem[]
   morningReports   MorningReport[]
   spiritualReflections SpiritualReflection[]
+  trackedItems     UserTrackedItem[]
+  dailyTracked     DailyTrackedItem[]
+  substanceLogs    SubstanceLog[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -1024,4 +1027,127 @@ model SpiritualReflection {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+/// Category of a user-tracked item. Drives which panel shows it
+/// (Supplements / Probiotics / etc.) and which default unit makes
+/// sense (mg for vitamins, CFU for probiotics).
+enum TrackedItemCategory {
+  VITAMIN
+  MINERAL
+  FATTY_ACID
+  PROBIOTIC
+  HERB
+  AMINO_ACID
+  OTHER
+}
+
+/// Unit for a user-tracked item's default dose. Stored as a free
+/// string so the UI can also accept uncommon units (drops, scoops,
+/// capsules). The common ones are typed below.
+enum TrackedItemUnit {
+  mg
+  g
+  mcg
+  iu
+  cfu
+  capsule
+  drop
+  scoop
+  pill
+}
+
+/// Substance categories for one-shot event logging (not daily
+/// check-offs). Each form has a different recovery/sleep/lung
+/// impact — captured in the LLM-facing notes, not in code.
+enum SubstanceCategory {
+  NICOTINE
+  CAFFEINE
+  ALCOHOL
+  ELECTROLYTE
+}
+
+/// User's persistent catalog of items they want to track (e.g. "I
+/// take Vitamin D3 2000 IU every day"). Distinct from the historical
+/// `SupplementLog` table which records the actual dose taken; the
+/// tracker holds the *intent* (the items you want in your daily
+/// checklist) and `DailyTrackedItem` records today's check-off.
+///
+/// No defaults: this table is empty when the user starts. Items are
+/// added when the user first logs them or via the "Add item" button.
+model UserTrackedItem {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Display name. Free-form (e.g. "Magnesium Glycinate", "Culturelle",
+  /// "Athletic Greens"). Not unique on its own — same name can have
+  /// different categories (the @@unique handles that).
+  name        String
+  category    TrackedItemCategory
+  /// Default dose. The "tap to check off" action uses this value
+  /// unless the user overrides per-check. Amounts usually don't vary
+  /// day to day, which is the whole point of the tracker.
+  defaultDose Float
+  doseUnit    TrackedItemUnit
+  /// Free-form notes (e.g. "with breakfast", "before bed").
+  notes       String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  dailyLogs   DailyTrackedItem[]
+
+  @@unique([userId, name, category])
+  @@index([userId, category])
+}
+
+/// Daily check-off for a tracked item. One row per (user, item, date).
+/// Tapping the chip inserts/upserts; tapping again deletes (uncheck).
+/// Resets naturally each calendar day because the date key changes.
+model DailyTrackedItem {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      UserTrackedItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// YYYY-MM-DD in the user's timezone.
+  date      String
+  /// Snapshot of the dose at the time of check-off (so historical
+  /// "I took 2000 IU on 2026-06-21" survives even if the user later
+  /// changes the defaultDose to 5000 IU).
+  dose      Float
+  doseUnit  TrackedItemUnit
+  createdAt DateTime         @default(now())
+
+  @@unique([userId, itemId, date])
+  @@index([userId, date])
+  @@index([itemId, date])
+}
+
+/// One-shot event log for substances (nicotine / caffeine / alcohol /
+/// electrolytes). NOT a daily checklist — each row is a single
+/// consumption event. The form field captures the specific delivery
+/// (cigarette, vape, zyn, hookah, etc.) which has different recovery
+/// impact than a generic "nicotine" entry.
+model SubstanceLog {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  SubstanceCategory
+  /// Specific delivery form. Free-form string keyed by category:
+  ///   NICOTINE:  cigarette, vape, zyn, hookah, cigar, chew
+  ///   CAFFEINE:  coffee, tea, energy_drink, pre_workout, soda
+  ///   ALCOHOL:   beer, wine, spirits, seltzer, cider
+  ///   ELECTROLYTE: lmnt, salt_capsule, liquid_iv, coconut_water
+  form      String
+  /// Optional quantity (drinks, mg, pouches, scoops). Free-form
+  /// unit so the UI can pick the right input per form.
+  amount    Float?
+  unit      String?
+  /// Free-form context. "pre-workout 1h before lift", "with dinner",
+  /// "social, 3 over the evening" — fuels the morning report's
+  /// correlation engine.
+  context   String?
+  loggedAt  DateTime          @default(now())
+
+  @@index([userId, loggedAt])
+  @@index([userId, category, loggedAt])
 }
