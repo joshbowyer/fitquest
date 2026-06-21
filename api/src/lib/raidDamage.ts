@@ -61,10 +61,11 @@ function setContribution(set: SetInput): number {
 }
 
 function classMeta(cls: ClassName | null) {
-  if (cls === 'JUGGERNAUT') return { mult: 1.0,  ability: '+DMG',  critChance: 0,    evadeChance: 0,    discBonus: 0,    shieldFrac: 0 };
+  if (cls === 'JUGGERNAUT') return { mult: 1.0,  ability: '+DMG',   critChance: 0,    evadeChance: 0,    discBonus: 0,    shieldFrac: 0 };
   if (cls === 'BERSERKER')  return { mult: 0.8,  ability: '+CRIT',  critChance: 0.15, evadeChance: 0,    discBonus: 0,    shieldFrac: 0 };
   if (cls === 'PHANTOM')    return { mult: 0.85, ability: '+EVA',   critChance: 0,    evadeChance: 0.12, discBonus: 0,    shieldFrac: 0 };
   if (cls === 'SCOUT')      return { mult: 0.9,  ability: '+DISC',  critChance: 0,    evadeChance: 0,    discBonus: 0.5,  shieldFrac: 0 };
+  if (cls === 'TRACER')     return { mult: 1.1,  ability: '+BURST', critChance: 0.10, evadeChance: 0,    discBonus: 0,    shieldFrac: 0 };
   if (cls === 'ORACLE')     return { mult: 0.6,  ability: '+HEAL',  critChance: 0,    evadeChance: 0,    discBonus: 0,    shieldFrac: 0.25 };
   return { mult: 0.75, ability: '+DMG', critChance: 0, evadeChance: 0, discBonus: 0, shieldFrac: 0 };
 }

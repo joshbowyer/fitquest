@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -9,7 +9,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { formatRelative, formatSeconds, classNames, formatAbsolute } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
-import { type UnitSystem } from '@/lib/units';
+import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { musclesForExercise, loadForExercise } from '@/lib/muscles';
 import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { RestTimer, REST_PRESETS } from '@/components/RestTimer';
@@ -108,6 +108,30 @@ export function ActivitiesPage() {
     setDuration(last.duration ?? 60);
     setNotes(last.notes ?? '');
   }
+
+  // Honor ?copyFrom=<workoutId> from the detail page. We fetch that one
+  // workout directly (instead of scanning the list, which may paginate
+  // and not include older entries) and pre-fill the form.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const copyFrom = searchParams.get('copyFrom');
+    if (!copyFrom) return;
+    api<{ item: Workout }>(`/workouts/${copyFrom}`)
+      .then((r) => {
+        if (r.item) {
+          setExercises(workoutToDraft(r.item, units));
+          setName(r.item.name ? `${r.item.name} (copy)` : '');
+          setDuration(r.item.duration ?? 60);
+          setNotes(r.item.notes ?? '');
+        }
+        // Strip the query param so refreshes don't re-copy.
+        const next = new URLSearchParams(searchParams);
+        next.delete('copyFrom');
+        setSearchParams(next, { replace: true });
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get('copyFrom')]);
 
   // Apply date + exercise filters to the history list
   const filteredHistory = (list.data?.items ?? []).filter((w) => {
@@ -605,9 +629,9 @@ export function ActivitiesPage() {
 
 function ActivityCard({ workout: w, units, timezone }: { workout: any; units: UnitSystem; timezone?: string | null }) {
   const navigate = useNavigate();
-  const totalVolume = w.exercises.reduce((acc: number, ex: any) => {
-    return acc + ex.sets.reduce((s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0);
-  });
+  const totalVolume = (w.exercises ?? []).reduce((acc: number, ex: any) => {
+    return acc + (ex.sets ?? []).reduce((s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0);
+  }, 0);
   const volDisplay = units === 'IMPERIAL'
     ? Math.round(kgToLb(totalVolume))
     : Math.round(totalVolume);
@@ -648,12 +672,10 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono text-ink-300 mb-1">
           {fitMetrics.distance != null && (
             <span>{(() => {
-              // distance stored in meters; convert to user units
-              if (units === 'IMPERIAL') {
-                const mi = fitMetrics.distance / 1609.34;
-                return `${mi.toFixed(2)} mi`;
-              }
-              return `${(fitMetrics.distance / 1000).toFixed(2)} km`;
+              // distance stored in meters; convert to user units via
+              // the shared units util so we match the rest of the app.
+              const d = convertForDisplay(fitMetrics.distance, 'm', units);
+              return `${d.value.toFixed(2)} ${d.unit}`;
             })()}</span>
           )}
           {fitMetrics.avgHr != null && <span>avg HR {fitMetrics.avgHr}</span>}

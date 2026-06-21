@@ -41,7 +41,7 @@ export function LoginPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
-              Username or Email
+              Callsign (username)
             </label>
             <input
               className="input-neon"

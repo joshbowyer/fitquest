@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
 
 // /today — Dailies view (Habitica-style):
@@ -356,8 +357,11 @@ function DailyEditor({
   const [name, setName] = useState(daily?.name ?? '');
   const [days, setDays] = useState<string[]>(daily?.days ?? []);
   const [notes, setNotes] = useState(daily?.notes ?? '');
-  const [goldReward, setGoldReward] = useState<number>(daily?.goldReward ?? 5);
-  const [xpReward, setXpReward] = useState<number>(daily?.xpReward ?? 2);
+  // Tier picker — replaces raw gold/xp inputs. Existing dailies with
+  // hand-set rewards get bucketed to the closest tier.
+  const [tier, setTier] = useState<DifficultyTier>(
+    daily ? tierForRewards(daily.goldReward, daily.xpReward) : DIFFICULTY_TIERS[2],
+  );
 
   const allDays: Array<{ code: string; label: string }> = [
     { code: 'SUN', label: 'Sun' },
@@ -379,8 +383,8 @@ function DailyEditor({
     mutationFn: () => {
       const body =
         mode === 'create'
-          ? { name, days, notes: notes || undefined, goldReward, xpReward }
-          : { name, days, notes: notes || null, goldReward, xpReward };
+          ? { name, days, notes: notes || undefined, goldReward: tier.gold, xpReward: tier.xp }
+          : { name, days, notes: notes || null, goldReward: tier.gold, xpReward: tier.xp };
       return mode === 'create'
         ? api('/dailies', { method: 'POST', body })
         : api(`/dailies/${daily!.id}`, { method: 'PATCH', body });
@@ -427,32 +431,37 @@ function DailyEditor({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-              Gold reward
-            </label>
-            <input
-              className="input-neon w-full"
-              type="number"
-              min={0}
-              max={1000}
-              value={goldReward}
-              onChange={(e) => setGoldReward(Number(e.target.value))}
-            />
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Difficulty
+          </label>
+          <div className="grid grid-cols-5 gap-1">
+            {DIFFICULTY_TIERS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTier(t)}
+                className={`p-2 text-center border transition-all ${
+                  tier.key === t.key ? 'bg-bg-900/60' : 'border-ink-500/30 hover:border-ink-300'
+                }`}
+                style={
+                  tier.key === t.key
+                    ? { borderColor: t.color, boxShadow: `0 0 8px ${t.color}55` }
+                    : undefined
+                }
+                title={t.hint}
+              >
+                <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: t.color }}>
+                  {t.label}
+                </div>
+                <div className="text-[9px] font-mono text-ink-300 mt-0.5">
+                  +{t.gold}g · {t.xp}xp
+                </div>
+              </button>
+            ))}
           </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-              XP reward
-            </label>
-            <input
-              className="input-neon w-full"
-              type="number"
-              min={0}
-              max={1000}
-              value={xpReward}
-              onChange={(e) => setXpReward(Number(e.target.value))}
-            />
+          <div className="text-[10px] font-mono text-ink-400 mt-1 italic">
+            {tier.hint}
           </div>
         </div>
 

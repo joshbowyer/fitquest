@@ -3,6 +3,8 @@ import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
+import { MetricTrendChart } from '@/components/MetricTrendChart';
+import { useAuth } from '@/lib/auth';
 import { classNames } from '@/lib/format';
 
 type Correlation = {
@@ -33,6 +35,8 @@ const SEVERITY_COLOR: Record<Insight['severity'], string> = {
 };
 
 export function InsightsPage() {
+  const { user } = useAuth();
+  const system = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
   const q = useQuery({
     queryKey: ['insights', 'summary'],
     queryFn: () => api<Summary>('/insights/summary'),
@@ -50,6 +54,18 @@ export function InsightsPage() {
         title="// Insights"
         subtitle="Recovery score, top correlations, and personalized tips."
       />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <Panel variant="magenta" title="HRV trend">
+          <MetricTrendChart metric="HRV" days={30} system={system} color="#c45cff" />
+        </Panel>
+        <Panel variant="cyan" title="Sleep trend">
+          <MetricTrendChart metric="SLEEP_HOURS" days={30} system={system} color="#9bff5c" />
+        </Panel>
+        <Panel variant="amber" title="Sleep quality">
+          <MetricTrendChart metric="SLEEP_QUALITY" days={30} system={system} color="#ffc34d" />
+        </Panel>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-4 mb-6">
         <RecoveryPanel />

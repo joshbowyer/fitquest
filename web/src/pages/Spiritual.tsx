@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { formatRelative } from '@/lib/format';
+import { DIFFICULTY_TIERS, type DifficultyTier } from '@/lib/difficultyTiers';
 
 // Persist the dismissal across remounts (tab switches) and reloads.
 // The server-side showOrdainPicker stays true until the user logs a
@@ -46,6 +47,17 @@ type PrayerLog = {
   loggedAt: string;
 };
 
+type CustomPractice = {
+  id: string;
+  name: string;
+  days: string[];
+  notes: string | null;
+  goldReward: number;
+  xpReward: number;
+  archived: boolean;
+  createdAt: string;
+};
+
 type SpiritualResponse = {
   xp: number;
   subclass: 'CATECHUMEN' | 'CRUSADER' | 'TEMPLAR';
@@ -62,6 +74,7 @@ type SpiritualResponse = {
     description: string;
     defaultMinutes: number;
   }>;
+  customPractices: CustomPractice[];
 };
 
 const SUBCLASS_INFO = {
@@ -74,10 +87,12 @@ export function SpiritualPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [logging, setLogging] = useState<PrayerType | null>(null);
+  const [loggingCustom, setLoggingCustom] = useState<CustomPractice | null>(null);
   const [duration, setDuration] = useState(20);
   const [notes, setNotes] = useState('');
   const [showOrdainModal, setShowOrdainModal] = useState(false);
   const [showFirstVisit, setShowFirstVisit] = useState(false);
+  const [creatingCustom, setCreatingCustom] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['spiritual'],
@@ -100,17 +115,20 @@ export function SpiritualPage() {
 
   const logM = useDelayedMutation<
     { log: PrayerLog; newXp: number; subclass: string; promoted: boolean },
-    { type: PrayerType; durationMin: number; notes?: string }
+    { type?: PrayerType; dailyId?: string; durationMin: number; notes?: string }
   >({
     mutationFn: (body) =>
       api('/spiritual/log', { method: 'POST', body }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['spiritual'] });
       qc.invalidateQueries({ queryKey: ['dailies'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
+      qc.invalidateQueries({ queryKey: ['auth'] });
       setLogging(null);
+      setLoggingCustom(null);
       setNotes('');
     },
-  }, 600);
+  }, 800);
 
   const ordainM = useDelayedMutation<
     { ok: boolean; ordained: boolean },
@@ -254,14 +272,27 @@ export function SpiritualPage() {
           </Panel>
 
           {/* Prayer type picker */}
-          <Panel title="Log a Prayer" variant="violet">
+          <Panel
+            title="Log a Prayer"
+            variant="violet"
+            action={
+              <button
+                type="button"
+                onClick={() => setCreatingCustom(true)}
+                className="text-[10px] font-mono uppercase tracking-widest neon-text-cyan hover:underline"
+              >
+                + Custom practice
+              </button>
+            }
+          >
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {/* Built-in prayer types */}
               {data &&
                 Object.entries(data.prayerTypes).map(([type, info]) => {
                   const isDaily = (user?.spiritualDailyPrayers ?? []).includes(type as PrayerType);
                   return (
                     <button
-                      key={type}
+                      key={`builtin-${type}`}
                       onClick={() => {
                         setLogging(type as PrayerType);
                         setDuration(info.defaultMinutes);
@@ -285,6 +316,26 @@ export function SpiritualPage() {
                     </button>
                   );
                 })}
+              {/* User-defined custom practices */}
+              {data?.customPractices.map((cp) => (
+                <button
+                  key={`custom-${cp.id}`}
+                  onClick={() => {
+                    setLoggingCustom(cp);
+                    setDuration(15);
+                  }}
+                  className="relative p-3 border border-neon-cyan/40 bg-neon-cyan/5 text-left transition-all hover:border-neon-cyan hover:bg-neon-cyan/10"
+                >
+                  <span className="absolute top-1 right-1 text-[8px] font-mono uppercase neon-text-cyan">
+                    ✦ custom
+                  </span>
+                  <div className="text-2xl mb-1">✦</div>
+                  <div className="text-xs font-display tracking-wider text-ink-100 truncate">{cp.name}</div>
+                  <div className="text-[10px] font-mono text-ink-400 mt-0.5">
+                    +{cp.goldReward}g · {cp.xpReward} XP
+                  </div>
+                </button>
+              ))}
             </div>
           </Panel>
 
@@ -342,7 +393,7 @@ export function SpiritualPage() {
         </Panel>
       </div>
 
-      {/* Log prayer modal */}
+      {/* Log prayer modal (built-in) */}
       {logging && data && (
         <Modal open onClose={() => setLogging(null)} title={`Log ${data.prayerTypes[logging].label}`}>
           <div className="space-y-4">
@@ -392,6 +443,62 @@ export function SpiritualPage() {
         </Modal>
       )}
 
+      {/* Log custom practice modal */}
+      {loggingCustom && (
+        <Modal open onClose={() => setLoggingCustom(null)} title={`Log ${loggingCustom.name}`}>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-[10px] font-mono text-ink-300">
+              <span className="px-1.5 py-0.5 border border-neon-cyan/40 text-neon-cyan">✦ custom</span>
+              <span>Reward:</span>
+              <span className="text-ink-100">+{loggingCustom.goldReward}g</span>
+              <span>·</span>
+              <span className="text-ink-100">+{loggingCustom.xpReward} XP</span>
+            </div>
+            {loggingCustom.notes && (
+              <p className="text-xs font-mono text-ink-300 italic">
+                "{loggingCustom.notes}"
+              </p>
+            )}
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+                Duration (min)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={360}
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                className="input-neon"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+                Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                maxLength={500}
+                className="w-full bg-bg-900/80 border border-ink-500/40 px-2 py-1 text-xs font-mono"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <NeonButton onClick={() => setLoggingCustom(null)} variant="cyan">Cancel</NeonButton>
+              <NeonButton
+                onClick={() => logM.run({ dailyId: loggingCustom.id, durationMin: duration, notes: notes.trim() || undefined })}
+                loading={logM.isPending}
+                loadingText="Logging…"
+                icon="✦"
+              >
+                Save
+              </NeonButton>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Ordain modal — explicit, accurate copy. Only relevant for
           people who've actually received the sacrament IRL. */}
       {showOrdainModal && (
@@ -423,6 +530,18 @@ export function SpiritualPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Create custom spiritual practice — stores as a USER SPIRITUAL daily */}
+      {creatingCustom && (
+        <CustomPracticeModal
+          onClose={() => setCreatingCustom(false)}
+          onSaved={() => {
+            setCreatingCustom(false);
+            qc.invalidateQueries({ queryKey: ['dailies'] });
+            qc.invalidateQueries({ queryKey: ['today'] });
+          }}
+        />
       )}
     </Layout>
   );
@@ -535,5 +654,145 @@ function FirstVisitPicker({
         </button>
       </div>
     </div>
+  );
+}
+/**
+ * Custom spiritual practice creation. Stores as a USER SPIRITUAL daily
+ * so it shows up on /today alongside the built-in prayers.
+ * The user picks a difficulty tier (Trivial → Epic) which maps to a
+ * fixed (gold, xp) reward so we don't show raw sliders.
+ */
+function CustomPracticeModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState('');
+  const [notes, setNotes] = useState('');
+  const [tier, setTier] = useState<DifficultyTier>(DIFFICULTY_TIERS[2]); // default MEDIUM
+  const [days, setDays] = useState<Array<'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN'>>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggleDay = (d: typeof days[number]) => {
+    setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d]));
+  };
+
+  const createM = useDelayedMutation({
+    mutationFn: () =>
+      api('/dailies', {
+        method: 'POST',
+        body: {
+          name,
+          notes: notes || undefined,
+          category: 'SPIRITUAL',
+          goldReward: tier.gold,
+          xpReward: tier.xp,
+          days: days.length > 0 ? days : undefined,
+        },
+      }),
+    onSuccess: () => onSaved(),
+    onError: (err: Error) => setError(err.message ?? 'Failed to create practice.'),
+  }, 800);
+
+  return (
+    <Modal open onClose={onClose} title="New spiritual practice">
+      <div className="space-y-4">
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Name
+          </label>
+          <input
+            className="input-neon w-full"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={80}
+            placeholder="e.g., Novena to St. Joseph, Litany of Humility, Act of charity"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Difficulty
+          </label>
+          <div className="grid grid-cols-5 gap-1">
+            {DIFFICULTY_TIERS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTier(t)}
+                className={`p-2 text-center border transition-all ${
+                  tier.key === t.key ? 'bg-bg-900/60' : 'border-ink-500/30 hover:border-ink-300'
+                }`}
+                style={
+                  tier.key === t.key
+                    ? { borderColor: t.color, boxShadow: `0 0 8px ${t.color}55` }
+                    : undefined
+                }
+                title={t.hint}
+              >
+                <div className="text-[10px] font-mono uppercase tracking-widest" style={{ color: t.color }}>
+                  {t.label}
+                </div>
+                <div className="text-[9px] font-mono text-ink-300 mt-0.5">
+                  +{t.gold}g · {t.xp}xp
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 mt-1 italic">
+            {tier.hint}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Days (leave empty for every day)
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'] as const).map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => toggleDay(d)}
+                className={`px-3 py-1.5 text-xs font-mono uppercase border ${
+                  days.includes(d)
+                    ? 'border-neon-violet/80 text-neon-violet bg-neon-violet/10'
+                    : 'border-ink-500/30 text-ink-300 hover:border-ink-300'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Notes (optional)
+          </label>
+          <textarea
+            className="w-full bg-bg-900/80 border border-ink-500/40 px-2 py-1 text-xs font-mono"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+          />
+        </div>
+
+        {error && (
+          <div className="text-[10px] font-mono text-neon-red">{error}</div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <NeonButton onClick={onClose} variant="cyan">Cancel</NeonButton>
+          <NeonButton
+            onClick={() => createM.run()}
+            loading={createM.isPending}
+            icon="☩"
+            loadingText="Creating…"
+            disabled={!name.trim()}
+          >
+            Create
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
   );
 }

@@ -1,6 +1,7 @@
 import { Decoder, Stream } from '@garmin/fitsdk';
 import type {
   SessionMesg,
+  RecordMesg,
   SleepAssessmentMesg,
   HrvStatusSummaryMesg,
   HrvValueMesg,
@@ -32,6 +33,32 @@ export type FitImportResult = {
   skipped?: { reason: string }[];
 };
 
+/**
+ * One second-resolution waypoint extracted from FIT RecordMesg. The
+ * frontend renders these on the activity map (Leaflet polyline) and
+ * the streams chart (pace / HR / elevation / cadence / power).
+ */
+export type TrackPoint = {
+  /** Seconds since workout start (FIT-relative). */
+  t: number;
+  /** Degrees latitude. null if no GPS fix at this sample. */
+  lat: number | null;
+  /** Degrees longitude. null if no GPS fix at this sample. */
+  lon: number | null;
+  /** Meters above sea level. null if no altitude. */
+  ele: number | null;
+  /** Heart rate in bpm. */
+  hr: number | null;
+  /** Cadence in rpm (steps/min for run, rpm for bike). */
+  cad: number | null;
+  /** Power in watts. */
+  pwr: number | null;
+  /** Instantaneous speed in m/s. */
+  spd: number | null;
+  /** Cumulative distance in meters. */
+  dist: number | null;
+};
+
 export type ParsedActivity = {
   startTime: Date;
   durationSec: number;
@@ -49,6 +76,9 @@ export type ParsedActivity = {
   avgSpeedMps?: number;
   maxSpeedMps?: number;
   rpe?: number;
+  /** Per-second trackpoint stream for map + graphs. Empty if no
+   *  RecordMesg samples (e.g. indoor activity without GPS). */
+  trackpoints: TrackPoint[];
 };
 
 export type ParsedMeasurement = {
@@ -154,28 +184,82 @@ function parseActivity(messages: any): Pick<FitImportResult, 'workouts'> {
   const sessions = (messages.sessionMesgs ?? []) as SessionMesg[];
   if (sessions.length === 0) return {};
 
+  // Pre-compute the time offset for each session so record timestamps
+  // become seconds-since-session-start (rather than absolute Date).
+  const records = (messages.recordMesgs ?? []) as RecordMesg[];
   return {
     workouts: sessions
       .filter((s) => typeof s.startTime === 'string' || s.startTime instanceof Date)
-      .map((s) => ({
-        startTime: s.startTime instanceof Date ? s.startTime : new Date(s.startTime as string),
-        durationSec: Math.round(s.totalTimerTime ?? 0),
-        sport: sportName(s.sport),
-        subSport: subSportName(s.subSport),
-        distanceMeters: s.totalDistance,
-        avgHeartRate: s.avgHeartRate,
-        maxHeartRate: s.maxHeartRate,
-        totalCalories: s.totalCalories,
-        totalAscent: s.totalAscent,
-        totalDescent: s.totalDescent,
-        avgPower: s.avgPower,
-        maxPower: s.maxPower,
-        normalizedPower: s.normalizedPower,
-        avgSpeedMps: s.enhancedAvgSpeed ?? s.avgSpeed,
-        maxSpeedMps: s.enhancedMaxSpeed ?? s.maxSpeed,
-        rpe: s.workoutRpe,
-      })),
+      .map((s) => {
+        const sessionStart = (s.startTime instanceof Date
+          ? s.startTime
+          : new Date(s.startTime as string)
+        ).getTime();
+        return {
+          startTime: s.startTime instanceof Date ? s.startTime : new Date(s.startTime as string),
+          durationSec: Math.round(s.totalTimerTime ?? 0),
+          sport: sportName(s.sport),
+          subSport: subSportName(s.subSport),
+          distanceMeters: s.totalDistance,
+          avgHeartRate: s.avgHeartRate,
+          maxHeartRate: s.maxHeartRate,
+          totalCalories: s.totalCalories,
+          totalAscent: s.totalAscent,
+          totalDescent: s.totalDescent,
+          avgPower: s.avgPower,
+          maxPower: s.maxPower,
+          normalizedPower: s.normalizedPower,
+          avgSpeedMps: s.enhancedAvgSpeed ?? s.avgSpeed,
+          maxSpeedMps: s.enhancedMaxSpeed ?? s.maxSpeed,
+          rpe: s.workoutRpe,
+          trackpoints: extractTrackpoints(records, sessionStart),
+        };
+      }),
   };
+}
+
+/**
+ * Convert FIT RecordMesg samples into normalized TrackPoints relative
+ * to the session start. Lat/long in FIT are stored as semicircles
+ * (signed 32-bit, where 2^31 = 180°); altitude in meters above sea
+ * level; HR/cadence as integers; power in watts.
+ *
+ * We cap at 1 Hz sampling (every ~1 second) to keep the JSON payload
+ * reasonable for long activities — a 4-hour ride still fits in
+ * ~14k points.
+ */
+function extractTrackpoints(
+  records: RecordMesg[],
+  sessionStartMs: number,
+): TrackPoint[] {
+  const out: TrackPoint[] = [];
+  let lastT = -2;
+  for (const r of records) {
+    if (!(r.timestamp instanceof Date) && typeof r.timestamp !== 'string') continue;
+    const ts = (r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp)).getTime();
+    const t = (ts - sessionStartMs) / 1000;
+    if (!Number.isFinite(t)) continue;
+    // ~1 Hz downsample: skip if within 0.9s of last point
+    if (t - lastT < 0.9) continue;
+    lastT = t;
+    out.push({
+      t: Math.round(t * 10) / 10,
+      lat: semicirclesToDeg(r.positionLat),
+      lon: semicirclesToDeg(r.positionLong),
+      ele: typeof r.altitude === 'number' ? Math.round(r.altitude * 10) / 10 : null,
+      hr: typeof r.heartRate === 'number' ? r.heartRate : null,
+      cad: typeof r.cadence === 'number' ? r.cadence : null,
+      pwr: typeof r.power === 'number' ? r.power : null,
+      spd: typeof r.speed === 'number' ? Math.round(r.speed * 100) / 100 : null,
+      dist: typeof r.distance === 'number' ? Math.round(r.distance * 10) / 10 : null,
+    });
+  }
+  return out;
+}
+
+function semicirclesToDeg(sc: number | null | undefined): number | null {
+  if (typeof sc !== 'number') return null;
+  return Math.round((sc * 180 / 2 ** 31) * 1e6) / 1e6;
 }
 
 // FIT Sport enum -> human name. From FIT Global Profile v21.x.

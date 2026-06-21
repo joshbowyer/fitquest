@@ -42,12 +42,6 @@ export function computeSpiritualSubclass(xp: number, ordained: boolean): 'CATECH
   return 'TEMPLAR';
 }
 
-const logSchema = z.object({
-  type: z.nativeEnum(PrayerType),
-  durationMin: z.number().int().min(1).max(360).optional(),
-  notes: z.string().max(500).optional(),
-});
-
 const patchSchema = z.object({
   ordained: z.boolean(),
 });
@@ -97,25 +91,76 @@ const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
       logsThisWeek: recentCount,
       logs,
       prayerTypes: PRAYER_LABELS,
+      // User-defined spiritual practices (USER + SPIRITUAL dailies).
+      // They appear alongside the built-ins in the "Log a Prayer"
+      // grid and can be logged with the same XP/gold reward flow.
+      customPractices: await prisma.daily.findMany({
+        where: { userId: me.id, category: 'SPIRITUAL', archived: false },
+        orderBy: { createdAt: 'asc' },
+      }),
     };
   });
+
+  // POST /spiritual/log — log a prayer. Pass either `type` (built-in)
+// or `dailyId` (custom user-defined practice). Custom practices use
+// the daily's gold/xp rewards instead of the built-in PRAYER_XP.
+const logSchema = z.union([
+  z.object({
+    type: z.nativeEnum(PrayerType),
+    dailyId: z.undefined().optional(),
+    durationMin: z.number().int().min(1).max(360).optional(),
+    notes: z.string().max(500).optional(),
+  }),
+  z.object({
+    type: z.undefined().optional(),
+    dailyId: z.string().min(1),
+    durationMin: z.number().int().min(1).max(360).optional(),
+    notes: z.string().max(500).optional(),
+  }),
+]);
 
   // POST /spiritual/log — log a prayer
   app.post('/log', async (req) => {
     const me = await requireUser(req);
     const body = logSchema.parse(req.body);
 
-    const baseXp = PRAYER_XP[body.type];
+    let baseXp = 0;
+    let baseGold = 0;
+    let type: PrayerType | null = null;
+    let dailyId: string | null = null;
+    let defaultMin = 15;
+
+    if (body.dailyId) {
+      // User-defined custom practice — use the daily's rewards.
+      const daily = await prisma.daily.findFirst({
+        where: { id: body.dailyId, userId: me.id, category: 'SPIRITUAL', archived: false },
+      });
+      if (!daily) return { error: 'Practice not found' };
+      dailyId = daily.id;
+      baseXp = daily.xpReward;
+      baseGold = daily.goldReward;
+      defaultMin = 15;
+    } else if (body.type) {
+      type = body.type;
+      baseXp = PRAYER_XP[body.type];
+      baseGold = 0; // built-ins are xp-only
+      defaultMin = PRAYER_LABELS[body.type].defaultMinutes;
+    } else {
+      return { error: 'Must provide type or dailyId' };
+    }
+
     // Ordained: +5% XP on all prayers
     const xp = me.ordained ? Math.round(baseXp * 1.05) : baseXp;
 
     const log = await prisma.prayerLog.create({
       data: {
         userId: me.id,
-        type: body.type,
-        durationMin: body.durationMin ?? PRAYER_LABELS[body.type].defaultMinutes,
+        type,
+        dailyId,
+        durationMin: body.durationMin ?? defaultMin,
         notes: body.notes,
         xpAwarded: xp,
+        goldAwarded: baseGold,
       },
     });
     const newXp = me.spiritualXp + xp;
@@ -126,6 +171,7 @@ const idx = SPIRITUAL_THRESHOLDS.findIndex((t) => t.stage === currentClass);
       data: {
         spiritualXp: newXp,
         spiritualSubclass: newClass,
+        ...(baseGold ? { gold: { increment: baseGold } } : {}),
       },
     });
     // Run achievement checks after every prayer log so spiritual

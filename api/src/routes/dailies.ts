@@ -9,8 +9,12 @@ const createSchema = z.object({
   name: z.string().min(1).max(80),
   days: z.array(z.nativeEnum(DayOfWeek)).default([]),
   notes: z.string().max(500).optional().nullable(),
-  goldReward: z.number().int().min(0).max(1000).optional(),
-  xpReward: z.number().int().min(0).max(1000).optional(),
+  // Tier-derived rewards. The client picks from a fixed set of difficulty
+  // tiers (Trivial/Easy/Medium/Hard/Epic) rather than typing raw values,
+  // mirroring Habitica's todo weight system. Defaults: 5g / 5xp.
+  goldReward: z.number().int().min(0).max(1000).default(5),
+  xpReward: z.number().int().min(0).max(1000).default(5),
+  category: z.nativeEnum(DailyCategory).default('USER'),
   sortOrder: z.number().int().optional(),
 });
 
@@ -167,8 +171,9 @@ export async function dailyRoutes(app: FastifyInstance) {
         name: body.name,
         days: body.days,
         notes: body.notes ?? null,
-        goldReward: body.goldReward ?? 5,
-        xpReward: body.xpReward ?? 2,
+        goldReward: body.goldReward,
+        xpReward: body.xpReward,
+        category: body.category,
         sortOrder: body.sortOrder ?? 0,
       },
     });

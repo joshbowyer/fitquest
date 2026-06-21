@@ -1,11 +1,70 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Modal } from './Modal';
 import { METRICS, type MetricType } from '@/lib/types';
 import { formatRelative, formatMetricWithUnit } from '@/lib/format';
-import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { NeonButton } from './NeonButton';
+
+// Metrics that are derived from other data — not user-enterable.
+// LEAN_MASS / FFMI live in the API schema's DERIVED_METRICS guard.
+// SHOULDER_WAIST_RATIO is web-only (computed from shoulder+waist).
+const DERIVED_METRICS: MetricType[] = ['LEAN_MASS', 'FFMI', 'SHOULDER_WAIST_RATIO'];
+
+function stepForUnit(unit: string, system: UnitSystem): number {
+  if (unit === 's' || unit === 'ms') return 1;
+  if (unit === 'h') return 0.25;
+  if (unit === 'kg' || unit === 'lb') return system === 'IMPERIAL' ? 1 : 0.1;
+  if (unit === 'cm' || unit === 'in') return system === 'IMPERIAL' ? 0.25 : 0.1;
+  if (unit === 'ml' || unit === 'fl oz') return system === 'IMPERIAL' ? 1 : 10;
+  if (unit === 'g') return 1;
+  if (unit === 'kcal') return 10;
+  if (unit === '/10') return 1;
+  if (unit === 'bpm') return 1;
+  if (unit === '%') return 0.1;
+  return 0.1;
+}
+
+// Placeholder hints per metric so the empty input feels guided.
+const PLACEHOLDERS: Partial<Record<MetricType, string>> = {
+  WEIGHT: 'e.g. 134.0',
+  BODY_FAT_PCT: 'e.g. 14.5',
+  WAIST: 'e.g. 81',
+  BICEP: 'e.g. 38.0',
+  CHEST: 'e.g. 102',
+  SHOULDER: 'e.g. 122',
+  QUAD: 'e.g. 58',
+  CALF: 'e.g. 39',
+  FOREARM: 'e.g. 30',
+  NECK: 'e.g. 38',
+  HRV: 'e.g. 62',
+  RESTING_HR: 'e.g. 58',
+  VO2_MAX: 'e.g. 48',
+  BENCH_1RM: 'e.g. 102.5',
+  SQUAT_1RM: 'e.g. 145',
+  DEADLIFT_1RM: 'e.g. 180',
+  OHP_1RM: 'e.g. 65',
+  PULLUP_1RM: 'e.g. 25',
+  POWERLIFT_TOTAL: 'e.g. 425',
+  ONE_MILE_TIME: 'e.g. 437 (seconds)',
+  FIVE_K_TIME: 'e.g. 1320 (seconds)',
+  PLANK_HOLD: 'e.g. 120 (seconds)',
+  L_SIT_HOLD: 'e.g. 45 (seconds)',
+  PUSHUP_MAX: 'e.g. 35',
+  PULLUP_MAX: 'e.g. 12',
+  SLEEP_HOURS: 'e.g. 7.5',
+  SLEEP_QUALITY: 'e.g. 7',
+  CALORIES: 'e.g. 2400',
+  PROTEIN_G: 'e.g. 165',
+  WATER_ML: 'e.g. 2800',
+  MOOD: 'e.g. 7',
+  ENERGY: 'e.g. 6',
+  SORENESS: 'e.g. 3',
+  STRESS: 'e.g. 4',
+};
 
 type Measurement = {
   id: string;
@@ -95,6 +154,7 @@ const METRIC_HELP: Record<string, { about: string; tips: string[] }> = {
 
 export function MetricDetailModal({ open, onClose, metric }: Props) {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const system: UnitSystem = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
   const meta = metric ? METRICS[metric] : null;
 
@@ -104,6 +164,43 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
       api<{ items: Measurement[] }>(`/measurements?metric=${metric}&limit=200`),
     enabled: !!metric,
   });
+
+  const [draftValue, setDraftValue] = useState('');
+  const [draftNotes, setDraftNotes] = useState('');
+  const [logError, setLogError] = useState<string | null>(null);
+
+  const isLoggable = metric != null && !DERIVED_METRICS.includes(metric);
+
+  const logM = useDelayedMutation({
+    mutationFn: () => {
+      const inputValue = Number(draftValue);
+      if (!Number.isFinite(inputValue) || inputValue <= 0) {
+        throw new Error('Enter a positive number.');
+      }
+      const storageUnit = displayUnit(meta!.unit, system);
+      const stored = convertForStorage(inputValue, storageUnit, system);
+      return api('/measurements', {
+        method: 'POST',
+        body: {
+          metric,
+          value: stored.value,
+          notes: draftNotes || undefined,
+        },
+      });
+    },
+    onSuccess: () => {
+      setDraftValue('');
+      setDraftNotes('');
+      setLogError(null);
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      qc.invalidateQueries({ queryKey: ['metric-history', metric] });
+      qc.invalidateQueries({ queryKey: ['weigh-in'] });
+      qc.invalidateQueries({ queryKey: ['achievements'] });
+      qc.invalidateQueries({ queryKey: ['frame'] });
+      qc.invalidateQueries({ queryKey: ['status'] });
+    },
+    onError: (err: Error) => setLogError(err.message ?? 'Could not save.'),
+  }, 800);
 
   // Build a simple sparkline series from oldest → newest.
   const series = useMemo(() => {
@@ -119,6 +216,16 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
   const trend = oldest && newest && oldest !== newest
     ? (newest.v - oldest.v) / Math.max(1, oldest.v) * 100
     : 0;
+
+  // Reset the inline log form when the modal closes or switches metrics
+  // so reopening doesn't show stale input from a different metric.
+  useEffect(() => {
+    if (!open) {
+      setDraftValue('');
+      setDraftNotes('');
+      setLogError(null);
+    }
+  }, [open, metric]);
 
   if (!metric || !meta) return null;
 
@@ -216,6 +323,57 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
             </div>
           )}
         </div>
+
+        {/* Inline log — only for metrics the user can actually enter.
+            DERIVED_METRICS (LEAN_MASS / FFMI / V-TAPER) are computed
+            from other data and rejected by the server. */}
+        {isLoggable && (
+          <div className="border-t border-ink-500/30 pt-3">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+              Log new {meta.shortLabel}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                inputMode="decimal"
+                step={stepForUnit(meta.unit, system)}
+                value={draftValue}
+                onChange={(e) => {
+                  setDraftValue(e.target.value);
+                  setLogError(null);
+                }}
+                placeholder={PLACEHOLDERS[metric!] ?? 'value'}
+                className="flex-1 min-w-[100px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-cyan focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
+              />
+              <span className="text-[10px] font-mono text-ink-300 shrink-0">
+                {displayUnit(meta.unit, system)}
+              </span>
+              <input
+                type="text"
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+                placeholder="notes (optional)"
+                className="flex-1 min-w-[140px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-cyan focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
+              />
+              <NeonButton
+                size="sm"
+                loading={logM.isPending}
+                onClick={() => logM.run()}
+                disabled={!draftValue.trim()}
+              >
+                Log
+              </NeonButton>
+            </div>
+            {logError && (
+              <div className="text-[10px] font-mono mt-1" style={{ color: '#ff2bd6' }}>
+                {logError}
+              </div>
+            )}
+            <div className="text-[9px] font-mono text-ink-500 mt-1.5">
+              Stored in metric units ({meta.unit}); displayed in your preferred system.
+            </div>
+          </div>
+        )}
 
         {/* About */}
         {help && (

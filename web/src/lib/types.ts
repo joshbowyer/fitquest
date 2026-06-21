@@ -3,6 +3,7 @@ export type ClassName =
   | 'PHANTOM'
   | 'SCOUT'
   | 'BERSERKER'
+  | 'TRACER'
   | 'ORACLE';
 
 export type MetricType =
@@ -66,7 +67,7 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   PULLUP_MAX: { type: 'PULLUP_MAX', category: 'CALISTHENICS', label: 'Pull-ups in a Row', shortLabel: 'Pull-ups', unit: 'reps', defaultMin: 1, description: 'Max pull-ups in a single unbroken set.' },
   POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best Squat + Bench + Deadlift.' },
   // Derived metric — auto-computed from SHOULDER ÷ WAIST. Not loggable.
-  SHOULDER_WAIST_RATIO: { type: 'SHOULDER_WAIST_RATIO', category: 'BODY_COMP', label: 'Shoulder ÷ Waist', shortLabel: 'Sho÷W', unit: '', defaultMin: 1, description: 'Auto: shoulder width ÷ waist circumference. Higher = more V-taper.' },
+  SHOULDER_WAIST_RATIO: { type: 'SHOULDER_WAIST_RATIO', category: 'BODY_COMP', label: 'V-Taper', shortLabel: 'V-TAPER', unit: '', defaultMin: 1, description: 'Auto: shoulder width ÷ waist circumference. Higher = more V-taper.' },
   SLEEP_HOURS: { type: 'SLEEP_HOURS', category: 'SLEEP', label: 'Sleep Duration', shortLabel: 'Sleep', unit: 'h', defaultMin: 5, description: 'Hours slept.' },
   SLEEP_QUALITY: { type: 'SLEEP_QUALITY', category: 'SLEEP', label: 'Sleep Quality', shortLabel: 'Sleep Q', unit: '/10', defaultMin: 5, description: 'Sleep quality 1-10.' },
   CALORIES: { type: 'CALORIES', category: 'NUTRITION', label: 'Calories', shortLabel: 'Calories', unit: 'kcal', defaultMin: 1500, description: 'Daily calories.' },
@@ -114,6 +115,7 @@ export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
   PHANTOM: ['PULLUP_1RM', 'PLANK_HOLD', 'L_SIT_HOLD', 'FIVE_K_TIME'],
   SCOUT: ['VO2_MAX', 'FIVE_K_TIME', 'RESTING_HR', 'HRV'],
   BERSERKER: ['BENCH_1RM', 'SQUAT_1RM', 'PULLUP_1RM', 'PLANK_HOLD'],
+  TRACER: ['ONE_MILE_TIME', 'FIVE_K_TIME', 'VO2_MAX', 'RESTING_HR'],
   ORACLE: ['HRV', 'RESTING_HR', 'VO2_MAX', 'SLEEP_HOURS', 'SLEEP_QUALITY'],
 };
 
@@ -192,23 +194,28 @@ export function getNextPromotion(line: string | null, level: number): { nextStag
 
 export const CLASS_META: Record<string, {
   label: string;
-  color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'goldenrod' | 'periwinkle' | 'violet';
+  color: 'cyan' | 'red' | 'orange' | 'magenta' | 'lime' | 'amber' | 'goldenrod' | 'periwinkle' | 'violet';
   tagline: string;
   description: string;
   // Concise fitness style mapping (displayed on the Profile page).
   fitnessType: string;
   primary: PrimaryAspect;
   ability: ClassAbility;
+  // Energy-system tag — what's being trained (aerobic capacity, anaerobic
+  // burst, recovery, etc.). Surfaced on class cards so users can compare
+  // classes at a glance.
+  energySystem: 'AEROBIC' | 'ANAEROBIC' | 'POWER' | 'INTENSITY' | 'CONTROL' | 'RECOVERY';
   // Which archetypes qualify for this class. Empty = available to all.
   eligibility: FrameArchetype[];
 }> = {
   JUGGERNAUT: {
     label: 'Juggernaut',
-    color: 'magenta',
+    color: 'red',
     tagline: 'Heavy hits, big gains',
     description: 'Built for the big lifts. Squat, bench, dead — max out the compound movements. SBD sessions and heavy singles reward massive XP. Powerlifter / bodybuilder.',
     fitnessType: 'Powerlifting / Heavy Strength',
     primary: 'STRENGTH',
+    energySystem: 'POWER',
     ability: { tag: '+DMG', label: 'More raid damage' },
     eligibility: ['DRAKE', 'FORGE', 'GOLEM', 'BEAR', 'BEHEMOTH'],
   },
@@ -219,6 +226,7 @@ export const CLASS_META: Record<string, {
     description: 'Bodyweight and agility. Calisthenics, mobility, total-body control. PRs come from skill, not weight on the bar.',
     fitnessType: 'Calisthenics / Gymnastics / Mobility',
     primary: 'AGILITY',
+    energySystem: 'CONTROL',
     ability: { tag: '+EVA', label: 'Chance to evade in raids' },
     eligibility: ['WISP', 'SPRITE', 'STRIKER', 'FORGE', 'WIRED'],
   },
@@ -226,9 +234,10 @@ export const CLASS_META: Record<string, {
     label: 'Scout',
     color: 'goldenrod',
     tagline: 'Long, steady, exploring',
-    description: 'Explorer. Sustained effort, trail running, hiking, multi-sport. Finds items and quests faster. The first to see new areas and new enemies.',
+    description: 'Explorer. Sustained aerobic effort — trail running, hiking, biking, rucking. The path of the steady. Distinct from Tracer in energy system: Scout trains mitochondria, not fast-twitch.',
     fitnessType: 'Endurance / Trail Running / Hiking',
     primary: 'CONSTITUTION',
+    energySystem: 'AEROBIC',
     ability: { tag: '+DISC', label: 'Faster item/quest discovery' },
     eligibility: [],
   },
@@ -239,8 +248,20 @@ export const CLASS_META: Record<string, {
     description: 'High volume, high intensity. HIIT, tabata, all-out efforts. No metagame — just train hard. Intensity is a choice, not a build.',
     fitnessType: 'HIIT / CrossFit / Conditioning',
     primary: 'STRENGTH',
+    energySystem: 'INTENSITY',
     ability: { tag: '+CRIT', label: 'Bonus damage on crits' },
     eligibility: [],
+  },
+  TRACER: {
+    label: 'Tracer',
+    color: 'orange',
+    tagline: 'Burst, vanish, return',
+    description: 'Sprinting and explosive movement — track intervals, plyometrics, jump rope, martial arts bursts. Anaerobic, fast-twitch dominant. Distinct from Scout: short, max effort, repeat. Sprint across The Gap before it closes.',
+    fitnessType: 'Sprinting / Plyometrics / Martial Arts',
+    primary: 'AGILITY',
+    energySystem: 'ANAEROBIC',
+    ability: { tag: '+BURST', label: 'Initiative + front-loaded raid damage' },
+    eligibility: ['WISP', 'STRIKER', 'WIRED'],
   },
   ORACLE: {
     label: 'Oracle',
@@ -249,6 +270,7 @@ export const CLASS_META: Record<string, {
     description: 'Train smart, recover harder. Wellness, sleep, HRV. The compound interest of consistency beats intensity. Yoga, pilates, meditation.',
     fitnessType: 'Yoga / Recovery / Wellness',
     primary: 'MIND',
+    energySystem: 'RECOVERY',
     ability: { tag: '+HEAL', label: 'Heal between rounds · see enemy stats' },
     eligibility: [],
   },
@@ -342,4 +364,109 @@ export type RaidContribution = {
   source: string;
   contributedAt: string;
   user: { id: string; username: string; class: string | null; level: number };
+};
+
+
+// ---------------------------------------------------------------------------
+// Inventory — equipment catalog + per-user ownership.
+// ---------------------------------------------------------------------------
+
+export type EquipSlot = 'HEAD' | 'BODY' | 'HANDS' | 'FEET' | 'MAIN' | 'OFF' | 'NECK' | 'RING';
+
+export const EQUIP_SLOTS: EquipSlot[] = ['HEAD', 'BODY', 'HANDS', 'FEET', 'MAIN', 'OFF', 'NECK', 'RING'];
+
+export const EQUIP_SLOT_LABEL: Record<EquipSlot, string> = {
+  HEAD:  'Helm',
+  BODY:  'Armor',
+  HANDS: 'Gloves',
+  FEET:  'Boots',
+  MAIN:  'Main Hand',
+  OFF:   'Off Hand',
+  NECK:  'Amulet',
+  RING:  'Ring',
+};
+
+export const EQUIP_SLOT_GLYPH: Record<EquipSlot, string> = {
+  HEAD:  '⛑',
+  BODY:  '🛡',
+  HANDS: '✋',
+  FEET:  '🥾',
+  MAIN:  '⚔',
+  OFF:   '🛡',
+  NECK:  '📿',
+  RING:  '💍',
+};
+
+export type ItemRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY' | 'MYTHIC';
+
+export const RARITY_ORDER: Record<ItemRarity, number> = {
+  COMMON: 0, UNCOMMON: 1, RARE: 2, EPIC: 3, LEGENDARY: 4, MYTHIC: 5,
+};
+
+export const RARITY_COLOR: Record<ItemRarity, string> = {
+  COMMON:    '#a8a8b8',
+  UNCOMMON:  '#5cffa0',
+  RARE:      '#5cb8ff',
+  EPIC:      '#c45cff',
+  LEGENDARY: '#ffc34d',
+  MYTHIC:    '#ff55cc',
+};
+
+export const RARITY_LABEL: Record<ItemRarity, string> = {
+  COMMON:    'Common',
+  UNCOMMON:  'Uncommon',
+  RARE:      'Rare',
+  EPIC:      'Epic',
+  LEGENDARY: 'Legendary',
+  MYTHIC:    'Mythic',
+};
+
+export type ItemSource =
+  | 'MONSTER_DROP'
+  | 'BOSS_DROP'
+  | 'QUEST_REWARD'
+  | 'SHOP'
+  | 'CRAFTED'
+  | 'ACHIEVEMENT'
+  | 'STARTER_KIT';
+
+export type ItemStats = Record<string, number>;
+
+export type ItemDef = {
+  id: string;
+  name: string;
+  description: string | null;
+  slot: EquipSlot;
+  sprite: string;
+  color: string;
+  rarity: ItemRarity;
+  stats: ItemStats;
+  classRestriction: string | null;
+  setId: string | null;
+  createdAt: string;
+};
+
+export type InventoryItem = {
+  id: string;
+  userId: string;
+  itemDefId: string;
+  equippedSlot: EquipSlot | null;
+  acquiredAt: string;
+  source: ItemSource;
+  notes: string | null;
+  itemDef: ItemDef;
+};
+
+// Convenience: stat key display
+export const STAT_LABEL: Record<string, string> = {
+  '+DMG':   'Damage',
+  '+CRIT':  'Crit Chance',
+  '+EVA':   'Evade',
+  '+DEF':   'Defense',
+  '+HP':    'HP',
+  '+HEAL':  'Healing',
+  '+BURST': 'Burst',
+  '+DISC':  'Discovery',
+  '+XP':    'XP Bonus',
+  '+GOLD':  'Gold Bonus',
 };

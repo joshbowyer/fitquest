@@ -32,6 +32,7 @@ import { displayUnit } from '@/lib/units';
 import { WORLD_COLOR_HEX as CLASS_COLOR_HEX } from '@/lib/quest';
 import { idealBandsFor, monotonicBandsFor, SHO_WAIST_RATIO } from '@/lib/metricBands';
 import { BetterGauge } from '@/components/BetterGauge';
+import { MetricTrendChart } from '@/components/MetricTrendChart';
 import { Link } from 'react-router-dom';
 
 // Metrics that use the IdealGauge (top-center = elite, fan-out bands).
@@ -69,6 +70,7 @@ const CATEGORY_LABELS: Record<string, { label: string; variant: 'cyan' | 'magent
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const system = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
   const qc = useQueryClient();
 
   const measurementsQ = useQuery({
@@ -181,22 +183,29 @@ export function DashboardPage() {
               <div className="font-display text-2xl md:text-3xl tracking-widest neon-text-cyan mt-1 truncate">
                 {user.username}
               </div>
-              <div className="mt-1.5">
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <span
-                  className="font-display text-base tracking-wider"
-                  style={{
-                    color: '#fafafd',
-                    textShadow: cls
-                      ? `0 0 8px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}cc, 0 0 2px ${CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#fff'}`
-                      : 'none',
-                  }}
+                  className="font-display text-lg md:text-xl tracking-wider"
+                  style={
+                    cls
+                      ? {
+                          color:
+                            CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#9bff5c',
+                          textShadow: `0 0 10px ${
+                            CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#9bff5c'
+                          }cc, 0 0 2px ${
+                            CLASS_COLOR_HEX[cls.color as keyof typeof CLASS_COLOR_HEX] ?? '#9bff5c'
+                          }`,
+                        }
+                      : { color: '#cbd5e1' }
+                  }
                 >
                   {user.classDisplay ?? cls?.label ?? 'Unclassed'}
                 </span>
                 {cls?.tagline && (
-                  <div className="text-[10px] font-mono text-ink-300 italic mt-0.5">
-                    {cls.tagline}
-                  </div>
+                  <span className="text-[10px] font-mono italic text-neon-lime/80">
+                    — {cls.tagline}
+                  </span>
                 )}
               </div>
             </div>
@@ -254,6 +263,19 @@ export function DashboardPage() {
         <TodayHabitsPanel />
         <NutritionWidget />
         <HabitsWidget />
+      </div>
+
+      {/* Recovery trends — HRV + Sleep */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 md:mb-6">
+        <Panel variant="magenta" title="HRV — 30 days">
+          <MetricTrendChart metric="HRV" days={30} system={system} color="#c45cff" />
+        </Panel>
+        <Panel variant="cyan" title="Sleep — 30 days">
+          <MetricTrendChart metric="SLEEP_HOURS" days={30} system={system} color="#9bff5c" />
+        </Panel>
+        <Panel variant="amber" title="Sleep quality — 30 days">
+          <MetricTrendChart metric="SLEEP_QUALITY" days={30} system={system} color="#ffc34d" />
+        </Panel>
       </div>
 
       {/* Routine (weekly training goal + streak) */}

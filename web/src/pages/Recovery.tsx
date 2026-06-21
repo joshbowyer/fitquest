@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { MetricTrendChart } from '@/components/MetricTrendChart';
 import { METRICS, type MetricType } from '@/lib/types';
 import { classNames, formatMetricWithUnit, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
@@ -152,6 +153,16 @@ export function RecoveryPage() {
           </div>
         }
       />
+
+      {/* Sleep trend (top, full width) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <Panel variant="lime" title="Sleep — last 30 days">
+          <MetricTrendChart metric="SLEEP_HOURS" days={30} system={system} color="#9bff5c" />
+        </Panel>
+        <Panel variant="amber" title="Sleep quality — last 30 days">
+          <MetricTrendChart metric="SLEEP_QUALITY" days={30} system={system} color="#ffc34d" />
+        </Panel>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Sleep + biometrics */}

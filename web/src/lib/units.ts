@@ -3,6 +3,8 @@ export type UnitSystem = 'METRIC' | 'IMPERIAL';
 const CM_TO_IN = 0.393701;
 const KG_TO_LB = 2.20462;
 const ML_TO_FL_OZ = 0.033814;
+const M_TO_MI = 1 / 1609.344;
+const M_TO_FT = 3.28084;
 
 const IMPERIAL_UNIT_MAP: Record<string, string> = {
   cm: 'in',
@@ -34,6 +36,8 @@ export function convertForDisplay(
       return { value: value * KG_TO_LB, unit: 'lb' };
     case 'ml':
       return { value: value * ML_TO_FL_OZ, unit: 'fl oz' };
+    case 'm':
+      return { value: value * M_TO_MI, unit: 'mi' };
     default:
       return { value, unit };
   }
@@ -56,6 +60,8 @@ export function convertForStorage(
       return { value: value / KG_TO_LB, unit: 'kg' };
     case 'fl oz':
       return { value: value / ML_TO_FL_OZ, unit: 'ml' };
+    case 'mi':
+      return { value: value / M_TO_MI, unit: 'm' };
     default:
       return { value, unit };
   }

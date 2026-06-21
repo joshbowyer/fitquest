@@ -6,15 +6,13 @@ import { useAuth, type UserAvatar } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Avatar } from '@/components/Avatar';
+import { ConstellationMap } from '@/components/ConstellationMap';
 import {
   type World,
-  type PortalTile,
-  portalLayoutFor,
-  HOME_TILE,
-  MAP_TILES_X,
-  MAP_TILES_Y,
+  type WorldColor,
   WORLD_COLOR_HEX,
 } from '@/lib/quest';
+import { CLASS_META, type ClassName } from '@/lib/types';
 import { getFrameArchetype, getFrameSize } from '@/lib/frame';
 import { classNames } from '@/lib/format';
 
@@ -33,7 +31,7 @@ export function QuestPage() {
   });
   const avatar = avatarData?.avatar ?? null;
 
-  const portals = worlds ? portalLayoutFor(worlds) : [];
+  const portals = worlds ?? [];
   const archetype = user ? (getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE') : 'SPRITE';
   const sizeLabel = user ? getFrameSize(user.wristCm, user.ankleCm) : 'MEDIUM';
   const frameSizeLabel = sizeLabel.charAt(0) + sizeLabel.slice(1).toLowerCase();
@@ -59,14 +57,15 @@ export function QuestPage() {
               </span>
             }
           >
-            <OverworldMap
-              portals={portals}
+            <ConstellationMap
+              worlds={portals}
               archetype={archetype}
               avatar={avatar}
               playerLevel={user.level}
               accentColor={avatar?.accentColor ?? '#14d6e8'}
               classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               onSelect={(id) => navigate(`/quest/${id}`)}
+              onSelectNexus={(id) => navigate(`/quest/${id}`)}
             />
           </Panel>
 
@@ -101,13 +100,13 @@ export function QuestPage() {
 
             <Panel title="WORLDS" variant="cyan">
               <div className="space-y-2">
-                {portals.map((p) => {
-                  const completed = p.world.levels.filter((l) => l.completed).length;
-                  const unlocked = user.level >= p.world.levelRequired;
+                {portals.map((w) => {
+                  const completed = w.levels.filter((l) => l.completed).length;
+                  const unlocked = user.level >= w.levelRequired;
                   return (
                     <button
-                      key={p.world.id}
-                      onClick={() => unlocked && navigate(`/quest/${p.world.id}`)}
+                      key={w.id}
+                      onClick={() => unlocked && navigate(`/quest/${w.id}`)}
                       disabled={!unlocked}
                       className={classNames(
                         'w-full text-left px-3 py-2 border transition-all',
@@ -119,18 +118,18 @@ export function QuestPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className="text-lg"
-                          style={{ color: WORLD_COLOR_HEX[p.world.color], textShadow: `0 0 8px ${WORLD_COLOR_HEX[p.world.color]}` }}
+                          style={{ color: WORLD_COLOR_HEX[w.color], textShadow: `0 0 8px ${WORLD_COLOR_HEX[w.color]}` }}
                         >
-                          {p.world.icon}
+                          {w.icon}
                         </span>
                         <div className="flex-1">
-                          <div className="text-sm font-display tracking-widest text-ink-50">{p.world.name.toUpperCase()}</div>
+                          <div className="text-sm font-display tracking-widest text-ink-50">{w.name.toUpperCase()}</div>
                           <div className="text-[10px] text-ink-300 font-mono">
-                            {p.world.theme} · {completed}/{p.world.levels.length} cleared
+                            {w.theme} · {completed}/{w.levels.length} cleared
                           </div>
                         </div>
                         {!unlocked && (
-                          <span className="text-[10px] font-mono text-ink-400">LVL {p.world.levelRequired}</span>
+                          <span className="text-[10px] font-mono text-ink-400">LVL {w.levelRequired}</span>
                         )}
                       </div>
                     </button>
@@ -145,19 +144,16 @@ export function QuestPage() {
   );
 }
 
-function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' {
-  switch (c) {
-    case 'JUGGERNAUT':
-    case 'BERSERKER': return 'magenta';
-    case 'PHANTOM':
-    case 'SCOUT':     return 'lime';
-    case 'ORACLE':    return 'periwinkle';
-    default:          return 'goldenrod';
-  }
+function primaryColorForClass(c: string): WorldColor {
+  // Use the actual CLASS_META color so it stays in sync with the
+  // source of truth. Falls back to goldenrod if class is unknown.
+  const meta = CLASS_META[c as ClassName];
+  if (!meta) return 'goldenrod';
+  return meta.color as WorldColor;
 }
 
-function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan'):
-  'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' {
+function worldColorToVariant(c: WorldColor):
+  'cyan' | 'red' | 'magenta' | 'lime' | 'amber' | 'violet' {
   switch (c) {
     case 'magenta':    return 'magenta';
     case 'lime':       return 'lime';
@@ -165,202 +161,7 @@ function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' 
     case 'periwinkle': return 'violet';
     case 'cyan':       return 'cyan';
     case 'violet':     return 'violet';
+    case 'red':        return 'red';
   }
 }
 
-function OverworldMap({
-  portals,
-  archetype,
-  avatar,
-  playerLevel,
-  accentColor,
-  classStripe,
-  onSelect,
-}: {
-  portals: PortalTile[];
-  archetype: 'WISP' | 'SPRITE' | 'DRAKE' | 'STRIKER' | 'FORGE' | 'GOLEM' | 'WIRED' | 'BEAR' | 'BEHEMOTH';
-  avatar: UserAvatar | null;
-  playerLevel: number;
-  accentColor: string;
-  classStripe: string | null;
-  onSelect: (worldId: string) => void;
-}) {
-  // Build a 2D grid of cells.
-  const grid: Array<Array<{ kind: 'empty' } | { kind: 'home' } | { kind: 'path'; worldId: string } | { kind: 'portal'; worldId: string }>> =
-    Array.from({ length: MAP_TILES_Y }, () =>
-      Array.from({ length: MAP_TILES_X }, () => ({ kind: 'empty' as const })),
-    );
-  grid[HOME_TILE.y][HOME_TILE.x] = { kind: 'home' };
-  for (const p of portals) {
-    for (const cell of p.pathCells.slice(1, -1)) {
-      grid[cell.y][cell.x] = { kind: 'path', worldId: p.world.id };
-    }
-    const last = p.pathCells[p.pathCells.length - 1];
-    grid[last.y][last.x] = { kind: 'portal', worldId: p.world.id };
-  }
-
-  // Color lookup by worldId
-  const colorByWorld = new Map(portals.map((p) => [p.world.id, p.world.color]));
-
-  // For each path, compute the cell's distance from home (0 = adjacent,
-  // increasing toward portal). Used to stagger the energy flow animation
-  // so the energy appears to flow FROM home TO portal.
-  const pathDistance: Map<string, number> = new Map();
-  for (const p of portals) {
-    p.pathCells.forEach((cell, i) => {
-      if (i === 0 || i === p.pathCells.length - 1) return;
-      pathDistance.set(`${cell.x},${cell.y}`, i);
-    });
-  }
-
-  // Use a CSS variable so we can scale the map responsively via
-  // .map-cell-size set on the wrapper.
-  const cellSize = 44;
-  const cellStyle: React.CSSProperties = {
-    width: 'var(--map-cell-size, 44px)',
-    height: 'var(--map-cell-size, 44px)',
-    minWidth: 'var(--map-cell-size, 44px)',
-    minHeight: 'var(--map-cell-size, 44px)',
-    flexShrink: 0,
-  };
-
-  return (
-    <div className="map-grid">
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${MAP_TILES_X}, var(--map-cell-size, ${cellSize}px))`,
-        gridTemplateRows: `repeat(${MAP_TILES_Y}, var(--map-cell-size, ${cellSize}px))`,
-        gap: '1px',
-        background: '#1a1c26',
-        border: '1px solid rgba(20,214,232,0.3)',
-        padding: '4px',
-        width: 'fit-content',
-        margin: '0 auto',
-      }}
-    >
-      {grid.flatMap((row, y) =>
-        row.map((cell, x) => {
-          if (cell.kind === 'home') {
-            // Tron-style disc avatar at the home base. The Avatar
-            // component is an SVG so we can drop it into a cell
-            // easily. The wrapper has a gentle bobbing animation.
-            return (
-              <div
-                key={`${x}-${y}`}
-                style={{
-                  ...cellStyle,
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  background: '#0e0f1a',
-                  boxShadow: `inset 0 0 0 2px ${accentColor}, 0 0 8px ${accentColor}`,
-                }}
-                title="Home Base"
-              >
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    animation: 'avatarBob 3s ease-in-out infinite',
-                  }}
-                >
-                  <Avatar
-                    archetype={archetype}
-                    accentColor={accentColor}
-                    classStripe={classStripe}
-                    size="100%"
-                  />
-                </div>
-              </div>
-            );
-          }
-          if (cell.kind === 'path') {
-            const c = colorByWorld.get(cell.worldId)!;
-            const hex = WORLD_COLOR_HEX[c];
-            // Energy flow: each cell pulses at a different phase based on
-            // its distance from home. Uses a CSS keyframe animation.
-            const dist = pathDistance.get(`${x},${y}`) ?? 0;
-            const delay = dist * 0.18;
-            return (
-              <div
-                key={`${x}-${y}`}
-                style={{
-                  ...cellStyle,
-                  background: hex,
-                  opacity: 0.7,
-                  boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.3)`,
-                  animation: `energyFlow 2.4s ease-in-out ${delay}s infinite`,
-                }}
-              />
-            );
-          }
-          if (cell.kind === 'portal') {
-            const portal = portals.find((p) => p.pathCells[p.pathCells.length - 1].x === x && p.pathCells[p.pathCells.length - 1].y === y)!;
-            const unlocked = playerLevel >= portal.world.levelRequired;
-            const completed = portal.world.levels.filter((l) => l.completed).length;
-            const c = portal.world.color;
-            const hex = WORLD_COLOR_HEX[c];
-            return (
-              <button
-                key={`${x}-${y}`}
-                onClick={() => unlocked && onSelect(portal.world.id)}
-                disabled={!unlocked}
-                style={{
-                  ...cellStyle,
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: unlocked ? 'pointer' : 'not-allowed',
-                  opacity: unlocked ? 1 : 0.35,
-                  background: '#0e0f1a',
-                  boxShadow: `inset 0 0 0 3px ${hex}, 0 0 12px ${hex}`,
-                  border: 'none',
-                  padding: 0,
-                  color: hex,
-                  animation: unlocked ? 'portalPulse 2.6s ease-in-out infinite' : 'none',
-                }}
-                title={unlocked ? `${portal.world.name} (${completed}/${portal.world.levels.length})` : `Unlocks at Lvl ${portal.world.levelRequired}`}
-                onMouseEnter={(e) => { if (unlocked) e.currentTarget.style.transform = 'scale(1.15)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >
-                <span
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 'bold',
-                    color: hex,
-                    textShadow: `0 0 6px ${hex}`,
-                  }}
-                >
-                  {portal.world.icon}
-                </span>
-              </button>
-            );
-          }
-          // empty
-          return (
-            <div
-              key={`${x}-${y}`}
-              style={{
-                ...cellStyle,
-                background: '#2a2d3a',
-                backgroundImage:
-                  'radial-gradient(circle, rgba(20,214,232,0.5) 1px, transparent 1px)',
-                backgroundSize: '12px 12px',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-              }}
-            />
-          );
-        }),
-      )}
-    </div>
-    </div>
-  );
-}

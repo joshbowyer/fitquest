@@ -1,9 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ActivityMap, type TrackPoint } from '@/components/ActivityMap';
+import { ActivityStreamsChart } from '@/components/ActivityStreamsChart';
 import { api, ApiError } from '@/lib/api';
 import { classNames, formatRelative, formatSeconds, formatMetricWithUnit, formatAbsolute } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
@@ -36,6 +40,47 @@ type Workout = {
   performedAt: string;
   createdAt: string;
   exercises: ExerciseEntry[];
+  /** Per-second trackpoints from FIT RecordMesg. Empty array otherwise. */
+  trackJson?: TrackPoint[];
+};
+
+type PR = {
+  id: string;
+  exercise: string;
+  type: 'WEIGHT' | 'REPS' | 'TIME' | 'HOLD';
+  value: number;
+  reps?: number | null;
+  weightKg?: number | null;
+  achievedAt: string;
+};
+
+type UserAchievement = {
+  id: string;
+  unlockedAt: string;
+  achievement: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    points: number;
+    glyph?: string | null;
+  };
+};
+
+type LevelProgress = {
+  id: string;
+  order: number;
+  name: string;
+  completedAt: string | null;
+  requirementSummary?: string;
+};
+
+type World = {
+  id: string;
+  name: string;
+  color: string;
+  affiliation: string;
+  levels: LevelProgress[];
 };
 
 function parseFitNotes(notes: string): {
@@ -74,6 +119,56 @@ function parseFitNotes(notes: string): {
   return out;
 }
 
+/** Find PRs whose `achievedAt` falls within this workout's session window.
+ *  window = [performedAt, performedAt + duration] (duration in minutes → ms). */
+function prsInWindow(
+  prs: PR[],
+  performedAt: string,
+  durationMin: number | null,
+): Set<string> {
+  const start = new Date(performedAt).getTime();
+  const end = start + (durationMin ?? 60) * 60 * 1000;
+  const set = new Set<string>();
+  for (const p of prs) {
+    const t = new Date(p.achievedAt).getTime();
+    if (t >= start - 5_000 && t <= end + 5_000) set.add(p.exercise);
+  }
+  return set;
+}
+
+function achievementsInWindow(
+  achievements: UserAchievement[],
+  performedAt: string,
+  durationMin: number | null,
+): UserAchievement[] {
+  const start = new Date(performedAt).getTime();
+  const end = start + (durationMin ?? 60) * 60 * 1000;
+  return achievements.filter((a) => {
+    const t = new Date(a.unlockedAt).getTime();
+    return t >= start - 5_000 && t <= end + 5_000;
+  });
+}
+
+function levelsClearedInWindow(
+  worlds: World[],
+  performedAt: string,
+  durationMin: number | null,
+): Array<{ world: World; level: LevelProgress }> {
+  const start = new Date(performedAt).getTime();
+  const end = start + (durationMin ?? 60) * 60 * 1000;
+  const out: Array<{ world: World; level: LevelProgress }> = [];
+  for (const w of worlds) {
+    for (const lv of w.levels) {
+      if (!lv.completedAt) continue;
+      const t = new Date(lv.completedAt).getTime();
+      if (t >= start - 5_000 && t <= end + 5_000) {
+        out.push({ world: w, level: lv });
+      }
+    }
+  }
+  return out;
+}
+
 export function ActivityDetailPage() {
   const { user } = useAuth();
   const params = useParams<{ id: string }>();
@@ -87,6 +182,19 @@ export function ActivityDetailPage() {
     enabled: !!params.id,
   });
 
+  const prsQ = useQuery({
+    queryKey: ['prs'],
+    queryFn: () => api<{ items: PR[] }>('/prs?limit=200'),
+  });
+  const achQ = useQuery({
+    queryKey: ['achievements', 'me'],
+    queryFn: () => api<{ items: UserAchievement[] }>('/achievements/me'),
+  });
+  const worldsQ = useQuery({
+    queryKey: ['quest-worlds'],
+    queryFn: () => api<World[]>('/quest/worlds'),
+  });
+
   const deleteM = useDelayedMutation<{ ok: boolean }, void>({
     mutationFn: () => api(`/workouts/${params.id}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -97,6 +205,27 @@ export function ActivityDetailPage() {
     },
   }, 600);
 
+  const workout = q.data?.item ?? null;
+  const sessionStart = workout ? new Date(workout.performedAt).getTime() : 0;
+
+  // PRs that were set in this session
+  const prsSet = useMemo(() => {
+    if (!workout || !prsQ.data) return new Set<string>();
+    return prsInWindow(prsQ.data.items, workout.performedAt, workout.duration);
+  }, [workout, prsQ.data]);
+
+  // Achievements unlocked during this session
+  const sessionAchievements = useMemo(() => {
+    if (!workout || !achQ.data) return [];
+    return achievementsInWindow(achQ.data.items, workout.performedAt, workout.duration);
+  }, [workout, achQ.data]);
+
+  // Quest levels cleared during this session
+  const sessionClears = useMemo(() => {
+    if (!workout || !worldsQ.data) return [];
+    return levelsClearedInWindow(worldsQ.data, workout.performedAt, workout.duration);
+  }, [workout, worldsQ.data]);
+
   if (!user) return null;
   if (q.isLoading) {
     return (
@@ -106,7 +235,7 @@ export function ActivityDetailPage() {
       </Layout>
     );
   }
-  if (!q.data || !q.data.item) {
+  if (!workout) {
     return (
       <Layout>
         <PageHeader title="// Activity" />
@@ -122,7 +251,7 @@ export function ActivityDetailPage() {
     );
   }
 
-  const w = q.data.item;
+  const w = workout;
   const isFit = typeof w.notes === 'string' && w.notes.startsWith('[FIT]');
   const fit = isFit && w.notes ? parseFitNotes(w.notes) : null;
 
@@ -140,6 +269,12 @@ export function ActivityDetailPage() {
     (acc, ex) => acc + ex.sets.reduce((s, set) => s + set.reps, 0),
     0,
   );
+  // Training density: kg moved per minute. Useful for comparing effort
+  // across sessions of different lengths.
+  const density = w.duration && w.duration > 0 ? totalVolumeKg / w.duration : 0;
+  const densityDisp = system === 'IMPERIAL'
+    ? Math.round(convertForDisplay(density, 'kg', 'IMPERIAL').value)
+    : Math.round(density);
 
   return (
     <Layout>
@@ -151,19 +286,28 @@ export function ActivityDetailPage() {
           ` (${user?.timezone ? user.timezone : 'UTC'})`
         }
         action={
-          <Link
-            to="/activities"
-            className="text-[10px] font-mono uppercase tracking-widest neon-text-cyan hover:underline"
-          >
-            ← history
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/activities?copyFrom=${w.id}`}
+              className="text-[10px] font-mono uppercase tracking-widest neon-text-cyan hover:underline"
+              title="Pre-fill a new session from this one"
+            >
+              ↻ copy
+            </Link>
+            <Link
+              to="/activities"
+              className="text-[10px] font-mono uppercase tracking-widest neon-text-cyan hover:underline"
+            >
+              ← history
+            </Link>
+          </div>
         }
       />
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <Stat label="Type" value={w.type} accent="#14d6e8" />
-        <Stat label="Duration" value={w.duration ? `${w.duration}m` : '—'} accent="#cba6ff" />
+        <Stat label="Duration" value={w.duration ? formatSeconds(w.duration) : '—'} accent="#cba6ff" />
         <Stat label="Exercises" value={String(w.exercises.length)} accent="#9bff5c" />
         <Stat
           label={system === 'IMPERIAL' ? 'Volume (lb)' : 'Volume (kg)'}
@@ -176,7 +320,7 @@ export function ActivityDetailPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Left: Exercises */}
         <Panel variant="cyan" title="Exercises">
           {w.exercises.length === 0 ? (
@@ -185,75 +329,128 @@ export function ActivityDetailPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {w.exercises.map((ex) => (
-                <div key={ex.id} className="border border-ink-500/30 p-3">
-                  <div className="flex items-baseline justify-between mb-2">
-                    <div className="font-display tracking-wider text-sm text-ink-100">{ex.name}</div>
-                    <div className="text-[10px] font-mono text-ink-400">
-                      {ex.sets.length} set{ex.sets.length !== 1 ? 's' : ''}
+              {w.exercises.map((ex) => {
+                const isPr = prsSet.has(ex.name);
+                const exVolume = ex.sets.reduce(
+                  (s, set) => s + (set.weight ?? 0) * set.reps,
+                  0,
+                );
+                const exMaxWeight = Math.max(0, ...ex.sets.map((s) => s.weight ?? 0));
+                const exRepsTotal = ex.sets.reduce((s, set) => s + set.reps, 0);
+                return (
+                  <div
+                    key={ex.id}
+                    className={classNames(
+                      'border p-3',
+                      isPr ? 'border-neon-magenta/60 bg-neon-magenta/5' : 'border-ink-500/30',
+                    )}
+                  >
+                    <div className="flex items-baseline justify-between mb-2 gap-2">
+                      <div className="flex items-baseline gap-2 min-w-0 flex-1">
+                        <div className="font-display tracking-wider text-sm text-ink-100 truncate">{ex.name}</div>
+                        {isPr && (
+                          <span className="text-[9px] font-mono neon-text-magenta tracking-widest uppercase shrink-0">
+                            ★ PR
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] font-mono text-ink-400 shrink-0">
+                        {ex.sets.length} set{ex.sets.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    {ex.notes && (
+                      <div className="text-[10px] font-mono text-ink-400 italic mb-2">"{ex.notes}"</div>
+                    )}
+                    {ex.musclesWorked && ex.musclesWorked.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {ex.musclesWorked.map((m) => (
+                          <span key={m} className="px-1.5 py-0.5 text-[9px] font-mono border border-ink-700/40 text-ink-300">
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* Per-set breakdown */}
+                    <div className="space-y-1">
+                      {ex.sets.map((s, idx) => {
+                        const wDisp = s.weight != null
+                          ? convertForDisplay(s.weight, 'kg', system)
+                          : null;
+                        const setVol = (s.weight ?? 0) * s.reps;
+                        // Bar width as % of this exercise's heaviest set
+                        const barPct = exMaxWeight > 0 && s.weight
+                          ? Math.round((s.weight / exMaxWeight) * 100)
+                          : 0;
+                        return (
+                          <div
+                            key={s.id}
+                            className={classNames(
+                              'border',
+                              s.completed
+                                ? 'border-neon-lime/30 bg-neon-lime/5'
+                                : 'border-ink-700/40',
+                            )}
+                          >
+                            <div className="grid grid-cols-[24px_1fr_1fr_1fr_1fr] gap-2 items-center text-[11px] font-mono px-2 py-1">
+                              <span className="text-ink-400">{idx + 1}</span>
+                              <span className={classNames('text-ink-100', !s.completed && 'text-ink-500 line-through')}>
+                                {s.reps} reps
+                              </span>
+                              <span className={classNames('text-neon-cyan', !s.completed && 'text-ink-500 line-through')}>
+                                {wDisp ? `${wDisp.value.toFixed(1)} ${wDisp.unit}` : 'BW'}
+                              </span>
+                              {s.duration != null && s.duration > 0 ? (
+                                <span className="text-ink-300">{formatSeconds(s.duration)}</span>
+                              ) : (
+                                <span className="text-ink-600">—</span>
+                              )}
+                              {s.rpe != null && s.rpe > 0 ? (
+                                <span className="text-neon-amber">RPE {s.rpe}</span>
+                              ) : (
+                                <span className="text-ink-600">—</span>
+                              )}
+                            </div>
+                            {/* Volume bar */}
+                            {setVol > 0 && barPct > 0 && (
+                              <div className="h-0.5 bg-bg-900/60 mx-2 mb-1 overflow-hidden">
+                                <div
+                                  className="h-full bg-neon-cyan/50"
+                                  style={{ width: `${barPct}%` }}
+                                  title={`${Math.round(setVol)} kg·reps`}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Exercise totals */}
+                    <div className="flex justify-between text-[10px] font-mono text-ink-400 mt-2 pt-2 border-t border-ink-500/20">
+                      <span>
+                        {exRepsTotal} rep{exRepsTotal !== 1 ? 's' : ''} · {Math.round(exVolume).toLocaleString()} kg
+                      </span>
+                      {exMaxWeight > 0 && (
+                        <span className="text-ink-300">top {Math.round(convertForDisplay(exMaxWeight, 'kg', system).value)} {convertForDisplay(exMaxWeight, 'kg', system).unit}</span>
+                      )}
                     </div>
                   </div>
-                  {ex.notes && (
-                    <div className="text-[10px] font-mono text-ink-400 italic mb-2">"{ex.notes}"</div>
-                  )}
-                  {ex.musclesWorked && ex.musclesWorked.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {ex.musclesWorked.map((m) => (
-                        <span key={m} className="px-1.5 py-0.5 text-[9px] font-mono border border-ink-700/40 text-ink-300">
-                          {m}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    {ex.sets.map((s, idx) => {
-                      const wDisp = s.weight != null
-                        ? convertForDisplay(s.weight, 'kg', system)
-                        : null;
-                      return (
-                        <div
-                          key={s.id}
-                          className={classNames(
-                            'grid grid-cols-[24px_1fr_1fr_1fr_1fr] gap-2 items-center text-[11px] font-mono px-2 py-1 border',
-                            s.completed
-                              ? 'border-neon-lime/30 bg-neon-lime/5'
-                              : 'border-ink-700/40',
-                          )}
-                        >
-                          <span className="text-ink-400">{idx + 1}</span>
-                          <span className={classNames('text-ink-100', !s.completed && 'text-ink-500 line-through')}>
-                            {s.reps} reps
-                          </span>
-                          <span className={classNames('text-neon-cyan', !s.completed && 'text-ink-500 line-through')}>
-                            {wDisp ? `${wDisp.value.toFixed(1)} ${wDisp.unit}` : 'BW'}
-                          </span>
-                          {s.duration != null && s.duration > 0 ? (
-                            <span className="text-ink-300">{formatSeconds(s.duration)}</span>
-                          ) : (
-                            <span className="text-ink-600">—</span>
-                          )}
-                          {s.rpe != null && s.rpe > 0 ? (
-                            <span className="text-neon-amber">RPE {s.rpe}</span>
-                          ) : (
-                            <span className="text-ink-600">—</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Panel>
 
-        {/* Right: metadata + FIT metrics */}
+        {/* Right: metadata + impact panels */}
         <div className="space-y-4">
           {/* Aggregates */}
           <Panel variant="magenta" title="Aggregates">
             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
               <Row k="Total sets" v={String(totalSets)} />
-              <Row k="Completed" v={String(completedSets)} accent={completedSets === totalSets ? 'lime' : 'amber'} />
+              <Row
+                k="Completed"
+                v={`${completedSets}/${totalSets}`}
+                accent={completedSets === totalSets ? 'lime' : 'amber'}
+              />
               <Row k="Total reps" v={String(totalReps)} />
               <Row
                 k="Total volume"
@@ -261,8 +458,62 @@ export function ActivityDetailPage() {
                   ? `${Math.round(convertForDisplay(totalVolumeKg, 'kg', 'IMPERIAL').value).toLocaleString()} lb`
                   : `${Math.round(totalVolumeKg).toLocaleString()} kg`}
               />
+              <Row
+                k="Density"
+                v={w.duration
+                  ? `${densityDisp} ${system === 'IMPERIAL' ? 'lb' : 'kg'}/min`
+                  : '—'}
+                accent="cyan"
+              />
+              <Row k="Started" v={formatRelative(w.performedAt)} />
             </div>
           </Panel>
+
+          {/* Achievements unlocked by this session */}
+          {sessionAchievements.length > 0 && (
+            <Panel variant="amber" title={`UNLOCKED IN THIS SESSION · ${sessionAchievements.length}`}>
+              <div className="space-y-1">
+                {sessionAchievements.map((ua) => (
+                  <div key={ua.id} className="flex items-center gap-2 text-[11px] font-mono">
+                    <span className="text-[14px]">{ua.achievement.glyph ?? '◆'}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-ink-100 truncate">{ua.achievement.name}</div>
+                      <div className="text-[9px] text-ink-400 truncate">{ua.achievement.description}</div>
+                    </div>
+                    <span className="text-[10px] text-neon-amber">+{ua.achievement.points}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+
+          {/* Quests cleared by this session */}
+          {sessionClears.length > 0 && (
+            <Panel variant="cyan" title={`QUESTS CLEARED · ${sessionClears.length}`}>
+              <div className="space-y-1">
+                {sessionClears.map(({ world, level }) => (
+                  <Link
+                    key={`${world.id}-${level.id}`}
+                    to={`/quest/${world.id}`}
+                    className="flex items-center gap-2 text-[11px] font-mono hover:underline"
+                  >
+                    <span
+                      className="text-[10px] font-mono px-1.5 py-0.5 border tracking-widest uppercase"
+                      style={{ borderColor: '#9bff5c', color: '#9bff5c' }}
+                    >
+                      ✓
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-ink-100 truncate">{level.name}</div>
+                      <div className="text-[9px] text-ink-400 truncate">
+                        {world.name} · {level.requirementSummary ?? ''}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Panel>
+          )}
 
           {/* FIT metrics */}
           {fit && (
@@ -273,10 +524,8 @@ export function ActivityDetailPage() {
                   <Row
                     k="Distance"
                     v={(() => {
-                      const d = convertForDisplay(fit.distance, 'm', system);
-                      return d.unit === 'mi'
-                        ? `${d.value.toFixed(2)} mi`
-                        : `${(fit.distance / 1000).toFixed(2)} km`;
+                      const d = convertForDisplay(fit.distance!, 'm', system);
+                      return `${d.value.toFixed(2)} ${d.unit}`;
                     })()}
                   />
                 )}
@@ -287,11 +536,41 @@ export function ActivityDetailPage() {
                 {fit.np != null && <Row k="NP" v={`${fit.np} W`} />}
                 {fit.rpe != null && <Row k="RPE" v={String(fit.rpe)} />}
               </div>
-              <div className="mt-3 text-[10px] font-mono text-ink-500 italic">
-                Imported from a FIT file. Graphs (pace / HR / elevation / splits) coming once we add chart support.
-              </div>
             </Panel>
           )}
+
+          {/* Map + streams (only for activities with trackpoint data) */}
+          {w.trackJson && w.trackJson.length > 1 ? (
+            <>
+              <Panel variant="cyan" title="Track">
+                <ErrorBoundary>
+                  <ActivityMap points={w.trackJson} />
+                </ErrorBoundary>
+              </Panel>
+              <Panel variant="violet" title="Streams">
+                <ErrorBoundary>
+                  <ActivityStreamsChart points={w.trackJson} system={system} />
+                </ErrorBoundary>
+              </Panel>
+            </>
+          ) : isFit && w.trackJson && w.trackJson.length <= 1 ? (
+            <Panel variant="amber" title="GPS track">
+              <div className="text-[10px] font-mono text-ink-300">
+                This FIT file had no GPS samples (likely an indoor activity). Map + streams unavailable.
+              </div>
+            </Panel>
+          ) : isFit ? (
+            <Panel variant="amber" title="GPS track">
+              <div className="text-[10px] font-mono text-ink-300 space-y-1">
+                <div>
+                  This activity was imported <em>before</em> trackpoint extraction shipped. The map + streams chart require the new extraction.
+                </div>
+                <div className="text-neon-cyan">
+                  Re-upload the source FIT file via <Link to="/import" className="underline">/import</Link> to populate GPS track + stream data on a new activity.
+                </div>
+              </div>
+            </Panel>
+          ) : null}
 
           {/* Notes */}
           {w.notes && !isFit && (

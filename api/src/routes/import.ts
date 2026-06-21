@@ -73,6 +73,7 @@ async function persist(
           duration,
           notes: `[FIT] ${notes}`,
           performedAt: w.startTime,
+          trackJson: (w.trackpoints ?? []) as any,
         },
       });
       // Mark today's WORKOUT daily complete (if applicable)

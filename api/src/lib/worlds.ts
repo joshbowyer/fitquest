@@ -15,6 +15,7 @@ export type LevelRequirement =
   | { kind: 'WEIGHT_BODYWEIGHT_MULT'; exercise: string; multiplier: number; reps: number; }
   | { kind: 'CARDIO_5K'; maxSeconds: number; }
   | { kind: 'CARDIO_DISTANCE'; minMeters: number; }
+  | { kind: 'SPRINT_DISTANCE'; minMeters: number; maxSeconds: number; }
   | { kind: 'CALISTHENICS_REPS'; exercise: string; reps: number; }
   | { kind: 'PLANK_HOLD'; minSeconds: number; }
   | { kind: 'SLEEP_STREAK'; minHours: number; consecutiveDays: number; }
@@ -35,7 +36,7 @@ export type RequirementProgress = {
   cleared: boolean;
 };
 
-export type WorldColor = 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
+export type WorldColor = 'red' | 'orange' | 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
 export type WorldAffiliation = 'JUGGERNAUT' | 'PHANTOM' | 'SCOUT' | 'BERSERKER' | 'ORACLE' | 'NEUTRAL';
 
 export type WorldLevel = {
@@ -95,7 +96,7 @@ export const WORLDS: World[] = [
     id: 'spire',
     name: 'The Spire',
     theme: 'STRENGTH',
-    color: 'magenta',
+    color: 'red',
     affiliation: 'JUGGERNAUT',
     description: 'A tower of stone, climbing forever. Each floor houses a heavier golem. The path of the strong.',
     levelRequired: 1,
@@ -176,7 +177,7 @@ export const WORLDS: World[] = [
     id: 'citadel',
     name: 'Iron Citadel',
     theme: 'CONSTITUTION',
-    color: 'goldenrod',
+    color: 'magenta',
     affiliation: 'BERSERKER',
     description: 'A fortress that attacks endlessly. Hold the line. The path of the unbreakable.',
     levelRequired: 1,
@@ -249,6 +250,131 @@ export const WORLDS: World[] = [
         xp: 300, gold: 120, requiredLevelId: 'sanctum-4', playerLevelRequired: 5,
         requirement: { kind: 'RECOVERY_STREAK', minScore: 80, consecutiveDays: 30 },
         requirementSummary: 'Recovery score 80+ for 30 days' },
+    ],
+  },
+  {
+    id: 'longpath',
+    name: 'The Long Path',
+    theme: 'CONSTITUTION',
+    color: 'goldenrod',
+    affiliation: 'SCOUT',
+    description: 'A trail that never ends. No monsters here, just the horizon. It retreats when you chase it and waits when you rest. The path of the steady.',
+    levelRequired: 1,
+    icon: '◬',
+    boss: {
+      name: 'The Horizon',
+      glyph: '✧',
+      maxHp: 1500,
+      lore: 'You have walked far enough to see the curve of the world. The Horizon is not a place — it is the distance itself, asking: how far will you go?',
+    },
+    // Endurance progression. Distance scales in absolute meters;
+    // pace targets use CARDIO_5K in seconds. The pace steps are
+    // forgiving — Scout is about showing up, not crushing splits.
+    levels: [
+      { id: 'longpath-1', order: 1, name: 'First Light', description: 'A trail at dawn. The path is longer than you thought.', enemy: 'Mile One', enemyGlyph: '◬',
+        xp: 50, gold: 20, requiredLevelId: null, playerLevelRequired: 1,
+        requirement: { kind: 'CARDIO_DISTANCE', minMeters: 5000 },
+        requirementSummary: 'Cover 5 km in a single cardio session (run, walk, hike, bike)' },
+      { id: 'longpath-2', order: 2, name: 'The Steady Pace', description: 'The trail levels out. Find your rhythm. Stay in it.', enemy: 'The Doubter', enemyGlyph: '◇',
+        xp: 90, gold: 35, requiredLevelId: 'longpath-1', playerLevelRequired: 2,
+        requirement: { kind: 'CARDIO_DISTANCE', minMeters: 10000 },
+        requirementSummary: 'Cover 10 km in a single cardio session' },
+      { id: 'longpath-3', order: 3, name: 'The Long Trek', description: 'The path goes on. Your legs are a story now.', enemy: 'The Plateau', enemyGlyph: '◈',
+        xp: 140, gold: 55, requiredLevelId: 'longpath-2', playerLevelRequired: 3,
+        requirement: { kind: 'CARDIO_DISTANCE', minMeters: 21000 },
+        requirementSummary: 'Cover a half-marathon (21.1 km) in a single cardio session' },
+      { id: 'longpath-4', order: 4, name: 'The Pace Holds', description: 'Speed is just rhythm without rest. Find it and keep it.', enemy: 'The Tailwind', enemyGlyph: '◉',
+        xp: 200, gold: 80, requiredLevelId: 'longpath-3', playerLevelRequired: 4,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 1800 },
+        requirementSummary: '5K under 30:00' },
+      { id: 'longpath-5', order: 5, name: 'The Summit', description: 'The path ends where it began. You are not the same.', enemy: 'The Horizon', enemyGlyph: '✧',
+        xp: 300, gold: 120, requiredLevelId: 'longpath-4', playerLevelRequired: 5,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 1500 },
+        requirementSummary: '5K under 25:00' },
+    ],
+  },
+  {
+    id: 'crossroads',
+    name: 'The Crossroads',
+    theme: 'NEXUS',
+    color: 'violet',
+    affiliation: 'NEUTRAL',
+    description: 'Where all paths cross. No single discipline wins here. The path of the whole self.',
+    levelRequired: 1,
+    icon: '✺',
+    boss: {
+      name: 'The Eidolon',
+      glyph: '✺',
+      maxHp: 2000,
+      lore: 'At the Crossroads, you meet yourself — every version, every path you did not take. The Eidolon asks only: did you walk all of them, even a little?',
+    },
+    // Nexus progression. Each level pulls from a different domain so
+    // the user has to engage every aspect of fitness to clear the
+    // world. The shape is intentionally a "well-rounded baseline" —
+    // not the hardest level in any single domain, but the only world
+    // that requires touching all of them.
+    levels: [
+      { id: 'crossroads-1', order: 1, name: 'The First Crossing', description: 'Two paths meet. Try each.', enemy: 'The Echo', enemyGlyph: '✦',
+        xp: 50, gold: 20, requiredLevelId: null, playerLevelRequired: 1,
+        requirement: { kind: 'SLEEP_STREAK', minHours: 7, consecutiveDays: 3 },
+        requirementSummary: 'Sleep 7+ hours for 3 consecutive nights' },
+      { id: 'crossroads-2', order: 2, name: 'The Body Remembers', description: 'A path you once walked. Your body still knows the way.', enemy: 'The Forgotten Lift', enemyGlyph: '◆',
+        xp: 90, gold: 35, requiredLevelId: 'crossroads-1', playerLevelRequired: 2,
+        requirement: { kind: 'CALISTHENICS_REPS', exercise: 'Push-Up', reps: 25 },
+        requirementSummary: '25 push-ups in a single set' },
+      { id: 'crossroads-3', order: 3, name: 'The Wind at Your Back', description: 'The road is open. Run a little.', enemy: 'The Soft Pace', enemyGlyph: '✒',
+        xp: 140, gold: 55, requiredLevelId: 'crossroads-2', playerLevelRequired: 3,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 2400 },
+        requirementSummary: '5K run under 40:00' },
+      { id: 'crossroads-4', order: 4, name: 'The Quiet Center', description: 'At the heart of the crossroads, you stop and listen.', enemy: 'The Restless', enemyGlyph: '❀',
+        xp: 200, gold: 80, requiredLevelId: 'crossroads-3', playerLevelRequired: 4,
+        requirement: { kind: 'RECOVERY_STREAK', minScore: 70, consecutiveDays: 7 },
+        requirementSummary: 'Recovery score 70+ for 7 days' },
+      { id: 'crossroads-5', order: 5, name: 'The Whole Self', description: 'You have walked every path a little. Now walk them all at once.', enemy: 'The Eidolon', enemyGlyph: '✺',
+        xp: 300, gold: 120, requiredLevelId: 'crossroads-4', playerLevelRequired: 5,
+        requirement: { kind: 'TOTAL_VOLUME', minVolumeKg: 5000, windowDays: 14 },
+        requirementSummary: 'Lift 5,000 kg total volume across any exercises in 14 days' },
+    ],
+  },
+  {
+    id: 'gap',
+    name: 'The Gap',
+    theme: 'AGILITY',
+    color: 'orange',
+    affiliation: 'TRACER',
+    description: 'A distance that keeps moving. The gap between where you are and where you need to be. Close it in a single breath, before it opens again. The path of the burst.',
+    levelRequired: 1,
+    icon: '⚡',
+    boss: {
+      name: 'The Stride',
+      glyph: '⚡',
+      maxHp: 1200,
+      lore: 'A length of road that does not stay still. You can see the other side for one stride, then it pulls away. The Stride does not tire — it just keeps moving, asking only: how fast can you be, right now?',
+    },
+    // Sprint / anaerobic progression. Levels 1-2 build the explosive
+    // base with calisthenics, levels 3-5 escalate pace and add a
+    // dedicated SPRINT_DISTANCE test for the true anaerobic system.
+    levels: [
+      { id: 'gap-1', order: 1, name: 'First Leap', description: 'You see the gap. You step. Your body was ready before you knew.', enemy: 'The Hesitation', enemyGlyph: '⚡',
+        xp: 50, gold: 20, requiredLevelId: null, playerLevelRequired: 1,
+        requirement: { kind: 'CALISTHENICS_REPS', exercise: 'Burpee', reps: 20 },
+        requirementSummary: '20 burpees in a single set' },
+      { id: 'gap-2', order: 2, name: 'The Quick Step', description: 'The gap opens again. Faster this time. Your feet find the rhythm.', enemy: 'The Recurrence', enemyGlyph: '✦',
+        xp: 90, gold: 35, requiredLevelId: 'gap-1', playerLevelRequired: 2,
+        requirement: { kind: 'CALISTHENICS_REPS', exercise: 'Jumping Jack', reps: 100 },
+        requirementSummary: '100 jumping jacks in a single session' },
+      { id: 'gap-3', order: 3, name: 'The Track', description: 'A measured lane. Pace yourself across it. Then faster.', enemy: 'The Tape', enemyGlyph: '◉',
+        xp: 140, gold: 55, requiredLevelId: 'gap-2', playerLevelRequired: 3,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 1680 },
+        requirementSummary: '5K under 28:00' },
+      { id: 'gap-4', order: 4, name: 'The Burst', description: 'Four hundred meters. One breath. You are there before the breath is done.', enemy: 'The Lactic Wall', enemyGlyph: '◆',
+        xp: 200, gold: 80, requiredLevelId: 'gap-3', playerLevelRequired: 4,
+        requirement: { kind: 'SPRINT_DISTANCE', minMeters: 400, maxSeconds: 90 },
+        requirementSummary: '400m in under 90 seconds (true anaerobic sprint test)' },
+      { id: 'gap-5', order: 5, name: 'The Flash', description: 'The gap stops moving. You have outpaced it.', enemy: 'The Stride', enemyGlyph: '⚡',
+        xp: 300, gold: 120, requiredLevelId: 'gap-4', playerLevelRequired: 5,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 1320 },
+        requirementSummary: '5K under 22:00 (elite anaerobic + aerobic blend)' },
     ],
   },
 ];
@@ -374,7 +500,7 @@ export function computeRequirementProgress(
       let maxDistance = 0;
       for (const w of recentWorkouts) {
         for (const ex of w.exercises) {
-          if (!/run|jog|sprint|treadmill|5k|10k|marathon|bike|cycle|walk|swim|stair|skip|jump|erg|rowing/i.test(ex.name)) continue;
+          if (!/run|jog|sprint|treadmill|5k|10k|marathon|bike|cycle|walk|hike|ruck|swim|stair|skip|jump|erg|rowing/i.test(ex.name)) continue;
           for (const s of ex.sets) {
             if (!s.duration) continue;
             const distance = s.duration * 3.33; // ~5:00/km pace
@@ -389,6 +515,39 @@ export function computeRequirementProgress(
         target,
         pct,
         cleared: maxDistance >= target,
+      };
+    }
+    case 'SPRINT_DISTANCE': {
+      // Sprint test: a single continuous effort covering at least
+      // `minMeters` in `maxSeconds` or less. Looks at single sets in
+      // cardio exercises, same name regex as CARDIO_DISTANCE. A set
+      // qualifies only if BOTH distance ≥ min AND time ≤ max.
+      let maxDistance = 0;
+      let qualifyingTime: number | null = null;
+      for (const w of recentWorkouts) {
+        for (const ex of w.exercises) {
+          if (!/run|jog|sprint|interval|treadmill|track|400m|100m|200m|800m|1500m|mile|bike|cycle|swim|erg|rowing/i.test(ex.name)) continue;
+          for (const s of ex.sets) {
+            if (!s.duration) continue;
+            const distance = s.duration * 3.33; // ~5:00/km baseline; sprint
+                                                // efforts will exceed this
+                                                // ratio since they're faster
+            if (distance > maxDistance) maxDistance = distance;
+            if (distance >= req.minMeters && s.duration <= req.maxSeconds) {
+              qualifyingTime = s.duration;
+            }
+          }
+        }
+      }
+      const cleared = qualifyingTime !== null;
+      // Progress: best distance covered vs target. Once cleared, full bar.
+      const target = req.minMeters;
+      const pct = cleared ? 1 : Math.min(1, maxDistance / target);
+      return {
+        current: maxDistance > 0 ? Math.round(maxDistance) : null,
+        target,
+        pct,
+        cleared,
       };
     }
     case 'CALISTHENICS_REPS': {

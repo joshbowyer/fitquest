@@ -1,6 +1,6 @@
 // Quest types — mirrors api/src/lib/worlds.ts
 
-export type WorldColor = 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
+export type WorldColor = 'red' | 'orange' | 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
 export type WorldAffiliation = 'JUGGERNAUT' | 'PHANTOM' | 'SCOUT' | 'BERSERKER' | 'ORACLE' | 'NEUTRAL';
 
 // Requirement progress for a single level. The backend computes
@@ -60,6 +60,8 @@ export type World = {
 };
 
 export const WORLD_COLOR_HEX: Record<WorldColor, string> = {
+  red:        '#dc2626',
+  orange:     '#ff8c00',
   magenta:    '#f55cc4',
   lime:       '#9bff5c',
   goldenrod:  '#ffc34d',

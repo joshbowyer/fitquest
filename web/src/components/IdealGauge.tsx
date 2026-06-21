@@ -224,12 +224,13 @@ export function IdealGauge({
     healthyMaxAngle,
   );
 
-  // Indicator (current value → ideal midpoint), colored by status
-  const indicatorArc =
-    valueAngle != null
-      ? arcPath(cx, cy, (rOuter + rInner) / 2, valueAngle, TOP_ANGLE)
-      : null;
+  // Filled progress: from the dial's start (min end) up to the current
+  // value angle. Same convention as Gauge.tsx (weight).
+  const filledPath = valueAngle != null
+    ? arcPath(cx, cy, (rOuter + rInner) / 2, START_ANGLE, valueAngle)
+    : '';
 
+  // Indicator dot at current value (rim).
   const indicatorPos = valueAngle != null
     ? polar(cx, cy, (rOuter + rInner) / 2, valueAngle)
     : null;
@@ -252,6 +253,10 @@ export function IdealGauge({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <linearGradient id={`grad-${id}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={statusColor} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={statusColor} stopOpacity="1" />
+          </linearGradient>
         </defs>
 
         {/* Full track */}
@@ -282,14 +287,16 @@ export function IdealGauge({
           strokeLinecap="round"
         />
 
-        {/* Indicator */}
-        {indicatorArc && (
+        {/* Filled progress — same pattern as Gauge.tsx (weight): gradient
+            stroke from min end up to the value angle, glow, rounded
+            cap. Keeps all radials visually consistent. */}
+        {filledPath && (
           <path
-            d={indicatorArc}
-            stroke={statusColor}
+            d={filledPath}
+            stroke={`url(#grad-${id})`}
             strokeWidth={rOuter - rInner}
-            fill="none"
             strokeLinecap="round"
+            fill="none"
             filter={`url(#glow-${id})`}
             style={{ transition: 'all 0.6s cubic-bezier(0.22,1,0.36,1)' }}
           />

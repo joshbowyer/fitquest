@@ -33,6 +33,8 @@ body {
 
 @layer components {
   .neon-text-cyan { @apply text-neon-cyan; text-shadow: 0 0 6px rgba(0,240,255,0.7), 0 0 14px rgba(0,240,255,0.4); }
+  .neon-text-red { color: #dc2626; text-shadow: 0 0 6px rgba(220,38,38,0.7), 0 0 14px rgba(220,38,38,0.4); }
+  .neon-text-orange { color: #ff8c00; text-shadow: 0 0 6px rgba(255,140,0,0.7), 0 0 14px rgba(255,140,0,0.4); }
   .neon-text-magenta { @apply text-neon-magenta; text-shadow: 0 0 6px rgba(255,43,214,0.7), 0 0 14px rgba(255,43,214,0.4); }
   .neon-text-lime { @apply text-neon-lime; text-shadow: 0 0 6px rgba(0,255,136,0.7), 0 0 14px rgba(0,255,136,0.4); }
   .neon-text-amber { @apply text-neon-amber; text-shadow: 0 0 6px rgba(255,184,0,0.7), 0 0 14px rgba(255,184,0,0.4); }

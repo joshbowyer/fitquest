@@ -13,6 +13,7 @@ enum ClassName {
   PHANTOM
   SCOUT
   BERSERKER
+  TRACER
   ORACLE
 }
 
@@ -154,6 +155,9 @@ model User {
   level        Int      @default(1)
   xp           Int      @default(0)
   gold         Int      @default(0)
+  // Soulstones: rare drop from raids/world bosses, used to bypass the
+  // 9-day class-change lock. Capped softly via the boss/raid reward logic.
+  soulstones   Int      @default(0)
   units        UnitSystem @default(METRIC)
   // Static frame inputs (rarely change). Used by genetic-max formulas.
   heightCm        Float?
@@ -183,7 +187,13 @@ model User {
   skills           UserSkill[]
   avatar           Avatar?
   classChangedAt   DateTime?
-  soulstones       Int      @default(0)
+  // Admin role. First user to register is bootstrapped to admin.
+  // Future: 2FA / TOTP secret + recovery codes live here too.
+  isAdmin          Boolean  @default(false)
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean  @default(false)
+  // TOTP recovery codes (one-time use, hashed at rest).
+  twoFactorBackupCodes String?
   worldProgress    UserWorldProgress[]
   painLogs         PainLog[]
   routine          Routine?
@@ -197,6 +207,7 @@ model User {
   routineDays      RoutineDay[]
   dailies          Daily[]
   dailyLogs        DailyLog[]
+  inventoryItems   InventoryItem[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -259,6 +270,11 @@ model Workout {
   performedAt DateTime    @default(now())
   createdAt   DateTime    @default(now())
   exercises   Exercise[]
+  /// Per-second trackpoint stream (lat/lng/ele/timestamp + HR/cadence/power/
+  /// speed/distance). Populated by the FIT importer from RecordMesg. Kept as
+  /// JSONB rather than a separate table since we don't query into individual
+  /// points and most workouts are short. Empty array when no GPS / no FIT.
+  trackJson   Json        @default("[]")
 
   @@index([userId, performedAt])
 }
@@ -596,10 +612,17 @@ model PrayerLog {
   id         String      @id @default(cuid())
   userId     String
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type       PrayerType
+  /// Built-in prayer type. Null when logging a user-defined custom
+  /// spiritual practice (use `dailyId` instead).
+  type       PrayerType?
+  /// When `type` is null, this points at the user-defined practice
+  /// (USER + SPIRITUAL daily) the user logged.
+  dailyId    String?
+  daily      Daily?      @relation(fields: [dailyId], references: [id], onDelete: SetNull)
   durationMin Int        @default(15)
   notes      String?
   xpAwarded  Int         @default(0)
+  goldAwarded Int        @default(0)
   loggedAt   DateTime    @default(now())
 
   @@index([userId, loggedAt])
@@ -669,6 +692,7 @@ model Daily {
   updatedAt   DateTime      @updatedAt
 
   logs        DailyLog[]
+  prayerLogs PrayerLog[]
 
   @@index([userId, archived])
 }
@@ -765,4 +789,97 @@ model HabitLog {
 
   @@index([userId, loggedAt])
   @@index([habitId, loggedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Inventory — equipment catalog + per-user ownership.
+// ---------------------------------------------------------------------------
+
+// 8 equip slots covering the standard RPG layout.
+enum EquipSlot {
+  HEAD   // helmet, hood, hat
+  BODY   // armor / shirt
+  HANDS  // gloves
+  FEET   // boots
+  MAIN   // main-hand weapon
+  OFF    // off-hand shield
+  NECK   // amulet
+  RING   // ring / trinket
+}
+
+enum ItemRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+  MYTHIC
+}
+
+enum ItemSource {
+  MONSTER_DROP
+  BOSS_DROP
+  QUEST_REWARD
+  SHOP
+  CRAFTED
+  ACHIEVEMENT
+  STARTER_KIT
+}
+
+// Static catalog of items that can exist. Seeded at migration time
+// so equip/unequip and drops can reference valid itemDefIds.
+model ItemDef {
+  id               String     @id // slug, e.g. "warrior_sword_t2"
+  name             String
+  description      String?
+  slot             EquipSlot
+  /// Path under /public/sprites/ (e.g. "gear/weapon/weapon_warrior_2").
+  sprite           String
+  /// Display tint (class color, neon glow, etc.) for the slot pill.
+  color            String     @default("#a8a8b8")
+  rarity           ItemRarity @default(COMMON)
+  /// Stat roll as a JSON object. Free-form so we can add new stats
+  /// without migrations. Recognized keys:
+  ///   +DMG    : additive raid damage (number)
+  ///   +CRIT   : bonus crit chance % (0-1)
+  ///   +EVA    : bonus evade chance % (0-1)
+  ///   +DEF    : bonus defense rating
+  ///   +HP     : bonus max HP
+  ///   +HEAL   : bonus healing factor
+  ///   +BURST  : bonus burst damage %
+  ///   +DISC   : bonus discovery chance
+  ///   +XP     : bonus XP gain %
+  ///   +GOLD   : bonus gold find %
+  stats            Json       @default("{}")
+  /// Optional class lock. Null = any class can equip.
+  classRestriction ClassName?
+  /// Optional set id (e.g. "iron_pact"). Wearing N pieces of the same
+  /// set grants a bonus applied at equip time. (Reserved for Phase E.)
+  setId            String?
+  createdAt        DateTime   @default(now())
+
+  ownedBy          InventoryItem[]
+
+  @@index([slot])
+  @@index([rarity])
+  @@index([classRestriction])
+}
+
+// A user's copy of an ItemDef. One InventoryItem per owned instance;
+// equipping is just setting `equippedSlot` (mutually exclusive per slot).
+model InventoryItem {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemDefId   String
+  itemDef     ItemDef    @relation(fields: [itemDefId], references: [id])
+  equippedSlot EquipSlot?
+  acquiredAt  DateTime   @default(now())
+  source      ItemSource @default(MONSTER_DROP)
+  /// Free-form notes (e.g. "Dropped by Procrastinatrix 2026-06-20").
+  notes       String?
+
+  @@unique([userId, itemDefId, acquiredAt])
+  @@index([userId])
+  @@index([userId, equippedSlot])
 }

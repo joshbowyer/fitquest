@@ -60,6 +60,9 @@ export type User = {
   // IRL sacrament (Holy Orders). Set by the user from Profile → Identity.
   // The app never prompts or advertises this; +5% XP on prayer logs.
   ordained: boolean;
+  // Admin access: only the first user (or anyone explicitly granted)
+  // can reach the /admin page, see all users, and configure LLM.
+  isAdmin?: boolean;
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers?: ('ROSARY' | 'MASS' | 'SCRIPTURE' | 'CONTEMPLATION' | 'LITURGY_HOURS' | 'CONFESSION' | 'OTHER')[];
@@ -120,6 +123,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh();
+    // Re-fetch on window focus so units / class / etc. stay in sync
+    // when the user changes them in another tab or after a Settings save.
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
   return (

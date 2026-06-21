@@ -25,10 +25,10 @@ export function SettingsPage() {
   const unitsM = useMutation({
     mutationFn: (next: UnitSystem) =>
       api('/users/me', { method: 'PATCH', body: { units: next } }),
-    onSuccess: async () => {
+    onSuccess: async (_data, next) => {
       await refresh();
       qc.invalidateQueries();
-      setUnits(units); // local sync
+      setUnits(next); // local sync — use the variable, not the stale closure
     },
   });
 

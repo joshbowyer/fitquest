@@ -7,7 +7,6 @@ import { NeonButton } from '@/components/NeonButton';
 export function RegisterPage() {
   const navigate = useNavigate();
   const { refresh, setUser } = useAuth();
-  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
@@ -20,7 +19,7 @@ export function RegisterPage() {
     try {
       const r = await api<{ user: any }>('/auth/register', {
         method: 'POST',
-        body: { email, username, password },
+        body: { username, password },
       });
       setUser(r.user);
       await refresh();
@@ -42,18 +41,6 @@ export function RegisterPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
-              Email
-            </label>
-            <input
-              className="input-neon"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
               Callsign (username)
             </label>
             <input
@@ -63,6 +50,7 @@ export function RegisterPage() {
               required
               pattern="[a-zA-Z0-9_-]{3,32}"
               title="3-32 chars, letters/numbers/_/-"
+              autoFocus
             />
           </div>
           <div>

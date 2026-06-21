@@ -65,6 +65,17 @@ export const SKILL_TREES: Record<ClassName, SkillDef[]> = {
     ] },
   ],
 
+  TRACER: [
+    { className: 'TRACER', tier: 'TIER_1', name: 'Burst', description: '+15% XP from sprint / plyometric sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.15, appliesTo: 'CARDIO' }] },
+    { className: 'TRACER', tier: 'TIER_1', name: 'Fast Twitch', description: '+10% gold from 1mi / 5K PRs.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'gold_multiplier', value: 1.10, appliesTo: 'ALL' }] },
+    { className: 'TRACER', tier: 'TIER_2', name: 'Vapor Trail', description: '+10% XP from high-pace 5K runs.', cost: 2, prerequisites: ['Burst'], position: 2, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'CARDIO' }] },
+    { className: 'TRACER', tier: 'TIER_2', name: 'Lactic Tolerance', description: '-1 second off 5K genetic max (anaerobic threshold).', cost: 2, prerequisites: ['Fast Twitch'], position: 3, effects: [{ type: 'measurement_bonus', metric: 'FIVE_K_TIME', value: -1 }] },
+    { className: 'TRACER', tier: 'TIER_3', name: 'Phantom Step', description: '+25% raid damage + +BURST mastery (always acts first).', cost: 3, prerequisites: ['Vapor Trail', 'Lactic Tolerance'], position: 4, effects: [
+      { type: 'raid_damage_multiplier', value: 1.25 },
+      { type: 'measurement_bonus', metric: 'ONE_MILE_TIME', value: -2 },
+    ] },
+  ],
+
   ORACLE: [
     { className: 'ORACLE', tier: 'TIER_1', name: 'Mindful Movement', description: '+5% XP on mobility/recovery sessions.', cost: 1, prerequisites: [], position: 0, effects: [{ type: 'xp_multiplier', value: 1.05, appliesTo: 'MOBILITY' }] },
     { className: 'ORACLE', tier: 'TIER_1', name: 'Sleep Mastery', description: '+10% XP for logging 7+ hrs of sleep.', cost: 1, prerequisites: [], position: 1, effects: [{ type: 'xp_multiplier', value: 1.10, appliesTo: 'ALL' }] },

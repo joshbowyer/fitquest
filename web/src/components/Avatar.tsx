@@ -1,4 +1,5 @@
 import type { FrameArchetype } from '@/lib/frame';
+import { SpriteAvatar } from './SpriteAvatar';
 
 export type AvatarHairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' | 'PIXIE';
 
@@ -14,6 +15,15 @@ export type AvatarProps = {
   size?: number | string;
   className?: string;
   classStripe?: string | null;
+  /**
+   * When true, render the layered sprite avatar (Habitica pixel art)
+   * inside the Tron disc. Falls back to the geometric silhouette
+   * when `sprites` is false (the original behavior).
+   */
+  sprites?: boolean;
+  /** Sprite variant IDs — used when `sprites` is true. */
+  weapon?: string;
+  shield?: string;
 };
 
 /**
@@ -40,7 +50,32 @@ export function Avatar({
   className,
   accentColor,
   classStripe,
+  hairStyle,
+  hairColor,
+  shirtColor,
+  sprites = false,
+  weapon,
+  shield,
 }: AvatarProps) {
+  // Branch: sprite-based avatar when `sprites` is enabled and the
+  // browser has loaded the sprite assets.
+  if (sprites) {
+    return (
+      <SpriteAvatar
+        archetype={archetype}
+        hairStyle={hairStyle}
+        hairColor={hairColor}
+        shirtColor={shirtColor}
+        weapon={weapon}
+        shield={shield}
+        size={typeof size === 'number' ? size : 160}
+        className={className}
+        accentColor={accentColor}
+        classStripe={classStripe}
+      />
+    );
+  }
+
   const ringColor = classStripe ?? accentColor ?? '#14d6e8';
   const innerColor = archetypeTint(archetype);
 

@@ -7,7 +7,7 @@ export default {
   safelist: [
     {
       pattern:
-        /^(text|border|bg|neon-text)-neon-(cyan|magenta|lime|amber|goldenrod|periwinkle|violet)(\/(5|15|60|80))?$/,
+        /^(text|border|bg|neon-text)-neon-(red|orange|cyan|magenta|lime|amber|goldenrod|periwinkle|violet)(\/(5|15|60|80))?$/,
     },
   ],
   theme: {
@@ -28,6 +28,8 @@ export default {
           500: '#5c5f70',
         },
         neon: {
+          red: '#dc2626',
+          orange: '#ff8c00',
           cyan: '#14d6e8',
           magenta: '#f55cc4',
           lime: '#56e88e',
@@ -47,6 +49,8 @@ export default {
       },
       boxShadow: {
         'neon-cyan': '0 0 8px rgba(20,214,232,0.55), 0 0 16px rgba(20,214,232,0.35), 0 0 32px rgba(20,214,232,0.18)',
+        'neon-red': '0 0 8px rgba(220,38,38,0.55), 0 0 16px rgba(220,38,38,0.35), 0 0 32px rgba(220,38,38,0.18)',
+        'neon-orange': '0 0 8px rgba(255,140,0,0.55), 0 0 16px rgba(255,140,0,0.35), 0 0 32px rgba(255,140,0,0.18)',
         'neon-magenta': '0 0 8px rgba(245,92,196,0.55), 0 0 16px rgba(245,92,196,0.35), 0 0 32px rgba(245,92,196,0.18)',
         'neon-lime': '0 0 8px rgba(86,232,142,0.55), 0 0 16px rgba(86,232,142,0.35)',
         'neon-amber': '0 0 8px rgba(255,170,58,0.55), 0 0 16px rgba(255,170,58,0.35)',

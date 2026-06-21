@@ -1,20 +1,58 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Avatar } from './Avatar';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
+import { SpriteAvatar } from './SpriteAvatar';
+import { classNames } from '@/lib/format';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { hairColorSlug, shirtSlug, type HairColorPreset } from '@/lib/spriteBuckets';
 import type { User, UserAvatar } from '@/lib/auth';
 import { getFrameArchetype, type FrameArchetype, ARCHETYPE_META } from '@/lib/frame';
-import { classNames } from '@/lib/format';
 
-const ACCENT_PALETTE = [
-  '#14d6e8', '#f55cc4', '#56e88e', '#ffaa3a', '#daa520',
-  '#8b9eff', '#9a6cf2', '#d0d0db', '#fafafd',
+type HairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' | 'PIXIE';
+
+// Hair sprite base names (no color suffix). Map to 6 of our 6 styles.
+const HAIR_BASES: Record<HairStyle, string> = {
+  SHORT:    'hair_bangs_1',
+  LONG:     'hair_base_13',
+  MOHAWK:   'hair_bangs_2',
+  BUZZ:     'hair_bangs_3',
+  PONYTAIL: 'hair_bangs_4',
+  PIXIE:    'hair_base_10',
+};
+
+const HAIR_COLORS: Array<{ slug: HairColorPreset; hex: string; label: string }> = [
+  { slug: 'black',  hex: '#2c2018', label: 'Black' },
+  { slug: 'brown',  hex: '#6b4226', label: 'Brown' },
+  { slug: 'blond',  hex: '#dcb35c', label: 'Blond' },
+  { slug: 'TRUred', hex: '#b1372e', label: 'Red' },
 ];
 
-function isValidHex(s: string) {
-  return /^#[0-9a-fA-F]{6}$/.test(s);
+const SKIN_TONES = [
+  { hex: '#915533', label: 'Tan' },
+  { hex: '#c06534', label: 'Warm' },
+  { hex: '#ea8349', label: 'Honey' },
+  { hex: '#f5a76e', label: 'Fair' },
+  { hex: '#ddc994', label: 'Pale' },
+  { hex: '#98461a', label: 'Deep' },
+] as const;
+
+const SHIRT_COLORS = [
+  { slug: 'broad_shirt_blue',   hex: '#14d6e8', label: 'Cyan' },
+  { slug: 'broad_shirt_green',  hex: '#56e88e', label: 'Lime' },
+  { slug: 'broad_shirt_pink',   hex: '#f55cc4', label: 'Magenta' },
+  { slug: 'broad_shirt_yellow', hex: '#daa520', label: 'Gold' },
+  { slug: 'broad_shirt_white',  hex: '#d0d0db', label: 'White' },
+  { slug: 'broad_shirt_black',  hex: '#2c2f3a', label: 'Black' },
+] as const;
+
+// Convenience: pick the hex for a hair preset slug (for storing in API).
+function hairHexForSlug(slug: HairColorPreset): string {
+  return HAIR_COLORS.find((c) => c.slug === slug)?.hex ?? '#6b4226';
+}
+function shirtHexForSlug(slug: string): string {
+  return SHIRT_COLORS.find((c) => c.slug === slug)?.hex ?? '#14d6e8';
 }
 
 export function AvatarCustomizer({ user }: { user: User }) {
@@ -35,11 +73,11 @@ export function AvatarCustomizer({ user }: { user: User }) {
     if (avatarQ.data?.avatar && !draft) setDraft(avatarQ.data.avatar);
   }, [avatarQ.data, draft]);
 
-  const saveM = useMutation({
+  const saveM = useDelayedMutation({
     mutationFn: (next: UserAvatar) =>
       api<{ avatar: UserAvatar }>('/avatar', { method: 'PUT', body: next }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['avatar'] }),
-  });
+  }, 1000);
 
   if (!archetype || !draft) {
     return (
@@ -64,7 +102,7 @@ export function AvatarCustomizer({ user }: { user: User }) {
       variant="cyan"
       action={
         <NeonButton
-          onClick={() => saveM.mutate(draft)}
+          onClick={() => saveM.run(draft)}
           loading={saveM.isPending}
           disabled={!dirty}
           icon="⚡"
@@ -75,7 +113,7 @@ export function AvatarCustomizer({ user }: { user: User }) {
       }
     >
       <div className="flex flex-col md:flex-row gap-4">
-        {/* Preview */}
+        {/* Preview — sprite avatar updates live with all picks */}
         <div className="flex-shrink-0 flex flex-col items-center">
           <div
             className="border border-neon-cyan/30 bg-bg-900 p-3 relative"
@@ -86,17 +124,17 @@ export function AvatarCustomizer({ user }: { user: User }) {
               backgroundPosition: '0 0, 6px 6px',
             }}
           >
-            <Avatar
+            <SpriteAvatar
               archetype={archetype}
-              bodyFatPct={user.bodyFatPct}
-              hairStyle={draft.hairStyle}
+              hairStyle={draft.hairStyle as HairStyle}
               hairColor={draft.hairColor}
               skinTone={draft.skinTone}
               shirtColor={draft.shirtColor}
-              pantsColor={draft.pantsColor}
+              weapon="weapon_warrior_2"
+              shield="shield_warrior_1"
               accentColor={draft.accentColor}
               classStripe={classColor}
-              size={160}
+              size={180}
             />
           </div>
           <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
@@ -114,123 +152,174 @@ export function AvatarCustomizer({ user }: { user: User }) {
         </div>
 
         {/* Controls */}
-        <div className="flex-1 space-y-3">
+        <div className="flex-1 space-y-4">
           <div className="text-[10px] font-mono text-ink-300 leading-relaxed">
-            Your avatar is bound to your <span className="text-ink-50">{meta.label}</span> archetype —
-            each of the 9 somatotypes maps to a unique sprite from the Antifarea
-            pixel character set. Change your frame (height, wrist, ankle, body fat)
-            to swap silhouettes.
+            Your sprite is built from layered Habitica pixel art. Pick a hairstyle,
+            hair color, skin tone, and shirt — every change shows live in the preview.
+            Save to persist.
           </div>
 
-          <ColorRow
-            label="Accent (sprite tint)"
-            value={draft.accentColor}
-            onChange={(v) => update({ accentColor: v })}
-            palette={ACCENT_PALETTE}
-          />
-
-          <details className="text-[10px] font-mono">
-            <summary className="cursor-pointer text-ink-300 hover:text-ink-50 tracking-widest uppercase">
-              ▾ Legacy customization (hair/skin/etc.)
-            </summary>
-            <div className="mt-2 space-y-2 opacity-60">
-              <p className="text-ink-400 leading-relaxed">
-                The Antifarea sprites are pre-coloured pixel art — recolouring them
-                pixel-by-pixel would lose the original detail. Saved here for
-                forward-compat in case we want to overlay hair later.
-              </p>
-              <div className="grid grid-cols-2 gap-2 text-[10px]">
-                <Field label="Hair"  v={draft.hairStyle}  />
-                <Field label="Skin"  v={draft.skinTone}   />
-                <Field label="Shirt" v={draft.shirtColor} />
-                <Field label="Pants" v={draft.pantsColor} />
-              </div>
+          {/* Hair style */}
+          <Section label="Hairstyle">
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['SHORT', 'MOHAWK', 'BUZZ', 'PONYTAIL', 'LONG', 'PIXIE'] as HairStyle[]).map((s) => (
+                <SpriteSwatch
+                  key={s}
+                  active={draft.hairStyle === s}
+                  onClick={() => update({ hairStyle: s })}
+                  label={s}
+                  preview={<HairThumb hairStyle={s} hairColor={draft.hairColor} />}
+                />
+              ))}
             </div>
-          </details>
+          </Section>
+
+          {/* Hair color */}
+          <Section label="Hair color">
+            <div className="flex flex-wrap gap-1.5">
+              {HAIR_COLORS.map((c) => {
+                const slug = hairColorSlug(c.hex);
+                const expectedHex = hairHexForSlug(slug);
+                return (
+                  <button
+                    key={c.slug}
+                    type="button"
+                    onClick={() => update({ hairColor: c.hex })}
+                    className={classNames(
+                      'w-7 h-7 border transition-all',
+                      draft.hairColor.toLowerCase() === c.hex.toLowerCase()
+                        ? 'border-neon-cyan scale-110 shadow-neon-cyan'
+                        : 'border-ink-500/40 hover:border-ink-300',
+                    )}
+                    style={{ background: c.hex, boxShadow: `0 0 6px ${c.hex}66` }}
+                    aria-label={`Hair: ${c.label}`}
+                    title={`${c.label} → ${slug}`}
+                  >
+                    {/* Active marker just shows the swatch glow; the
+                        preview pane reflects the actual sprite color. */}
+                    {expectedHex !== c.hex && (
+                      <span className="sr-only">maps to {expectedHex}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </Section>
+
+          {/* Skin tone */}
+          <Section label="Skin tone">
+            <div className="flex flex-wrap gap-1.5">
+              {SKIN_TONES.map((t) => (
+                <button
+                  key={t.hex}
+                  type="button"
+                  onClick={() => update({ skinTone: t.hex })}
+                  className={classNames(
+                    'w-7 h-7 border transition-all',
+                    draft.skinTone.toLowerCase() === t.hex.toLowerCase()
+                      ? 'border-neon-cyan scale-110 shadow-neon-cyan'
+                      : 'border-ink-500/40 hover:border-ink-300',
+                  )}
+                  style={{ background: t.hex, boxShadow: `0 0 6px ${t.hex}66` }}
+                  aria-label={`Skin: ${t.label}`}
+                  title={t.label}
+                />
+              ))}
+            </div>
+          </Section>
+
+          {/* Shirt */}
+          <Section label="Shirt">
+            <div className="flex flex-wrap gap-1.5">
+              {SHIRT_COLORS.map((c) => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  onClick={() => update({ shirtColor: c.hex })}
+                  className={classNames(
+                    'w-7 h-7 border transition-all',
+                    draft.shirtColor.toLowerCase() === c.hex.toLowerCase()
+                      ? 'border-neon-cyan scale-110 shadow-neon-cyan'
+                      : 'border-ink-500/40 hover:border-ink-300',
+                  )}
+                  style={{ background: c.hex, boxShadow: `0 0 6px ${c.hex}66` }}
+                  aria-label={`Shirt: ${c.label}`}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </Section>
         </div>
       </div>
     </Panel>
   );
 }
 
-function Field({ label, v }: { label: string; v: string }) {
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-ink-400 uppercase tracking-widest">{label}</span>
-      {v.startsWith('#') ? (
-        <span className="inline-block w-4 h-4 border border-ink-700" style={{ background: v }} />
-      ) : (
-        <span className="text-ink-200">{v}</span>
-      )}
+    <div>
+      <div className="text-[9px] font-mono uppercase tracking-widest text-ink-300 mb-1.5">
+        {label}
+      </div>
+      {children}
     </div>
   );
 }
 
-function ColorRow({
+function SpriteSwatch({
+  active,
+  onClick,
   label,
-  value,
-  onChange,
-  palette,
+  preview,
 }: {
+  active: boolean;
+  onClick: () => void;
   label: string;
-  value: string;
-  onChange: (v: string) => void;
-  palette: string[];
+  preview: React.ReactNode;
 }) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
-  const valid = isValidHex(text);
   return (
-    <div>
-      <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-        {label}
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-8 h-8 border border-ink-500/40 bg-transparent cursor-pointer"
-        />
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => {
-            if (valid) onChange(text);
-            else setText(value);
-          }}
-          className={classNames(
-            'flex-1 bg-bg-900/80 border px-2 py-1 text-xs font-mono',
-            valid ? 'border-ink-500/40 text-ink-100' : 'border-neon-amber text-neon-amber',
-          )}
-        />
-        <div className="flex flex-wrap gap-1">
-          {palette.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => onChange(c)}
-              className={classNames(
-                'w-5 h-5 border',
-                value === c ? 'border-ink-50' : 'border-ink-500/40 hover:border-ink-300',
-              )}
-              style={{ background: c }}
-              title={c}
-            />
-          ))}
-        </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={classNames(
+        'relative border transition-all p-1',
+        active
+          ? 'border-neon-cyan bg-neon-cyan/10 shadow-neon-cyan'
+          : 'border-ink-500/40 hover:border-ink-300 bg-bg-900/40',
+      )}
+      aria-pressed={active}
+      title={label}
+    >
+      <div className="w-full aspect-square flex items-center justify-center overflow-hidden">
+        {preview}
       </div>
-    </div>
+      <div className="text-[8px] font-mono tracking-widest text-center mt-0.5 text-ink-200">
+        {label}
+      </div>
+    </button>
+  );
+}
+
+function HairThumb({ hairStyle, hairColor }: { hairStyle: HairStyle; hairColor: string }) {
+  // Render the hair sprite alone in a small viewport so users see
+  // exactly what they're picking. Uses the shared HSL bucket so the
+  // thumbnail always matches the live preview.
+  const base = HAIR_BASES[hairStyle];
+  const colorSlug = hairColorSlug(hairColor);
+  return (
+    <svg viewBox="0 0 90 90" width="100%" height="100%" shapeRendering="crispEdges">
+      <image href={`/sprites/hair/${base}_${colorSlug}.png`} x="0" y="0" width="90" height="90" />
+    </svg>
   );
 }
 
 function getClassColor(className: string): string | null {
   switch (className) {
-    case 'JUGGERNAUT': return '#f55cc4';
+    case 'JUGGERNAUT': return '#dc2626';
     case 'BERSERKER':  return '#f55cc4';
     case 'PHANTOM':    return '#56e88e';
     case 'SCOUT':      return '#daa520';
+    case 'TRACER':     return '#ff8c00';
     case 'ORACLE':     return '#8b9eff';
     default: return null;
   }

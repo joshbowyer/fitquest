@@ -17,6 +17,7 @@ import { prRoutes } from './routes/prs.js';
 import { exerciseRoutes } from './routes/exercises.js';
 import { insightRoutes } from './routes/insights.js';
 import { avatarRoutes } from './routes/avatar.js';
+import { inventoryRoutes, itemRoutes } from './routes/inventory.js';
 import { questRoutes } from './routes/quest.js';
 import { painLogRoutes } from './routes/painLogs.js';
 import { statusRoutes } from './routes/status.js';
@@ -29,6 +30,7 @@ import { importRoutes } from './routes/import.js';
 import { supplementRoutes } from './routes/supplements.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
+import { seedItems } from './lib/seedItems.js';
 
 async function build() {
   const app = Fastify({
@@ -61,6 +63,8 @@ async function build() {
   await app.register(exerciseRoutes, { prefix: '/exercises' });
   await app.register(insightRoutes, { prefix: '/insights' });
   await app.register(avatarRoutes, { prefix: '/avatar' });
+  await app.register(inventoryRoutes, { prefix: '/inventory' });
+  await app.register(itemRoutes, { prefix: '/items' });
   await app.register(questRoutes, { prefix: '/quest' });
   await app.register(painLogRoutes, { prefix: '/pain-logs' });
   await app.register(statusRoutes, { prefix: '/status' });
@@ -93,9 +97,10 @@ async function build() {
 }
 
 async function main() {
-  // Seed achievements and skills (idempotent)
+  // Seed achievements, skills, and item catalog (idempotent)
   await ensureAchievementsSeeded();
   await ensureSkillsSeeded();
+  await seedItems();
 
   const app = await build();
   await app.listen({ port: config.port, host: config.host });

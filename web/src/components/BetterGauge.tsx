@@ -112,12 +112,14 @@ export function BetterGauge({
   const healthyArc = arcPath(cx, cy, (rOuter + rInner) / 2, healthyAngle, eliteAngle);
   const eliteArc  = arcPath(cx, cy, (rOuter + rInner) / 2, eliteAngle, START_ANGLE + SWEEP);
 
-  // Indicator fill from worst (135°) up to current value's angle.
-  const indicatorArc =
-    valueAngle != null
-      ? arcPath(cx, cy, (rOuter + rInner) / 2, START_ANGLE, valueAngle)
-      : null;
+  // Filled progress: from the dial's start (worst) up to the current
+  // value angle. Same pattern as Gauge.tsx (weight) so all radials
+  // share the established visual language.
+  const filledPath = valueAngle != null
+    ? arcPath(cx, cy, (rOuter + rInner) / 2, START_ANGLE, valueAngle)
+    : '';
 
+  // Indicator dot at current value (rim).
   const indicatorPos = valueAngle != null
     ? polar(cx, cy, (rOuter + rInner) / 2, valueAngle)
     : null;
@@ -199,6 +201,10 @@ export function BetterGauge({
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <linearGradient id={`grad-${id}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={statusColor} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={statusColor} stopOpacity="1" />
+          </linearGradient>
         </defs>
 
         {/* Zone tracks */}
@@ -206,14 +212,16 @@ export function BetterGauge({
         <path d={healthyArc} stroke="#14d6e8" strokeOpacity="0.18" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
         <path d={eliteArc} stroke="#9bff5c" strokeOpacity="0.30" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
 
-        {/* Value fill (bottom-left → current angle) */}
-        {indicatorArc && (
+        {/* Filled progress — same pattern as Gauge.tsx (weight). The
+            gradient keeps the trailing edge soft so the stroke blob
+            at the start is invisible against the track. */}
+        {filledPath && (
           <path
-            d={indicatorArc}
-            stroke={statusColor}
+            d={filledPath}
+            stroke={`url(#grad-${id})`}
             strokeWidth={rOuter - rInner}
-            fill="none"
             strokeLinecap="round"
+            fill="none"
             filter={`url(#glow-${id})`}
             style={{ transition: 'all 0.6s cubic-bezier(0.22,1,0.36,1)' }}
           />

@@ -15,8 +15,9 @@ import { config } from '../lib/config.js';
 import { getClassLockStatus, getClassDisplayName, getNextPromotion } from '../lib/classLock.js';
 import { isCreatineActive } from './supplements.js';
 
+// Username-only registration — no email. Email features (verification,
+// password reset, etc.) are deferred until we have a mail provider.
 const RegisterSchema = z.object({
-  email: z.string().email().max(120),
   username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, 'username may only contain letters, numbers, _ and -'),
   password: z.string().min(8).max(120),
 });
@@ -30,20 +31,32 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/register', async (req, reply) => {
     const body = RegisterSchema.parse(req.body);
     const exists = await prisma.user.findFirst({
-      where: { OR: [{ email: body.email }, { username: body.username }] },
-      select: { id: true, email: true, username: true },
+      where: { username: body.username },
+      select: { id: true, username: true },
     });
     if (exists) {
-      return reply.code(409).send({ error: 'User with that email or username already exists.' });
+      return reply.code(409).send({ error: 'Username already taken.' });
     }
     const passwordHash = await hashPassword(body.password);
+    // Generate a stable placeholder email so the User model's NOT NULL
+    // email column is satisfied. Real emails are off the table for now.
+    const placeholderEmail = `${body.username.toLowerCase()}@local.fitquest`;
+    // Bootstrap: the very first user becomes admin. This makes fresh
+    // installs self-managing without requiring an env var or seed step.
+    const userCount = await prisma.user.count();
     const user = await prisma.user.create({
-      data: { email: body.email, username: body.username, passwordHash },
+      data: {
+        email: placeholderEmail,
+        username: body.username,
+        passwordHash,
+        isAdmin: userCount === 0,
+      },
       select: {
         id: true, email: true, username: true, level: true, xp: true, gold: true,
         class: true, units: true, createdAt: true, classChangedAt: true,
         soulstones: true, birthDate: true, sex: true, heightCm: true, wristCm: true,
         ankleCm: true, forearmLengthCm: true, neckCircCm: true,
+        isAdmin: true,
       },
     });
     const { session } = await createSessionAndFetchUser(user.id, req);
@@ -53,8 +66,9 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/login', async (req, reply) => {
     const body = LoginSchema.parse(req.body);
-    const user = await prisma.user.findFirst({
-      where: { OR: [{ email: body.identifier }, { username: body.identifier }] },
+    // Username-only login (no email).
+    const user = await prisma.user.findUnique({
+      where: { username: body.identifier },
     });
     if (!user) return reply.code(401).send({ error: 'Invalid credentials.' });
     const ok = await verifyPassword(body.password, user.passwordHash);
@@ -79,6 +93,7 @@ export async function authRoutes(app: FastifyInstance) {
         classChangedAt: user.classChangedAt,
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
         ordained: user.ordained,
+        isAdmin: user.isAdmin,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
         creatine: user.creatine,
         timezone: user.timezone,
@@ -128,6 +143,7 @@ export async function authRoutes(app: FastifyInstance) {
         classChangedAt: user.classChangedAt,
         classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
         ordained: user.ordained,
+        isAdmin: user.isAdmin,
         spiritualDailyPrayers: user.spiritualDailyPrayers,
         creatine: user.creatine,
         timezone: user.timezone,

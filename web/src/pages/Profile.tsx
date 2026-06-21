@@ -24,7 +24,7 @@ import {
   type HeightCategory,
 } from '@/lib/frame';
 
-const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'ORACLE'];
+const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'TRACER', 'ORACLE'];
 
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
 function previewMax(
@@ -673,18 +673,33 @@ export function ProfilePage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-[9px] font-mono uppercase tracking-widest ${eligible && !user.classLock?.locked ? `neon-text-${m.color}` : 'text-ink-500'}`}>
+                    <span className={`text-[9px] font-mono uppercase tracking-widest ${eligible && !user.classLock?.locked ? `neon-text-${m.color}` : 'text-ink-400'}`}>
                       {PRIMARY_ASPECT_LABEL[m.primary]}
                     </span>
-                    <span className="text-ink-500 text-[9px]">·</span>
-                    <span className={`text-[9px] font-mono ${eligible ? 'text-ink-400' : 'text-ink-500'}`}>
+                    <span className="text-[9px] text-ink-300">·</span>
+                    <span className="text-[9px] font-mono text-ink-200">
                       {m.ability.tag}
                     </span>
+                    <span className="text-[9px] text-ink-300">·</span>
+                    <span
+                      className={`text-[9px] font-mono tracking-widest ${
+                        eligible && !user.classLock?.locked
+                          ? m.energySystem === 'AEROBIC' ? 'neon-text-cyan'
+                          : m.energySystem === 'ANAEROBIC' ? 'neon-text-orange'
+                          : m.energySystem === 'POWER' ? 'neon-text-red'
+                          : m.energySystem === 'INTENSITY' ? 'neon-text-magenta'
+                          : m.energySystem === 'CONTROL' ? 'neon-text-lime'
+                          : 'neon-text-periwinkle'
+                          : 'text-ink-400'
+                      }`}
+                    >
+                      {m.energySystem}
+                    </span>
                   </div>
-                  <div className={`text-[10px] font-mono mt-1 ${eligible && !user.classLock?.locked ? 'text-ink-300' : 'text-ink-500'}`}>
+                  <div className="text-[10px] font-mono mt-1 text-ink-200">
                     {m.tagline}
                   </div>
-                  <div className={`text-[9px] font-mono mt-0.5 ${eligible && !user.classLock?.locked ? 'text-ink-400' : 'text-ink-600'}`}>
+                  <div className="text-[9px] font-mono mt-0.5 text-ink-300">
                     {m.fitnessType}
                   </div>
                   <div
