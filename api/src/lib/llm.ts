@@ -51,7 +51,10 @@ function defaultBaseUrl(provider: LlmConfig['provider']): string {
     case 'OLLAMA':
       return 'http://localhost:11434/v1';
     case 'MINIMAX':
-      return 'https://api.MiniMax.com/v1';
+      // Minimax exposes the Anthropic Messages API on the /anthropic
+      // path. callLlm appends /v1/messages so the final URL is
+      // https://api.minimax.io/anthropic/v1/messages.
+      return 'https://api.minimax.io/anthropic';
     case 'ANTHROPIC':
       return 'https://api.anthropic.com';
   }
@@ -64,7 +67,7 @@ function modelNameFallback(provider: LlmConfig['provider']): string {
     case 'OLLAMA':
       return 'llama3.2';
     case 'MINIMAX':
-      return 'MiniMax-M3';
+      return 'MiniMax-M2.5-highspeed';
     case 'ANTHROPIC':
       return 'claude-3-5-sonnet-20241022';
   }
@@ -93,10 +96,13 @@ export async function callLlm(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    if (config.provider === 'ANTHROPIC') {
+    // ANTHROPIC + MINIMAX both use the Anthropic Messages API:
+    //   POST {baseUrl}/v1/messages with x-api-key auth header.
+    // OPENAI + OLLAMA use the OpenAI-compatible chat/completions
+    //   endpoint with Authorization: Bearer.
+    if (config.provider === 'ANTHROPIC' || config.provider === 'MINIMAX') {
       return await callAnthropic(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start);
     }
-    // OpenAI-compatible: OpenAI, Ollama, Minimax
     return await callOpenAiCompatible(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start);
   } catch (err: any) {
     return {
@@ -213,7 +219,15 @@ async function callAnthropic(
     };
   }
   const data: any = await res.json();
-  const text = (data?.content?.[0]?.text as string) ?? '';
+  // Anthropic (and Minimax) may return multiple content blocks:
+  //   - 'thinking' blocks: internal reasoning, not user-visible
+  //   - 'text' blocks: the actual response
+  // Concatenate all text blocks so the caller sees the real answer.
+  const blocks: any[] = Array.isArray(data?.content) ? data.content : [];
+  const text = blocks
+    .filter((b) => b?.type === 'text' && typeof b?.text === 'string')
+    .map((b) => b.text)
+    .join('\n');
   return {
     ok: true,
     text,

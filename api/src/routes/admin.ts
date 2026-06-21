@@ -56,14 +56,14 @@ async function listUsers() {
 }
 
 // Presets per provider. Used by the web form to auto-fill baseUrl + a
-// sensible default model when the admin changes provider. Minimax is
-// included for users on that plan; the endpoint is stable and OpenAI-
-// compatible so no extra code is needed beyond adding it to the enum.
+// sensible default model when the admin changes provider. Minimax
+// uses the Anthropic Messages API at api.minimax.io/anthropic with
+// the x-api-key auth header (set up in callLlm).
 export const LLM_PROVIDER_PRESETS: Record<string, { baseUrl: string | null; defaultModel: string }> = {
-  OPENAI:    { baseUrl: null,                     defaultModel: 'gpt-4o-mini' },
-  ANTHROPIC: { baseUrl: null,                     defaultModel: 'claude-3-5-sonnet-20241022' },
-  OLLAMA:    { baseUrl: 'http://localhost:11434', defaultModel: 'llama3.2' },
-  MINIMAX:   { baseUrl: 'https://api.MiniMax.com/v1', defaultModel: 'MiniMax-M3' },
+  OPENAI:    { baseUrl: null,                        defaultModel: 'gpt-4o-mini' },
+  ANTHROPIC: { baseUrl: null,                        defaultModel: 'claude-3-5-sonnet-20241022' },
+  OLLAMA:    { baseUrl: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
+  MINIMAX:   { baseUrl: 'https://api.minimax.io/anthropic', defaultModel: 'MiniMax-M2.5-highspeed' },
 };
 
 // GET /admin/llm-config - return current LLM config (redact apiKey)
@@ -206,7 +206,9 @@ export async function adminRoutes(app: FastifyInstance) {
     const prompt = `Only say: 'Connection to ${config.model} successful. Hello!' Do not say anything else.`;
     const result = await callLlm(config, {
       prompt,
-      maxTokens: 60,
+      // 200 to give the model room after any internal reasoning /
+      // thinking blocks (Minimax M2.5 burns tokens on planning).
+      maxTokens: 200,
       temperature: 0.1,
       timeoutMs: 30_000,
     });
