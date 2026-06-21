@@ -451,6 +451,45 @@ export function SettingsPage() {
           </div>
         </Panel>
 
+        {/* FOOD DATABASES — for the upcoming food tracker. The LLM
+            uses OpenFoodFacts (no key needed) first and falls back
+            to USDA FDC when the user has set a key. */}
+        <Panel
+          title="Food Databases"
+          variant="amber"
+          action={
+            <span className="text-[10px] font-mono text-ink-400">
+              {user.hasUsdaKey ? '✓ USDA key set' : 'USDA key not set'}
+            </span>
+          }
+        >
+          <div className="space-y-3">
+            <div className="text-[10px] font-mono text-ink-300">
+              The food tracker (roadmap #8-9) will search OpenFoodFacts
+              first (no key needed) and fall back to USDA FoodData
+              Central when you provide a key. Get a free USDA key at{' '}
+              <a
+                className="text-neon-cyan hover:underline"
+                href="https://fdc.nal.usda.gov/api-key-signup.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                fdc.nal.usda.gov/api-key-signup
+              </a>.
+            </div>
+            <UsdaKeyEditor
+              hasKey={!!user.hasUsdaKey}
+              disabled={goalM.isPending}
+              onSave={(k) => goalM.mutate({ goal: user.goal ?? 'MAINTAIN', calorieBaseline: user.calorieBaseline ?? 2200, calorieSource: user.calorieSource ?? 'BASELINE', usdaApiKey: k })}
+              onClear={() => goalM.mutate({ goal: user.goal ?? 'MAINTAIN', calorieBaseline: user.calorieBaseline ?? 2200, calorieSource: user.calorieSource ?? 'BASELINE', usdaApiKey: '' })}
+            />
+            <div className="text-[10px] font-mono text-ink-500">
+              // private to you. Never sent anywhere except
+              api.data.gov for the food lookup. Stored hashed at rest.
+            </div>
+          </div>
+        </Panel>
+
         {/* DATA (placeholder) */}
         <Panel title="Data" variant="magenta">
           <div className="text-[10px] text-ink-300 font-mono mb-2">
@@ -704,5 +743,75 @@ function SourceOption({
       </div>
       <div className="text-[10px] text-ink-400 font-mono mt-0.5">{hint}</div>
     </button>
+  );
+}
+
+function UsdaKeyEditor({
+  hasKey,
+  disabled,
+  onSave,
+  onClear,
+}: {
+  hasKey: boolean;
+  disabled: boolean;
+  onSave: (key: string) => void;
+  onClear: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  if (hasKey && !editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-mono text-emerald-300">✓ Key set</span>
+        <span className="text-[10px] font-mono text-ink-400">
+          (hidden — leave blank to keep, type to replace)
+        </span>
+        <NeonButton size="sm" variant="amber" onClick={() => setEditing(true)}>
+          Replace
+        </NeonButton>
+        <NeonButton size="sm" variant="magenta" onClick={onClear} disabled={disabled}>
+          Remove
+        </NeonButton>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="password"
+        autoComplete="off"
+        className="input-neon flex-1 font-mono"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder={hasKey ? '•••• (leave blank to keep current)' : 'paste your USDA FDC API key'}
+        autoFocus={editing}
+      />
+      <NeonButton
+        size="sm"
+        variant="amber"
+        onClick={() => {
+          if (draft.trim().length > 0) {
+            onSave(draft.trim());
+            setDraft('');
+            setEditing(false);
+          }
+        }}
+        disabled={disabled || draft.trim().length === 0}
+      >
+        Save
+      </NeonButton>
+      {hasKey && (
+        <NeonButton
+          size="sm"
+          variant="cyan"
+          onClick={() => {
+            setDraft('');
+            setEditing(false);
+          }}
+        >
+          Cancel
+        </NeonButton>
+      )}
+    </div>
   );
 }

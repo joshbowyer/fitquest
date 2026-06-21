@@ -88,6 +88,10 @@ export type User = {
   // - BMR:        basal metabolic rate only
   // - BMR_NEAT:   BMR + non-exercise activity thermogenesis
   calorieSource?: 'BASELINE' | 'BMR' | 'BMR_NEAT';
+  // True if the user has saved a USDA FoodData Central key. The
+  // key itself never leaves the server; the Settings page shows
+  // a masked version and lets the user replace or clear it.
+  hasUsdaKey?: boolean;
   // Last fetched body weight in kg. Used for water + protein
   // floor calculations. Not always present.
   weightKg?: number | null;

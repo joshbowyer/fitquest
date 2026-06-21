@@ -98,15 +98,16 @@ export async function authRoutes(app: FastifyInstance) {
         creatine: user.creatine,
         timezone: user.timezone,
          creatineActive: await isCreatineActive(user.id),
-         goal: user.goal,
-         calorieBaseline: user.calorieBaseline,
-         calorieSource: user.calorieSource,
-         weightKg: user.weightKg,
-         targets: computeGoalTargets({
-           goal: user.goal,
-           calorieBaseline: user.calorieBaseline,
-           weightKg: user.weightKg,
-         }),
+        goal: user.goal,
+        calorieBaseline: user.calorieBaseline,
+        calorieSource: user.calorieSource,
+        weightKg: user.weightKg,
+        hasUsdaKey: !!user.usdaApiKey,
+        targets: computeGoalTargets({
+          goal: user.goal,
+          calorieBaseline: user.calorieBaseline,
+          weightKg: user.weightKg,
+        }),
        },
     });
   });
@@ -160,6 +161,7 @@ export async function authRoutes(app: FastifyInstance) {
         goal: user.goal,
         calorieBaseline: user.calorieBaseline,
         calorieSource: user.calorieSource,
+        hasUsdaKey: !!user.usdaApiKey,
         targets: computeGoalTargets({
           goal: user.goal,
           calorieBaseline: user.calorieBaseline,

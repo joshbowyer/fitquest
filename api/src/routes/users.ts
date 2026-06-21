@@ -37,6 +37,10 @@ const ProfileSchema = z.object({
   /// What the baseline number represents. Affects only the UI
   /// label; the math is the same.
   calorieSource: z.nativeEnum(CalorieSource).optional(),
+  /// USDA FoodData Central API key. Free signup at
+  /// https://fdc.nal.usda.gov/api-key-signup.html. Empty string
+  /// clears the key.
+  usdaApiKey: z.string().max(200).optional().nullable(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -131,6 +135,9 @@ export async function userRoutes(app: FastifyInstance) {
         ...(body.goal !== undefined ? { goal: body.goal } : {}),
         ...(body.calorieBaseline !== undefined ? { calorieBaseline: body.calorieBaseline } : {}),
         ...(body.calorieSource !== undefined ? { calorieSource: body.calorieSource } : {}),
+        ...(body.usdaApiKey !== undefined
+          ? { usdaApiKey: body.usdaApiKey === '' ? null : body.usdaApiKey }
+          : {}),
       },
     });
 

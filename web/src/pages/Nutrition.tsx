@@ -149,7 +149,10 @@ export function NutritionPage() {
         title="// Nutrition"
         subtitle={
           t
-            ? `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${user?.calorieBaseline ?? 2200}) · ${t.proteinGoalG}g protein · ${t.waterGoalMl} ml water (35 ml/kg)`
+            ? (() => {
+                const w = convertForDisplay(t.waterGoalMl, 'ml', system);
+                return `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${user?.calorieBaseline ?? 2200}) · ${t.proteinGoalG}g protein · ${w.value.toFixed(0)} ${w.unit} water (35 ml/kg)`;
+              })()
             : 'Calories, macros, water. Quick-log throughout the day.'
         }
         action={
@@ -220,11 +223,13 @@ export function NutritionPage() {
                       className="h-full transition-all duration-500"
                       style={{
                         width: `${pct}%`,
-                        // Water gets a darker blue (deep-sky) so it
-                        // reads as hydration at a glance. Other
-                        // metrics keep the cyan/lime/amber scale.
+                        // Water gets an aqua-blue (darker than the
+                        // cyan used for other metrics, but light
+                        // enough to read as "fresh water" rather than
+                        // navy). Other metrics keep the cyan/lime/amber
+                        // scale.
                         background: isWater
-                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#1d6fc9' : '#0e3a73')
+                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#0e9fc7' : '#086a8a')
                           : (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#14d6e8' : '#ffc34d'),
                         boxShadow: '0 0 6px currentColor',
                       }}

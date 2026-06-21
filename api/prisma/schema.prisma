@@ -266,6 +266,11 @@ model User {
   /// What the baseline number represents. Affects only the UI label
   /// ("Maintenance" vs "BMR" vs "BMR + NEAT"). Math is the same.
   calorieSource   CalorieSource @default(BASELINE)
+  /// USDA FoodData Central API key. Free; sign up at
+  /// https://fdc.nal.usda.gov/api-key-signup.html. Required for the
+  /// upcoming food tracker; the LLM will use this when looking up
+  /// foods that aren't in OpenFoodFacts. Private to the user.
+  usdaApiKey      String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
