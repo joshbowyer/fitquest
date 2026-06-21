@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -6,9 +6,9 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { TrackedItem, TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
-import { classNames, formatMetricWithUnit } from '@/lib/format';
-import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
+import { classNames } from '@/lib/format';
+import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { FoodPanel } from '@/components/FoodPanel';
 import { MealSections } from '@/components/MealSections';
 import { DailyTotalsBar } from '@/components/DailyTotalsBar';

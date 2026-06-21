@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
-import { NeonButton } from '@/components/NeonButton';
 import {
   MEAL_TYPE_LABEL,
   MEAL_TYPE_ORDER,
