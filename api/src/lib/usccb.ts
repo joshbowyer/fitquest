@@ -54,6 +54,31 @@ function stripTags(s: string): string {
     .trim();
 }
 
+/**
+ * USCCB appends a copyright notice to the bottom of each reading
+ * (e.g. " - - - Lectionary for Mass for Use in the Dioceses of the
+ * United States, second typical edition, Copyright © ..."). We strip
+ * that here so the user only sees the scripture text. The full
+ * attribution is documented in the project README.
+ */
+function stripCopyright(body: string): string {
+  // Cut at the first occurrence of any sentinel.
+  const cutMarkers = [
+    /\s*-\s*-\s*-\s*/,          // ASCII hyphen separator (what the RSS uses)
+    /\s*—\s*—\s*—\s*/,          // em-dash separator (defensive)
+    /\s+Lectionary for Mass/i,  // direct start of attribution
+    /\s+Copyright\s+©/i,        // direct start of © line
+  ];
+  let cut = body.length;
+  for (const re of cutMarkers) {
+    const m = body.match(re);
+    if (m && m.index !== undefined && m.index < cut) {
+      cut = m.index;
+    }
+  }
+  return body.slice(0, cut).trim();
+}
+
 function extractRef(headerLine: string): { ref: string; rest: string } {
   // Header lines look like:
   //   "Reading 1 <a href="...">1 Kings 21:1-16</a>"
@@ -87,7 +112,7 @@ function parseDescription(descHtml: string): Omit<DailyReading, 'date' | 'liturg
     const body = stripTags(after.slice(0, stop));
     const { ref } = extractRef(headerText);
     firstReadingRef = ref;
-    firstReading = body;
+    firstReading = stripCopyright(body);
   }
 
   // Responsorial Psalm
@@ -102,7 +127,7 @@ function parseDescription(descHtml: string): Omit<DailyReading, 'date' | 'liturg
     const body = stripTags(after.slice(0, stop));
     const { ref } = extractRef(headerText);
     psalmRef = ref;
-    responsorialPsalm = body;
+    responsorialPsalm = stripCopyright(body);
   }
 
   // Gospel Acclamation: the "Alleluia <a>REF</a> R. [text]" block.
@@ -117,7 +142,7 @@ function parseDescription(descHtml: string): Omit<DailyReading, 'date' | 'liturg
     const after = acclamationMatch[0].slice(headerEnd);
     const stopMatch = after.match(/<h4>/);
     const stop = stopMatch ? stopMatch.index! : after.length;
-    gospelAcclamation = stripTags(after.slice(0, stop));
+    gospelAcclamation = stripCopyright(stripTags(after.slice(0, stop)));
   }
 
   // Gospel
@@ -131,7 +156,7 @@ function parseDescription(descHtml: string): Omit<DailyReading, 'date' | 'liturg
     const body = stripTags(after);
     const { ref } = extractRef(headerText);
     gospelRef = ref;
-    gospel = body;
+    gospel = stripCopyright(body);
   }
 
   return {

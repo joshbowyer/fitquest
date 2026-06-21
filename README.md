@@ -247,3 +247,31 @@ pg_dump $DATABASE_URL > backup.sql
 ## License
 
 MIT
+
+## Scripture Attribution
+
+Daily Mass readings on the `/spiritual` page are sourced from the
+**United States Conference of Catholic Bishops (USCCB)** via the
+[USCCB Daily Readings RSS feed](https://bible.usccb.org/podcasts/daily-readings)
+and are displayed under the following license:
+
+> Excerpts from the *Lectionary for Mass for Use in the Dioceses of
+> the United States of America*, second typical edition © 1998,
+> 1997, 1986, 1970 Confraternity of Christian Doctrine, Washington,
+> D.C. Used with permission. All rights reserved.
+>
+> Psalm refrains © 1968, 1981, 1997, International Committee on
+> English in the Liturgy, Inc. (ICEL). All rights reserved.
+>
+> No part of the Lectionary for Mass may be reproduced,
+> distributed, transmitted, or displayed in any medium, including
+> electronic and digital, without permission in writing from the
+> copyright owner.
+
+The full copyright notice is fetched live with each reading but
+stripped from the in-app display to keep the reading view focused
+on the scripture text. The notice above is the canonical
+attribution.
+
+The app is a non-commercial, self-hosted tool for personal devotion
+and is not affiliated with USCCB.
