@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Prisma, WorkoutType } from '@prisma/client';
+import { Prisma, SkipReason, WorkoutType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { bestEstimatedOneRm, isPrCandidate } from '../lib/pr.js';
@@ -9,14 +9,80 @@ import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
 import { checkRoutineProgress } from './routine.js';
 
+/**
+ * Per-exercise absolute caps for "this value is almost certainly
+ * a typo" warnings. Stored values are kept (the user might be a
+ * powerlifter with a 350kg deadlift) but flagged in the response so
+ * the morning report can surface them.
+ *
+ * Heuristics:
+ *   - 500kg / 1100lb on any single set: very few people lift this
+ *     in raw training; if a user suddenly does, it's likely a typo
+ *     (1350 vs 135) or a unit-mixup.
+ *   - 200 reps in one set: probably a mis-log of total reps.
+ */
+const SUSPECT_WEIGHT_KG = 500;
+const SUSPECT_REPS = 200;
+
+type ValidityFlag = {
+  exercise: string;
+  setIndex: number;
+  field: 'weight' | 'reps';
+  value: number;
+  reason: 'possible_typo' | 'unusually_high';
+};
+
+function flagSuspectSets(
+  exercises: Array<{ name: string; sets: Array<{ weight?: number | null; reps: number }> }>,
+  units: 'METRIC' | 'IMPERIAL',
+): ValidityFlag[] {
+  const cap = units === 'IMPERIAL' ? SUSPECT_WEIGHT_KG * 2.20462 : SUSPECT_WEIGHT_KG;
+  const flags: ValidityFlag[] = [];
+  for (const ex of exercises) {
+    ex.sets.forEach((s, idx) => {
+      if ((s.weight ?? 0) > cap) {
+        // Past 1.5× the cap (i.e. > 750kg / ~1650lb) it's almost
+        // certainly a typo: world-record deadlift is ~500kg, so
+        // anything north of 750kg isn't a real lift, it's "I typed
+        // 1350 instead of 135".
+        flags.push({
+          exercise: ex.name,
+          setIndex: idx,
+          field: 'weight',
+          value: s.weight!,
+          reason: s.weight! > cap * 1.5 ? 'possible_typo' : 'unusually_high',
+        });
+      }
+      if (s.reps > SUSPECT_REPS) {
+        flags.push({
+          exercise: ex.name,
+          setIndex: idx,
+          field: 'reps',
+          value: s.reps,
+          reason: 'possible_typo',
+        });
+      }
+    });
+  }
+  return flags;
+}
+
 const SetInput = z.object({
   reps: z.number().int().min(0).max(1000),
+  // Hard cap 2000kg/4400lb — past that it's almost certainly a typo
+  // (e.g. typed 1350 instead of 135). Server stores it either way
+  // but flags it for the morning report.
   weight: z.number().min(0).max(2000).optional().nullable(),
   duration: z.number().int().min(0).max(60 * 60 * 6).optional().nullable(),
   // 0 means "not specified" — don't reject on min(1).
   rpe: z.number().min(0).max(10).optional().nullable(),
   completed: z.boolean().default(true),
   order: z.number().int().min(0).default(0),
+  // Skip fields: a skipped set is preserved in history but excluded
+  // from volume/PR math. INJURY reason is the only kind that doesn't
+  // count against streaks or dailies.
+  skipped: z.boolean().default(false),
+  skipReason: z.nativeEnum(SkipReason).optional().nullable(),
 });
 
 const ExerciseInput = z.object({
@@ -73,9 +139,14 @@ export async function workoutRoutes(app: FastifyInstance) {
     const me = await requireUser(req);
     const body = CreateWorkoutSchema.parse(req.body);
 
+    // Check for suspect values BEFORE inserting. Stored as-is (the
+    // user might be a powerlifter with a 350kg deadlift) but returned
+    // in the response so the client can show a confirm / correction UI.
+    const validityFlags = flagSuspectSets(body.exercises, me.units);
+
     const totalVolumeKg = body.exercises.reduce((acc, ex) => {
       return acc + ex.sets.reduce((s, set) => {
-        if (!set.completed) return s;
+        if (!set.completed || set.skipped) return s;
         return s + (set.weight ?? 0) * set.reps;
       }, 0);
     }, 0);
@@ -108,7 +179,7 @@ export async function workoutRoutes(app: FastifyInstance) {
       for (const ex of workout.exercises) {
         if (!ex.sets.length) continue;
         const bestSet = ex.sets
-          .filter((s) => s.completed && (s.weight ?? 0) > 0 && s.reps > 0)
+          .filter((s) => s.completed && !s.skipped && (s.weight ?? 0) > 0 && s.reps > 0)
           .reduce<{ value: number; weight: number; reps: number } | null>((acc, s) => {
             const v = bestEstimatedOneRm(s.weight ?? 0, s.reps);
             if (acc == null || v > acc.value) return { value: v, weight: s.weight ?? 0, reps: s.reps };
@@ -257,6 +328,10 @@ export async function workoutRoutes(app: FastifyInstance) {
         progress: progressInLevel(result.totalXp, result.level),
         prs,
       },
+      // Validity flags surface in the morning report / a quick toast
+      // on the workout logger so the user can correct typos before
+      // the values get cemented into PR history.
+      validityFlags,
       raid: {
         damage: raidDamage,
         contribution: raidContribution,

@@ -12,6 +12,7 @@ import { type UnitSystem } from '@/lib/units';
 import { musclesForExercise, loadForExercise } from '@/lib/muscles';
 import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { RestTimer, REST_PRESETS } from '@/components/RestTimer';
+import { PlateCalculator } from '@/components/PlateCalculator';
 
 function kgToLb(kg: number): number {
   return kg * 2.20462;
@@ -29,17 +30,38 @@ const TYPE_OPTIONS: { value: WorkoutType; label: string; color: 'cyan' | 'magent
   { value: 'OTHER', label: 'Other', color: 'cyan' },
 ];
 
+type SkipReason = 'INJURY' | 'ILLNESS' | 'FATIGUE' | 'EQUIPMENT' | 'SCHEDULE' | 'OTHER';
+const SKIP_REASON_LABEL: Record<SkipReason, string> = {
+  INJURY: 'Injury',
+  ILLNESS: 'Illness',
+  FATIGUE: 'Fatigue',
+  EQUIPMENT: 'No equipment',
+  SCHEDULE: 'Out of time',
+  OTHER: 'Other',
+};
+const SKIP_REASONS: SkipReason[] = ['INJURY', 'ILLNESS', 'FATIGUE', 'EQUIPMENT', 'SCHEDULE', 'OTHER'];
+
+type ValidityFlag = {
+  exercise: string;
+  setIndex: number;
+  field: 'weight' | 'reps';
+  value: number;
+  reason: 'possible_typo' | 'unusually_high';
+};
+
 type DraftSet = {
   reps: number;
   weight: number;  // displayed in user's preferred unit (kg or lb)
   duration: number;  // seconds (for timed sets)
   rpe: number;
+  skipped?: boolean;
+  skipReason?: SkipReason | null;
 };
 
 type DraftExercise = { name: string; sets: DraftSet[] };
 
 function emptyExercise(): DraftExercise {
-  return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0 }] };
+  return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0, skipped: false, skipReason: null }] };
 }
 
 // Convert a stored workout into DraftExercise[] for the form.
@@ -56,6 +78,8 @@ function workoutToDraft(
         : 0,
       duration: s.duration ?? 0,
       rpe: s.rpe ?? 0,
+      skipped: s.skipped ?? false,
+      skipReason: s.skipReason ?? null,
     })),
   }));
 }
@@ -159,7 +183,9 @@ export function WorkoutsPage() {
                     duration: s.duration || undefined,
                     rpe: s.rpe || undefined,
                     order: j,
-                    completed: true,
+                    completed: !s.skipped,
+                    skipped: !!s.skipped,
+                    skipReason: s.skipped ? s.skipReason ?? 'OTHER' : null,
                   };
                 }),
             };
@@ -457,20 +483,81 @@ export function WorkoutsPage() {
                             <button
                               onClick={() => {
                                 const copy = [...exercises];
+                                copy[i].sets[j] = s.skipped
+                                  ? { ...s, skipped: false, skipReason: null }
+                                  : { ...s, skipped: true, skipReason: s.skipReason ?? 'OTHER' };
+                                setExercises(copy);
+                              }}
+                              className={classNames(
+                                'text-xs',
+                                s.skipped
+                                  ? 'text-amber-400 hover:text-amber-300'
+                                  : 'text-ink-400 hover:text-amber-400',
+                              )}
+                              title={s.skipped ? 'Un-skip this set' : 'Mark as skipped (injury, fatigue, etc.)'}
+                            >
+                              {s.skipped ? '⊘' : '○'}
+                            </button>
+                          )}
+                          {ex.sets.length > 1 && (
+                            <button
+                              onClick={() => {
+                                const copy = [...exercises];
                                 copy[i].sets = copy[i].sets.filter((_, k) => k !== j);
                                 setExercises(copy);
                               }}
                               className="text-ink-400 hover:text-neon-magenta text-xs"
+                              title="Remove set"
                             >
                               ✕
                             </button>
                           )}
                         </div>
                       ))}
+                      {/* Skipped-set row: shows a small reason picker
+                          under each set that was marked skipped. Stays
+                          collapsed otherwise. */}
+                      {ex.sets.some((s) => s.skipped) && (
+                        <div className="mt-1 text-[10px] font-mono text-slate-400 space-y-1">
+                          {ex.sets.map((s, j) =>
+                            s.skipped ? (
+                              <div key={j} className="flex items-center gap-2 flex-wrap">
+                                <span className="text-amber-400">⊘ Set {j + 1} skipped</span>
+                                <span className="text-slate-500">reason:</span>
+                                <select
+                                  className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]"
+                                  value={s.skipReason ?? 'OTHER'}
+                                  onChange={(e) => {
+                                    const copy = [...exercises];
+                                    copy[i].sets[j] = { ...s, skipReason: e.target.value as SkipReason };
+                                    setExercises(copy);
+                                  }}
+                                >
+                                  {SKIP_REASONS.map((r) => (
+                                    <option key={r} value={r}>
+                                      {SKIP_REASON_LABEL[r]}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => {
+                                    const copy = [...exercises];
+                                    copy[i].sets[j] = { ...s, skipped: false, skipReason: null };
+                                    setExercises(copy);
+                                  }}
+                                  className="text-ink-500 hover:text-neon-cyan text-[10px]"
+                                >
+                                  undo
+                                </button>
+                              </div>
+                            ) : null,
+                          )}
+                        </div>
+                      )}
                       <button
                         onClick={() => {
                           const copy = [...exercises];
-                          copy[i].sets.push({ reps: 0, weight: 0, duration: 0, rpe: 0 });
+                          copy[i].sets.push({ reps: 0, weight: 0, duration: 0, rpe: 0, skipped: false, skipReason: null });
                           setExercises(copy);
                         }}
                         className="btn-ghost text-[10px] mt-1"
@@ -478,6 +565,29 @@ export function WorkoutsPage() {
                         + Set
                       </button>
                     </div>
+                    {/* Plate calculator: only for strength exercises with a
+                        non-zero target weight. Uses the first set's weight
+                        (rest of the sets are usually the same). */}
+                    {ex.type === 'STRENGTH' &&
+                      ex.sets.length > 0 &&
+                      (() => {
+                        const targetRaw = ex.sets[0].weight || 0;
+                        const bwDisplay = user?.weightKg
+                          ? units === 'IMPERIAL'
+                            ? Math.round(kgToLb(user.weightKg) * 10) / 10
+                            : Math.round(user.weightKg * 10) / 10
+                          : 0;
+                        // For bodyweight: effective = profile (input disabled)
+                        // For weighted-bodyweight: effective = profile + extra
+                        // For standard barbell: effective = entered value
+                        let w = 0;
+                        if (isBw) w = bwDisplay;
+                        else if (isWeightedBw) w = bwDisplay + targetRaw;
+                        else w = targetRaw;
+                        return w > 0 ? (
+                          <PlateCalculator weight={w} units={units} />
+                        ) : null;
+                      })()}
                   </div>
                 );
               })}
@@ -525,6 +635,21 @@ export function WorkoutsPage() {
                       </span>
                     )}
                   </div>
+                  {result.validityFlags && result.validityFlags.length > 0 && (
+                    <div className="mt-2 text-amber-400 space-y-0.5">
+                      <div className="font-display tracking-widest text-[10px] uppercase text-amber-300">
+                        ⚠ Check these values
+                      </div>
+                      {result.validityFlags.map((f: ValidityFlag, idx: number) => (
+                        <div key={idx} className="text-[10px]">
+                          {f.exercise} set {f.setIndex + 1}: {f.field} = {f.value}
+                          {f.reason === 'possible_typo'
+                            ? ' — possibly a typo'
+                            : ' — unusually high'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {result.raid?.damage && result.raid.damage.total > 0 && (
                     <div className="text-neon-magenta mt-1">
                       ⚔ {result.raid.damage.total} dmg

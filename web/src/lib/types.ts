@@ -309,6 +309,8 @@ export type SetEntry = {
   rpe: number | null;
   completed: boolean;
   order: number;
+  skipped?: boolean;
+  skipReason?: 'INJURY' | 'ILLNESS' | 'FATIGUE' | 'EQUIPMENT' | 'SCHEDULE' | 'OTHER' | null;
 };
 export type Measurement = {
   id: string;

@@ -294,6 +294,19 @@ model Exercise {
   sets      Set[]
 }
 
+/// Why a set was not performed. Logged on the Set itself rather than
+/// the Exercise so partial workouts (some sets done, one skipped for
+/// an injury) are honest. INJURY skips do NOT count against streaks
+/// or dailies; other reasons do.
+enum SkipReason {
+  INJURY
+  ILLNESS
+  FATIGUE
+  EQUIPMENT
+  SCHEDULE
+  OTHER
+}
+
 model Set {
   id         String   @id @default(cuid())
   exerciseId String
@@ -304,6 +317,11 @@ model Set {
   rpe        Float?
   completed  Boolean  @default(true)
   order      Int      @default(0)
+  // Set was not performed. If true, the workout's PR detection and
+  // volume math ignore this row. The reason flows into the Status
+  // avatar's "Condition" badge and the morning report.
+  skipped    Boolean  @default(false)
+  skipReason SkipReason?
 }
 
 model Pr {
