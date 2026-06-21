@@ -209,6 +209,7 @@ model User {
   dailyLogs        DailyLog[]
   inventoryItems   InventoryItem[]
   morningReports   MorningReport[]
+  spiritualReflections SpiritualReflection[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -949,6 +950,74 @@ model MorningReport {
   model     String?
   /// Latency in ms (for performance monitoring + a "this took 4s"
   /// breadcrumb in dev).
+  latencyMs Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+/// Cached USCCB daily Mass readings. One row per liturgical date
+/// (YYYY-MM-DD). Populated on first request via the fetcher; once
+/// cached, the spiritual director feature works fully offline.
+///
+/// Schema mirrors the USCCB daily readings JSON shape:
+///   - firstReading:  OT / NT pre-Gospel
+///   - responsorialPsalm:  psalm with refrain
+///   - gospelAcclamation:  Alleluia verse
+///   - gospel:  the Gospel passage
+///   - liturgicalInfo:  feast / memorial / weekday / season
+///
+/// We do NOT cache the user's LLM reflection here — that's stored
+/// in SpiritualReflection keyed on (userId, date) so different
+/// users get their own voice on the same Gospel.
+model UsccbDailyReading {
+  id                String   @id @default(cuid())
+  /// YYYY-MM-DD in liturgical calendar (USCCB's calendar is what
+  /// the source uses, not the user's local timezone).
+  date              String   @unique
+  /// Human-readable label: "Friday of the 11th Week in Ordinary Time"
+  /// or "Memorial of St. Thomas the Apostle".
+  liturgicalInfo    String?
+  firstReading      String?
+  firstReadingRef   String?
+  responsorialPsalm String?
+  psalmRef          String?
+  gospelAcclamation String?
+  gospel            String?
+  gospelRef         String?
+  /// Where this came from: 'usccb' (canonical) or 'manual' (admins
+  /// can paste a reading for a date the USCCB site didn't have).
+  source            String   @default("usccb")
+  /// Hash of the canonical URL so we can detect USCCB site changes
+  /// and re-fetch.
+  sourceHash        String?
+  fetchedAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+/// Per-user LLM reflection on the day's USCCB Gospel. Same shape
+/// as MorningReport (keyed on user + date) so it integrates with
+/// the existing cache pattern.
+model SpiritualReflection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// YYYY-MM-DD in the user's timezone.
+  date      String
+  /// The Gospel that was the source for the reflection (cached
+  /// here too so the UI can show the passage alongside the
+  /// reflection without re-querying the readings table).
+  gospelRef String?
+  gospelText String?
+  liturgicalInfo String?
+  /// 2-3 sentence reflection from the LLM spiritual director.
+  reflection String
+  /// Optional: name of a patron saint the LLM suggests for the
+  /// day (e.g. by name-day or by current struggle). Empty if none.
+  patronSuggestion String?
+  model     String?
   latencyMs Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

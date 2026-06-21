@@ -9,6 +9,7 @@ import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { formatRelative } from '@/lib/format';
 import { DIFFICULTY_TIERS, type DifficultyTier } from '@/lib/difficultyTiers';
+import { SpiritualDirectorCard } from '@/components/SpiritualDirectorCard';
 
 // Persist the dismissal across remounts (tab switches) and reloads.
 // The server-side showOrdainPicker stays true until the user logs a
@@ -165,6 +166,13 @@ export function SpiritualPage() {
           }}
         />
       )}
+
+      {/* Spiritual director — today's USCCB Gospel + LLM-tailored
+          reflection. Sits above the dailies so it's the first thing
+          the user reads when they open the page. */}
+      <div className="mb-4 md:mb-6">
+        <SpiritualDirectorCard />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <div className="space-y-4">

@@ -330,6 +330,23 @@ export type MorningReport = {
   createdAt: string;
   cached: boolean;
 };
+
+/** Server-generated spiritual director reflection on the daily
+ *  USCCB Gospel. Tailored to the user's recent state. */
+export type SpiritualReflection = {
+  id: string;
+  userId: string;
+  date: string;
+  gospelRef: string;
+  gospelText: string;
+  liturgicalInfo: string;
+  reflection: string;
+  patronSuggestion: string;
+  model: string | null;
+  latencyMs: number | null;
+  createdAt: string;
+  cached: boolean;
+};
 export type Measurement = {
   id: string;
   metric: MetricType;

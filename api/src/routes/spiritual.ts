@@ -4,6 +4,8 @@ import { PrayerType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { getOrGenerateReflection, type SpiritualReflection } from '../lib/spiritualDirector.js';
+import { refreshUsccbCache } from '../lib/usccb.js';
 
 // XP awarded per prayer type (base, before Ordained boost).
 const PRAYER_XP: Record<PrayerType, number> = {
@@ -210,5 +212,34 @@ const logSchema = z.union([
       data: { spiritualDailyPrayers: body.prayers },
     });
     return { ok: true, prayers: body.prayers };
+  });
+
+  // GET /spiritual/director
+  // Returns today's LLM reflection on the daily Mass readings,
+  // tailored to the user's recent state. Cached for the day; force
+  // via POST /spiritual/director/regenerate. Returns 204 if no
+  // USCCB reading is available (e.g. date outside the feed window).
+  app.get('/director', async (req, reply) => {
+    const me = await requireUser(req);
+    const result: SpiritualReflection | null = await getOrGenerateReflection(me.id);
+    if (!result) return reply.code(204).send();
+    return result;
+  });
+
+  // POST /spiritual/director/regenerate — force a fresh reflection.
+  app.post('/director/regenerate', async (req, reply) => {
+    const me = await requireUser(req);
+    const result: SpiritualReflection | null = await getOrGenerateReflection(me.id, { force: true });
+    if (!result) return reply.code(204).send();
+    return result;
+  });
+
+  // POST /spiritual/refresh-readings — admin/debug: force a refresh
+  // of the USCCB daily-readings cache. Not guarded by requireAdmin
+  // because the cache is read-only data; users triggering a refresh
+  // just means the next reflection gets a fresher reading.
+  app.post('/refresh-readings', async () => {
+    const result = await refreshUsccbCache();
+    return result;
   });
 }
