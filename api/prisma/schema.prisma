@@ -235,6 +235,7 @@ model User {
   trackedItems     UserTrackedItem[]
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
+  mealEntries      MealEntry[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -1192,4 +1193,57 @@ model SubstanceLog {
 
   @@index([userId, loggedAt])
   @@index([userId, category, loggedAt])
+}
+
+/// Meal section in the food tracker.
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum FoodSource {
+  OPENFOODFACTS
+  USDA
+  MANUAL
+}
+
+model FoodItem {
+  id            String      @id @default(cuid())
+  source        FoodSource
+  sourceId      String
+  name          String
+  brand         String?
+  imageUrl      String?
+  servingSizeG  Float?
+  calories      Float
+  proteinG      Float
+  carbG         Float
+  fatG          Float
+  fiberG        Float?
+  sugarG        Float?
+  sodiumMg      Float?
+  sourceUrl     String?
+  fetchedAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  mealEntries   MealEntry[]
+
+  @@unique([source, sourceId])
+  @@index([name])
+}
+
+model MealEntry {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodId    String
+  food      FoodItem   @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  meal      MealType
+  servings  Float
+  note      String?
+  loggedAt  DateTime   @default(now())
+
+  @@index([userId, loggedAt])
+  @@index([userId, meal, loggedAt])
 }
