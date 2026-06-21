@@ -113,6 +113,22 @@ enum CalorieGoal {
   BULK
 }
 
+/// What the user's calorieBaseline actually represents. Drives how
+/// the morning report + Nutrition page label the number. The
+/// calculation logic is the same — only the label changes.
+///
+/// - BASELINE:    typical TDEE estimate (the default). User knows their
+///                 maintenance from real-world weight-stable data.
+/// - BMR:         basal metabolic rate only (Mifflin-St Jeor or similar).
+///                 User is saying "I'm sedentary; do the rest from there."
+/// - BMR_NEAT:    BMR + non-exercise activity thermogenesis. User has
+///                 accounted for daily movement but NOT for workouts.
+enum CalorieSource {
+  BASELINE
+  BMR
+  BMR_NEAT
+}
+
 enum SkillTier {
   TIER_1
   TIER_2
@@ -247,6 +263,9 @@ model User {
   /// 2200 is a reasonable placeholder; the user should set this to
   /// their actual maintenance once they have data.
   calorieBaseline  Int           @default(2200)
+  /// What the baseline number represents. Affects only the UI label
+  /// ("Maintenance" vs "BMR" vs "BMR + NEAT"). Math is the same.
+  calorieSource   CalorieSource @default(BASELINE)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

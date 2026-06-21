@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CalorieGoal, ClassName } from '@prisma/client';
+import { CalorieGoal, CalorieSource, ClassName } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeAllGeneticMaxes } from '../lib/geneticMax.js';
@@ -34,6 +34,9 @@ const ProfileSchema = z.object({
   /// User-set maintenance calorie baseline. Calorie goal =
   /// baseline + (cut -250 / maintain 0 / bulk +250).
   calorieBaseline: z.number().int().min(800).max(8000).optional(),
+  /// What the baseline number represents. Affects only the UI
+  /// label; the math is the same.
+  calorieSource: z.nativeEnum(CalorieSource).optional(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -127,6 +130,7 @@ export async function userRoutes(app: FastifyInstance) {
         ...(body.timezone !== undefined ? { timezone: body.timezone || null } : {}),
         ...(body.goal !== undefined ? { goal: body.goal } : {}),
         ...(body.calorieBaseline !== undefined ? { calorieBaseline: body.calorieBaseline } : {}),
+        ...(body.calorieSource !== undefined ? { calorieSource: body.calorieSource } : {}),
       },
     });
 

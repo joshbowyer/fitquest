@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -148,7 +149,7 @@ export function NutritionPage() {
         title="// Nutrition"
         subtitle={
           t
-            ? `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal · ${t.proteinGoalG}g protein · ${t.waterGoalMl} ml water (35 ml/kg)`
+            ? `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${user?.calorieBaseline ?? 2200}) · ${t.proteinGoalG}g protein · ${t.waterGoalMl} ml water (35 ml/kg)`
             : 'Calories, macros, water. Quick-log throughout the day.'
         }
         action={
@@ -161,9 +162,31 @@ export function NutritionPage() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {metrics.map((m) => {
-          const meta = METRICS[m];
-          const total = sumByMetric.get(m) ?? 0;
+        {/* Left half: food tracker placeholder. The full food tracker
+            (search, barcode, meal sections, daily totals) will land
+            here. Calorie + protein tracking move into the food
+            tracker; water stays separate. */}
+        <div className="order-2 lg:order-1">
+          <Panel variant="violet" title="Food tracker (coming soon)">
+            <div className="text-sm text-slate-300 leading-relaxed">
+              The full food tracker (search, barcode, meal sections,
+              daily totals) will replace the calorie / protein / carb /
+              fat blocks once it lands. Calorie and protein tracking
+              move into the food tracker; water stays separate.
+            </div>
+            <div className="mt-3 text-[10px] font-mono text-slate-500">
+              // roadmap item #8 (FoodYou-style nutrition) + #9 (OpenFoodFacts)
+            </div>
+          </Panel>
+        </div>
+
+        {/* Right half: existing macro panels, 2-col grid inside, justified
+            to the right so the left half is reserved for the food
+            tracker. */}
+        <div className="order-1 lg:order-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {metrics.map((m) => {
+            const meta = METRICS[m];
+            const total = sumByMetric.get(m) ?? 0;
           const target = targets[m] ?? meta.defaultMin;
           const pct = target > 0 ? Math.min(100, (total / target) * 100) : 0;
           const lastEntry = todayMeasurements.find((x) => x.metric === m);
@@ -197,7 +220,12 @@ export function NutritionPage() {
                       className="h-full transition-all duration-500"
                       style={{
                         width: `${pct}%`,
-                        background: pct >= 100 ? '#9bff5c' : pct >= 60 ? '#14d6e8' : '#ffc34d',
+                        // Water gets a darker blue (deep-sky) so it
+                        // reads as hydration at a glance. Other
+                        // metrics keep the cyan/lime/amber scale.
+                        background: isWater
+                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#1d6fc9' : '#0e3a73')
+                          : (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#14d6e8' : '#ffc34d'),
                         boxShadow: '0 0 6px currentColor',
                       }}
                     />
@@ -210,15 +238,23 @@ export function NutritionPage() {
                     <>
                       <QuickBtn
                         label={system === 'IMPERIAL' ? '+8 fl oz' : '+250 ml'}
+                        title="Small glass / kids' cup"
                         onClick={() => {
-                          // Quick-add stores in ml; the server-side
-                          // convert handles imperial display.
                           const addMl = system === 'IMPERIAL' ? 237 : 250;
                           batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
                         }}
                       />
                       <QuickBtn
+                        label={system === 'IMPERIAL' ? '+12 fl oz' : '+350 ml'}
+                        title="Standard water bottle"
+                        onClick={() => {
+                          const addMl = system === 'IMPERIAL' ? 355 : 350;
+                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
+                        }}
+                      />
+                      <QuickBtn
                         label={system === 'IMPERIAL' ? '+16 fl oz' : '+500 ml'}
+                        title="Pint glass / large bottle"
                         onClick={() => {
                           const addMl = system === 'IMPERIAL' ? 473 : 500;
                           batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
@@ -272,9 +308,10 @@ export function NutritionPage() {
                   )}
                 </div>
               </div>
-            </Panel>
-          );
-        })}
+             </Panel>
+           );
+         })}
+        </div>
       </div>
 
       <TrackedItemsPanel
@@ -295,9 +332,9 @@ export function NutritionPage() {
       />
       <SubstancesPanel />
 
-      {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80">
-          <div className="bg-bg-800 border border-neon-cyan/40 max-w-md w-full mx-4 p-5">
+      {editing && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4">
+          <div className="bg-bg-800 border border-neon-cyan/40 max-w-md w-full p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="font-display tracking-widest text-ink-50">Daily Targets</div>
               <button onClick={() => setEditing(false)} className="text-ink-400 hover:text-ink-100">✕</button>
@@ -327,7 +364,8 @@ export function NutritionPage() {
               <NeonButton onClick={saveTargets} icon="⚡" variant="lime">Save</NeonButton>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </Layout>
   );
@@ -667,7 +705,10 @@ function AddTrackedItemModal({
     Number(dose) > 0 &&
     Number(dose) <= 100000;
 
-  return (
+  // Portal to document.body so the modal escapes the .panel
+  // stacking context (which has backdrop-blur-sm that creates a
+  // new containing block, trapping position:fixed children).
+  return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
       onClick={onClose}
@@ -762,7 +803,8 @@ function AddTrackedItemModal({
           </NeonButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

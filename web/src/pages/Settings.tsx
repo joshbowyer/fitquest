@@ -195,18 +195,82 @@ export function SettingsPage() {
 
             <div>
               <div className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 mb-2">
-                Calorie Baseline (maintenance)
+                Calorie Baseline (
+                {user.calorieSource === 'BMR'
+                  ? 'BMR only'
+                  : user.calorieSource === 'BMR_NEAT'
+                  ? 'BMR + NEAT'
+                  : 'maintenance'}
+                )
               </div>
               <BaselineEditor
                 value={user.calorieBaseline ?? 2200}
                 disabled={goalM.isPending}
-                onSave={(v) => goalM.mutate({ goal: user.goal ?? 'MAINTAIN', calorieBaseline: v })}
+                onSave={(v) =>
+                  goalM.mutate({
+                    goal: user.goal ?? 'MAINTAIN',
+                    calorieBaseline: v,
+                    calorieSource: user.calorieSource ?? 'BASELINE',
+                  })
+                }
               />
               <div className="text-[10px] font-mono text-ink-400 mt-1">
                 Your maintenance calories. The actual daily target is
                 baseline + goal offset (cut -250, maintain 0, bulk +250).
                 Default 2200 — set this to your real maintenance once
                 you have 2-3 weeks of weight-stable data.
+              </div>
+              {/* Source picker: lets power users tell us whether the
+                  baseline is a full TDEE, a BMR alone, or a BMR+NEAT
+                  estimate. Math is the same; only the label changes. */}
+              <div className="mt-3">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1">
+                  Baseline source
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <SourceOption
+                    current={user.calorieSource}
+                    value="BASELINE"
+                    label="Maintenance"
+                    hint="TDEE estimate. Use if you have 2-3 weeks of weight-stable data."
+                    onSelect={() =>
+                      goalM.mutate({
+                        goal: user.goal ?? 'MAINTAIN',
+                        calorieBaseline: user.calorieBaseline ?? 2200,
+                        calorieSource: 'BASELINE',
+                      })
+                    }
+                    disabled={goalM.isPending}
+                  />
+                  <SourceOption
+                    current={user.calorieSource}
+                    value="BMR_NEAT"
+                    label="BMR + NEAT"
+                    hint="Basal metabolic rate + daily movement, no workouts. Common for lightly active people."
+                    onSelect={() =>
+                      goalM.mutate({
+                        goal: user.goal ?? 'MAINTAIN',
+                        calorieBaseline: user.calorieBaseline ?? 2200,
+                        calorieSource: 'BMR_NEAT',
+                      })
+                    }
+                    disabled={goalM.isPending}
+                  />
+                  <SourceOption
+                    current={user.calorieSource}
+                    value="BMR"
+                    label="BMR only"
+                    hint="Basal metabolic rate only (e.g. Mifflin-St Jeor). You'll account for activity yourself."
+                    onSelect={() =>
+                      goalM.mutate({
+                        goal: user.goal ?? 'MAINTAIN',
+                        calorieBaseline: user.calorieBaseline ?? 2200,
+                        calorieSource: 'BMR',
+                      })
+                    }
+                    disabled={goalM.isPending}
+                  />
+                </div>
               </div>
             </div>
 
@@ -601,5 +665,44 @@ function TargetStat({
         <span className="text-xs text-ink-300 ml-1">{unit}</span>
       </div>
     </div>
+  );
+}
+
+function SourceOption({
+  current,
+  value,
+  label,
+  hint,
+  onSelect,
+  disabled,
+}: {
+  current: 'BASELINE' | 'BMR' | 'BMR_NEAT' | undefined;
+  value: 'BASELINE' | 'BMR' | 'BMR_NEAT';
+  label: string;
+  hint: string;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  const selected = current === value;
+  return (
+    <button
+      onClick={onSelect}
+      disabled={disabled}
+      className={classNames(
+        'p-2 border text-left transition-all',
+        selected
+          ? 'border-neon-lime/80 bg-neon-lime/10'
+          : 'border-ink-500/40 hover:border-ink-300',
+        disabled && 'opacity-50 cursor-not-allowed'
+      )}
+    >
+      <div className={classNames(
+        'text-xs font-mono',
+        selected ? 'text-neon-lime' : 'text-ink-200'
+      )}>
+        {label}
+      </div>
+      <div className="text-[10px] text-ink-400 font-mono mt-0.5">{hint}</div>
+    </button>
   );
 }

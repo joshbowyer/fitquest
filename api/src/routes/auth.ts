@@ -97,16 +97,17 @@ export async function authRoutes(app: FastifyInstance) {
         spiritualDailyPrayers: user.spiritualDailyPrayers,
         creatine: user.creatine,
         timezone: user.timezone,
-        creatineActive: await isCreatineActive(user.id),
-        goal: user.goal,
-        calorieBaseline: user.calorieBaseline,
-        weightKg: user.weightKg,
-        targets: computeGoalTargets({
-          goal: user.goal,
-          calorieBaseline: user.calorieBaseline,
-          weightKg: user.weightKg,
-        }),
-      },
+         creatineActive: await isCreatineActive(user.id),
+         goal: user.goal,
+         calorieBaseline: user.calorieBaseline,
+         calorieSource: user.calorieSource,
+         weightKg: user.weightKg,
+         targets: computeGoalTargets({
+           goal: user.goal,
+           calorieBaseline: user.calorieBaseline,
+           weightKg: user.weightKg,
+         }),
+       },
     });
   });
 
@@ -158,6 +159,7 @@ export async function authRoutes(app: FastifyInstance) {
         creatineActive: await isCreatineActive(user.id),
         goal: user.goal,
         calorieBaseline: user.calorieBaseline,
+        calorieSource: user.calorieSource,
         targets: computeGoalTargets({
           goal: user.goal,
           calorieBaseline: user.calorieBaseline,

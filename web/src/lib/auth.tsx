@@ -83,6 +83,11 @@ export type User = {
   // User-set maintenance calorie baseline. Calorie goal =
   // baseline + (cut -250 / maintain 0 / bulk +250).
   calorieBaseline?: number;
+  // What the baseline number represents. Affects only the UI label.
+  // - BASELINE:   TDEE estimate (the default)
+  // - BMR:        basal metabolic rate only
+  // - BMR_NEAT:   BMR + non-exercise activity thermogenesis
+  calorieSource?: 'BASELINE' | 'BMR' | 'BMR_NEAT';
   // Last fetched body weight in kg. Used for water + protein
   // floor calculations. Not always present.
   weightKg?: number | null;
