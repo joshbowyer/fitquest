@@ -215,7 +215,7 @@ export function AdminPage() {
                             <NeonButton
                               size="sm"
                               variant="amber"
-                              onClick={() => clear2faM.mutate(u.id)}
+                              onClick={() => clear2faM.run(u.id)}
                               disabled={clear2faM.isPending}
                             >
                               Clear 2FA
@@ -225,7 +225,7 @@ export function AdminPage() {
                             size="sm"
                             variant={u.isAdmin ? 'magenta' : 'lime'}
                             onClick={() =>
-                              toggleAdminM.mutate({
+                              toggleAdminM.run({
                                 id: u.id,
                                 isAdmin: !u.isAdmin,
                               })
@@ -256,13 +256,7 @@ export function AdminPage() {
           {llmQ.isLoading || !llmForm ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : (
-            <form
-              className="grid gap-3 sm:grid-cols-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                saveLlmM.mutate(llmForm);
-              }}
-            >
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs uppercase text-slate-500">Provider</span>
                 <div className="flex gap-2 mt-1">
@@ -280,6 +274,7 @@ export function AdminPage() {
                     <option value="MINIMAX">Minimax</option>
                   </select>
                   <NeonButton
+                    type="button"
                     size="sm"
                     variant="cyan"
                     disabled={!providersQ.data}
@@ -371,16 +366,29 @@ export function AdminPage() {
                 </span>
               </label>
               <div className="sm:col-span-2 flex justify-end">
-                <NeonButton type="submit" disabled={saveLlmM.isPending}>
+                <NeonButton
+                  type="button"
+                  disabled={saveLlmM.isPending}
+                  onClick={() => {
+                    // eslint-disable-next-line no-console
+                    console.log('[admin] saving LLM config', llmForm);
+                    saveLlmM.run(llmForm);
+                  }}
+                >
                   {saveLlmM.isPending ? 'Saving…' : 'Save LLM config'}
                 </NeonButton>
               </div>
-              {saveLlmM.isSuccess && (
+              {saveLlmM.error && (
+                <p className="sm:col-span-2 text-xs text-rose-400">
+                  Save failed: {String((saveLlmM.error as any)?.message ?? saveLlmM.error)}
+                </p>
+              )}
+              {saveLlmM.data && !saveLlmM.error && (
                 <p className="sm:col-span-2 text-xs text-emerald-400">
                   Saved.
                 </p>
               )}
-            </form>
+            </div>
           )}
         </Panel>
       </div>
@@ -397,7 +405,7 @@ export function AdminPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (newPassword.length >= 8) {
-                resetPwM.mutate({ id: resetTarget.id, newPassword });
+                resetPwM.run({ id: resetTarget.id, newPassword });
               }
             }}
           >
