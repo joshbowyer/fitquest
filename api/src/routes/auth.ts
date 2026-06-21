@@ -41,15 +41,14 @@ export async function authRoutes(app: FastifyInstance) {
     // Generate a stable placeholder email so the User model's NOT NULL
     // email column is satisfied. Real emails are off the table for now.
     const placeholderEmail = `${body.username.toLowerCase()}@local.fitquest`;
-    // Bootstrap: the very first user becomes admin. This makes fresh
-    // installs self-managing without requiring an env var or seed step.
-    const userCount = await prisma.user.count();
+    // The default admin user (admin) is created by ensureDefaultAdmin()
+    // on first boot. After that, regular registrations are never admin.
     const user = await prisma.user.create({
       data: {
         email: placeholderEmail,
         username: body.username,
         passwordHash,
-        isAdmin: userCount === 0,
+        isAdmin: false,
       },
       select: {
         id: true, email: true, username: true, level: true, xp: true, gold: true,

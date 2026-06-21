@@ -12,11 +12,22 @@ const ToggleAdminSchema = z.object({
   isAdmin: z.boolean(),
 });
 
+// Permissive URL check: empty string or null is valid (means "use provider
+// default baseUrl"). Otherwise must start with http:// or https://.
+const baseUrlSchema = z
+  .string()
+  .max(500)
+  .refine((v) => v === '' || /^https?:\/\/.+/.test(v), {
+    message: 'Must be empty or start with http(s)://',
+  })
+  .optional()
+  .nullable();
+
 const LlmConfigSchema = z.object({
-  provider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA']),
+  provider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']),
   apiKey: z.string().max(500).optional().nullable(),
-  baseUrl: z.string().url().optional().nullable(),
-  model: z.string().max(200),
+  baseUrl: baseUrlSchema,
+  model: z.string().min(1).max(200),
   enabled: z.boolean().default(false),
   // System prompt / persona. Optional.
   systemPrompt: z.string().max(4000).optional().nullable(),
@@ -42,6 +53,17 @@ async function listUsers() {
     orderBy: { createdAt: 'asc' },
   });
 }
+
+// Presets per provider. Used by the web form to auto-fill baseUrl + a
+// sensible default model when the admin changes provider. Minimax is
+// included for users on that plan; the endpoint is stable and OpenAI-
+// compatible so no extra code is needed beyond adding it to the enum.
+export const LLM_PROVIDER_PRESETS: Record<string, { baseUrl: string | null; defaultModel: string }> = {
+  OPENAI:    { baseUrl: null,                     defaultModel: 'gpt-4o-mini' },
+  ANTHROPIC: { baseUrl: null,                     defaultModel: 'claude-3-5-sonnet-20241022' },
+  OLLAMA:    { baseUrl: 'http://localhost:11434', defaultModel: 'llama3.2' },
+  MINIMAX:   { baseUrl: 'https://api.MiniMax.com/v1', defaultModel: 'MiniMax-M3' },
+};
 
 // GET /admin/llm-config - return current LLM config (redact apiKey)
 async function getLlmConfig() {
@@ -142,5 +164,11 @@ export async function adminRoutes(app: FastifyInstance) {
       ? await prisma.llmConfig.update({ where: { id: existing.id }, data })
       : await prisma.llmConfig.create({ data });
     return { config: await getLlmConfig().then(c => ({ ...c, id: config.id })) };
+  });
+
+  // Expose provider presets so the web form can auto-fill baseUrl + model
+  // when the admin switches providers.
+  app.get('/llm-providers', async () => {
+    return { providers: LLM_PROVIDER_PRESETS };
   });
 }

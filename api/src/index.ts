@@ -32,6 +32,7 @@ import { supplementRoutes } from './routes/supplements.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
 import { seedItems } from './lib/seedItems.js';
+import { ensureDefaultAdmin } from './lib/seedAdmin.js';
 
 async function build() {
   const app = Fastify({
@@ -99,6 +100,8 @@ async function build() {
 }
 
 async function main() {
+  // Seed default admin (only if User table is empty)
+  await ensureDefaultAdmin();
   // Seed achievements, skills, and item catalog (idempotent)
   await ensureAchievementsSeeded();
   await ensureSkillsSeeded();

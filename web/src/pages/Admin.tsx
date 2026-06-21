@@ -26,7 +26,7 @@ type AdminUser = {
 
 type LlmConfig = {
   id?: string;
-  provider: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA';
+  provider: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'MINIMAX';
   apiKey: string | null;
   baseUrl: string | null;
   model: string;
@@ -35,6 +35,12 @@ type LlmConfig = {
   createdAt?: string;
   updatedAt?: string;
 };
+
+type LlmProviderPreset = {
+  baseUrl: string | null;
+  defaultModel: string;
+};
+type LlmProviderMap = Record<string, LlmProviderPreset>;
 
 export function AdminPage() {
   const { user } = useAuth();
@@ -54,6 +60,13 @@ export function AdminPage() {
     queryKey: ['admin', 'llm-config'],
     queryFn: () => api<{ config: LlmConfig }>('/admin/llm-config'),
     enabled: !!user?.isAdmin,
+  });
+
+  const providersQ = useQuery({
+    queryKey: ['admin', 'llm-providers'],
+    queryFn: () => api<{ providers: LlmProviderMap }>('/admin/llm-providers'),
+    enabled: !!user?.isAdmin,
+    staleTime: Infinity,
   });
 
   const [llmForm, setLlmForm] = useState<LlmConfig | null>(null);
@@ -252,20 +265,38 @@ export function AdminPage() {
             >
               <label className="block">
                 <span className="text-xs uppercase text-slate-500">Provider</span>
-                <select
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
-                  value={llmForm.provider}
-                  onChange={(e) =>
-                    setLlmForm({
-                      ...llmForm,
-                      provider: e.target.value as LlmConfig['provider'],
-                    })
-                  }
-                >
-                  <option value="OPENAI">OpenAI</option>
-                  <option value="ANTHROPIC">Anthropic</option>
-                  <option value="OLLAMA">Ollama (local)</option>
-                </select>
+                <div className="flex gap-2 mt-1">
+                  <select
+                    className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                    value={llmForm.provider}
+                    onChange={(e) => {
+                      const next = e.target.value as LlmConfig['provider'];
+                      setLlmForm({ ...llmForm, provider: next });
+                    }}
+                  >
+                    <option value="OPENAI">OpenAI</option>
+                    <option value="ANTHROPIC">Anthropic</option>
+                    <option value="OLLAMA">Ollama (local)</option>
+                    <option value="MINIMAX">Minimax</option>
+                  </select>
+                  <NeonButton
+                    size="sm"
+                    variant="cyan"
+                    disabled={!providersQ.data}
+                    onClick={() => {
+                      const preset = providersQ.data?.providers[llmForm.provider];
+                      if (!preset) return;
+                      setLlmForm({
+                        ...llmForm,
+                        baseUrl: preset.baseUrl,
+                        model: preset.defaultModel,
+                      });
+                    }}
+                    title="Auto-fill base URL and default model for this provider"
+                  >
+                    Preset
+                  </NeonButton>
+                </div>
               </label>
               <label className="block">
                 <span className="text-xs uppercase text-slate-500">Model</span>
@@ -275,11 +306,7 @@ export function AdminPage() {
                   value={llmForm.model}
                   onChange={(e) => setLlmForm({ ...llmForm, model: e.target.value })}
                   placeholder={
-                    llmForm.provider === 'OPENAI'
-                      ? 'gpt-4o-mini'
-                      : llmForm.provider === 'ANTHROPIC'
-                      ? 'claude-3-5-sonnet-20241022'
-                      : 'llama3.2'
+                    providersQ.data?.providers[llmForm.provider]?.defaultModel ?? 'model name'
                   }
                 />
               </label>
