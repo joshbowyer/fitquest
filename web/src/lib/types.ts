@@ -312,6 +312,24 @@ export type SetEntry = {
   skipped?: boolean;
   skipReason?: 'INJURY' | 'ILLNESS' | 'FATIGUE' | 'EQUIPMENT' | 'SCHEDULE' | 'OTHER' | null;
 };
+
+/** Server-generated morning briefing. One row per user per day. */
+export type MorningReport = {
+  id: string;
+  userId: string;
+  date: string;
+  general: string;
+  sleep: string;
+  training: string;
+  recovery: string;
+  nutrition: string;
+  spiritual: string;
+  riskFlags: string[];
+  model: string | null;
+  latencyMs: number | null;
+  createdAt: string;
+  cached: boolean;
+};
 export type Measurement = {
   id: string;
   metric: MetricType;

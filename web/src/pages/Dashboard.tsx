@@ -11,6 +11,7 @@ import { BossBar } from '@/components/BossBar';
 import { WeighInPanel } from '@/components/WeighInPanel';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
+import { MorningReportCard } from '@/components/MorningReportCard';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
 import { RoutinePanel } from '@/components/RoutinePanel';
@@ -255,6 +256,17 @@ export function DashboardPage() {
             </div>
           )}
         </Panel>
+      </div>
+
+      {/* Morning briefing (LLM-generated, per-user per-day).
+          Renders general advice at the top, plus a small grid of
+          per-metric insights that ALSO appear inline in the
+          relevant dashboard panel below. The same data row is
+          consumed twice (top card + per-metric), which is by
+          design — the per-metric slot is a quick read, the top
+          card is the full briefing. */}
+      <div className="mb-4 md:mb-6">
+        <MorningReportCard withMetricInsights />
       </div>
 
       {/* Daily weigh-in + today + nutrition + habits — quick indicators. */}

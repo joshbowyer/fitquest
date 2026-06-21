@@ -208,6 +208,7 @@ model User {
   dailies          Daily[]
   dailyLogs        DailyLog[]
   inventoryItems   InventoryItem[]
+  morningReports   MorningReport[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -915,4 +916,43 @@ model LlmConfig {
   systemPrompt String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+/// LLM-generated morning report. One row per (user, date) — the
+/// date is the user's "today" in their IANA timezone. The
+/// /dashboard "morning report" card shows today's row if it exists
+/// and is < 7 days old. Per-metric blocks on the dashboard
+/// (sleep, training, recovery, etc.) show their own insight
+/// sentence from this same row.
+model MorningReport {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// YYYY-MM-DD in the user's timezone. Combined with userId for
+  /// uniqueness so re-generating on the same day overwrites.
+  date      String
+  /// Cross-domain advice (2-3 sentences) shown in the top dashboard
+  /// card. Written for the user, not clinical.
+  general   String?
+  /// Per-metric insights. Each ≤ 2 sentences. Empty string if no
+  /// notable signal (the metric was steady / untracked).
+  sleep     String?
+  training  String?
+  recovery  String?
+  nutrition String?
+  spiritual String?
+  /// JSON array of risk-flag strings surfaced as amber toasts.
+  /// E.g. "HRV below 30d baseline 3 of last 5 days".
+  riskFlags String?
+  /// Model that generated the report (for audit + forcing regen
+  /// when the LLM provider changes).
+  model     String?
+  /// Latency in ms (for performance monitoring + a "this took 4s"
+  /// breadcrumb in dev).
+  latencyMs Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
