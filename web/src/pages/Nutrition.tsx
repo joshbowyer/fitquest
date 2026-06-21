@@ -223,13 +223,14 @@ export function NutritionPage() {
                       className="h-full transition-all duration-500"
                       style={{
                         width: `${pct}%`,
-                        // Water gets an aqua-blue (darker than the
-                        // cyan used for other metrics, but light
-                        // enough to read as "fresh water" rather than
-                        // navy). Other metrics keep the cyan/lime/amber
-                        // scale.
+                        // Water: light sky-blue, slightly more
+                        // blue-hued than the cyan used for other
+                        // metrics. Lighter and more "watery" than
+                        // the previous aqua. Under 60% drops to a
+                        // medium sky-blue so progress is still
+                        // readable at low fill.
                         background: isWater
-                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#0e9fc7' : '#086a8a')
+                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#5ec5e8' : '#3aa0c8')
                           : (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#14d6e8' : '#ffc34d'),
                         boxShadow: '0 0 6px currentColor',
                       }}
