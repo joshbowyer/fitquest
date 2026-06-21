@@ -883,3 +883,18 @@ model InventoryItem {
   @@index([userId])
   @@index([userId, equippedSlot])
 }
+
+/// LLM provider config (single row). Lets the admin point the
+/// app at OpenAI, Anthropic, or a local Ollama instance. Future
+/// in-app coach/quest-narrator features read this.
+model LlmConfig {
+  id           String   @id @default(cuid())
+  provider     String   @default("OPENAI")  // "OPENAI" | "ANTHROPIC" | "OLLAMA"
+  apiKey       String?
+  baseUrl      String?
+  model        String   @default("gpt-4o-mini")
+  enabled      Boolean  @default(false)
+  systemPrompt String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

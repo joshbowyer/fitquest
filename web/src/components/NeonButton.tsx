@@ -16,12 +16,18 @@ type Props = {
   onClick?: () => void;
   type?: 'button' | 'submit';
   variant?: Variant;
+  size?: 'sm' | 'md';
   disabled?: boolean;
   loading?: boolean;
   loadingText?: string;
   icon?: ReactNode;
   className?: string;
   fullWidth?: boolean;
+};
+
+const SIZE_CLASS = {
+  sm: 'text-xs px-2 py-1',
+  md: '',
 };
 
 const LOADING_CLASSES: Record<Variant, string> = {
@@ -37,6 +43,7 @@ export function NeonButton({
   onClick,
   type = 'button',
   variant = 'cyan',
+  size = 'md',
   disabled,
   loading,
   loadingText,
@@ -51,6 +58,7 @@ export function NeonButton({
       disabled={disabled || loading}
       className={classNames(
         VARIANT_CLASS[variant],
+        SIZE_CLASS[size],
         fullWidth && 'w-full',
         loading && LOADING_CLASSES[variant],
         className

@@ -82,6 +82,16 @@ export async function requireUser(req: FastifyRequest) {
   return user;
 }
 
+export async function requireAdmin(req: FastifyRequest) {
+  const user = await requireUser(req);
+  if (!user.isAdmin) {
+    const err = new Error('Forbidden');
+    (err as any).statusCode = 403;
+    throw err;
+  }
+  return user;
+}
+
 export async function destroySession(token: string) {
   await prisma.session.deleteMany({ where: { token } }).catch(() => {});
 }

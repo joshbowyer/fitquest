@@ -7,11 +7,12 @@ import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
 
-type NavItem = { to: string; label: string; icon: string; mobile?: boolean };
+type NavItem = { to: string; label: string; icon: string; mobile?: boolean; requiresAdmin?: boolean };
 
 // Mobile = primary 5 items shown in bottom nav on phones.
 // Desktop sidebar shows all items.
 // Items not in `mobile` only appear on tablet+ via the "More" drawer.
+// `requiresAdmin` items only show for users with isAdmin=true.
 const NAV: NavItem[] = [
   { to: '/dashboard',   label: 'Dashboard', icon: '◆', mobile: true },
   { to: '/quest',       label: 'Quest',    icon: '◇', mobile: true },
@@ -31,6 +32,7 @@ const NAV: NavItem[] = [
   { to: '/achievements', label: 'Achieve',  icon: '◆', mobile: false },
   { to: '/profile',     label: 'Profile',  icon: '◉', mobile: false },
   { to: '/settings',    label: 'Settings', icon: '⚙', mobile: false },
+  { to: '/admin',       label: 'Admin',    icon: '★', mobile: false, requiresAdmin: true },
 ];
 
 export function Layout({ children }: Props) {
@@ -45,7 +47,8 @@ export function Layout({ children }: Props) {
     navigate('/login');
   }
 
-  const mobileNav = NAV.filter((n) => n.mobile);
+  const visibleNav = NAV.filter((n) => !n.requiresAdmin || user?.isAdmin);
+  const mobileNav = visibleNav.filter((n) => n.mobile);
 
   return (
     <div className="min-h-full md:grid md:grid-cols-[220px_1fr] md:grid-rows-[60px_1fr]">
@@ -111,7 +114,7 @@ export function Layout({ children }: Props) {
       {/* Sidebar — desktop only */}
       <aside className="hidden md:block md:row-start-2 md:border-r md:border-neon-cyan/15 bg-bg-800/40 grid-bg p-3">
         <nav className="flex flex-col gap-1">
-          {NAV.map((item) => (
+          {visibleNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -190,7 +193,7 @@ export function Layout({ children }: Props) {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {NAV.filter((n) => !n.mobile).map((item) => (
+              {visibleNav.filter((n) => !n.mobile).map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

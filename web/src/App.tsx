@@ -11,6 +11,7 @@ import { SettingsPage } from './pages/Settings';
 import { SkillsPage } from './pages/Skills';
 import { PartyPage } from './pages/Party';
 import { ProfilePage } from './pages/Profile';
+import { AdminPage } from './pages/Admin';
 import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
 import { SpiritualPage } from './pages/Spiritual';
@@ -77,6 +78,7 @@ export default function App() {
       <Route path="/achievements" element={<RequireAuth><AchievementsPage /></RequireAuth>} />
       <Route path="/inventory" element={<RequireAuth><InventoryPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+      <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
