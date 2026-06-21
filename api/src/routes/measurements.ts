@@ -37,9 +37,20 @@ export async function measurementRoutes(app: FastifyInstance) {
     const q = z.object({
       metric: z.nativeEnum(MetricType).optional(),
       limit: z.coerce.number().int().min(1).max(500).default(100),
+      // Optional: only return measurements within the last N days.
+      // Used by the /insights overlay chart to fetch 30/60/90 day windows.
+      days: z.coerce.number().int().min(1).max(365).optional(),
     }).parse(req.query);
     const where: any = { userId: me.id };
     if (q.metric) where.metric = q.metric;
+    if (q.days) {
+      const since = new Date();
+      since.setDate(since.getDate() - q.days);
+      where.recordedAt = { gte: since };
+    }
+    // Newest-first so existing callers (MetricTrendChart, MetricDetailModal)
+    // can read items[0] as the latest. Callers that need chronological
+    // order (e.g. the /insights overlay) reverse client-side.
     const items = await prisma.measurement.findMany({
       where,
       orderBy: { recordedAt: 'desc' },
