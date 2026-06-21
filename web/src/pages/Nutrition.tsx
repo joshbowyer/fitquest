@@ -46,7 +46,32 @@ export function NutritionPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const qc = useQueryClient();
-  const [targets, setTargets] = useState<Record<string, number>>(loadTargets);
+
+  // Server-computed targets are the source of truth. If the user
+  // has set their goal + weight, the calorie / protein / water
+  // numbers come from there. Anything the user overrides via the
+  // "Edit targets" modal wins (saved in localStorage).
+  const t = user?.targets;
+  const serverTargets: Record<string, number> = t
+    ? {
+        CALORIES: t.calorieGoal,
+        PROTEIN_G: t.proteinGoalG,
+        // Water is stored as ml in the server. Convert at the edge
+        // for imperial display so quick-add buttons in fl oz match
+        // the target unit.
+        WATER_ML: t.waterGoalMl,
+      }
+    : DEFAULT_TARGETS;
+
+  const [overrides, setOverrides] = useState<Record<string, number>>({});
+  // Sync overrides when user changes goal/baseline so the panel
+  // doesn't keep stale local numbers.
+  useEffect(() => {
+    setOverrides({});
+  }, [user?.goal, user?.calorieBaseline, user?.weightKg]);
+  const targets = { ...serverTargets, ...overrides };
+  const setTargets = (next: Record<string, number>) => setOverrides(next);
+
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
   const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({});
@@ -121,11 +146,17 @@ export function NutritionPage() {
     <Layout>
       <PageHeader
         title="// Nutrition"
-        subtitle="Calories, macros, water. Quick-log throughout the day."
+        subtitle={
+          t
+            ? `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal · ${t.proteinGoalG}g protein · ${t.waterGoalMl} ml water (35 ml/kg)`
+            : 'Calories, macros, water. Quick-log throughout the day.'
+        }
         action={
-          <NeonButton onClick={() => setEditing(true)} icon="⚙" variant="cyan">
-            Targets
-          </NeonButton>
+          <div className="flex items-center gap-2">
+            <NeonButton onClick={() => setEditing(true)} icon="⚙" variant="cyan" size="sm">
+              Targets
+            </NeonButton>
+          </div>
         }
       />
 
@@ -177,20 +208,36 @@ export function NutritionPage() {
                 <div className="flex items-center gap-2">
                   {isWater && (
                     <>
-                      <QuickBtn label="+250 ml" onClick={() => {
-                        batchM.run([{ metric: m, value: 250 + (sumByMetric.get(m) ?? 0) }]);
-                      }} />
-                      <QuickBtn label="+500 ml" onClick={() => {
-                        batchM.run([{ metric: m, value: 500 + (sumByMetric.get(m) ?? 0) }]);
-                      }} />
+                      <QuickBtn
+                        label={system === 'IMPERIAL' ? '+8 fl oz' : '+250 ml'}
+                        onClick={() => {
+                          // Quick-add stores in ml; the server-side
+                          // convert handles imperial display.
+                          const addMl = system === 'IMPERIAL' ? 237 : 250;
+                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
+                        }}
+                      />
+                      <QuickBtn
+                        label={system === 'IMPERIAL' ? '+16 fl oz' : '+500 ml'}
+                        onClick={() => {
+                          const addMl = system === 'IMPERIAL' ? 473 : 500;
+                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
+                        }}
+                      />
                     </>
                   )}
                   <input
                     className="input-neon flex-1"
                     type="number"
                     min={0}
-                    step={isWater ? 50 : 1}
-                    placeholder={isWater ? '+ ml' : 'amount'}
+                    step={isWater ? (system === 'IMPERIAL' ? 1 : 50) : 1}
+                    placeholder={
+                      isWater
+                        ? system === 'IMPERIAL'
+                          ? '+ fl oz'
+                          : '+ ml'
+                        : 'amount'
+                    }
                     value={drafts[m] ?? ''}
                     onChange={(e) => setDrafts((d) => ({ ...d, [m]: e.target.value }))}
                     onKeyDown={(e) => {
@@ -622,7 +669,7 @@ function AddTrackedItemModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div

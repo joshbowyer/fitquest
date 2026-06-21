@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -29,6 +29,17 @@ export function SettingsPage() {
       await refresh();
       qc.invalidateQueries();
       setUnits(next); // local sync — use the variable, not the stale closure
+    },
+  });
+
+  // Goal + baseline PATCH. Conservative ±250 cal adjustment.
+  const goalM = useMutation({
+    mutationFn: (body: { goal: 'CUT' | 'MAINTAIN' | 'BULK'; calorieBaseline?: number }) =>
+      api('/users/me', { method: 'PATCH', body }),
+    onSuccess: async () => {
+      await refresh();
+      qc.invalidateQueries({ queryKey: ['morning-report'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
     },
   });
 
@@ -127,6 +138,100 @@ export function SettingsPage() {
                 />
               </div>
             </div>
+          </div>
+        </Panel>
+
+        {/* GOAL & TARGETS — drives the calorie / protein / water
+            numbers on the Nutrition page. Conservative ±250 cal
+            offset. User can override the baseline. */}
+        <Panel
+          title="Goal & Targets"
+          variant="lime"
+          action={
+            <span className="text-[10px] font-mono text-ink-400">
+              {user.targets
+                ? `${user.targets.calorieGoal} cal · ${user.targets.proteinGoalG}g protein · ${user.targets.waterGoalMl} ml water`
+                : '…'}
+            </span>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 mb-2">
+                Calorie Goal
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <GoalOption
+                  current={user.goal}
+                  value="CUT"
+                  label="Cut"
+                  delta={-250}
+                  onSelect={() => goalM.mutate({ goal: 'CUT' })}
+                  disabled={goalM.isPending}
+                />
+                <GoalOption
+                  current={user.goal}
+                  value="MAINTAIN"
+                  label="Maintain"
+                  delta={0}
+                  onSelect={() => goalM.mutate({ goal: 'MAINTAIN' })}
+                  disabled={goalM.isPending}
+                />
+                <GoalOption
+                  current={user.goal}
+                  value="BULK"
+                  label="Bulk"
+                  delta={+250}
+                  onSelect={() => goalM.mutate({ goal: 'BULK' })}
+                  disabled={goalM.isPending}
+                />
+              </div>
+              <div className="text-[10px] font-mono text-ink-400 mt-1">
+                Cut / Bulk apply a conservative ±250 cal/day offset from
+                your baseline. Protein target tracks with the goal
+                (errs high; cut = 0.077 g/kcal, maintain = 0.064, bulk = 0.068).
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 mb-2">
+                Calorie Baseline (maintenance)
+              </div>
+              <BaselineEditor
+                value={user.calorieBaseline ?? 2200}
+                disabled={goalM.isPending}
+                onSave={(v) => goalM.mutate({ goal: user.goal ?? 'MAINTAIN', calorieBaseline: v })}
+              />
+              <div className="text-[10px] font-mono text-ink-400 mt-1">
+                Your maintenance calories. The actual daily target is
+                baseline + goal offset (cut -250, maintain 0, bulk +250).
+                Default 2200 — set this to your real maintenance once
+                you have 2-3 weeks of weight-stable data.
+              </div>
+            </div>
+
+            {user.targets && (
+              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-ink-500/15">
+                <TargetStat
+                  label="Calorie goal"
+                  value={String(user.targets.calorieGoal)}
+                  unit="cal"
+                  color="amber"
+                />
+                <TargetStat
+                  label="Protein"
+                  value={String(user.targets.proteinGoalG)}
+                  unit="g"
+                  color="lime"
+                />
+                <TargetStat
+                  label="Water"
+                  value={String(user.targets.waterGoalMl)}
+                  unit={user.units === 'IMPERIAL' ? 'fl oz' : 'ml'}
+                  color="cyan"
+                />
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -382,4 +487,119 @@ function formatHeight(cm: number, system: UnitSystem): string {
     return `${ft}'${inch}"`;
   }
   return `${Math.round(cm)} cm`;
+}
+
+function GoalOption({
+  current,
+  value,
+  label,
+  delta,
+  onSelect,
+  disabled,
+}: {
+  current: 'CUT' | 'MAINTAIN' | 'BULK' | undefined;
+  value: 'CUT' | 'MAINTAIN' | 'BULK';
+  label: string;
+  delta: number;
+  onSelect: () => void;
+  disabled: boolean;
+}) {
+  const selected = current === value;
+  const deltaLabel = delta === 0 ? '±0' : delta > 0 ? `+${delta}` : `${delta}`;
+  return (
+    <button
+      onClick={onSelect}
+      disabled={disabled}
+      className={classNames(
+        'p-3 border-2 text-left transition-all',
+        selected
+          ? 'border-neon-lime/80 bg-neon-lime/10'
+          : 'border-ink-500/40 hover:border-ink-300',
+        disabled && 'opacity-50 cursor-not-allowed'
+      )}
+    >
+      <div className="flex items-baseline justify-between">
+        <div className={classNames(
+          'font-display tracking-wider text-sm',
+          selected ? 'neon-text-lime' : 'text-ink-200'
+        )}>
+          {label}
+        </div>
+        <div className={classNames(
+          'text-[10px] font-mono',
+          selected ? 'text-neon-lime' : 'text-ink-400'
+        )}>
+          {deltaLabel} cal
+        </div>
+      </div>
+      <div className="text-[10px] text-ink-300 font-mono mt-1">
+        {value === 'CUT' && 'Conservative deficit for body-comp loss.'}
+        {value === 'MAINTAIN' && 'Hold your weight steady.'}
+        {value === 'BULK' && 'Conservative surplus for muscle gain.'}
+      </div>
+    </button>
+  );
+}
+
+function BaselineEditor({
+  value,
+  disabled,
+  onSave,
+}: {
+  value: number;
+  disabled: boolean;
+  onSave: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+  const valid = /^\d{3,5}$/.test(draft) && Number(draft) >= 800 && Number(draft) <= 8000;
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={800}
+        max={8000}
+        step={50}
+        className="input-neon w-32 text-sm"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      <span className="text-xs text-ink-300 font-mono">cal/day</span>
+      <NeonButton
+        size="sm"
+        variant="lime"
+        onClick={() => valid && onSave(Number(draft))}
+        disabled={!valid || disabled || Number(draft) === value}
+        loading={disabled}
+      >
+        Save
+      </NeonButton>
+    </div>
+  );
+}
+
+function TargetStat({
+  label,
+  value,
+  unit,
+  color,
+}: {
+  label: string;
+  value: string;
+  unit: string;
+  color: 'cyan' | 'lime' | 'amber' | 'magenta' | 'violet';
+}) {
+  return (
+    <div className="text-center p-2 border border-ink-500/15 bg-bg-900/40">
+      <div className="text-[10px] font-mono uppercase text-ink-400 tracking-widest">
+        {label}
+      </div>
+      <div className={`text-lg font-display tracking-wider neon-text-${color} mt-0.5`}>
+        {value}
+        <span className="text-xs text-ink-300 ml-1">{unit}</span>
+      </div>
+    </div>
+  );
 }

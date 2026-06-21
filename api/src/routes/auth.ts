@@ -14,6 +14,7 @@ import {
 import { config } from '../lib/config.js';
 import { getClassLockStatus, getClassDisplayName, getNextPromotion } from '../lib/classLock.js';
 import { isCreatineActive } from './supplements.js';
+import { computeGoalTargets } from '../lib/goalTargets.js';
 
 // Username-only registration — no email. Email features (verification,
 // password reset, etc.) are deferred until we have a mail provider.
@@ -97,6 +98,14 @@ export async function authRoutes(app: FastifyInstance) {
         creatine: user.creatine,
         timezone: user.timezone,
         creatineActive: await isCreatineActive(user.id),
+        goal: user.goal,
+        calorieBaseline: user.calorieBaseline,
+        weightKg: user.weightKg,
+        targets: computeGoalTargets({
+          goal: user.goal,
+          calorieBaseline: user.calorieBaseline,
+          weightKg: user.weightKg,
+        }),
       },
     });
   });
@@ -147,6 +156,13 @@ export async function authRoutes(app: FastifyInstance) {
         creatine: user.creatine,
         timezone: user.timezone,
         creatineActive: await isCreatineActive(user.id),
+        goal: user.goal,
+        calorieBaseline: user.calorieBaseline,
+        targets: computeGoalTargets({
+          goal: user.goal,
+          calorieBaseline: user.calorieBaseline,
+          weightKg: user.weightKg,
+        }),
       },
     });
   });

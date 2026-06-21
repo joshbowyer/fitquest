@@ -107,6 +107,12 @@ enum PrType {
   HOLD
 }
 
+enum CalorieGoal {
+  CUT
+  MAINTAIN
+  BULK
+}
+
 enum SkillTier {
   TIER_1
   TIER_2
@@ -229,6 +235,18 @@ model User {
   ordained          Boolean        @default(false)
   ordainedAt        DateTime?
   sex              Sex?
+  /// Goal for daily calorie/macro targets. Drives the conservative
+  /// ±250 cal adjustment from the user's calorie baseline, and
+  /// shifts the protein target up (cut/maint) or down (bulk)
+  /// per the user's preference for the high end of the range.
+  /// Default MAINTAIN. User can override individual targets in
+  /// /settings to fine-tune.
+  goal             CalorieGoal   @default(MAINTAIN)
+  /// User-set baseline (TDEE-ish). The actual calorie target is
+  /// this + goal offset (cut -250, maintain 0, bulk +250). Default
+  /// 2200 is a reasonable placeholder; the user should set this to
+  /// their actual maintenance once they have data.
+  calorieBaseline  Int           @default(2200)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

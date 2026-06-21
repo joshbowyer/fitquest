@@ -77,6 +77,25 @@ export type User = {
   // IANA timezone name (e.g. "America/New_York"). Used to render
   // absolute timestamps in the user's local time.
   timezone?: string | null;
+  // Calorie goal. Drives the conservative ±250 cal offset from
+  // calorieBaseline and the protein target on /nutrition.
+  goal?: 'CUT' | 'MAINTAIN' | 'BULK';
+  // User-set maintenance calorie baseline. Calorie goal =
+  // baseline + (cut -250 / maintain 0 / bulk +250).
+  calorieBaseline?: number;
+  // Last fetched body weight in kg. Used for water + protein
+  // floor calculations. Not always present.
+  weightKg?: number | null;
+  // Goal-derived daily targets. Server-computed so the web side
+  // always reflects the latest values after a goal switch.
+  targets?: {
+    goal: 'CUT' | 'MAINTAIN' | 'BULK';
+    calorieBaseline: number;
+    calorieGoal: number;
+    calorieDelta: number;
+    proteinGoalG: number;
+    waterGoalMl: number;
+  };
 };
 
 type AuthCtx = {
