@@ -42,7 +42,7 @@ export function FoodPanel() {
 
   // ---- Log modal ----
   const [logFood, setLogFood] = useState<FoodMatch | null>(null);
-  const [recentQ] = useQuery({
+  const recentQ = useQuery({
     queryKey: ['meals', 'recent'],
     queryFn: () => api<{ items: MealEntry[] }>('/meals?days=7'),
   });

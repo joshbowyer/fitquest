@@ -12,12 +12,26 @@ export class ApiError extends Error {
 
 type ApiInit = Omit<RequestInit, 'body' | 'credentials'> & {
   body?: unknown;
+  query?: Record<string, string | number | boolean | undefined | null>;
 };
 
 export async function api<T = unknown>(path: string, init: ApiInit = {}): Promise<T> {
-  const { body, headers, ...rest } = init;
+  const { body, headers, query, ...rest } = init;
   const hasBody = body !== undefined;
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Append query string from `init.query` if provided. Lets callers
+  // write `api('/foods/search', { query: { q: 'chicken' } })` and
+  // stay type-safe (no manual `encodeURIComponent`).
+  let url = `${API_BASE}${path}`;
+  if (query) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v == null) continue;
+      params.append(k, String(v));
+    }
+    const qs = params.toString();
+    if (qs) url += (path.includes('?') ? '&' : '?') + qs;
+  }
+  const res = await fetch(url, {
     ...rest,
     credentials: 'include',
     headers: {
