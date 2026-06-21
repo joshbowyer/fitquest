@@ -67,7 +67,7 @@ function modelNameFallback(provider: LlmConfig['provider']): string {
     case 'OLLAMA':
       return 'llama3.2';
     case 'MINIMAX':
-      return 'MiniMax-M2.5-highspeed';
+      return 'MiniMax-M3';
     case 'ANTHROPIC':
       return 'claude-3-5-sonnet-20241022';
   }

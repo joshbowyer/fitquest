@@ -63,7 +63,7 @@ export const LLM_PROVIDER_PRESETS: Record<string, { baseUrl: string | null; defa
   OPENAI:    { baseUrl: null,                        defaultModel: 'gpt-4o-mini' },
   ANTHROPIC: { baseUrl: null,                        defaultModel: 'claude-3-5-sonnet-20241022' },
   OLLAMA:    { baseUrl: 'http://localhost:11434/v1', defaultModel: 'llama3.2' },
-  MINIMAX:   { baseUrl: 'https://api.minimax.io/anthropic', defaultModel: 'MiniMax-M2.5-highspeed' },
+  MINIMAX:   { baseUrl: 'https://api.minimax.io/anthropic', defaultModel: 'MiniMax-M3' },
 };
 
 // GET /admin/llm-config - return current LLM config (redact apiKey)
