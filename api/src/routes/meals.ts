@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MealType } from '@prisma/client';
+import { FoodSource, MealType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 
@@ -18,7 +18,31 @@ import { requireUser } from '../lib/auth.js';
 // times, or we can add a `count` field later.
 
 const CreateMealSchema = z.object({
-  foodId: z.string().min(1),
+  /// Two ways to identify the food:
+  ///   1. foodId — a saved FoodItem id (preferred when re-logging
+  ///      a food the user has used before).
+  ///   2. source + sourceId — fetch a FoodItem by (source, sourceId),
+  ///      upsert if missing. The UI uses this on first log of a
+  ///      search result so we don't need a second round-trip.
+  foodId: z.string().min(1).optional(),
+  source: z.nativeEnum(FoodSource).optional(),
+  sourceId: z.string().min(1).optional(),
+  /// Display fields. When the search result is not yet in our
+  /// FoodItem table, the UI passes these so we can create the row
+  /// in one transaction with the MealEntry. Optional; ignored if
+  /// foodId is provided.
+  name: z.string().min(1).max(200).optional(),
+  brand: z.string().max(200).optional().nullable(),
+  imageUrl: z.string().url().optional().nullable(),
+  servingSizeG: z.number().positive().optional().nullable(),
+  calories: z.number().min(0).optional(),
+  proteinG: z.number().min(0).optional(),
+  carbG: z.number().min(0).optional(),
+  fatG: z.number().min(0).optional(),
+  fiberG: z.number().min(0).optional().nullable(),
+  sugarG: z.number().min(0).optional().nullable(),
+  sodiumMg: z.number().min(0).optional().nullable(),
+  sourceUrl: z.string().url().optional().nullable(),
   meal: z.nativeEnum(MealType),
   /// Multiplier of the FoodItem's per-100g base.
   servings: z.number().positive().max(50),
@@ -124,12 +148,72 @@ export async function mealRoutes(app: FastifyInstance) {
   app.post('/', async (req, reply) => {
     const me = await requireUser(req);
     const body = CreateMealSchema.parse(req.body);
-    const food = await prisma.foodItem.findUnique({ where: { id: body.foodId } });
-    if (!food) return reply.code(404).send({ error: 'Food not found' });
+    let foodId: string;
+    if (body.foodId) {
+      // Already-saved path: verify ownership-relevant (the FoodItem
+      // table is shared across all users so we just look up the row).
+      const existing = await prisma.foodItem.findUnique({ where: { id: body.foodId } });
+      if (!existing) return reply.code(404).send({ error: 'Food not found' });
+      foodId = existing.id;
+    } else if (body.source && body.sourceId) {
+      // First-log path: upsert by (source, sourceId) so the next
+      // log reuses the same row.
+      if (
+        body.name == null ||
+        body.calories == null ||
+        body.proteinG == null ||
+        body.carbG == null ||
+        body.fatG == null
+      ) {
+        return reply.code(400).send({
+          error:
+            'When logging a food by source/sourceId, name + cal/p/c/f are required.',
+        });
+      }
+      const upserted = await prisma.foodItem.upsert({
+        where: { source_sourceId: { source: body.source, sourceId: body.sourceId } },
+        create: {
+          source: body.source,
+          sourceId: body.sourceId,
+          name: body.name,
+          brand: body.brand ?? null,
+          imageUrl: body.imageUrl ?? null,
+          servingSizeG: body.servingSizeG ?? null,
+          calories: body.calories,
+          proteinG: body.proteinG,
+          carbG: body.carbG,
+          fatG: body.fatG,
+          fiberG: body.fiberG ?? null,
+          sugarG: body.sugarG ?? null,
+          sodiumMg: body.sodiumMg ?? null,
+          sourceUrl: body.sourceUrl ?? null,
+        },
+        update: {
+          name: body.name,
+          brand: body.brand ?? null,
+          imageUrl: body.imageUrl ?? null,
+          servingSizeG: body.servingSizeG ?? null,
+          calories: body.calories,
+          proteinG: body.proteinG,
+          carbG: body.carbG,
+          fatG: body.fatG,
+          fiberG: body.fiberG ?? null,
+          sugarG: body.sugarG ?? null,
+          sodiumMg: body.sodiumMg ?? null,
+          sourceUrl: body.sourceUrl ?? null,
+          fetchedAt: new Date(),
+        },
+      });
+      foodId = upserted.id;
+    } else {
+      return reply.code(400).send({
+        error: 'Provide either foodId or source+sourceId.',
+      });
+    }
     const entry = await prisma.mealEntry.create({
       data: {
         userId: me.id,
-        foodId: food.id,
+        foodId,
         meal: body.meal,
         servings: body.servings,
         note: body.note ?? null,

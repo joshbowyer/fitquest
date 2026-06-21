@@ -507,3 +507,76 @@ export const STAT_LABEL: Record<string, string> = {
   '+XP':    'XP Bonus',
   '+GOLD':  'Gold Bonus',
 };
+
+// ============================================================================
+// Food tracker
+// ============================================================================
+
+export type FoodSource = 'OPENFOODFACTS' | 'USDA' | 'MANUAL';
+
+export type MealType = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK';
+
+export type FoodMatch = {
+  source: FoodSource;
+  sourceId: string;
+  name: string;
+  brand: string | null;
+  imageUrl: string | null;
+  servingSizeG: number | null;
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  sourceUrl: string;
+};
+
+export type MealEntryFood = {
+  id: string;
+  source: FoodSource;
+  sourceId: string;
+  name: string;
+  brand: string | null;
+  imageUrl: string | null;
+  servingSizeG: number | null;
+};
+
+export type MealEntrySummary = {
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG: number;
+  sugarG: number;
+  sodiumMg: number;
+};
+
+export type MealEntry = {
+  id: string;
+  meal: MealType;
+  servings: number;
+  note: string | null;
+  loggedAt: string;
+  food: MealEntryFood;
+  served: MealEntrySummary;
+};
+
+export type MealBuckets = Record<MealType, { items: MealEntry[]; totals: MealEntrySummary }>;
+
+export type TodayMealsResponse = {
+  date: string;
+  meals: MealBuckets;
+  dayTotals: MealEntrySummary;
+};
+
+export const MEAL_TYPE_LABEL: Record<MealType, string> = {
+  BREAKFAST: 'Breakfast',
+  LUNCH: 'Lunch',
+  DINNER: 'Dinner',
+  SNACK: 'Snacks',
+};
+
+export const MEAL_TYPE_ORDER: MealType[] = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
+

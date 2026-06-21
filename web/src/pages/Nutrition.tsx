@@ -1,147 +1,40 @@
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
-import { classNames, formatMetricWithUnit, formatRelative } from '@/lib/format';
-import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
+import { TrackedItem, TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
+import { classNames, formatMetricWithUnit } from '@/lib/format';
+import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { FoodPanel } from '@/components/FoodPanel';
+import { MealSections } from '@/components/MealSections';
+import { DailyTotalsBar } from '@/components/DailyTotalsBar';
 
-// Default daily targets. These are reasonable placeholders — users can
-// override via localStorage. Body-comp-aware defaults would be ideal
-// (e.g., protein g/kg bodyweight) but for v0 a single set is fine.
-const DEFAULT_TARGETS: Record<string, number> = {
-  CALORIES: 2200,
-  PROTEIN_G: 140,
-  CARB_G: 240,
-  FAT_G: 70,
-  WATER_ML: 2500,
-};
-
-const TARGET_STORAGE_KEY = 'fitquest:nutrition:targets';
-
-function loadTargets(): Record<string, number> {
-  if (typeof window === 'undefined') return DEFAULT_TARGETS;
-  try {
-    const raw = localStorage.getItem(TARGET_STORAGE_KEY);
-    if (!raw) return DEFAULT_TARGETS;
-    return { ...DEFAULT_TARGETS, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_TARGETS;
-  }
-}
-
-function saveTargetsLocal(t: Record<string, number>) {
-  try {
-    localStorage.setItem(TARGET_STORAGE_KEY, JSON.stringify(t));
-  } catch {
-    /* ignore */
-  }
-}
+// ============================================================================
+// Nutrition page (post FoodYou rewrite)
+// ============================================================================
+//
+// Layout:
+//   1. PageHeader (no Targets button — those live in /settings)
+//   2. DailyTotalsBar (cal / p / c / f / water + progress vs goal)
+//   3. 2-column: left = FoodPanel (search + Ask AI + recent),
+//                 right = MealSections (BREAKFAST/LUNCH/DINNER/SNACK)
+//   4. TrackedItemsPanel (Supplements)
+//   5. TrackedItemsPanel (Probiotics)
+//   6. SubstancesPanel
+//
+// Water macro panel removed (water is now in the daily totals bar).
+// Calorie / protein / carb / fat macro panels removed (those numbers
+// come from the food tracker's meal sections via DailyTotalsBar).
+// ============================================================================
 
 export function NutritionPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
-  const qc = useQueryClient();
-
-  // Server-computed targets are the source of truth. If the user
-  // has set their goal + weight, the calorie / protein / water
-  // numbers come from there. Anything the user overrides via the
-  // "Edit targets" modal wins (saved in localStorage).
   const t = user?.targets;
-  const serverTargets: Record<string, number> = t
-    ? {
-        CALORIES: t.calorieGoal,
-        PROTEIN_G: t.proteinGoalG,
-        // Water is stored as ml in the server. Convert at the edge
-        // for imperial display so quick-add buttons in fl oz match
-        // the target unit.
-        WATER_ML: t.waterGoalMl,
-      }
-    : DEFAULT_TARGETS;
-
-  const [overrides, setOverrides] = useState<Record<string, number>>({});
-  // Sync overrides when user changes goal/baseline so the panel
-  // doesn't keep stale local numbers.
-  useEffect(() => {
-    setOverrides({});
-  }, [user?.goal, user?.calorieBaseline, user?.weightKg]);
-  const targets = { ...serverTargets, ...overrides };
-  const setTargets = (next: Record<string, number>) => setOverrides(next);
-
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState(false);
-  const [targetDrafts, setTargetDrafts] = useState<Record<string, string>>({});
-
-  const metrics = METRICS_BY_CATEGORY.NUTRITION;
-
-  // Today's logged values
-  const statusQ = useQuery({
-    queryKey: ['nutrition', 'today'],
-    queryFn: () => api<{ status: Record<string, { logged: boolean; value: number | null; recordedAt: string | null }> }>(
-      '/measurements/habits/today',
-    ),
-  });
-  const status = statusQ.data?.status || {};
-
-  // Today's full log (for entries that have been logged multiple times
-  // through the day — habit status only shows the latest; we want the
-  // sum). Use the measurements/all endpoint.
-  const allQ = useQuery({
-    queryKey: ['nutrition', 'all', 'today'],
-    queryFn: () => api<{ items: Array<{ id: string; metric: MetricType; value: number; recordedAt: string }> }>(
-      '/measurements?limit=200',
-    ),
-  });
-  const todayMeasurements = (allQ.data?.items ?? []).filter((m) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return new Date(m.recordedAt) >= today && metrics.includes(m.metric);
-  });
-  const sumByMetric = new Map<MetricType, number>();
-  for (const m of todayMeasurements) {
-    sumByMetric.set(m.metric, (sumByMetric.get(m.metric) ?? 0) + m.value);
-  }
-
-  const batchM = useDelayedMutation<unknown, Array<{ metric: MetricType; value: number }>>({
-    mutationFn: (items) => api('/measurements/batch', { method: 'POST', body: { items } }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['nutrition'] });
-      qc.invalidateQueries({ queryKey: ['measurements'] });
-      qc.invalidateQueries({ queryKey: ['achievements'] });
-      setDrafts({});
-    },
-  }, 600);
-
-  function commit(metric: MetricType, addToExisting = false) {
-    const raw = drafts[metric];
-    if (raw === '' || raw == null) return;
-    const v = Number(raw);
-    if (!Number.isFinite(v) || v < 0) return;
-    const meta = METRICS[metric];
-    const stored = convertForStorage(v, displayUnit(meta.unit, system), system);
-    // When 'addToExisting', accumulate onto today's total
-    const value = addToExisting ? stored.value + (sumByMetric.get(metric) ?? 0) : stored.value;
-    batchM.run([{ metric, value }]).then(() => {
-      setDrafts((d) => ({ ...d, [metric]: '' }));
-    });
-  }
-
-  function saveTargets() {
-    const next: Record<string, number> = { ...targets };
-    for (const [k, v] of Object.entries(targetDrafts)) {
-      const n = Number(v);
-      if (Number.isFinite(n) && n > 0) next[k] = n;
-    }
-    setTargets(next);
-    saveTargetsLocal(next);
-    setTargetDrafts({});
-    setEditing(false);
-  }
 
   return (
     <Layout>
@@ -153,280 +46,66 @@ export function NutritionPage() {
                 const w = convertForDisplay(t.waterGoalMl, 'ml', system);
                 return `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${user?.calorieBaseline ?? 2200}) · ${t.proteinGoalG}g protein · ${w.value.toFixed(0)} ${w.unit} water (35 ml/kg)`;
               })()
-            : 'Calories, macros, water. Quick-log throughout the day.'
-        }
-        action={
-          <div className="flex items-center gap-2">
-            <NeonButton onClick={() => setEditing(true)} icon="⚙" variant="cyan" size="sm">
-              Targets
-            </NeonButton>
-          </div>
+            : 'Track your food and water. Daily targets are in /settings.'
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left half: food tracker placeholder. The full food tracker
-            (search, barcode, meal sections, daily totals) will land
-            here. Calorie + protein tracking move into the food
-            tracker; water stays separate. */}
-        <div className="order-2 lg:order-1">
-          <Panel variant="violet" title="Food tracker (coming soon)">
-            <div className="text-sm text-slate-300 leading-relaxed">
-              The full food tracker (search, barcode, meal sections,
-              daily totals) will replace the calorie / protein / carb /
-              fat blocks once it lands. Calorie and protein tracking
-              move into the food tracker; water stays separate.
-            </div>
-            <div className="mt-3 text-[10px] font-mono text-slate-500">
-              // roadmap item #8 (FoodYou-style nutrition) + #9 (OpenFoodFacts)
-            </div>
-          </Panel>
-        </div>
+      {/* Daily totals summary — derived from meal log + water measurements */}
+      <DailyTotalsBar />
 
-        {/* Right half: existing macro panels, 2-col grid inside, justified
-            to the right so the left half is reserved for the food
-            tracker. */}
-        <div className="order-1 lg:order-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {metrics.map((m) => {
-            const meta = METRICS[m];
-            const total = sumByMetric.get(m) ?? 0;
-          const target = targets[m] ?? meta.defaultMin;
-          const pct = target > 0 ? Math.min(100, (total / target) * 100) : 0;
-          const lastEntry = todayMeasurements.find((x) => x.metric === m);
-          const isWater = m === 'WATER_ML';
-
-          return (
-            <Panel key={m} variant="lime" title={meta.label}>
-              <div className="space-y-3">
-                {/* Progress */}
-                <div>
-                  <div className="flex items-baseline justify-between mb-1">
-                    <div className="font-display text-2xl tracking-wider" style={{ color: 'var(--progress-color, #9bff5c)' }}>
-                      {(() => {
-                        const d = convertForDisplay(total, meta.unit, system);
-                        return `${d.value.toFixed(meta.unit === 'kcal' || meta.unit === 'ml' || meta.unit === 'g' ? 0 : 1)} ${d.unit}`;
-                      })()}
-                    </div>
-                    <div className="text-[10px] font-mono text-ink-300">
-                      target{' '}
-                      <span className="text-ink-100">
-                        {(() => {
-                          const d = convertForDisplay(target, meta.unit, system);
-                          return `${d.value.toFixed(0)} ${d.unit}`;
-                        })()}
-                      </span>{' '}
-                      ({Math.round(pct)}%)
-                    </div>
-                  </div>
-                  <div className="h-2 bg-bg-700 border border-ink-500/30">
-                    <div
-                      className="h-full transition-all duration-500"
-                      style={{
-                        width: `${pct}%`,
-                        // Water: light sky-blue, slightly more
-                        // blue-hued than the cyan used for other
-                        // metrics. Lighter and more "watery" than
-                        // the previous aqua. Under 60% drops to a
-                        // medium sky-blue so progress is still
-                        // readable at low fill.
-                        background: isWater
-                          ? (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#5ec5e8' : '#3aa0c8')
-                          : (pct >= 100 ? '#9bff5c' : pct >= 60 ? '#14d6e8' : '#ffc34d'),
-                        boxShadow: '0 0 6px currentColor',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Quick add row */}
-                <div className="flex items-center gap-2">
-                  {isWater && (
-                    <>
-                      <QuickBtn
-                        label={system === 'IMPERIAL' ? '+8 fl oz' : '+250 ml'}
-                        title="Small glass / kids' cup"
-                        onClick={() => {
-                          const addMl = system === 'IMPERIAL' ? 237 : 250;
-                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
-                        }}
-                      />
-                      <QuickBtn
-                        label={system === 'IMPERIAL' ? '+12 fl oz' : '+350 ml'}
-                        title="Standard water bottle"
-                        onClick={() => {
-                          const addMl = system === 'IMPERIAL' ? 355 : 350;
-                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
-                        }}
-                      />
-                      <QuickBtn
-                        label={system === 'IMPERIAL' ? '+16 fl oz' : '+500 ml'}
-                        title="Pint glass / large bottle"
-                        onClick={() => {
-                          const addMl = system === 'IMPERIAL' ? 473 : 500;
-                          batchM.run([{ metric: m, value: addMl + (sumByMetric.get(m) ?? 0) }]);
-                        }}
-                      />
-                    </>
-                  )}
-                  <input
-                    className="input-neon flex-1"
-                    type="number"
-                    min={0}
-                    step={isWater ? (system === 'IMPERIAL' ? 1 : 50) : 1}
-                    placeholder={
-                      isWater
-                        ? system === 'IMPERIAL'
-                          ? '+ fl oz'
-                          : '+ ml'
-                        : 'amount'
-                    }
-                    value={drafts[m] ?? ''}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [m]: e.target.value }))}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && drafts[m]) commit(m, true);
-                    }}
-                  />
-                  <NeonButton
-                    onClick={() => commit(m, true)}
-                    loading={batchM.isPending}
-                    disabled={!drafts[m]}
-                    variant="lime"
-                    icon="+"
-                    loadingText="…"
-                  >
-                    Add
-                  </NeonButton>
-                </div>
-
-                {/* Replace mode (sets to absolute value) */}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => commit(m, false)}
-                    disabled={!drafts[m] || batchM.isPending}
-                    className="text-[10px] font-mono text-ink-400 hover:text-neon-cyan disabled:opacity-40"
-                  >
-                    Set to absolute value →
-                  </button>
-                  {lastEntry && (
-                    <span className="text-[10px] font-mono text-ink-500 ml-auto">
-                      last log {formatRelative(lastEntry.recordedAt)}
-                    </span>
-                  )}
-                </div>
-              </div>
-             </Panel>
-           );
-         })}
-        </div>
+      {/* Two-column: Food tracker (left) + Meal sections (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 md:mb-6">
+        <FoodPanel />
+        <MealSections />
       </div>
 
+      {/* Supplements */}
       <TrackedItemsPanel
         categoryFilter={['VITAMIN', 'MINERAL', 'FATTY_ACID', 'HERB', 'AMINO_ACID', 'OTHER']}
         title="Supplements"
         variant="violet"
         emptyMessage="No supplements tracked yet. Tap + Add item to start your daily checklist."
         defaultUnitHint="Amounts usually don't vary. Default dose is used each check-off."
-        qc={qc}
       />
+
+      {/* Probiotics */}
       <TrackedItemsPanel
         categoryFilter="PROBIOTIC_ONLY"
         title="Probiotics"
         variant="lime"
         emptyMessage="No probiotics tracked. Tap + Add item to add one (CFU recommended)."
         defaultUnitHint="Probiotics are typically measured in CFU (colony-forming units)."
-        qc={qc}
       />
-      <SubstancesPanel />
 
-      {editing && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4">
-          <div className="bg-bg-800 border border-neon-cyan/40 max-w-md w-full p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-display tracking-widest text-ink-50">Daily Targets</div>
-              <button onClick={() => setEditing(false)} className="text-ink-400 hover:text-ink-100">✕</button>
-            </div>
-            <div className="space-y-3">
-              {metrics.map((m) => {
-                const meta = METRICS[m];
-                const d = convertForDisplay(targets[m] ?? meta.defaultMin, meta.unit, system);
-                return (
-                  <div key={m}>
-                    <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-                      {meta.label} ({displayUnit(meta.unit, system)})
-                    </label>
-                    <input
-                      className="input-neon w-full"
-                      type="number"
-                      min={1}
-                      value={targetDrafts[m] ?? `${d.value.toFixed(0)}`}
-                      onChange={(e) => setTargetDrafts((td) => ({ ...td, [m]: e.target.value }))}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <NeonButton onClick={() => setEditing(false)} variant="cyan">Cancel</NeonButton>
-              <NeonButton onClick={saveTargets} icon="⚡" variant="lime">Save</NeonButton>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Substances */}
+      <SubstancesPanel />
     </Layout>
   );
 }
 
-function QuickBtn({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-2 py-1 text-[10px] font-mono border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
-    >
-      {label}
-    </button>
-  );
-}
-// ============================================================
-// Tracked items (supplements + probiotics) + substance events.
-//
-// Three panels:
-//   - Supplements:   vitamins, minerals, fats, herbs, amino acids
-//   - Probiotics:    same data model, category=PROBIOTIC, unit=CFU
-//   - Substances:    one-shot event log (nicotine / caffeine /
-//                    alcohol / electrolytes) with form metadata
-//
-// Items in the Supplements/Probiotics panels are user-owned (no
-// defaults). The user adds what they actually take; the list
-// persists across days. Each item gets a daily check-off that
-// resets at midnight (because the date key changes).
-//
-// Creatine is highlighted specifically because it auto-affects the
-// lean-mass display (subtracts ~1.5 kg water when logged on ≥3 of
-// the last 7 days, computed server-side in /me).
-// ============================================================
+// ============================================================================
+// Re-export the existing TrackedItemsPanel and SubstancesPanel from
+// the legacy module so this file is self-contained. The legacy module
+// still exists at Nutrition.bak.tsx for reference.
+// ============================================================================
 
-type TrackedItem = {
+// ----------------------------------------------------------------------------
+// TrackedItemsPanel
+// ----------------------------------------------------------------------------
+
+type TrackedItemDto = {
   id: string;
   name: string;
-  category: 'VITAMIN' | 'MINERAL' | 'FATTY_ACID' | 'PROBIOTIC' | 'HERB' | 'AMINO_ACID' | 'OTHER';
+  category: TrackedItemCategory;
   defaultDose: number;
-  doseUnit: 'mg' | 'g' | 'mcg' | 'iu' | 'cfu' | 'capsule' | 'drop' | 'scoop' | 'pill';
+  doseUnit: TrackedItemUnit;
   notes: string | null;
   createdAt: string;
-  today: {
-    logId: string;
-    dose: number;
-    doseUnit: string;
-    checkedAt: string;
-  } | null;
+  today: { logId: string; dose: number; doseUnit: string; checkedAt: string } | null;
 };
+type TrackedSummaryDto = { items: TrackedItemDto[] };
 
-type TrackedSummary = {
-  items: TrackedItem[];
-};
-
-const CATEGORY_LABEL: Record<TrackedItem['category'], string> = {
+const CATEGORY_LABEL: Record<TrackedItemCategory, string> = {
   VITAMIN: 'Vitamin',
   MINERAL: 'Mineral',
   FATTY_ACID: 'Fatty Acid',
@@ -436,8 +115,7 @@ const CATEGORY_LABEL: Record<TrackedItem['category'], string> = {
   OTHER: 'Other',
 };
 
-// All non-probiotic categories go in the Supplements panel.
-const SUPPLEMENT_CATEGORIES: TrackedItem['category'][] = [
+const SUPPLEMENT_CATEGORIES: TrackedItemCategory[] = [
   'VITAMIN', 'MINERAL', 'FATTY_ACID', 'HERB', 'AMINO_ACID', 'OTHER',
 ];
 
@@ -450,9 +128,6 @@ type SubstanceForm = {
   defaultUnit: string;
 };
 
-// Per-category form catalog. Drives the quick chips in the Substances
-// panel. Each form has a different recovery/sleep/lung impact that
-// the morning report will weave into its narrative.
 const SUBSTANCE_FORMS: Record<SubstanceCategory, SubstanceForm[]> = {
   NICOTINE: [
     { category: 'NICOTINE', form: 'cigarette',     label: 'Cigarette',    defaultUnit: 'count' },
@@ -498,37 +173,30 @@ const SUBSTANCE_VARIANT: Record<SubstanceCategory, 'magenta' | 'amber' | 'violet
   ELECTROLYTE: 'lime',
 };
 
-// ============================================================================
-// TrackedItemsPanel — shared between Supplements + Probiotics
-// ============================================================================
-
 function TrackedItemsPanel({
   categoryFilter,
   title,
   variant,
   emptyMessage,
   defaultUnitHint,
-  qc,
 }: {
-  categoryFilter: TrackedItem['category'][] | 'PROBIOTIC_ONLY';
+  categoryFilter: TrackedItemCategory[] | 'PROBIOTIC_ONLY';
   title: string;
   variant: 'cyan' | 'magenta' | 'amber' | 'lime' | 'violet';
   emptyMessage: string;
   defaultUnitHint: string;
-  qc: ReturnType<typeof useQueryClient>;
 }) {
+  const qc = useQueryClient();
   const summaryQ = useQuery({
     queryKey: ['supplements', 'tracked'],
-    queryFn: () => api<TrackedSummary>('/supplements/tracked'),
+    queryFn: () => api<TrackedSummaryDto>('/supplements/tracked'),
     refetchInterval: 60_000,
   });
-
   const items = (summaryQ.data?.items ?? []).filter((i) =>
     categoryFilter === 'PROBIOTIC_ONLY'
       ? i.category === 'PROBIOTIC'
       : categoryFilter.includes(i.category),
   );
-
   const checkM = useDelayedMutation<{ log: { id: string } }, { id: string }>({
     mutationFn: ({ id }) =>
       api(`/supplements/tracked/${id}/check`, { method: 'POST', body: {} }),
@@ -542,21 +210,13 @@ function TrackedItemsPanel({
     mutationFn: ({ id }) => api(`/supplements/tracked/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['supplements', 'tracked'] }),
   }, 400);
-
   const [adding, setAdding] = useState(false);
-
-  // Creatine summary (only relevant for the Supplements panel)
   const creatineItem = items.find((i) => i.name.toLowerCase() === 'creatine');
   const creatineDoneToday = !!creatineItem?.today;
-
-  function toggleItem(item: TrackedItem) {
-    if (item.today) {
-      uncheckM.run({ id: item.id });
-    } else {
-      checkM.run({ id: item.id });
-    }
+  function toggleItem(item: TrackedItemDto) {
+    if (item.today) uncheckM.run({ id: item.id });
+    else checkM.run({ id: item.id });
   }
-
   return (
     <Panel variant={variant} title={title} className="mt-4">
       <div className="text-[10px] font-mono text-ink-300 mb-3">
@@ -564,11 +224,8 @@ function TrackedItemsPanel({
           ? 'Daily probiotics. No defaults — items appear as you add them. Resets at midnight.'
           : 'No defaults — items appear as you add them. Resets at midnight; amounts usually do not vary.'}
       </div>
-
       {items.length === 0 ? (
-        <div className="text-sm text-slate-400 font-mono py-2 text-center">
-          {emptyMessage}
-        </div>
+        <div className="text-sm text-slate-400 font-mono py-2 text-center">{emptyMessage}</div>
       ) : (
         <div className="flex flex-wrap gap-2 mb-3">
           {items.map((item) => {
@@ -622,22 +279,12 @@ function TrackedItemsPanel({
           })}
         </div>
       )}
-
       <div className="flex items-center justify-between border-t border-ink-500/15 pt-2">
-        <span className="text-[10px] font-mono text-ink-400">
-          {defaultUnitHint}
-        </span>
-        <NeonButton
-          size="sm"
-          variant={variant}
-          onClick={() => setAdding(true)}
-          icon="+"
-        >
+        <span className="text-[10px] font-mono text-ink-400">{defaultUnitHint}</span>
+        <NeonButton size="sm" variant={variant} onClick={() => setAdding(true)} icon="+">
           Add item
         </NeonButton>
       </div>
-
-      {/* Creatine highlight (Supplements panel only) */}
       {categoryFilter !== 'PROBIOTIC_ONLY' && creatineItem && (
         <div className="mt-2 text-[10px] font-mono text-ink-400">
           Creatine:{' '}
@@ -647,7 +294,6 @@ function TrackedItemsPanel({
           {' '}— water-weight accounting fires at ≥3 of last 7 days.
         </div>
       )}
-
       {adding && (
         <AddTrackedItemModal
           defaultCategory={categoryFilter === 'PROBIOTIC_ONLY' ? 'PROBIOTIC' : 'VITAMIN'}
@@ -663,7 +309,6 @@ function TrackedItemsPanel({
 }
 
 function formatUnitShort(u: string): string {
-  // Display unit compactly. mg stays mg; long names get a compact form.
   if (u === 'mcg') return 'mcg';
   if (u === 'capsule') return 'cap';
   return u;
@@ -674,19 +319,18 @@ function AddTrackedItemModal({
   onClose,
   onAdded,
 }: {
-  defaultCategory: TrackedItem['category'];
+  defaultCategory: TrackedItemCategory;
   onClose: () => void;
   onAdded: () => void;
 }) {
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<TrackedItem['category']>(defaultCategory);
+  const [category, setCategory] = useState<TrackedItemCategory>(defaultCategory);
   const [dose, setDose] = useState('');
-  const [unit, setUnit] = useState<TrackedItem['doseUnit']>(
+  const [unit, setUnit] = useState<TrackedItemUnit>(
     defaultCategory === 'PROBIOTIC' ? 'cfu' : 'mg',
   );
   const [notes, setNotes] = useState('');
-
-  const addM = useDelayedMutation<{ item: TrackedItem; deduplicated: boolean }>({
+  const addM = useDelayedMutation<{ item: TrackedItemDto; deduplicated: boolean }>({
     mutationFn: () =>
       api('/supplements/tracked', {
         method: 'POST',
@@ -699,30 +343,14 @@ function AddTrackedItemModal({
         },
       }),
     onSuccess: (r) => {
-      if (r.deduplicated) {
-        alert(`"${name}" is already in your list.`);
-      }
+      if (r.deduplicated) alert(`"${name}" is already in your list.`);
       onAdded();
     },
   }, 500);
-
-  const valid =
-    name.trim().length > 0 &&
-    Number(dose) > 0 &&
-    Number(dose) <= 100000;
-
-  // Portal to document.body so the modal escapes the .panel
-  // stacking context (which has backdrop-blur-sm that creates a
-  // new containing block, trapping position:fixed children).
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-bg-800 border border-neon-violet/40 max-w-md w-full p-5 panel-violet"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const valid = name.trim().length > 0 && Number(dose) > 0 && Number(dose) <= 100000;
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-bg-800 border border-neon-violet/40 max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <div className="font-display tracking-widest text-ink-50">Add tracked item</div>
           <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
@@ -745,9 +373,8 @@ function AddTrackedItemModal({
                 className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
                 value={category}
                 onChange={(e) => {
-                  const next = e.target.value as TrackedItem['category'];
+                  const next = e.target.value as TrackedItemCategory;
                   setCategory(next);
-                  // When switching to PROBIOTIC, suggest cfu; otherwise mg.
                   if (next === 'PROBIOTIC' && unit !== 'cfu') setUnit('cfu');
                   if (next !== 'PROBIOTIC' && unit === 'cfu') setUnit('mg');
                 }}
@@ -761,9 +388,7 @@ function AddTrackedItemModal({
               <label className="block">
                 <span className="text-xs uppercase text-slate-500">Dose</span>
                 <input
-                  type="number"
-                  step="any"
-                  min="0"
+                  type="number" step="any" min="0"
                   className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
                   value={dose}
                   onChange={(e) => setDose(e.target.value)}
@@ -775,7 +400,7 @@ function AddTrackedItemModal({
                 <select
                   className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
                   value={unit}
-                  onChange={(e) => setUnit(e.target.value as TrackedItem['doseUnit'])}
+                  onChange={(e) => setUnit(e.target.value as TrackedItemUnit)}
                 >
                   {(['mg', 'g', 'mcg', 'iu', 'cfu', 'capsule', 'drop', 'scoop', 'pill'] as const).map((u) => (
                     <option key={u} value={u}>{u}</option>
@@ -785,7 +410,7 @@ function AddTrackedItemModal({
             </div>
           </div>
           <label className="block">
-            <span className="text-xs uppercase text-slate-500">Notes <span className="text-slate-600">(optional)</span></span>
+            <span className="text-xs uppercase text-slate-500">Notes (optional)</span>
             <input
               className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
               value={notes}
@@ -795,9 +420,7 @@ function AddTrackedItemModal({
           </label>
         </div>
         <div className="flex justify-end gap-2 mt-4">
-          <NeonButton variant="cyan" onClick={onClose}>
-            Cancel
-          </NeonButton>
+          <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
           <NeonButton
             variant="violet"
             onClick={() => addM.run()}
@@ -809,14 +432,13 @@ function AddTrackedItemModal({
           </NeonButton>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
 }
 
-// ============================================================================
-// SubstancesPanel — one-shot event log with form-keyed chips
-// ============================================================================
+// ----------------------------------------------------------------------------
+// SubstancesPanel
+// ----------------------------------------------------------------------------
 
 type SubstanceLog = {
   id: string;
@@ -827,7 +449,6 @@ type SubstanceLog = {
   context: string | null;
   loggedAt: string;
 };
-
 type SubstanceSummary = {
   items: Array<{ category: string; form: string; count: number; lastLoggedAt: string }>;
   days: number;
@@ -835,95 +456,66 @@ type SubstanceSummary = {
 
 function SubstancesPanel() {
   const qc = useQueryClient();
-  const summaryQ = useQuery({
-    queryKey: ['substances', 'summary'],
-    queryFn: () => api<SubstanceSummary>('/substances/summary'),
-    refetchInterval: 60_000,
-  });
   const recentQ = useQuery({
     queryKey: ['substances', 'recent'],
     queryFn: () => api<{ items: SubstanceLog[] }>('/substances?days=7'),
     refetchInterval: 60_000,
   });
-
   const logM = useDelayedMutation<{ log: SubstanceLog }, { category: SubstanceCategory; form: string; amount?: number; unit?: string; context?: string }>({
     mutationFn: (body) => api('/substances', { method: 'POST', body }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['substances'] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['substances'] }),
   }, 300);
-
   const delM = useDelayedMutation<{ ok: boolean }, { id: string }>({
     mutationFn: ({ id }) => api(`/substances/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['substances'] }),
   }, 200);
-
   return (
     <Panel variant="cyan" title="Substances (last 7 days)" className="mt-4">
       <div className="text-[10px] font-mono text-ink-300 mb-3">
         Event log — each tap records one consumption. Used by the morning
-        report to give honest feedback on nicotine, caffeine, alcohol, and
-        electrolyte intake. Not framed as a penalty.
+        report to give honest feedback on nicotine, caffeine, alcohol,
+        and electrolyte intake. Not framed as a penalty.
       </div>
-
-      {(['NICOTINE', 'CAFFEINE', 'ALCOHOL', 'ELECTROLYTE'] as const).map((cat) => {
-        const variant = SUBSTANCE_VARIANT[cat];
-        return (
-          <div key={cat} className="mb-3">
-            <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1">
-              {SUBSTANCE_CATEGORY_LABEL[cat]}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {SUBSTANCE_FORMS[cat].map((f) => (
-                <button
-                  key={`${cat}:${f.form}`}
-                  onClick={() => {
-                    logM.run({ category: cat, form: f.form, amount: 1, unit: f.defaultUnit });
-                  }}
-                  disabled={logM.isPending}
-                  className={classNames(
-                    'px-2.5 py-1 text-[11px] font-mono border transition-all',
-                    'border-ink-500/30 text-ink-200 hover:border-neon-cyan/60',
-                  )}
-                  title={`Log 1 ${f.defaultUnit} of ${f.label}`}
-                >
-                  + {f.label}
-                </button>
-              ))}
-            </div>
+      {(['NICOTINE', 'CAFFEINE', 'ALCOHOL', 'ELECTROLYTE'] as const).map((cat) => (
+        <div key={cat} className="mb-3">
+          <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1">
+            {SUBSTANCE_CATEGORY_LABEL[cat]}
           </div>
-        );
-      })}
-
-      {/* Recent entries */}
+          <div className="flex flex-wrap gap-1.5">
+            {SUBSTANCE_FORMS[cat].map((f) => (
+              <button
+                key={`${cat}:${f.form}`}
+                onClick={() => {
+                  logM.run({ category: cat, form: f.form, amount: 1, unit: f.defaultUnit });
+                }}
+                disabled={logM.isPending}
+                className="px-2.5 py-1 text-[11px] font-mono border border-ink-500/30 text-ink-200 hover:border-neon-cyan/60"
+                title={`Log 1 ${f.defaultUnit} of ${f.label}`}
+              >
+                + {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
       {(recentQ.data?.items ?? []).length > 0 && (
         <div className="mt-3 pt-2 border-t border-ink-500/15">
-          <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1.5">
-            Recent
-          </div>
+          <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1.5">Recent</div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {(recentQ.data?.items ?? []).slice(0, 12).map((l) => (
-              <div
-                key={l.id}
-                className="flex items-center justify-between text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 group"
-              >
+              <div key={l.id} className="flex items-center justify-between text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 group">
                 <div className="flex items-center gap-2 truncate">
                   <span className="text-slate-400 shrink-0">
                     {new Date(l.loggedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
                   </span>
-                  <span className={classNames(
-                    'shrink-0',
-                    `neon-text-${SUBSTANCE_VARIANT[l.category]}`,
-                  )}>
+                  <span className={classNames('shrink-0', `neon-text-${SUBSTANCE_VARIANT[l.category]}`)}>
                     {l.category.toLowerCase()}
                   </span>
                   <span className="text-slate-200 truncate">
                     {l.form.replace(/_/g, ' ')}
                     {l.amount != null ? ` · ${l.amount}${l.unit ?? ''}` : ''}
                   </span>
-                  {l.context && (
-                    <span className="text-slate-500 text-[10px] italic truncate">— {l.context}</span>
-                  )}
+                  {l.context && <span className="text-slate-500 text-[10px] italic truncate">— {l.context}</span>}
                 </div>
                 <button
                   onClick={() => delM.run({ id: l.id })}

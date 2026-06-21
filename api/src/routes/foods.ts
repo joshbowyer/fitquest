@@ -18,7 +18,7 @@ import {
 
 const FOOD_SYSTEM_PROMPT = `You are a nutrition lookup assistant. The user has given a free-form description of a food or meal. Your job: extract a SHORT search query for OpenFoodFacts (the database we use).
 
-Critical: OpenFoodFacts is a French-origin database with thousands of generic products. It matches poorly on long queries or modifiers. Strip descriptors that don't change the food identity:
+Critical: OpenFoodFacts is a French-origin database with thousands of generic products. It matches poorly on long queries or modifiers. Strip descriptors that don't change the food identity, but KEEP the brand name when present (branded products are easier to find than generics).
 
   BAD:  "fried boneless chicken breast about the size and thickness of my hand"
   GOOD: "chicken breast"
@@ -29,18 +29,30 @@ Critical: OpenFoodFacts is a French-origin database with thousands of generic pr
   BAD:  "6 large strawberries"
   GOOD: "strawberries"
 
+  KEEP: "Annie's Mac and Cheese"          (brand matters)
+  GOOD: "Annie's Mac Cheese"
+
+  KEEP: "Trader Joe's Greek Yogurt"       (brand matters)
+  GOOD: "Trader Joe's Greek Yogurt"
+
 Rules:
 - Output strict JSON, no prose, no markdown fences.
-- The query should be 1-3 keywords: just the food's identity.
+- The query should be 2-4 keywords. Use 2 for a clear single food
+  ("chicken breast"), 3-4 when a brand or modifier is essential.
+- If the user mentioned a brand name, KEEP it. Branded products
+  exist in OFF; generic terms without a brand may return noise.
 - Drop cooking methods (fried, baked, grilled, raw, steamed).
 - Drop qualifiers (boneless, skinless, large, organic).
-- Drop sizing/packaging hints ("about the size of my hand", "6 of them") — the user will set portion size after finding the food.
+- Drop sizing/packaging hints ("about the size of my hand",
+  "6 of them", "the usual size") — the user will set portion
+  size after finding the food.
 - Do not invent brand names.
-- If the description is too vague to search (e.g. "food"), return { "query": null, "reason": "..." }.
+- If the description is too vague to search (e.g. "food"),
+  return { "query": null, "reason": "..." }.
 
 Schema:
 {
-  "query": "1-3 keyword search string OR null",
+  "query": "2-4 keyword search string OR null",
   "reason": "short explanation (1 sentence)"
 }`;
 
