@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin } from '../lib/auth.js';
 import { hashPassword } from '../lib/auth.js';
+import { callLlm } from '../lib/llm.js';
 
 const ResetPasswordSchema = z.object({
   newPassword: z.string().min(8).max(200),
@@ -170,5 +171,45 @@ export async function adminRoutes(app: FastifyInstance) {
   // when the admin switches providers.
   app.get('/llm-providers', async () => {
     return { providers: LLM_PROVIDER_PRESETS };
+  });
+
+  // POST /admin/llm-test - send a tiny prompt to verify the saved
+  // config actually works end-to-end. The prompt asks the model to
+  // self-identify so the response confirms the right model answered.
+  // Uses the SAVED config (not anything in the form), so the admin
+  // can verify persistence without saving first.
+  app.post('/llm-test', async (req, reply) => {
+    const row = await prisma.llmConfig.findFirst();
+    if (!row) {
+      return reply.code(400).send({
+        ok: false,
+        error: 'No LLM config saved yet. Fill the form and click Save first.',
+      });
+    }
+    if (!row.enabled) {
+      return reply.code(400).send({
+        ok: false,
+        error: 'LLM config is saved but disabled. Toggle "Enabled" and save again.',
+      });
+    }
+    const config = {
+      provider: row.provider as 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC',
+      apiKey: row.apiKey,
+      baseUrl: row.baseUrl,
+      model: row.model,
+      enabled: row.enabled,
+      systemPrompt: row.systemPrompt,
+    };
+    // The model name is interpolated server-side so the test verifies
+    // the dynamic substitution works (e.g. if MINIMAX is set, the
+    // model name in the prompt is "MiniMax-M3", not "MINIMAX").
+    const prompt = `Only say: 'Connection to ${config.model} successful. Hello!' Do not say anything else.`;
+    const result = await callLlm(config, {
+      prompt,
+      maxTokens: 60,
+      temperature: 0.1,
+      timeoutMs: 30_000,
+    });
+    return result;
   });
 }

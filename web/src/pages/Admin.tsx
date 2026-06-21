@@ -82,6 +82,19 @@ export function AdminPage() {
     },
   }, 800);
 
+  type LlmTestResult = {
+    ok: boolean;
+    text: string;
+    model: string;
+    provider: string;
+    latencyMs: number;
+    error?: string;
+    httpStatus?: number;
+  };
+  const testLlmM = useDelayedMutation({
+    mutationFn: () => api<LlmTestResult>('/admin/llm-test', { method: 'POST' }),
+  }, 1500);
+
   const resetPwM = useDelayedMutation({
     mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
       api<{ ok: boolean }>(`/admin/users/${id}/reset-password`, {
@@ -306,7 +319,18 @@ export function AdminPage() {
                 />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs uppercase text-slate-500">API Key</span>
+                <span className="text-xs uppercase text-slate-500 flex items-center gap-2">
+                  API Key
+                  {llmQ.data?.config.apiKey ? (
+                    <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
+                      ✓ key saved
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono normal-case tracking-normal text-amber-400">
+                      ⚠ not set
+                    </span>
+                  )}
+                </span>
                 <input
                   type="password"
                   className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
@@ -314,12 +338,14 @@ export function AdminPage() {
                   onChange={(e) =>
                     setLlmForm({ ...llmForm, apiKey: e.target.value || null })
                   }
-                  placeholder={
-                    llmForm.apiKey
-                      ? '•••• (leave blank to keep)'
-                      : 'sk-...'
-                  }
+                  placeholder="sk-... (enter to save, blank to keep current)"
                 />
+                {llmQ.data?.config.apiKey && (
+                  <div className="mt-1 text-[10px] font-mono text-slate-500">
+                    Currently saved as <span className="text-slate-300">{llmQ.data.config.apiKey}</span>
+                    {' '}<span className="text-slate-600">— leave blank to keep</span>
+                  </div>
+                )}
               </label>
               <label className="block sm:col-span-2">
                 <span className="text-xs uppercase text-slate-500">
@@ -365,9 +391,19 @@ export function AdminPage() {
                   Enabled — use this config for AI features
                 </span>
               </label>
-              <div className="sm:col-span-2 flex justify-end">
+              <div className="sm:col-span-2 flex justify-end gap-2">
                 <NeonButton
                   type="button"
+                  variant="cyan"
+                  disabled={testLlmM.isPending}
+                  onClick={() => testLlmM.run()}
+                  title="Sends a test prompt to the saved model"
+                >
+                  {testLlmM.isPending ? 'Testing…' : 'Test Connection'}
+                </NeonButton>
+                <NeonButton
+                  type="button"
+                  variant="violet"
                   disabled={saveLlmM.isPending}
                   onClick={() => {
                     // eslint-disable-next-line no-console
@@ -378,6 +414,11 @@ export function AdminPage() {
                   {saveLlmM.isPending ? 'Saving…' : 'Save LLM config'}
                 </NeonButton>
               </div>
+              {llmQ.data?.config.updatedAt && !saveLlmM.isPending && (
+                <p className="sm:col-span-2 text-[10px] font-mono text-slate-500">
+                  last saved: {new Date(llmQ.data.config.updatedAt).toLocaleString()}
+                </p>
+              )}
               {saveLlmM.error && (
                 <p className="sm:col-span-2 text-xs text-rose-400">
                   Save failed: {String((saveLlmM.error as any)?.message ?? saveLlmM.error)}
@@ -387,6 +428,44 @@ export function AdminPage() {
                 <p className="sm:col-span-2 text-xs text-emerald-400">
                   Saved.
                 </p>
+              )}
+              {testLlmM.data && (
+                <div
+                  className={classNames(
+                    'sm:col-span-2 text-xs p-2 border font-mono',
+                    testLlmM.data.ok
+                      ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-300'
+                      : 'border-rose-500/40 bg-rose-500/5 text-rose-300',
+                  )}
+                >
+                  {testLlmM.data.ok ? (
+                    <>
+                      <div className="text-emerald-300 font-bold">
+                        ✓ Connection successful ({testLlmM.data.latencyMs}ms)
+                      </div>
+                      <div className="text-slate-300 mt-1">
+                        model: <b>{testLlmM.data.model}</b> · provider: {testLlmM.data.provider}
+                      </div>
+                      <div className="text-slate-200 mt-1 italic">
+                        "{testLlmM.data.text}"
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-rose-300 font-bold">
+                        ✗ Test failed {testLlmM.data.httpStatus ? `(${testLlmM.data.httpStatus})` : ''}
+                      </div>
+                      <div className="text-slate-300 mt-1">
+                        {testLlmM.data.error}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {testLlmM.error && !testLlmM.data && (
+                <div className="sm:col-span-2 text-xs text-rose-400 font-mono">
+                  Test request failed: {String((testLlmM.error as any)?.message ?? testLlmM.error)}
+                </div>
               )}
             </div>
           )}
