@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type UserAvatar } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
@@ -46,6 +46,15 @@ export function StatusPage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<BodyPartMeta | null>(null);
   const [hovered, setHovered] = useState<BodyPartMeta | null>(null);
+
+  // Load the user's avatar customization so the small sprite in
+  // the Identity panel matches the rest of the app (skin tone,
+  // hair, shirt, pants).
+  const { data: avatarData } = useQuery({
+    queryKey: ['avatar'],
+    queryFn: () => api<{ avatar: UserAvatar }>('/avatar'),
+  });
+  const avatar = avatarData?.avatar ?? null;
 
   const { data, isLoading } = useQuery({
     queryKey: ['status'],
@@ -154,6 +163,12 @@ export function StatusPage() {
                 archetype={archetype}
                 accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
                 size={64}
+                sprites
+                hairStyle={avatar?.hairStyle ?? 'SHORT'}
+                hairColor={avatar?.hairColor ?? 'brown'}
+                skinTone={avatar?.skinTone ?? '#915533'}
+                shirtColor={avatar?.shirtColor ?? '#14d6e8'}
+                classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               />
               <div className="text-xs font-mono">
                 <div className="text-ink-50 font-display tracking-widest">{user.username}</div>

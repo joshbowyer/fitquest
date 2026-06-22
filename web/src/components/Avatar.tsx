@@ -52,6 +52,7 @@ export function Avatar({
   classStripe,
   hairStyle,
   hairColor,
+  skinTone,
   shirtColor,
   sprites = false,
   weapon,

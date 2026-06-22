@@ -442,4 +442,110 @@ export async function savedFoodRoutes(app: FastifyInstance) {
     });
     return { entry, food };
   });
+
+  // POST /foods/saved/ask-ai
+  // Free-form description of a recipe → LLM returns per-serving
+  // macros the user can save. Different from /foods/ask-ai (which
+  // returns a list of OFF/USDA matches): here we want the user to
+  // describe something they make themselves (a shake, a bowl) and
+  // have the model estimate the nutrition.
+  const SavedFoodAskAiSchema = z.object({
+    description: z.string().min(5).max(1500),
+    /// Optional: "per 100g" or "per serving" — helps the model
+    /// commit to a unit. Default "per serving".
+    unitBasis: z.enum(['per_serving', 'per_100g']).default('per_serving'),
+  });
+  app.post('/foods/saved/ask-ai', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = SavedFoodAskAiSchema.parse(req.body);
+    const config = await getActiveLlmConfig();
+    if (!config) {
+      return reply.code(422).send({
+        error: 'LLM not configured. Add an LLM provider in /admin to use Ask AI.',
+      });
+    }
+    const result = await callLlm(config, {
+      system: SAVED_FOOD_SYSTEM_PROMPT,
+      prompt: SAVED_FOOD_ESTIMATE_PROMPT(body.description, body.unitBasis),
+      maxTokens: 400,
+      temperature: 0.2,
+      timeoutMs: 60_000,
+    });
+    if (!result.ok) {
+      return reply.code(502).send({ error: result.error ?? 'LLM failed' });
+    }
+    const parsed = extractJson(result.text);
+    if (!parsed) {
+      return reply.code(422).send({
+        error: "Couldn't parse the AI's response. Try rewording the description.",
+      });
+    }
+    // Coerce numbers; missing fields become 0 (the editor lets the
+    // user fill in what the model didn't estimate).
+    const num = (v: any): number => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    return {
+      suggestion: {
+        name: typeof parsed.name === 'string' ? parsed.name : '',
+        servingSizeG: num(parsed.servingSizeG),
+        calories: num(parsed.calories),
+        proteinG: num(parsed.proteinG),
+        carbG: num(parsed.carbG),
+        fatG: num(parsed.fatG),
+        fiberG: num(parsed.fiberG),
+        sugarG: num(parsed.sugarG),
+        sodiumMg: num(parsed.sodiumMg),
+        recipe: typeof parsed.recipe === 'string' ? parsed.recipe : body.description,
+        // Reasoning shown under the suggestion so the user can spot
+        // a wrong call before saving ("the LLM assumed 2% milk fat").
+        reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+        confidence: typeof parsed.confidence === 'string' ? parsed.confidence : 'medium',
+        unitBasis: body.unitBasis,
+      },
+    };
+  });
+}
+
+// ============================================================================
+// Saved-food Ask-AI prompt
+// ============================================================================
+//
+// We ask the LLM to act as a nutrition calculator. The user describes
+// a recipe in plain language; the model returns per-serving (or
+// per-100g, if unitBasis says so) macros plus the recipe written
+// back for the user to review. We also ask for `reasoning` and
+// `confidence` so the UI can show the user what the LLM assumed.
+
+const SAVED_FOOD_SYSTEM_PROMPT = `You are a nutrition calculator for a self-hosted fitness RPG app. The user is describing a recipe they make themselves (a shake, a bowl, a meal prep) and wants you to estimate the per-serving macros.
+
+You must:
+- Return strict JSON only. No prose, no markdown fences, no preamble.
+- Estimate per serving (or per 100g if the user says so) to the nearest gram / calorie.
+- Use USDA / generic food database knowledge. If you don't know a value, use 0 and note it in reasoning. Never invent.
+- Capture the user's exact description in 'recipe' (lightly cleaned up). Don't paraphrase.
+- Set 'confidence' to 'high' (well-known foods, common combos), 'medium' (uncommon or estimate-heavy), or 'low' (vague, raw weights missing, exotic ingredients).
+- Keep reasoning to 1-2 short sentences.
+
+Return JSON with this exact shape:
+{
+  "name": "string — short human name, e.g. 'Daily Shake'",
+  "servingSizeG": number,
+  "calories": number,
+  "proteinG": number,
+  "carbG": number,
+  "fatG": number,
+  "fiberG": number,
+  "sugarG": number,
+  "sodiumMg": number,
+  "recipe": "string",
+  "reasoning": "string",
+  "confidence": "high" | "medium" | "low"
+}`;
+
+function SAVED_FOOD_ESTIMATE_PROMPT(description: string, unitBasis: 'per_serving' | 'per_100g'): string {
+  return `The user described this recipe:\n\n${description}\n\n` +
+    `Return per-${unitBasis === 'per_100g' ? '100g' : 'serving'} macros. ` +
+    `If a serving size is ambiguous, assume one standard serving (one shake, one bowl, one sandwich).`;
 }

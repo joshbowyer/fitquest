@@ -629,6 +629,49 @@ function SavedFoodEditor({
   const [sugar, setSugar] = useState<string>(existing?.sugarG != null ? String(existing.sugarG) : '');
   const [sodium, setSodium] = useState<string>(existing?.sodiumMg != null ? String(existing.sodiumMg) : '');
   const [recipe, setRecipe] = useState(existing?.recipe ?? '');
+  // Ask-AI: when the user describes a recipe, the LLM fills in
+  // the macros. Separate modal so the description textarea has
+  // room to breathe. Result is reviewed inline; the user keeps
+  // the name + clicks Save.
+  const [askOpen, setAskOpen] = useState(false);
+  type AiSuggestion = {
+    name: string;
+    servingSizeG: number;
+    calories: number;
+    proteinG: number;
+    carbG: number;
+    fatG: number;
+    fiberG: number;
+    sugarG: number;
+    sodiumMg: number;
+    recipe: string;
+    reasoning: string;
+    confidence: 'high' | 'medium' | 'low' | string;
+    unitBasis: 'per_serving' | 'per_100g';
+  };
+  const [aiResult, setAiResult] = useState<AiSuggestion | null>(null);
+  const askM = useDelayedMutation<{ suggestion: AiSuggestion }, { description: string; unitBasis: 'per_serving' | 'per_100g' }>({
+    mutationFn: (body) =>
+      api('/foods/saved/ask-ai', { method: 'POST', body }),
+    onSuccess: (r) => {
+      setAiResult(r.suggestion);
+    },
+  }, 1500);
+
+  function applySuggestion(s: AiSuggestion) {
+    setName(s.name || name);
+    setServingSize(s.servingSizeG > 0 ? String(s.servingSizeG) : servingSize);
+    setCal(String(s.calories || 0));
+    setProtein(String(s.proteinG || 0));
+    setCarb(String(s.carbG || 0));
+    setFat(String(s.fatG || 0));
+    setFiber(s.fiberG > 0 ? String(s.fiberG) : '');
+    setSugar(s.sugarG > 0 ? String(s.sugarG) : '');
+    setSodium(s.sodiumMg > 0 ? String(s.sodiumMg) : '');
+    setRecipe(s.recipe || recipe);
+    setAiResult(null);
+    setAskOpen(false);
+  }
 
   const valid =
     name.trim().length > 0 &&
@@ -793,6 +836,60 @@ function SavedFoodEditor({
           placeholder="1 scoop whey, 1 banana, 1 cup oat milk, 1/2 cup oats…"
         />
       </label>
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <NeonButton
+          type="button"
+          variant="amber"
+          size="sm"
+          onClick={() => {
+            setAskOpen(true);
+            setAiResult(null);
+          }}
+          title="Describe the recipe in plain language; the LLM will estimate the macros"
+        >
+          ✨ Ask AI
+        </NeonButton>
+        {aiResult && (
+          <div className="text-[10px] font-mono text-violet-300">
+            suggestion ready → click <b>Apply</b> below to fill the form
+          </div>
+        )}
+      </div>
+      {/* Inline preview of the LLM suggestion so the user can decide
+          to apply / discard before committing. */}
+      {aiResult && (
+        <div className="mt-1 border border-violet-500/30 p-2 text-[11px] font-mono bg-violet-500/5">
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="text-violet-300 truncate">
+              <b>{aiResult.name || '(unnamed)'}</b>
+              <span className="text-ink-400 ml-1">· {aiResult.unitBasis === 'per_100g' ? 'per 100g' : 'per serving'}</span>
+              <span className={`ml-2 px-1.5 py-0.5 text-[9px] ${
+                aiResult.confidence === 'high' ? 'text-emerald-300 border border-emerald-500/30' :
+                aiResult.confidence === 'low' ? 'text-rose-300 border border-rose-500/30' :
+                'text-amber-300 border border-amber-500/30'
+              }`}>
+                {aiResult.confidence} confidence
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => applySuggestion(aiResult)}
+              className="px-2 py-0.5 text-[10px] font-mono border border-violet-400 text-violet-200 hover:bg-violet-500/15"
+            >
+              Apply
+            </button>
+          </div>
+          <div className="text-ink-300 mt-1">
+            {aiResult.calories.toFixed(0)} cal · {aiResult.proteinG.toFixed(1)}p · {aiResult.carbG.toFixed(1)}c · {aiResult.fatG.toFixed(1)}f
+            {aiResult.fiberG > 0 && ` · ${aiResult.fiberG.toFixed(1)} fiber`}
+            {aiResult.sugarG > 0 && ` · ${aiResult.sugarG.toFixed(1)} sugar`}
+            {aiResult.sodiumMg > 0 && ` · ${aiResult.sodiumMg.toFixed(0)}mg Na`}
+          </div>
+          {aiResult.reasoning && (
+            <div className="text-ink-500 italic mt-1">↳ {aiResult.reasoning}</div>
+          )}
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
         <NeonButton
@@ -805,7 +902,100 @@ function SavedFoodEditor({
           {existing ? 'Update saved food' : 'Add saved food'}
         </NeonButton>
       </div>
+      <AskAiSavedFoodModal
+        open={askOpen}
+        loading={askM.isPending}
+        error={askM.error ? String((askM.error as any).message ?? askM.error) : null}
+        onClose={() => setAskOpen(false)}
+        onSubmit={(description, unitBasis) => askM.run({ description, unitBasis })}
+      />
     </div>
+  );
+}
+
+// Ask-AI modal: lets the user describe a recipe in plain language.
+// Result is shown inline in the editor (not as a popover) so the
+// user can review the LLM's reasoning before clicking Apply.
+function AskAiSavedFoodModal({
+  open,
+  loading,
+  error,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (description: string, unitBasis: 'per_serving' | 'per_100g') => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [unitBasis, setUnitBasis] = useState<'per_serving' | 'per_100g'>('per_serving');
+  if (!open) return null;
+  const valid = draft.trim().length >= 5;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg-800 border border-neon-amber/40 max-w-md w-full p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-display tracking-widest text-sm text-ink-50">
+            ✨ Ask AI — describe your recipe
+          </div>
+          <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
+        </div>
+        <div className="text-[10px] font-mono text-ink-400 mb-3">
+          List the ingredients and amounts. The LLM returns
+          per-serving (or per 100g) macros plus a confidence rating.
+          You review before saving.
+        </div>
+        <textarea
+          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          rows={5}
+          autoFocus
+          placeholder="e.g. 1 cup reduced sugar almond milk, 1/2 cup maple hill organic kefir, 1 scoop whey isolate, 1 tbsp peanut butter, 1/2 cup frozen berries"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+        <div className="mt-2 flex items-center gap-2 text-[10px] font-mono text-ink-400">
+          <span>Unit basis:</span>
+          <button
+            type="button"
+            onClick={() => setUnitBasis('per_serving')}
+            className={unitBasis === 'per_serving' ? 'px-2 py-0.5 border border-amber-400 text-amber-300 bg-amber-400/10' : 'px-2 py-0.5 border border-ink-500/30 text-ink-300'}
+          >
+            per serving
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnitBasis('per_100g')}
+            className={unitBasis === 'per_100g' ? 'px-2 py-0.5 border border-amber-400 text-amber-300 bg-amber-400/10' : 'px-2 py-0.5 border border-ink-500/30 text-ink-300'}
+          >
+            per 100g
+          </button>
+        </div>
+        {error && (
+          <div className="mt-2 text-xs text-rose-400 font-mono">{error}</div>
+        )}
+        <div className="flex justify-end gap-2 mt-4">
+          <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
+          <NeonButton
+            variant="amber"
+            disabled={!valid || loading}
+            loading={loading}
+            loadingText="Asking…"
+            onClick={() => onSubmit(draft.trim(), unitBasis)}
+          >
+            Ask
+          </NeonButton>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

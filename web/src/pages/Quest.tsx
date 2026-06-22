@@ -85,6 +85,7 @@ export function QuestPage() {
                       accentColor={avatar.accentColor}
                       classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
                       size={80}
+                      sprites
                     />
                   )}
                 </div>
