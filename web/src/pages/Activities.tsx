@@ -9,6 +9,7 @@ import { formatSeconds, classNames, formatAbsolute } from '@/lib/format';
 import type { Workout } from '@/lib/types';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { WorkoutLogger } from '@/components/WorkoutLogger';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function kgToLb(kg: number): number { return kg * 2.20462; }
 function weightUnitLabel(units: UnitSystem): string {
@@ -81,11 +82,28 @@ export function ActivitiesPage() {
           even at lg — the previous 3-col grid crushed the activity cards
           and made volumes/dates hard to read. */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 items-start">
-        <WorkoutLogger
-          user={user}
-          units={units}
-          copyFrom={copyFromQ.data?.item}
-        />
+        <ErrorBoundary
+          fallback={
+            <Panel variant="magenta" title="Log Session (load error)">
+              <div className="text-xs font-mono text-neon-magenta space-y-2">
+                <div>The workout logger crashed. Try a hard refresh (Ctrl+Shift+R).</div>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-3 py-1.5 text-xs font-mono border border-neon-magenta text-neon-magenta hover:bg-neon-magenta/10"
+                >
+                  Reload page
+                </button>
+              </div>
+            </Panel>
+          }
+        >
+          <WorkoutLogger
+            user={user}
+            units={units}
+            copyFrom={copyFromQ.data?.item}
+          />
+        </ErrorBoundary>
 
         {/* History */}
         <Panel

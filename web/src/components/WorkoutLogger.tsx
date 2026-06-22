@@ -621,10 +621,10 @@ export function WorkoutLogger({
             onClick={() => createM.run()}
             loading={createM.isPending}
             disabled={!hasUsableContent(type, exercises, cardio, name, duration)}
-            icon="⚡"
+            icon={compact ? undefined : '⚡'}
             loadingText="Committing…"
           >
-            {compact ? '⚡ Log' : 'Commit Session'}
+            {compact ? 'Log session' : 'Commit Session'}
           </NeonButton>
           {result && !createM.isPending && !compact && (
             <div className="border border-neon-lime/40 bg-neon-lime/5 px-3 py-2 text-xs font-mono flex-1">
