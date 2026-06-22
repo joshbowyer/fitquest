@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { CLASS_META } from '@/lib/types';
 import { classNames } from '@/lib/format';
+import { useNavOrder } from '@/hooks/useNavOrder';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -39,16 +40,22 @@ export function Layout({ children }: Props) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
+  /// Sidebar reorder edit-mode. When true, each NavLink becomes
+  /// draggable and a drag-handle glyph appears on hover. A "Done"
+  /// pill at the bottom of the sidebar flips it back off.
+  const [editingNav, setEditingNav] = useState(false);
+  const dragIndex = useRef<number | null>(null);
   const cls = user?.class ? CLASS_META[user.class] : null;
   const colorClass = cls ? `neon-text-${cls.color}` : 'neon-text-cyan';
+
+  const filteredNav = NAV.filter((n) => !n.requiresAdmin || user?.isAdmin);
+  const { order: visibleNav, reorder, reset } = useNavOrder<NavItem>('fq.navOrder.v1', filteredNav);
+  const mobileNav = visibleNav.filter((n) => n.mobile);
 
   async function handleLogout() {
     await logout();
     navigate('/login');
   }
-
-  const visibleNav = NAV.filter((n) => !n.requiresAdmin || user?.isAdmin);
-  const mobileNav = visibleNav.filter((n) => n.mobile);
 
   return (
     <div className="min-h-full md:grid md:grid-cols-[220px_1fr] md:grid-rows-[60px_1fr]">
@@ -114,27 +121,100 @@ export function Layout({ children }: Props) {
       {/* Sidebar — desktop only */}
       <aside className="hidden md:block md:row-start-2 md:border-r md:border-neon-cyan/15 bg-bg-800/40 grid-bg p-3">
         <nav className="flex flex-col gap-1">
-          {visibleNav.map((item) => (
+          {visibleNav.map((item, i) => (
             <NavLink
               key={item.to}
               to={item.to}
+              draggable={editingNav}
+              onDragStart={(e) => {
+                if (!editingNav) return;
+                dragIndex.current = i;
+                // dataTransfer is required by Chrome/Safari even when
+                // we don't read it — they won't fire drop otherwise.
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', item.to); } catch { /* ignore */ }
+              }}
+              onDragOver={(e) => {
+                if (!editingNav) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                if (!editingNav) return;
+                e.preventDefault();
+                const from = dragIndex.current;
+                if (from == null) return;
+                if (from !== i) reorder(from, i);
+                dragIndex.current = null;
+              }}
+              onDragEnd={() => {
+                dragIndex.current = null;
+              }}
               className={({ isActive }) =>
                 classNames(
-                  'flex items-center gap-3 px-3 py-2 font-display tracking-widest text-xs uppercase transition-all border border-transparent',
-                  isActive
+                  'flex items-center gap-3 px-3 py-2 font-display tracking-widest text-xs uppercase transition-all border',
+                  editingNav ? 'cursor-grab active:cursor-grabbing' : 'border-transparent',
+                  !editingNav && isActive
                     ? 'bg-neon-cyan/10 border-neon-cyan/40 neon-text-cyan shadow-neon-cyan/30'
-                    : 'text-ink-200 hover:bg-bg-700 hover:border-ink-500'
+                    : !editingNav
+                      ? 'text-ink-200 hover:bg-bg-700 hover:border-ink-500'
+                      : isActive
+                        ? 'border-neon-cyan/40 neon-text-cyan bg-neon-cyan/5'
+                        : 'border-ink-500/30 text-ink-200 hover:border-neon-cyan/40',
                 )
               }
             >
               <span className="text-base w-5 text-center">{item.icon}</span>
-              {item.label}
+              <span className="flex-1 truncate">{item.label}</span>
+              {editingNav && (
+                <span className="text-ink-400 text-[10px] tracking-normal" aria-hidden="true">
+                  ⠿
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
-        <div className="mt-6 pt-4 border-t border-neon-cyan/10 text-[10px] text-ink-400 font-mono leading-relaxed">
-          <div>// local time</div>
-          <div className="text-neon-cyan">{new Date().toLocaleString()}</div>
+
+        {/* Sidebar footer: reorder toggle (edit mode) + local clock.
+            Edit mode swaps the icon to a "Done" pill and surfaces a
+            "Reset to default" link. Hidden in normal mode to keep
+            the chrome minimal. */}
+        <div className="mt-6 pt-4 border-t border-neon-cyan/10 space-y-3">
+          {editingNav ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingNav(false)}
+                className="flex-1 px-2 py-1 text-[10px] font-display tracking-widest uppercase border border-neon-lime text-neon-lime bg-neon-lime/10 hover:bg-neon-lime/20"
+              >
+                ✓ Done
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  reset();
+                  setEditingNav(false);
+                }}
+                className="px-2 py-1 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-neon-magenta hover:text-neon-magenta"
+                title="Reset sidebar order to the default"
+              >
+                reset
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingNav(true)}
+              className="w-full px-2 py-1 text-[10px] font-mono uppercase tracking-widest text-ink-400 border border-ink-500/30 hover:border-neon-cyan hover:text-neon-cyan transition-all"
+              title="Drag-to-reorder the sidebar (persists across reloads)"
+            >
+              ⠿ Reorder
+            </button>
+          )}
+          <div className="text-[10px] text-ink-400 font-mono leading-relaxed">
+            <div>// local time</div>
+            <div className="text-neon-cyan">{new Date().toLocaleString()}</div>
+          </div>
         </div>
       </aside>
 
