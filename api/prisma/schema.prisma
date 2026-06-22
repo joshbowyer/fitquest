@@ -70,6 +70,11 @@ enum MetricType {
   // STEPS: total daily step count.
   BODY_BATTERY
   STEPS
+  // RESPIRATION_RATE: breaths per minute (from MONITOR file
+  // RespirationRateMesg). Emitted by parseMonitor in api/src/lib/fit.ts
+  // but missing from this enum would 500 every MONITOR file with
+  // respiration data on import. Critical fix.
+  RESPIRATION_RATE
 }
 
 enum MetricCategory {

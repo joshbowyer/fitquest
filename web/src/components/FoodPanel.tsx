@@ -1856,7 +1856,7 @@ function LogMealModal({
               <select
                 value={unit}
                 onChange={(e) => changeUnit(e.target.value as Unit)}
-                className="text-[9px] font-mono uppercase bg-bg-900 border border-ink-500/40 px-1 py-0 text-ink-300"
+                className="text-[11px] font-mono uppercase bg-bg-900 border border-ink-500/40 px-2 py-1.5 text-ink-200"
                 title="Switch between ×100g, oz, and per-serving units. Conversion is automatic."
               >
                 <option value="x100g">×100g</option>
