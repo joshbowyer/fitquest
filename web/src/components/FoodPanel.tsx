@@ -73,6 +73,7 @@ export function FoodPanel() {
     queryFn: () => api<{ items: SavedFoodDto[] }>('/foods/saved'),
   });
   const [savedOpen, setSavedOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
   // Quick-log a saved food. No modal: defaults to time-of-day meal
   // and 1 serving. Long-press / manage opens the modal.
   const logSavedM = useDelayedMutation<{ entry: any }, { id: string; meal: MealType; servings: number }>({
@@ -98,6 +99,14 @@ export function FoodPanel() {
       className="border-neon-violet/30"
       action={
         <div className="flex items-center gap-1">
+          <NeonButton
+            size="sm"
+            variant="cyan"
+            onClick={() => setRecentOpen(true)}
+            title="Browse all foods you've logged + saved + import from FoodYou backup"
+          >
+            Recent foods
+          </NeonButton>
           <NeonButton
             size="sm"
             variant="violet"
@@ -255,6 +264,14 @@ export function FoodPanel() {
           onSubmit={(description) => {
             askM.run(description);
           }}
+          onPick={(food) => {
+            // Hand the food to the LogMeal modal and close this
+            // one in the same tick so the user never has to click
+            // a separate "log" button.
+            setLogFood(food);
+            setAskOpen(false);
+            setAskResults(null);
+          }}
         />
       )}
 
@@ -274,6 +291,20 @@ export function FoodPanel() {
         <ManageSavedFoodsModal
           items={savedQ.data?.items ?? []}
           onClose={() => setSavedOpen(false)}
+        />
+      )}
+
+      {recentOpen && (
+        <RecentFoodsModal
+          items={savedQ.data?.items ?? []}
+          onClose={() => setRecentOpen(false)}
+          onLog={(food) => {
+            setLogFood(food);
+            setRecentOpen(false);
+          }}
+          onSavedChanged={() => {
+            qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
+          }}
         />
       )}
     </Panel>
@@ -406,12 +437,19 @@ function AskAiModal({
   error,
   onClose,
   onSubmit,
+  onPick,
 }: {
   loading: boolean;
   result: AskAiResult | null;
   error: string | null;
   onClose: () => void;
   onSubmit: (description: string) => void;
+  /**
+   * Called when the user picks one of the LLM-returned results.
+   * The parent should open the LogMealModal with this food and
+   * close the AskAi modal in the same tick.
+   */
+  onPick: (food: FoodMatch) => void;
 }) {
   const [draft, setDraft] = useState('');
   const valid = draft.trim().length >= 3;
@@ -421,7 +459,7 @@ function AskAiModal({
       onClick={onClose}
     >
       <div
-        className="bg-bg-800 border border-neon-violet/40 max-w-md w-full p-5"
+        className="bg-bg-800 border border-neon-violet/40 max-w-lg w-full p-5 max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-2">
@@ -460,6 +498,63 @@ function AskAiModal({
             <div className="text-ink-400">{result.reason}</div>
           </div>
         )}
+        {/*
+          Results INSIDE the modal so the user can pick without
+          closing first. Each row is a button that hands the
+          food back to the parent (which opens the LogMeal modal
+          and closes this one). The list is scroll-isolated so a
+          long description textarea doesn't push the buttons out
+          of view.
+        */}
+        {result && result.items.length > 0 && (
+          <div className="mt-3 flex-1 min-h-0 flex flex-col">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1.5">
+              {result.items.length} result{result.items.length === 1 ? '' : 's'} — click to log
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto border border-ink-500/20">
+              {result.items.slice(0, 8).map((it) => (
+                <button
+                  key={`${it.source}:${it.sourceId}`}
+                  type="button"
+                  onClick={() => onPick(it)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] font-mono hover:bg-neon-violet/10 border-b border-ink-500/10 last:border-b-0"
+                >
+                  {it.imageUrl ? (
+                    <img
+                      src={it.imageUrl}
+                      alt=""
+                      className="w-6 h-6 object-cover rounded border border-ink-500/30 shrink-0"
+                      loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-6 h-6 bg-slate-800/60 rounded border border-ink-500/30 shrink-0 flex items-center justify-center text-[8px] text-ink-500">
+                      {it.source === 'OPENFOODFACTS' ? 'OFF' : 'USDA'}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-slate-100 truncate">{it.name}</div>
+                    <div className="text-[10px] text-ink-400 truncate">
+                      {it.brand && <span className="text-ink-300">{it.brand} · </span>}
+                      {it.calories.toFixed(0)} cal · {it.proteinG.toFixed(1)}p ·{' '}
+                      {it.carbG.toFixed(1)}c · {it.fatG.toFixed(1)}f
+                      <span className="text-ink-500"> per 100g</span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-neon-violet shrink-0">→ log</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {result && result.items.length === 0 && (
+          <div className="mt-3 p-3 text-[11px] font-mono text-ink-400 border border-ink-500/20 bg-bg-900/40">
+            No matches in OpenFoodFacts. Try a different phrasing or
+            use the regular search bar above.
+          </div>
+        )}
         <div className="flex justify-end gap-2 mt-4">
           <NeonButton variant="cyan" onClick={onClose}>
             Close
@@ -482,6 +577,362 @@ function AskAiModal({
 
 // ============================================================================
 // Manage Saved Foods modal — list, add, edit, delete the user's recipes
+// ============================================================================
+// Recent foods modal — full list + FoodYou import
+// ============================================================================
+//
+// Shows ALL the user's saved foods (the "Your saved foods"
+// list, but bigger + with quick-log). If a FoodYou backup DB
+// is found in /tmp, also shows the importable list pulled from
+// it: foods the user actually logged in FoodYou + their recent
+// search terms' best OFF/USDA matches + recent catalog additions.
+// Click an item to open the LogMeal modal.
+
+type FoodYouImportFood = {
+  name: string;
+  brand: string | null;
+  servingSizeG: number | null;
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  source: 'logged' | 'recent' | 'search';
+  foodYouId: number;
+};
+
+type FoodYouImportResponse =
+  | {
+      available: true;
+      path: string;
+      logged: FoodYouImportFood[];
+      recent: FoodYouImportFood[];
+      searches: FoodYouImportFood[];
+    }
+  | { available: false; reason: string; message: string; path?: string };
+
+function RecentFoodsModal({
+  items,
+  onClose,
+  onLog,
+  onSavedChanged,
+}: {
+  items: SavedFoodDto[];
+  onClose: () => void;
+  onLog: (food: FoodMatch) => void;
+  onSavedChanged: () => void;
+}) {
+  // Map a SavedFood into the FoodMatch shape the LogMeal modal
+  // expects, so the user can quick-log a saved food from here
+  // (and then import a FoodYou food from the same modal).
+  function savedToMatch(s: SavedFoodDto): FoodMatch {
+    return {
+      source: 'MANUAL',
+      sourceId: s.id,
+      name: s.name,
+      brand: s.brand,
+      imageUrl: null,
+      servingSizeG: s.servingSizeG,
+      calories: s.calories,
+      proteinG: s.proteinG,
+      carbG: s.carbG,
+      fatG: s.fatG,
+      fiberG: s.fiberG,
+      sugarG: s.sugarG,
+      sodiumMg: s.sodiumMg,
+      sourceUrl: '',
+    };
+  }
+
+  // FoodYou import state
+  const importQ = useQuery({
+    queryKey: ['foods', 'import', 'foodyou'],
+    queryFn: () => api<FoodYouImportResponse>('/foods/import/foodyou'),
+    // Don't run unless the modal is open.
+    enabled: true,
+    retry: false,
+  });
+  const importM = useDelayedMutation<
+    { ok: boolean; created: number; skipped: number },
+    { items: Omit<FoodYouImportFood, 'foodYouId' | 'source'>[] }
+  >({
+    mutationFn: (body) =>
+      api('/foods/import/foodyou/commit', { method: 'POST', body }),
+    onSuccess: () => {
+      onSavedChanged();
+      importQ.refetch();
+    },
+  }, 800);
+  // Which import-item ids the user has checked. Map<foodYouId, checked>.
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+
+  const importData = importQ.data && importQ.data.available ? importQ.data : null;
+  // Combined pickable list: logged first, then searches, then recent.
+  // We dedupe by (name+brand) so a food showing up in both
+  // logged AND search doesn't show twice.
+  const allImportable = (() => {
+    if (!importData) return [];
+    const seen = new Set<string>();
+    const out: FoodYouImportFood[] = [];
+    for (const f of [...importData.logged, ...importData.searches, ...importData.recent]) {
+      const key = `${f.name}|${f.brand ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(f);
+    }
+    return out;
+  })();
+
+  // Quick helper: "import all" = check every logged + search item
+  // (NOT the long recent-tail, which is mostly noise).
+  function pickAll() {
+    const next = new Set<number>();
+    if (!importData) return next;
+    for (const f of [...importData.logged, ...importData.searches]) {
+      next.add(f.foodYouId);
+    }
+    return next;
+  }
+  const allPicked = picked.size > 0 && (() => {
+    const pickable = [...(importData?.logged ?? []), ...(importData?.searches ?? [])];
+    return pickable.every((f) => picked.has(f.foodYouId));
+  })();
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg-800 border border-neon-cyan/40 max-w-3xl w-full p-5 max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-display tracking-widest text-sm text-ink-50">
+            Recent foods
+          </div>
+          <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
+        </div>
+
+        {/* ---------- Your saved foods (the always-available quick-log list) ---------- */}
+        <div className="mb-4">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1.5">
+            Your saved foods ({items.length})
+          </div>
+          {items.length === 0 ? (
+            <div className="text-xs text-ink-400 font-mono py-2">
+              You don't have any saved foods yet. Either save a search
+              result with the ★ save button, or import from a FoodYou
+              backup below.
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-44 overflow-y-auto">
+              {items.slice(0, 30).map((s) => (
+                <div
+                  key={s.id}
+                  className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
+                >
+                  <span className="text-slate-200 truncate flex-1">{s.name}</span>
+                  <span className="text-amber-300 text-[10px] shrink-0">
+                    {s.calories.toFixed(0)} cal
+                  </span>
+                  <span className="text-ink-500 text-[10px] shrink-0">
+                    ·{s.proteinG.toFixed(0)}p
+                  </span>
+                  <span className="text-ink-500 text-[10px] shrink-0">
+                    ·×{s.useCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onLog(savedToMatch(s))}
+                    className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
+                    title="Quick-log this food"
+                  >
+                    + log
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ---------- FoodYou backup import ---------- */}
+        <div className="border-t border-ink-500/20 pt-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
+              Import from FoodYou backup
+            </div>
+            {importData && allImportable.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPicked(allPicked ? new Set() : pickAll())}
+                  className="text-[10px] font-mono text-violet-300 hover:underline"
+                >
+                  {allPicked ? 'clear' : 'select logged + searched'}
+                </button>
+                <NeonButton
+                  size="sm"
+                  variant="cyan"
+                  disabled={picked.size === 0 || importM.isPending}
+                  loading={importM.isPending}
+                  loadingText="Importing…"
+                  onClick={() => {
+                    // Translate the picked-set into the items the
+                    // server expects. We strip the FoodYou-specific
+                    // fields (foodYouId, source) before sending.
+                    const itemsToSend = allImportable
+                      .filter((f) => picked.has(f.foodYouId))
+                      .map((f) => ({
+                        name: f.name,
+                        brand: f.brand,
+                        servingSizeG: f.servingSizeG,
+                        calories: f.calories,
+                        proteinG: f.proteinG,
+                        carbG: f.carbG,
+                        fatG: f.fatG,
+                        fiberG: f.fiberG,
+                        sugarG: f.sugarG,
+                        sodiumMg: f.sodiumMg,
+                      }));
+                    importM.run({ items: itemsToSend });
+                    setPicked(new Set());
+                  }}
+                >
+                  Import {picked.size > 0 ? `(${picked.size})` : ''}
+                </NeonButton>
+              </div>
+            )}
+          </div>
+          {importQ.isLoading && (
+            <div className="text-xs text-ink-400 font-mono py-2">⏳ Looking for a FoodYou backup in /tmp/…</div>
+          )}
+          {!importQ.isLoading && importQ.data && importQ.data.available === false && (
+            <div className="text-xs text-ink-400 font-mono py-2 space-y-1">
+              <div>No FoodYou backup found at {importQ.data.path ?? '/tmp/foodyou-*.db'}.</div>
+              {importQ.data.reason === 'parse_error' && (
+                <div className="text-rose-400">{importQ.data.message}</div>
+              )}
+              <div className="text-[10px] text-ink-500">
+                Drop a FoodYou SQLite export (foodyou-*.db) in /tmp/
+                and reload this modal.
+              </div>
+            </div>
+          )}
+          {importData && (
+            <div className="space-y-1 max-h-72 overflow-y-auto">
+              {allImportable.length === 0 ? (
+                <div className="text-xs text-ink-400 font-mono py-2">
+                  No foods found in the backup.
+                </div>
+              ) : (
+                <>
+                  {importData.logged.length > 0 && (
+                    <div className="text-[10px] font-mono text-amber-300 mt-1 mb-1">
+                      {importData.logged.length} you actually logged
+                    </div>
+                  )}
+                  {importData.logged.map((f) => (
+                    <ImportRow
+                      key={f.foodYouId}
+                      f={f}
+                      checked={picked.has(f.foodYouId)}
+                      onToggle={() => {
+                        const next = new Set(picked);
+                        if (next.has(f.foodYouId)) next.delete(f.foodYouId);
+                        else next.add(f.foodYouId);
+                        setPicked(next);
+                      }}
+                    />
+                  ))}
+                  {importData.searches.length > 0 && (
+                    <div className="text-[10px] font-mono text-cyan-300 mt-2 mb-1">
+                      {importData.searches.length} from your recent search terms
+                    </div>
+                  )}
+                  {importData.searches.map((f) => (
+                    <ImportRow
+                      key={f.foodYouId}
+                      f={f}
+                      checked={picked.has(f.foodYouId)}
+                      onToggle={() => {
+                        const next = new Set(picked);
+                        if (next.has(f.foodYouId)) next.delete(f.foodYouId);
+                        else next.add(f.foodYouId);
+                        setPicked(next);
+                      }}
+                    />
+                  ))}
+                  {importData.recent.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-[10px] font-mono text-ink-500 cursor-pointer hover:text-ink-300">
+                        + {importData.recent.length} recent catalog additions (click to expand)
+                      </summary>
+                      <div className="space-y-1 mt-1">
+                        {importData.recent.slice(0, 30).map((f) => (
+                          <ImportRow
+                            key={f.foodYouId}
+                            f={f}
+                            checked={picked.has(f.foodYouId)}
+                            onToggle={() => {
+                              const next = new Set(picked);
+                              if (next.has(f.foodYouId)) next.delete(f.foodYouId);
+                              else next.add(f.foodYouId);
+                              setPicked(next);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function ImportRow({
+  f,
+  checked,
+  onToggle,
+}: {
+  f: FoodYouImportFood;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label
+      className={`flex items-center gap-2 px-2 py-1 text-[11px] font-mono border cursor-pointer ${
+        checked
+          ? 'border-neon-cyan/60 bg-neon-cyan/10'
+          : 'border-ink-500/20 hover:bg-slate-800/40'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        className="rounded shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-slate-100 truncate">{f.name}</div>
+        <div className="text-[10px] text-ink-400 truncate">
+          {f.brand && <span className="text-ink-300">{f.brand} · </span>}
+          {f.calories.toFixed(0)} cal · {f.proteinG.toFixed(1)}p · {f.carbG.toFixed(1)}c · {f.fatG.toFixed(1)}f
+          <span className="text-ink-500"> per {f.servingSizeG ?? 100}g</span>
+        </div>
+      </div>
+    </label>
+  );
+}
+
 // ============================================================================
 
 function ManageSavedFoodsModal({

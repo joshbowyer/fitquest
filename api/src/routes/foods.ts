@@ -596,3 +596,282 @@ function SAVED_FOOD_ESTIMATE_PROMPT(description: string, unitBasis: 'per_serving
     `Return per-${unitBasis === 'per_100g' ? '100g' : 'serving'} macros. ` +
     `If a serving size is ambiguous, assume one standard serving (one shake, one bowl, one sandwich).`;
 }
+
+// ============================================================================
+// FoodYou import
+// ============================================================================
+//
+// The user exported a FoodYou Android app database (SQLite). It
+// contains a Product table with the full OFF+USDA catalog, a
+// FoodEvent table with what the user actually LOGGED, and a
+// SearchEntry table with their recent searches. We expose two
+// endpoints:
+//
+//   GET  /foods/import/foodyou?path=/tmp/foodyou-db.db
+//        returns: { available, logged: [...], recent: [...] }
+//
+//   POST /foods/import/foodyou/commit
+//        body: { items: [{ name, brand, servingSizeG, cal, p, c, f, ... }] }
+//        creates SavedFood rows (deduped by userId+name).
+//
+// The server is the one reading the file because the SQLite
+// driver is native — running in Node lets us handle the
+// older schema and column names directly. We use better-sqlite3
+// (sync, no async overhead) for speed.
+
+import Database from 'better-sqlite3';
+import path from 'node:path';
+import fs from 'node:fs';
+
+type ImportedFood = {
+  name: string;
+  brand: string | null;
+  servingSizeG: number | null;
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  // Source row in the FoodYou DB (for dedup / display).
+  source: 'logged' | 'recent';
+  foodYouId: number;
+};
+
+function readFoodYouDb(dbPath: string): { logged: ImportedFood[]; recent: ImportedFood[]; searches: ImportedFood[] } | { error: string } {
+  if (!fs.existsSync(dbPath)) {
+    return { error: `File not found: ${dbPath}` };
+  }
+  let db: Database.Database;
+  try {
+    db = new Database(dbPath, { readonly: true });
+  } catch (e: any) {
+    return { error: `Failed to open DB: ${e?.message ?? e}` };
+  }
+  try {
+    // Logged foods: every FoodEvent.type = 0 maps to a Product
+    // (or Recipe). Recipes aren't supported here — we import
+    // products only. Dedupe by (name, brand) so logging the
+    // same product 5 times doesn't show 5 entries.
+    const loggedRows = db.prepare(`
+      SELECT fe.id AS event_id, fe.epochSeconds AS ts,
+             p.id, p.name, p.brand, p.servingWeight, p.energy,
+             p.proteins, p.fats, p.carbohydrates, p.sugars,
+             p.dietaryFiber, p.sodiumMilli
+      FROM FoodEvent fe
+      INNER JOIN Product p ON p.id = fe.productId
+      WHERE fe.type = 0
+      ORDER BY fe.epochSeconds DESC
+    `).all() as any[];
+
+    // Recent additions: distinct products by highest rowid in the
+    // last 200 (i.e. anything the user added recently that
+    // may not be in their log history). We use rowid DESC so
+    // "most recent in their catalog" is the order.
+    const recentRows = db.prepare(`
+      SELECT p.id, p.name, p.brand, p.servingWeight, p.energy,
+             p.proteins, p.fats, p.carbohydrates, p.sugars,
+             p.dietaryFiber, p.sodiumMilli, p.rowid
+      FROM Product p
+      WHERE p.rowid > (SELECT MAX(rowid) - 200 FROM Product)
+        AND p.energy IS NOT NULL AND p.energy > 0
+      ORDER BY p.rowid DESC
+      LIMIT 100
+    `).all() as any[];
+
+    // Recent searches: the user's last 20 distinct search terms.
+    // Each one is resolved to its best-matching Product (the
+    // first result OFF/USDA returned) so we can import it as a
+    // concrete food with macros. The user mentioned
+    // "alcoholic beverage wint table white" — that's a search
+    // for "white wine" with a typo. The actual OFF/USDA matches
+    // get imported as the food, not the search term.
+    const searchRows = db.prepare(`
+      SELECT DISTINCT query FROM SearchEntry
+      ORDER BY epochSeconds DESC LIMIT 20
+    `).all() as any[];
+
+    // For each search term, do a CASE-INSENSITIVE LIKE match
+    // against the Product name and grab the top result. We
+    // can't reuse the OFF API here (we're offline); a LIKE on
+    // the local Product table is the next best thing.
+    const searchHits: any[] = [];
+    for (const row of searchRows) {
+      const q = (row.query ?? '').trim();
+      if (q.length < 2) continue;
+      const hit = db.prepare(`
+        SELECT id, name, brand, servingWeight, energy,
+               proteins, fats, carbohydrates, sugars,
+               dietaryFiber, sodiumMilli
+        FROM Product
+        WHERE LOWER(name) LIKE LOWER(?) ESCAPE '\\'
+          AND energy IS NOT NULL AND energy > 0
+        ORDER BY
+          CASE WHEN LOWER(name) = LOWER(?) THEN 0 ELSE 1 END,
+          CASE WHEN LOWER(name) LIKE LOWER(?) || '%' ESCAPE '\\' THEN 0 ELSE 1 END,
+          id DESC
+        LIMIT 1
+      `).get(
+        `%${q.replace(/[\\%_]/g, '\\$&')}%`,
+        q,
+        q,
+      ) as any;
+      if (hit) searchHits.push({ query: q, hit });
+    }
+
+    function toImported(r: any, source: 'logged' | 'recent' | 'search'): ImportedFood {
+      return {
+        name: r.name,
+        brand: r.brand ?? null,
+        servingSizeG: r.servingWeight ?? 100,
+        calories: r.energy ?? 0,
+        proteinG: r.proteins ?? 0,
+        carbG: r.carbohydrates ?? 0,
+        fatG: r.fats ?? 0,
+        fiberG: r.dietaryFiber ?? null,
+        sugarG: r.sugars ?? null,
+        sodiumMg: r.sodiumMilli ?? null,
+        source,
+        foodYouId: r.id,
+      };
+    }
+
+    const seen = new Set<string>();
+    const logged: ImportedFood[] = [];
+    for (const r of loggedRows) {
+      const key = `${r.name}|${r.brand ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const f = toImported(r, 'logged');
+      if (f.calories > 0) logged.push(f);
+    }
+
+    const recent: ImportedFood[] = [];
+    for (const r of recentRows) {
+      const key = `${r.name}|${r.brand ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const f = toImported(r, 'recent');
+      if (f.calories > 0) recent.push(f);
+    }
+
+    const searches: ImportedFood[] = [];
+    for (const sh of searchHits) {
+      const key = `${sh.hit.name}|${sh.hit.brand ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const f = toImported(sh.hit, 'search');
+      if (f.calories > 0) searches.push(f);
+    }
+
+    return { logged, recent, searches };
+  } finally {
+    db.close();
+  }
+}
+
+export async function foodYouImportRoutes(app: FastifyInstance) {
+  // GET /foods/import/foodyou?path=...
+  // Probe a FoodYou export at the given path. Returns the list of
+  // foods we'd import (logged + recent), grouped by source. The
+  // user picks which ones to actually import on the client.
+  //
+  // For convenience, if no path is provided we look in /tmp for
+  // any file matching 'foodyou-*.db' (the standard export name).
+  app.get('/foods/import/foodyou', async (req, reply) => {
+    const me = await requireUser(req);
+    const q = z.object({ path: z.string().optional() }).parse(req.query ?? {});
+    let dbPath = q.path;
+    if (!dbPath) {
+      // Auto-discover: pick the most recent foodyou-*.db in /tmp.
+      try {
+        const candidates = fs
+          .readdirSync('/tmp')
+          .filter((f) => f.startsWith('foodyou-') && f.endsWith('.db'))
+          .map((f) => ({ f, m: fs.statSync(path.join('/tmp', f)).mtimeMs }))
+          .sort((a, b) => b.m - a.m);
+        if (candidates.length > 0) dbPath = path.join('/tmp', candidates[0].f);
+      } catch {
+        // /tmp might not be readable; that's OK.
+      }
+    }
+    if (!dbPath) {
+      return reply.code(200).send({ available: false, reason: 'no_foodyou_db', message: 'No FoodYou export found in /tmp/' });
+    }
+    const result = readFoodYouDb(dbPath);
+    if ('error' in result) {
+      return reply.code(200).send({ available: false, reason: 'parse_error', message: result.error, path: dbPath });
+    }
+    return {
+      available: true,
+      path: dbPath,
+      logged: result.logged,
+      recent: result.recent,
+      searches: result.searches,
+    };
+  });
+
+  // POST /foods/import/foodyou/commit
+  // body: { items: [...] }
+  // Creates SavedFood rows for each item (deduped by userId+name).
+  // The client should send only the items the user selected from
+  // the import list.
+  app.post('/foods/import/foodyou/commit', async (req) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      items: z.array(z.object({
+        name: z.string().min(1).max(200),
+        brand: z.string().max(100).optional().nullable(),
+        servingSizeG: z.number().min(0).max(5000).optional().nullable(),
+        calories: z.number().min(0).max(5000),
+        proteinG: z.number().min(0).max(500),
+        carbG: z.number().min(0).max(500),
+        fatG: z.number().min(0).max(500),
+        fiberG: z.number().min(0).max(500).optional().nullable(),
+        sugarG: z.number().min(0).max(500).optional().nullable(),
+        sodiumMg: z.number().min(0).max(50000).optional().nullable(),
+      })),
+    }).parse(req.body);
+    let created = 0, skipped = 0;
+    for (const item of body.items) {
+      try {
+        await prisma.savedFood.upsert({
+          where: { userId_name: { userId: me.id, name: item.name } },
+          create: {
+            userId: me.id,
+            name: item.name,
+            brand: item.brand ?? null,
+            servingSizeG: item.servingSizeG ?? null,
+            calories: item.calories,
+            proteinG: item.proteinG,
+            carbG: item.carbG,
+            fatG: item.fatG,
+            fiberG: item.fiberG ?? null,
+            sugarG: item.sugarG ?? null,
+            sodiumMg: item.sodiumMg ?? null,
+            recipe: null,
+          },
+          update: {
+            brand: item.brand ?? null,
+            servingSizeG: item.servingSizeG ?? null,
+            calories: item.calories,
+            proteinG: item.proteinG,
+            carbG: item.carbG,
+            fatG: item.fatG,
+            fiberG: item.fiberG ?? null,
+            sugarG: item.sugarG ?? null,
+            sodiumMg: item.sodiumMg ?? null,
+          },
+        });
+        created++;
+      } catch (e: any) {
+        // Skip on per-item failure so a single bad row doesn't
+        // abort the whole import. The user can re-try just the
+        // failed rows.
+        skipped++;
+      }
+    }
+    return { ok: true, created, skipped };
+  });
+}
