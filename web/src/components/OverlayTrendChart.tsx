@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   Legend,
 } from 'recharts';
-import { formatInUnits } from '@/lib/units';
+import { convertForDisplay, formatInUnits } from '@/lib/units';
 import type { UnitSystem, MetricType } from '@/lib/types';
 
 type Series = {
@@ -37,8 +37,16 @@ type Props = {
  *
  * Time bucketing: one point per day. If a metric is logged multiple
  * times on the same day, the last value wins.
+ *
+ * Values are converted from the base metric unit (kg, ms, h) into
+ * the user's chosen unit system before plotting, so the Y axis and
+ * line always reflect the user's preferred units. This was a bug
+ * where imperial users saw kg values on the Y axis but lb in the
+ * tooltip — visually identical numbers, mismatched meaning.
  */
 export function OverlayTrendChart({ days, units, series, history }: Props) {
+  // Convert raw history values once per render. Recharts only sees
+  // the converted numbers, so the line, Y axis, and tooltip all agree.
   const data = useMemo(() => {
     const byDate: Record<string, Record<string, number>> = {};
     // Pre-fill empty days so the X axis is continuous.
@@ -54,16 +62,31 @@ export function OverlayTrendChart({ days, units, series, history }: Props) {
       const key = h.recordedAt.slice(0, 10);
       if (!byDate[key]) byDate[key] = {};
       if (byDate[key][h.metric] === undefined) {
-        byDate[key][h.metric] = h.value;
+        // Convert from base unit to user's display unit. Recharts then
+        // plots this single number, so the Y axis and the line are
+        // both in display units and the tooltip formatter can pass
+        // through unchanged.
+        const s = series.find((x) => x.metric === h.metric);
+        const baseUnit = s?.unit ?? '';
+        const conv = convertForDisplay(h.value, baseUnit as any, units);
+        byDate[key][h.metric] = conv.value;
       }
     }
     return Object.entries(byDate)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, vals]) => ({ date, ...vals }));
-  }, [days, history]);
+  }, [days, history, series, units]);
 
-  const leftSeries = series.filter((s) => s.yAxis === 'left');
-  const rightSeries = series.filter((s) => s.yAxis === 'right');
+  // Map each series to its display-unit label so the legend and
+  // tooltip can show "Weight · lb" instead of "Weight · kg" in
+  // imperial mode.
+  const seriesWithDisplayUnit = useMemo(
+    () => series.map((s) => ({ ...s, displayUnit: convertForDisplay(0, s.unit as any, units).unit })),
+    [series, units],
+  );
+
+  const leftSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'left');
+  const rightSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'right');
 
   return (
     <ResponsiveContainer width="100%" height={220}>
@@ -99,19 +122,21 @@ export function OverlayTrendChart({ days, units, series, history }: Props) {
           }}
           labelStyle={{ color: '#cbd5e1' }}
           formatter={(value: number, name: string) => {
-            const s = series.find((x) => x.metric === name);
-            if (!s) return [value, name];
-            return [formatInUnits(value, s.unit, units), s.label];
+            // value is already in display units; format with the
+            // series' display-unit label.
+            const s = seriesWithDisplayUnit.find((x) => x.metric === name);
+            if (!s) return [`${Math.round(value * 10) / 10}`, name];
+            return [`${Math.round(value * 10) / 10} ${s.displayUnit}`, s.label];
           }}
         />
         <Legend
           wrapperStyle={{ fontSize: 10 }}
           formatter={(name) => {
-            const s = series.find((x) => x.metric === name);
-            return s ? s.label : name;
+            const s = seriesWithDisplayUnit.find((x) => x.metric === name);
+            return s ? `${s.label} (${s.displayUnit})` : name;
           }}
         />
-        {series.map((s) => (
+        {seriesWithDisplayUnit.map((s) => (
           <Line
             key={s.metric}
             yAxisId={s.yAxis}
