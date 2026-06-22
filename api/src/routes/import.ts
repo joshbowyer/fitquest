@@ -5,6 +5,7 @@ import { requireUser } from '../lib/auth.js';
 import { parseFit, isFitBuffer, type FitImportResult, type FitKind } from '../lib/fit.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { checkRoutineProgress } from './routine.js';
+import { activityTitle } from '../lib/geo.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
@@ -69,7 +70,12 @@ async function persist(
         data: {
           userId,
           type: type as any,
-          name: `FIT import: ${w.sport}`,
+          // Auto-name from location + sport when the track has
+          // lat/lng points; falls back to "<Sport>" otherwise.
+          // Cached reverse-geocode keeps a 26-file bulk import
+          // to 1-2 Nominatim calls when the activities cluster
+          // in the same metro area.
+          name: await activityTitle(w.sport, w.trackpoints),
           duration,
           notes: `[FIT] ${notes}`,
           performedAt: w.startTime,

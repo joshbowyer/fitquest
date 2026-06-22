@@ -1450,6 +1450,29 @@ model SavedFood {
 }
 
 // ============================================================
+// GeoCache — Nominatim (OpenStreetMap) reverse-geocode results,
+// keyed by a rounded lat/lng grid (~110m at 3 decimals). Avoids
+// hammering the public Nominatim endpoint (1 req/sec policy)
+// when users bulk-import FIT files. The lat/lng are also stored
+// so we can re-query with a finer zoom if we ever need to.
+// ============================================================
+
+model GeoCache {
+  /// Key = `${round3(lat)}_${round3(lng)}` — collision is fine,
+  /// two points 110m apart often have the same place name.
+  key       String   @id
+  lat       Float
+  lng       Float
+  /// Short label ("Kennesaw"). Used for activity titles like
+  /// "Kennesaw Running".
+  shortName String
+  /// Long display name ("Kennesaw, Cobb County, Georgia, US").
+  displayName String
+  zoom      Int      @default(10)
+  fetchedAt DateTime @default(now())
+}
+
+// ============================================================
 // CorrelationSnapshot — nightly Pearson-r snapshot per (user,
 // habit, outcome, lag). Drives the trend sparklines on /insights
 // so the user can answer "is my sleep→PR correlation getting
