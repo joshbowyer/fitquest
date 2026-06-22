@@ -666,6 +666,19 @@ function RecentFoodsModal({
   // Which import-item ids the user has checked. Map<foodYouId, checked>.
   const [picked, setPicked] = useState<Set<number>>(new Set());
 
+  // Free-text filter applied to BOTH the saved-foods list and
+  // the FoodYou import list. The query is debounced implicitly
+  // via React state updates; for a few hundred items we don't
+  // need anything fancier. Empty query = show everything.
+  const [filter, setFilter] = useState('');
+  const f = filter.trim().toLowerCase();
+  const matches = (name: string, brand: string | null | undefined) => {
+    if (!f) return true;
+    if (name.toLowerCase().includes(f)) return true;
+    if (brand && brand.toLowerCase().includes(f)) return true;
+    return false;
+  };
+
   const importData = importQ.data && importQ.data.available ? importQ.data : null;
   // Diary entries: every distinct food the user actually logged
   // in FoodYou (the DiaryProduct table, ordered by id DESC so
@@ -674,19 +687,29 @@ function RecentFoodsModal({
   // for THIS — the actual meal log, not custom-adds or searches.
   const allImportable = importData?.diary ?? [];
 
-  // "Import all" = check every diary entry.
+  // "Import all" = check the currently-filtered diary entries.
+  // When a filter is active, "all" means the visible subset
+  // (so the user can quickly import just the matches).
   function pickAll() {
-    const next = new Set<number>();
+    const next = new Set<number>(picked);
     if (!importData) return next;
     for (const f of importData.diary) {
-      next.add(f.foodYouId);
+      if (matches(f.name, f.brand)) next.add(f.foodYouId);
     }
     return next;
   }
-  const allPicked = picked.size > 0 && (() => {
-    const pickable = importData?.diary ?? [];
-    return pickable.length > 0 && pickable.every((f) => picked.has(f.foodYouId));
-  })();
+  // "Clear" = uncheck the currently-filtered entries (so
+  // "select all → clear" cycles in the user's filter scope).
+  function clearAll() {
+    const next = new Set<number>(picked);
+    if (!importData) return next;
+    for (const f of importData.diary) {
+      if (matches(f.name, f.brand)) next.delete(f.foodYouId);
+    }
+    return next;
+  }
+  const filteredDiary = (importData?.diary ?? []).filter((f) => matches(f.name, f.brand));
+  const allPicked = filteredDiary.length > 0 && filteredDiary.every((f) => picked.has(f.foodYouId));
 
   return createPortal(
     <div
@@ -706,8 +729,23 @@ function RecentFoodsModal({
 
         {/* ---------- Your saved foods (the always-available quick-log list) ---------- */}
         <div className="mb-4">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1.5">
-            Your saved foods ({items.length})
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
+              Your saved foods ({items.length})
+            </div>
+            {/* Filter input — applies to BOTH the saved-foods
+                list and the FoodYou import list. Case-insensitive
+                substring match against name + brand. ESC clears. */}
+            <input
+              autoFocus
+              className="input-neon flex-1 text-[11px] h-6 px-2"
+              placeholder="Filter foods…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setFilter('');
+              }}
+            />
           </div>
           {items.length === 0 ? (
             <div className="text-xs text-ink-400 font-mono py-2">
@@ -716,8 +754,18 @@ function RecentFoodsModal({
               backup below.
             </div>
           ) : (
+            (() => {
+              const filtered = items.filter((s) => matches(s.name, s.brand));
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-xs text-ink-400 font-mono py-2 text-center">
+                    No saved foods match "{filter}".
+                  </div>
+                );
+              }
+              return (
             <div className="space-y-1 max-h-44 overflow-y-auto">
-              {items.slice(0, 30).map((s) => (
+              {filtered.slice(0, 30).map((s) => (
                 <div
                   key={s.id}
                   className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
@@ -743,6 +791,8 @@ function RecentFoodsModal({
                 </div>
               ))}
             </div>
+              );
+            })()
           )}
         </div>
 
@@ -756,7 +806,7 @@ function RecentFoodsModal({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPicked(allPicked ? new Set() : pickAll())}
+                  onClick={() => setPicked(allPicked ? clearAll() : pickAll())}
                   className="text-[10px] font-mono text-violet-300 hover:underline"
                 >
                   {allPicked ? 'clear' : 'select all'}
@@ -818,10 +868,23 @@ function RecentFoodsModal({
               ) : (
                 <>
                   <div className="text-[10px] font-mono text-amber-300 mt-1 mb-1">
-                    {allImportable.length} foods you actually ate
+                    {(() => {
+                      const filtered = allImportable.filter((f) => matches(f.name, f.brand));
+                      if (f) return `${filtered.length} of ${allImportable.length} match "${filter}"`;
+                      return `${allImportable.length} foods you actually ate`;
+                    })()}
                     <span className="text-ink-500"> · newest first</span>
+                    {f && (
+                      <button
+                        type="button"
+                        onClick={() => setFilter('')}
+                        className="ml-2 text-cyan-300 hover:underline"
+                      >
+                        clear filter
+                      </button>
+                    )}
                   </div>
-                  {allImportable.map((f) => (
+                  {allImportable.filter((f) => matches(f.name, f.brand)).map((f) => (
                     <ImportRow
                       key={f.foodYouId}
                       f={f}
