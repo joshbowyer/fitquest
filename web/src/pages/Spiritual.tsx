@@ -352,10 +352,12 @@ export function SpiritualPage() {
             current={user?.spiritualDailyPrayers ?? []}
             prayerTypes={data ? (Object.keys(data.prayerTypes) as PrayerType[]) : []}
             prayerInfo={data?.prayerTypes}
+            customPractices={data?.customPractices ?? []}
             onSaved={() => {
               qc.invalidateQueries({ queryKey: ['user'] });
               qc.invalidateQueries({ queryKey: ['auth'] });
               qc.invalidateQueries({ queryKey: ['dailies'] });
+              qc.invalidateQueries({ queryKey: ['spiritual'] });
             }}
           />
         </div>
@@ -559,14 +561,17 @@ function DailyPrayerConfig({
   current,
   prayerTypes,
   prayerInfo,
+  customPractices,
   onSaved,
 }: {
   current: PrayerType[];
   prayerTypes: PrayerType[];
   prayerInfo: SpiritualResponse['prayerTypes'] | undefined;
+  customPractices: CustomPractice[];
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<PrayerType[]>(current);
+  const [confirmArchive, setConfirmArchive] = useState<CustomPractice | null>(null);
   const dirty =
     draft.length !== current.length ||
     draft.some((d) => !current.includes(d));
@@ -575,6 +580,19 @@ function DailyPrayerConfig({
     mutationFn: (prayers) =>
       api('/spiritual/dailies', { method: 'PATCH', body: { prayers } }),
     onSuccess: () => onSaved(),
+  }, 400);
+
+  // Archive a custom spiritual practice. This sets archived=true on
+  // the Daily row, removing it from /today's checklist and from the
+  // "Log a Prayer" grid on this page. The practice's prayer logs are
+  // preserved (cascade: SetNull on dailyId) so the user's history
+  // is not lost — the row just stops being offered as an option.
+  const archiveM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/dailies/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      setConfirmArchive(null);
+      onSaved();
+    },
   }, 400);
 
   function toggle(t: PrayerType) {
@@ -610,6 +628,45 @@ function DailyPrayerConfig({
           );
         })}
       </div>
+
+      {/* User-defined custom practices. These are USER SPIRITUAL
+          dailies — they always show on /today when their days match
+          (creation defaults to every day). The toggle here would
+          be misleading since "off" doesn't really mean anything
+          for them; instead we expose archive so the user can prune
+          a practice they no longer want. */}
+      {customPractices.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-ink-500/20">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+            Your custom practices
+            <span className="text-ink-500 normal-case tracking-normal ml-2">
+              · always on /today · × to remove
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {customPractices.map((cp) => (
+              <div
+                key={cp.id}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono border border-neon-cyan/50 text-neon-cyan bg-neon-cyan/5"
+                title="Always shows on /today — click × to remove the practice"
+              >
+                <span>✦</span>
+                <span className="max-w-[16rem] truncate">{cp.name}</span>
+                <span className="text-ink-500">+{cp.xpReward}xp</span>
+                <button
+                  type="button"
+                  onClick={() => setConfirmArchive(cp)}
+                  className="ml-1 text-ink-500 hover:text-neon-red"
+                  title="Remove this custom practice"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {dirty && (
         <div className="mt-3 flex items-center justify-end gap-2">
           <NeonButton
@@ -622,6 +679,30 @@ function DailyPrayerConfig({
             Save daily prayers
           </NeonButton>
         </div>
+      )}
+
+      {confirmArchive && (
+        <Modal open onClose={() => setConfirmArchive(null)} title="Remove custom practice?">
+          <div className="space-y-3">
+            <div className="text-xs font-mono text-ink-100">
+              Remove <span className="text-neon-cyan">✦ {confirmArchive.name}</span> from your spiritual
+              practices? It will stop appearing on /today and the Log a Prayer grid. Your past prayer
+              logs for it are kept (just unmarked).
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <NeonButton variant="cyan" onClick={() => setConfirmArchive(null)}>Cancel</NeonButton>
+              <NeonButton
+                variant="magenta"
+                icon="×"
+                loading={archiveM.isPending}
+                loadingText="Removing…"
+                onClick={() => archiveM.run(confirmArchive.id)}
+              >
+                Remove
+              </NeonButton>
+            </div>
+          </div>
+        </Modal>
       )}
     </Panel>
   );
