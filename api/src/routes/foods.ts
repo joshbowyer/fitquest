@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { FoodSource, MealType } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-import { callLlm, type LlmConfig } from '../lib/llm.js';
+import { callLlm, getActiveLlmConfig, type LlmConfig } from '../lib/llm.js';
 import {
   offSearch,
   offBarcode,
@@ -187,20 +187,12 @@ export async function foodRoutes(app: FastifyInstance) {
   app.post('/ask-ai', async (req, reply) => {
     const me = await requireUser(req);
     const body = AskAiSchema.parse(req.body);
-    const cfg = await prisma.llmConfig.findFirst();
-    if (!cfg || !cfg.enabled) {
+    const config = await getActiveLlmConfig();
+    if (!config) {
       return reply.code(422).send({
         error: 'LLM not configured. Add an LLM provider in /admin to use Ask AI.',
       });
     }
-    const config: LlmConfig = {
-      provider: cfg.provider as LlmConfig['provider'],
-      apiKey: cfg.apiKey,
-      baseUrl: cfg.baseUrl,
-      model: cfg.model,
-      enabled: cfg.enabled,
-      systemPrompt: cfg.systemPrompt,
-    };
     const result = await callLlm(config, {
       system: FOOD_SYSTEM_PROMPT,
       prompt: FOOD_SEARCH_PROMPT(body.description),

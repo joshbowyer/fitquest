@@ -30,7 +30,13 @@ const LlmConfigSchema = z.object({
   baseUrl: baseUrlSchema,
   model: z.string().min(1).max(200),
   enabled: z.boolean().default(false),
-  // System prompt / persona. Optional.
+  // ---- Secondary / fallback ----
+  fallbackEnabled: z.boolean().default(false),
+  fallbackProvider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']).optional().nullable(),
+  fallbackApiKey: z.string().max(500).optional().nullable(),
+  fallbackBaseUrl: baseUrlSchema,
+  fallbackModel: z.string().min(1).max(200).optional().nullable(),
+  // ---- Shared ----
   systemPrompt: z.string().max(4000).optional().nullable(),
 });
 
@@ -76,6 +82,11 @@ async function getLlmConfig() {
       baseUrl: null,
       model: 'gpt-4o-mini',
       enabled: false,
+      fallbackEnabled: false,
+      fallbackProvider: null,
+      fallbackApiKey: null,
+      fallbackBaseUrl: null,
+      fallbackModel: null,
       systemPrompt: null,
     };
   }
@@ -83,6 +94,7 @@ async function getLlmConfig() {
     ...row,
     // Redact apiKey: only show last 4 chars
     apiKey: row.apiKey ? `••••${row.apiKey.slice(-4)}` : null,
+    fallbackApiKey: row.fallbackApiKey ? `••••${row.fallbackApiKey.slice(-4)}` : null,
   };
 }
 
@@ -155,11 +167,27 @@ export async function adminRoutes(app: FastifyInstance) {
       baseUrl: body.baseUrl,
       model: body.model,
       enabled: body.enabled,
+      fallbackEnabled: body.fallbackEnabled,
+      fallbackProvider: body.fallbackProvider || null,
+      fallbackBaseUrl: body.fallbackBaseUrl || null,
+      fallbackModel: body.fallbackModel || null,
       systemPrompt: body.systemPrompt,
     };
     // Only update apiKey if a real (non-redacted) value is passed.
+    // We can't tell "user wants to clear" from "no change" without
+    // a separate flag, so we treat the redacted prefix as "leave
+    // alone" and any other value (including empty string) as
+    // "set to this value".
     if (body.apiKey && !body.apiKey.startsWith('••••')) {
-      data.apiKey = body.apiKey;
+      data.apiKey = body.apiKey || null;
+    } else if (body.apiKey === '') {
+      // Explicit empty string = "clear the key"
+      data.apiKey = null;
+    }
+    if (body.fallbackApiKey && !body.fallbackApiKey.startsWith('••••')) {
+      data.fallbackApiKey = body.fallbackApiKey || null;
+    } else if (body.fallbackApiKey === '') {
+      data.fallbackApiKey = null;
     }
     const config = existing
       ? await prisma.llmConfig.update({ where: { id: existing.id }, data })
@@ -178,7 +206,13 @@ export async function adminRoutes(app: FastifyInstance) {
   // self-identify so the response confirms the right model answered.
   // Uses the SAVED config (not anything in the form), so the admin
   // can verify persistence without saving first.
+  //
+  // Body: { which?: 'primary' | 'fallback' }. Defaults to 'primary'.
+  // The two test buttons in the UI call this once each.
   app.post('/llm-test', async (req, reply) => {
+    const body = z.object({ which: z.enum(['primary', 'fallback']).default('primary') })
+      .safeParse(req.body ?? {});
+    const which = body.success ? body.data.which : 'primary';
     const row = await prisma.llmConfig.findFirst();
     if (!row) {
       return reply.code(400).send({
@@ -186,20 +220,44 @@ export async function adminRoutes(app: FastifyInstance) {
         error: 'No LLM config saved yet. Fill the form and click Save first.',
       });
     }
-    if (!row.enabled) {
-      return reply.code(400).send({
-        ok: false,
-        error: 'LLM config is saved but disabled. Toggle "Enabled" and save again.',
-      });
+    if (which === 'primary') {
+      if (!row.enabled) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Primary is saved but disabled. Toggle "Enabled" and save again.',
+        });
+      }
+    } else {
+      if (!row.fallbackEnabled) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Fallback is saved but disabled. Toggle "Fallback enabled" and save again.',
+        });
+      }
+      if (!row.fallbackProvider || !row.fallbackModel) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Fallback is enabled but missing provider or model. Fill the form and save again.',
+        });
+      }
     }
-    const config = {
-      provider: row.provider as 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC',
-      apiKey: row.apiKey,
-      baseUrl: row.baseUrl,
-      model: row.model,
-      enabled: row.enabled,
-      systemPrompt: row.systemPrompt,
-    };
+    const config = which === 'primary'
+      ? {
+          provider: row.provider as 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC',
+          apiKey: row.apiKey,
+          baseUrl: row.baseUrl,
+          model: row.model,
+          enabled: row.enabled,
+          systemPrompt: row.systemPrompt,
+        }
+      : {
+          provider: row.fallbackProvider as 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC',
+          apiKey: row.fallbackApiKey,
+          baseUrl: row.fallbackBaseUrl,
+          model: row.fallbackModel!,
+          enabled: true,
+          systemPrompt: row.systemPrompt,
+        };
     // The model name is interpolated server-side so the test verifies
     // the dynamic substitution works (e.g. if MINIMAX is set, the
     // model name in the prompt is "MiniMax-M3", not "MINIMAX").
@@ -212,6 +270,6 @@ export async function adminRoutes(app: FastifyInstance) {
       temperature: 0.1,
       timeoutMs: 30_000,
     });
-    return result;
+    return { ...result, which };
   });
 }

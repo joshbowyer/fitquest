@@ -28,7 +28,7 @@
  */
 
 import { prisma } from './prisma.js';
-import { callLlm, type LlmConfig } from './llm.js';
+import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
 
 type DateStr = string; // YYYY-MM-DD in user's timezone
@@ -439,14 +439,28 @@ export async function getOrGenerateToday(
     return rowToResult(stub, false);
   }
 
-  const config: LlmConfig = {
-    provider: cfg.provider as LlmConfig['provider'],
-    apiKey: cfg.apiKey,
-    baseUrl: cfg.baseUrl,
-    model: cfg.model,
-    enabled: cfg.enabled,
-    systemPrompt: cfg.systemPrompt,
-  };
+  const config = await getActiveLlmConfig();
+  if (!config) {
+    // Store a stub row so we don't re-check on every dashboard load.
+    const stub = await prisma.morningReport.upsert({
+      where: { userId_date: { userId, date } },
+      create: {
+        userId,
+        date,
+        general: '',
+        sleep: '',
+        training: '',
+        recovery: '',
+        nutrition: '',
+        spiritual: '',
+        riskFlags: '[]',
+        model: null,
+        latencyMs: null,
+      },
+      update: { updatedAt: new Date() },
+    });
+    return rowToResult(stub, false);
+  }
 
   const payload = await gatherReportData(userId, { timezone: user?.timezone });
   const dataJson = JSON.stringify(payload, null, 2);

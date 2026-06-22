@@ -31,6 +31,13 @@ type LlmConfig = {
   baseUrl: string | null;
   model: string;
   enabled: boolean;
+  // Secondary / fallback (any of these can be null/empty = no fallback)
+  fallbackEnabled: boolean;
+  fallbackProvider: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'MINIMAX' | null;
+  fallbackApiKey: string | null;
+  fallbackBaseUrl: string | null;
+  fallbackModel: string | null;
+  // Shared
   systemPrompt: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -90,9 +97,12 @@ export function AdminPage() {
     latencyMs: number;
     error?: string;
     httpStatus?: number;
+    attempt?: 1 | 2 | 0;
+    which?: 'primary' | 'fallback';
   };
-  const testLlmM = useDelayedMutation({
-    mutationFn: () => api<LlmTestResult>('/admin/llm-test', { method: 'POST' }),
+  const testLlmM = useDelayedMutation<LlmTestResult, 'primary' | 'fallback'>({
+    mutationFn: (which) =>
+      api<LlmTestResult>('/admin/llm-test', { method: 'POST', body: { which } }),
   }, 1500);
 
   const resetPwM = useDelayedMutation({
@@ -396,8 +406,8 @@ export function AdminPage() {
                   type="button"
                   variant="cyan"
                   disabled={testLlmM.isPending}
-                  onClick={() => testLlmM.run()}
-                  title="Sends a test prompt to the saved model"
+                  onClick={() => testLlmM.run('primary')}
+                  title="Sends a test prompt to the saved primary model"
                 >
                   {testLlmM.isPending ? 'Testing…' : 'Test Connection'}
                 </NeonButton>
@@ -414,10 +424,182 @@ export function AdminPage() {
                   {saveLlmM.isPending ? 'Saving…' : 'Save LLM config'}
                 </NeonButton>
               </div>
-              {llmQ.data?.config.updatedAt && !saveLlmM.isPending && (
-                <p className="sm:col-span-2 text-[10px] font-mono text-slate-500">
-                  last saved: {new Date(llmQ.data.config.updatedAt).toLocaleString()}
-                </p>
+
+              {/* -------- Fallback (secondary) model -------- */}
+              <div className="sm:col-span-2 mt-3 pt-3 border-t border-ink-500/20">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="text-sm font-display tracking-widest text-ink-50">
+                      Fallback (secondary) model
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-500">
+                      Used automatically when the primary fails (5xx, timeout,
+                      network, 404 model-not-found, 429). Either side can
+                      be set or unset — e.g. Ollama-only setups leave
+                      primary blank and fill in fallback.
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 shrink-0 ml-3">
+                    <input
+                      type="checkbox"
+                      checked={llmForm.fallbackEnabled}
+                      onChange={(e) =>
+                        setLlmForm({ ...llmForm, fallbackEnabled: e.target.checked })
+                      }
+                      className="rounded"
+                    />
+                    <span className="text-sm text-slate-300">Enabled</span>
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">Provider</span>
+                    <div className="flex gap-2 mt-1">
+                      <select
+                        className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                        value={llmForm.fallbackProvider ?? ''}
+                        onChange={(e) => {
+                          const next = (e.target.value || null) as LlmConfig['fallbackProvider'];
+                          setLlmForm({ ...llmForm, fallbackProvider: next });
+                        }}
+                      >
+                        <option value="">— None —</option>
+                        <option value="OPENAI">OpenAI</option>
+                        <option value="ANTHROPIC">Anthropic</option>
+                        <option value="OLLAMA">Ollama (local)</option>
+                        <option value="MINIMAX">Minimax</option>
+                      </select>
+                      <NeonButton
+                        type="button"
+                        size="sm"
+                        variant="cyan"
+                        disabled={!providersQ.data || !llmForm.fallbackProvider}
+                        onClick={() => {
+                          const preset =
+                            providersQ.data?.providers[llmForm.fallbackProvider ?? 'OPENAI'];
+                          if (!preset) return;
+                          setLlmForm({
+                            ...llmForm,
+                            fallbackBaseUrl: preset.baseUrl,
+                            fallbackModel: preset.defaultModel,
+                          });
+                        }}
+                        title="Auto-fill base URL and default model for the fallback provider"
+                      >
+                        Preset
+                      </NeonButton>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">Model</span>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                      value={llmForm.fallbackModel ?? ''}
+                      onChange={(e) =>
+                        setLlmForm({ ...llmForm, fallbackModel: e.target.value || null })
+                      }
+                      placeholder={
+                        llmForm.fallbackProvider
+                          ? providersQ.data?.providers[llmForm.fallbackProvider]?.defaultModel ?? 'model name'
+                          : 'select a provider first'
+                      }
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs uppercase text-slate-500 flex items-center gap-2">
+                      API Key
+                      {llmQ.data?.config.fallbackApiKey ? (
+                        <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
+                          ✓ key saved
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono normal-case tracking-normal text-amber-400">
+                          ⚠ not set
+                        </span>
+                      )}
+                    </span>
+                    <input
+                      type="password"
+                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                      value={llmForm.fallbackApiKey ?? ''}
+                      onChange={(e) =>
+                        setLlmForm({ ...llmForm, fallbackApiKey: e.target.value || null })
+                      }
+                      placeholder="sk-... (blank = keep current)"
+                    />
+                    {llmQ.data?.config.fallbackApiKey && (
+                      <div className="mt-1 text-[10px] font-mono text-slate-500">
+                        Currently saved as <span className="text-slate-300">{llmQ.data.config.fallbackApiKey}</span>
+                      </div>
+                    )}
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs uppercase text-slate-500">
+                      Base URL <span className="text-slate-600">(optional)</span>
+                    </span>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                      value={llmForm.fallbackBaseUrl ?? ''}
+                      onChange={(e) =>
+                        setLlmForm({ ...llmForm, fallbackBaseUrl: e.target.value || null })
+                      }
+                      placeholder="http://localhost:11434"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <NeonButton
+                    type="button"
+                    variant="amber"
+                    disabled={
+                      testLlmM.isPending ||
+                      !llmForm.fallbackEnabled ||
+                      !llmForm.fallbackProvider ||
+                      !llmForm.fallbackModel
+                    }
+                    onClick={() => testLlmM.run('fallback')}
+                    title="Sends a test prompt to the saved fallback model (saves first if form is dirty)"
+                  >
+                    {testLlmM.isPending ? 'Testing…' : 'Test Fallback'}
+                  </NeonButton>
+                </div>
+              </div>
+
+              {/* Last-test result (shows whichever ran last) */}
+              {testLlmM.data && !testLlmM.isPending && (
+                <div
+                  className={classNames(
+                    'sm:col-span-2 mt-2 p-2 text-[11px] font-mono border',
+                    testLlmM.data.ok
+                      ? 'border-emerald-500/30 text-emerald-300'
+                      : 'border-rose-500/30 text-rose-300',
+                  )}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>{testLlmM.data.ok ? '✓' : '✗'}</span>
+                    <span className="uppercase tracking-widest">
+                      {testLlmM.data.which ?? 'primary'} test
+                    </span>
+                    <span className="text-slate-400">
+                      {testLlmM.data.model} · {testLlmM.data.provider} · {testLlmM.data.latencyMs}ms
+                    </span>
+                    {testLlmM.data.attempt === 2 && (
+                      <span className="text-amber-300">(used fallback)</span>
+                    )}
+                  </div>
+                  {testLlmM.data.ok ? (
+                    <div className="mt-1 text-slate-200">{testLlmM.data.text}</div>
+                  ) : (
+                    <div className="mt-1 text-rose-200">
+                      {testLlmM.data.error}
+                      {testLlmM.data.httpStatus && (
+                        <span className="ml-2 text-slate-500">HTTP {testLlmM.data.httpStatus}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
               {saveLlmM.error && (
                 <p className="sm:col-span-2 text-xs text-rose-400">

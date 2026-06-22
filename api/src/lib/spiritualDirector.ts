@@ -14,7 +14,7 @@
  */
 
 import { prisma } from './prisma.js';
-import { callLlm, type LlmConfig } from './llm.js';
+import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { getDailyReading } from './usccb.js';
 
 // ============================================================================
@@ -267,8 +267,8 @@ export async function getOrGenerateReflection(
 
   // No LLM configured / disabled — return a stub that surfaces the
   // Gospel but no reflection, so the page still has something to show.
-  const cfg = await prisma.llmConfig.findFirst();
-  if (!cfg || !cfg.enabled) {
+  const config = await getActiveLlmConfig();
+  if (!config) {
     const stub = await prisma.spiritualReflection.upsert({
       where: { userId_date: { userId, date } },
       create: {
@@ -286,15 +286,6 @@ export async function getOrGenerateReflection(
     });
     return rowToResult(stub, false);
   }
-
-  const config: LlmConfig = {
-    provider: cfg.provider as LlmConfig['provider'],
-    apiKey: cfg.apiKey,
-    baseUrl: cfg.baseUrl,
-    model: cfg.model,
-    enabled: cfg.enabled,
-    systemPrompt: cfg.systemPrompt,
-  };
   const userState = await gatherUserState(userId);
   const userPrompt = SPIRITUAL_USER_PROMPT_TEMPLATE({
     date,

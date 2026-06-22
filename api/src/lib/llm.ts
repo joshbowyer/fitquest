@@ -20,7 +20,44 @@ export type LlmConfig = {
   model: string;
   enabled: boolean;
   systemPrompt: string | null;
+  // Optional fallback. Tries after primary fails (5xx, timeout,
+  // network, model-not-found). Either can be None: e.g. an
+  // Ollama-only setup leaves primary blank and sets fallback.
+  fallbackEnabled?: boolean;
+  fallbackProvider?: 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC' | null;
+  fallbackApiKey?: string | null;
+  fallbackBaseUrl?: string | null;
+  fallbackModel?: string | null;
 };
+
+/**
+ * Read the saved LlmConfig row and return it as the callLlm-ready
+ * LlmConfig (includes fallback fields, casts provider strings,
+ * returns a sensible default if no row exists yet).
+ *
+ * Centralised so every LLM call site routes through the same
+ * fallback chain. The admin /test endpoint uses the same helper
+ * to keep "what primary and what fallback" consistent.
+ */
+export async function getActiveLlmConfig(): Promise<LlmConfig | null> {
+  const { prisma } = await import('./prisma.js');
+  const row = await prisma.llmConfig.findFirst();
+  if (!row) return null;
+  if (!row.enabled) return null;
+  return {
+    provider: row.provider as LlmConfig['provider'],
+    apiKey: row.apiKey,
+    baseUrl: row.baseUrl,
+    model: row.model,
+    enabled: row.enabled,
+    systemPrompt: row.systemPrompt,
+    fallbackEnabled: row.fallbackEnabled,
+    fallbackProvider: (row.fallbackProvider as LlmConfig['fallbackProvider']) ?? null,
+    fallbackApiKey: row.fallbackApiKey,
+    fallbackBaseUrl: row.fallbackBaseUrl,
+    fallbackModel: row.fallbackModel,
+  };
+}
 
 export type LlmCallResult = {
   ok: boolean;
@@ -30,6 +67,10 @@ export type LlmCallResult = {
   latencyMs: number;
   error?: string;
   httpStatus?: number;
+  /// Which attempt succeeded (1 = primary, 2 = fallback). 0 on
+  /// total failure. Surfaced so the morning report can mention
+  /// "ran on fallback today" if the primary is flapping.
+  attempt?: 1 | 2 | 0;
 };
 
 type CallOpts = {
@@ -79,10 +120,74 @@ function modelNameFallback(provider: LlmConfig['provider']): string {
  *
  * Throws on transport errors so callers can distinguish them from
  * "model returned an error" cases via the httpStatus field.
+ *
+ * Fallback chain: if `config.fallbackEnabled` is true and a
+ * fallback is configured, a transient primary failure (5xx,
+ * network, timeout, model-not-found 404) automatically retries on
+ * the fallback. Auth errors (401/403) and bad-input errors
+ * (400/422) skip the fallback — those are config bugs that won't
+ * be fixed by switching models.
  */
 export async function callLlm(
   config: LlmConfig,
   opts: CallOpts,
+): Promise<LlmCallResult> {
+  // ---- Attempt 1: primary ----
+  const primary = await callOnce(config, opts, 1);
+
+  if (primary.ok) return primary;
+
+  // Bail early on auth / bad-input errors (no point retrying on
+  // fallback — same credentials issue).
+  if (!shouldFallback(primary)) return primary;
+
+  // ---- Attempt 2: fallback (if configured) ----
+  if (!config.fallbackEnabled) return primary;
+  if (!config.fallbackProvider) return primary;
+  if (!config.fallbackModel) return primary;
+
+  const fallbackConfig: LlmConfig = {
+    provider: config.fallbackProvider,
+    apiKey: config.fallbackApiKey ?? null,
+    baseUrl: config.fallbackBaseUrl ?? null,
+    model: config.fallbackModel,
+    enabled: true,
+    systemPrompt: config.systemPrompt ?? null,
+  };
+  const fallback = await callOnce(fallbackConfig, opts, 2);
+  // If fallback also failed, return the primary's error (it's
+  // the more useful diagnostic for the user) but tag attempt=0.
+  if (!fallback.ok) {
+    return { ...primary, attempt: 0 };
+  }
+  return fallback;
+}
+
+/**
+ * Decide whether a primary failure warrants trying the fallback.
+ * We retry on transient infra issues (5xx, 404 model-not-found,
+ * 408, 429 rate-limit, network, timeout). We DO NOT retry on
+ * 401/403 (auth) or 400/422 (bad input) — those are the admin's
+ * config bugs and the fallback would just hit the same wall.
+ */
+function shouldFallback(r: LlmCallResult): boolean {
+  if (!r.httpStatus) return true; // network / timeout / unknown
+  if (r.httpStatus === 404) return true; // model not found
+  if (r.httpStatus === 408) return true; // request timeout
+  if (r.httpStatus === 429) return true; // rate limit
+  if (r.httpStatus >= 500 && r.httpStatus < 600) return true;
+  return false;
+}
+
+/**
+ * Internal: run a single LLM attempt. Returns the result with
+ * `attempt` stamped on it. Used by callLlm for both primary and
+ * fallback so the logic is identical.
+ */
+async function callOnce(
+  config: LlmConfig,
+  opts: CallOpts,
+  attempt: 1 | 2,
 ): Promise<LlmCallResult> {
   const start = Date.now();
   const baseUrl = (config.baseUrl || defaultBaseUrl(config.provider)).replace(/\/$/, '');
@@ -101,9 +206,9 @@ export async function callLlm(
     // OPENAI + OLLAMA use the OpenAI-compatible chat/completions
     //   endpoint with Authorization: Bearer.
     if (config.provider === 'ANTHROPIC' || config.provider === 'MINIMAX') {
-      return await callAnthropic(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start);
+      return await callAnthropic(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start, attempt);
     }
-    return await callOpenAiCompatible(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start);
+    return await callOpenAiCompatible(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start, attempt);
   } catch (err: any) {
     return {
       ok: false,
@@ -111,6 +216,7 @@ export async function callLlm(
       model,
       provider: config.provider,
       latencyMs: Date.now() - start,
+      attempt,
       error: err?.name === 'AbortError' ? 'Timeout' : String(err?.message ?? err),
     };
   } finally {
@@ -128,6 +234,7 @@ async function callOpenAiCompatible(
   temperature: number,
   signal: AbortSignal,
   start: number,
+  attempt: 1 | 2,
 ): Promise<LlmCallResult> {
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
   if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
@@ -158,6 +265,7 @@ async function callOpenAiCompatible(
       model,
       provider: config.provider,
       latencyMs,
+      attempt,
       httpStatus: res.status,
       error: `${res.status} ${res.statusText}: ${errText.slice(0, 200)}`,
     };
@@ -170,6 +278,7 @@ async function callOpenAiCompatible(
     model: data?.model ?? model,
     provider: config.provider,
     latencyMs,
+    attempt,
   };
 }
 
@@ -183,6 +292,7 @@ async function callAnthropic(
   temperature: number,
   signal: AbortSignal,
   start: number,
+  attempt: 1 | 2,
 ): Promise<LlmCallResult> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -214,6 +324,7 @@ async function callAnthropic(
       model,
       provider: 'ANTHROPIC',
       latencyMs,
+      attempt,
       httpStatus: res.status,
       error: `${res.status} ${res.statusText}: ${errText.slice(0, 200)}`,
     };
@@ -234,5 +345,6 @@ async function callAnthropic(
     model: data?.model ?? model,
     provider: 'ANTHROPIC',
     latencyMs,
+    attempt,
   };
 }

@@ -953,16 +953,30 @@ model InventoryItem {
 /// LLM provider config (single row). Lets the admin point the
 /// app at OpenAI, Anthropic, or a local Ollama instance. Future
 /// in-app coach/quest-narrator features read this.
+///
+/// Primary + Secondary: the secondary model is tried when the
+/// primary fails (5xx, timeout, network error, model-not-found).
+/// Either side can be unset (e.g. Ollama-only: leave primary
+/// blank, set secondary). callLlm() in api/src/lib/llm.ts handles
+/// the fallback chain transparently.
 model LlmConfig {
-  id           String   @id @default(cuid())
-  provider     String   @default("OPENAI")  // "OPENAI" | "ANTHROPIC" | "OLLAMA"
-  apiKey       String?
-  baseUrl      String?
-  model        String   @default("gpt-4o-mini")
-  enabled      Boolean  @default(false)
-  systemPrompt String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String   @id @default(cuid())
+  // ---- Primary ----
+  provider          String   @default("OPENAI")  // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
+  apiKey            String?
+  baseUrl           String?
+  model             String   @default("gpt-4o-mini")
+  enabled           Boolean  @default(false)
+  // ---- Secondary / fallback ----
+  fallbackEnabled   Boolean  @default(false)
+  fallbackProvider  String?  // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
+  fallbackApiKey    String?
+  fallbackBaseUrl   String?
+  fallbackModel     String?
+  // ---- Shared ----
+  systemPrompt      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 /// LLM-generated morning report. One row per (user, date) — the
