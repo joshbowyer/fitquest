@@ -458,16 +458,27 @@ export const METRICS: Record<MetricType, MetricMeta> = {
     // alongside HRV + sleep.
     description: 'Garmin body battery (0-100). Higher = more energy.',
   },
-  STEPS: {
+STEPS: {
     type: 'STEPS',
     category: 'WELLNESS',
     label: 'Steps',
     shortLabel: 'Steps',
     unit: '',
     inverted: false,
-    defaultMin: 5,
+    defaultMin: 8000,
     format: (v) => v.toLocaleString(),
-    description: 'Daily step count (from FIT MONITOR/METRICS files).',
+    description: 'Daily step count (from Garmin / Gadgetbridge MONITOR files).',
+  },
+  RESPIRATION_RATE: {
+    type: 'RESPIRATION_RATE',
+    category: 'WELLNESS',
+    label: 'Respiration',
+    shortLabel: 'Resp',
+    unit: 'brpm',
+    inverted: false,
+    defaultMin: 14,
+    format: (v) => `${v.toFixed(1)} brpm`,
+    description: 'Breaths per minute, averaged from Gadgetbridge MONITOR files.',
   },
 };
 
@@ -479,7 +490,7 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'PUSHUP_MAX', 'PULLUP_MAX'],
   SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
   NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
-  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS', 'BODY_BATTERY', 'STEPS'],
+  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS', 'BODY_BATTERY', 'STEPS', 'RESPIRATION_RATE'],
 };
 
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {

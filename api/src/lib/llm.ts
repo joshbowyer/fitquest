@@ -271,10 +271,14 @@ async function callOnce(
   // jsonMode is implemented differently per provider:
   //   - OpenAI / OpenAI-compat (Ollama, etc): set
   //     `response_format: { type: 'json_object' }` (OpenAI) or
-  //     `format: 'json'` (Ollama). We use Ollama's `format`
-  //     because OpenAI's strict json_object requires the user
-  //     message to mention 'json' (browsers' content filters
-  //     will sometimes refuse). Ollama's is unconditional.
+  //     `format: 'json'` (Ollama's native form). We send
+  //     response_format because every OpenAI-compat server we
+  //     support (Ollama ≥0.5, OpenAI, Minimax's OpenAI endpoint,
+  //     llama.cpp's server, etc.) honors it, whereas Ollama's
+  //     `format: 'json'` is *only* honored by Ollama — and
+  //     inconsistently across models: samantha-mistral, gemma3,
+  //     and llama3.2 all ignore it and emit prose, often wrapped
+  //     in markdown ```json fences. Verified 2026-06-22.
   //   - Anthropic: no response_format support. Anthropic's own
   //     tool-use / structured output works differently and isn't
   //     wired here. We just skip the field for that provider.
@@ -334,17 +338,17 @@ async function callOpenAiCompatible(
     temperature,
     stream: false,
   };
-  // Ollama reads `format: 'json'`; OpenAI reads
-  // `response_format: { type: 'json_object' }`. Ollama is
-  // OpenAI-compat but only honours its own `format` field for
-  // forcing JSON, so prefer that. OpenAI's flag also works for
-  // any other OpenAI-compat server that supports it.
+  // Force JSON output via OpenAI's response_format flag. Every
+  // OpenAI-compat server we ship with (Ollama ≥0.5, OpenAI,
+  // Minimax's OpenAI endpoint, llama.cpp's server) honors this.
+  // We deliberately do NOT send Ollama's `format: 'json'` — that
+  // field is Ollama-specific and models like samantha-mistral /
+  // gemma3 / llama3.2 ignore it, returning prose. Sending both
+  // would be a JSON-schema mismatch on the strict OpenAI endpoint
+  // and on Ollama the extra field is silently dropped, so just
+  // response_format is enough.
   if (jsonMode) {
-    if (config.provider === 'OLLAMA') {
-      body.format = 'json';
-    } else {
-      body.response_format = { type: 'json_object' };
-    }
+    body.response_format = { type: 'json_object' };
   }
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',

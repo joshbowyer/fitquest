@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { classNames } from '@/lib/format';
 import type { SpiritualReflection } from '@/lib/types';
 
 type Props = {
@@ -20,6 +20,14 @@ type Props = {
  * Renders the day's USCCB Gospel alongside an LLM-tailored
  * reflection from the spiritual director. Designed for the
  * /spiritual page; reuse on dashboard with collapseGospel=true.
+ *
+ * Error handling: if the LLM call fails (timeout, model down,
+ * bad JSON response, etc.), we show a card with the error and
+ * auto-retry on a fixed timer — 30s for the first retry, 60s
+ * for the second, 120s thereafter. The user gets feedback
+ * ("Couldn't reach Ollama, retrying in 25s…") instead of a
+ * silent disappearance. Permanent errors (LLM disabled, USCCB
+ * no reading for today) surface as a "won't retry" message.
  */
 export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenerate }: Props) {
   const qc = useQueryClient();
@@ -27,21 +35,120 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
     queryKey: ['spiritual', 'director'],
     queryFn: () => api<SpiritualReflection>('/spiritual/director'),
     staleTime: 5 * 60 * 1000,
+    // We manage retries ourselves (with backoff) below, so disable
+    // react-query's automatic retries to avoid double-fetching.
     retry: false,
   });
 
+  // Manual retry state. retryCount tracks how many automatic
+  // retries have fired since the last successful fetch (or first
+  // error). retryAt is the wall-clock time when the next retry
+  // will fire. The countdown is driven by useEffect + setInterval
+  // so it actually updates every second without re-rendering the
+  // whole tree.
+  const [retryCount, setRetryCount] = useState(0);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  // When the query errors (and isn't currently fetching), schedule
+  // the next retry. Schedule lengths grow so a persistently-broken
+  // backend doesn't hammer the server: 30s / 60s / 120s / 120s / ...
+  useEffect(() => {
+    if (!q.isError || q.isFetching) return;
+    const delays = [30_000, 60_000, 120_000, 120_000, 120_000];
+    const delay = delays[Math.min(retryCount, delays.length - 1)];
+    setRetryAt(Date.now() + delay);
+  }, [q.isError, q.isFetching, retryCount, q.errorUpdatedAt]);
+
+  // Countdown ticker. Cleared when retryAt goes null.
+  useEffect(() => {
+    if (retryAt == null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [retryAt]);
+
+  // When the timer hits 0, fire the next retry and bump the count
+  // so the next schedule picks a longer delay.
+  useEffect(() => {
+    if (retryAt == null || now < retryAt) return;
+    setRetryAt(null);
+    setRetryCount((c) => c + 1);
+    qc.invalidateQueries({ queryKey: ['spiritual', 'director'] });
+  }, [now, retryAt, qc]);
+
+  // Heuristic: classify the error message to decide whether it's
+  // transient (worth retrying) or permanent (won't help to retry).
+  // The server doesn't expose a status code field on
+  // useQuery's error, so we inspect the message body. This is
+  // best-effort — anything we don't recognise gets the
+  // retry treatment.
+  const errMsg = q.error ? String((q.error as any).message ?? q.error) : '';
+  const isPermanent = /no reading available|no LLM configured|LLM not configured|LLM disabled/i.test(errMsg);
+
   const regenM = useDelayedMutation({
     mutationFn: () => api<SpiritualReflection>('/spiritual/director/regenerate', { method: 'POST' }),
-    onSuccess: (r) => qc.setQueryData(['spiritual', 'director'], r),
+    onSuccess: (r) => {
+      qc.setQueryData(['spiritual', 'director'], r);
+      setRetryCount(0);
+      setRetryAt(null);
+    },
   }, 1500);
 
-  if (q.isError || q.error) {
-    return null; // Don't break the page on failure
-  }
   if (q.isLoading) {
     return (
       <Panel title="Spiritual director" variant="violet" className="border-neon-violet/30">
         <div className="text-sm text-slate-400 font-mono py-2">⏳ Preparing today's reflection…</div>
+      </Panel>
+    );
+  }
+
+  if (q.isError) {
+    const secondsLeft = retryAt != null ? Math.max(0, Math.round((retryAt - now) / 1000)) : null;
+    return (
+      <Panel title="Spiritual director" variant="violet" className="border-neon-violet/30">
+        <div className="space-y-2 py-1">
+          <div className="text-sm text-rose-300 font-mono">
+            ✗ {errMsg || "Couldn't load today's reflection"}
+          </div>
+          {!isPermanent && secondsLeft != null && (
+            <div className="text-[11px] font-mono text-ink-400">
+              ⟳ Auto-retry in {secondsLeft}s
+              <span className="text-ink-500"> · attempt {retryCount + 1}</span>
+            </div>
+          )}
+          {!isPermanent && (
+            <div className="flex gap-2 pt-1">
+              <NeonButton
+                size="sm"
+                variant="violet"
+                disabled={q.isFetching}
+                onClick={() => {
+                  setRetryAt(null);
+                  setRetryCount(0);
+                  qc.invalidateQueries({ queryKey: ['spiritual', 'director'] });
+                }}
+              >
+                Retry now
+              </NeonButton>
+              {!hideRegenerate && (
+                <NeonButton
+                  size="sm"
+                  variant="violet"
+                  disabled={regenM.isPending}
+                  loading={regenM.isPending}
+                  onClick={() => regenM.run()}
+                >
+                  Force regenerate
+                </NeonButton>
+              )}
+            </div>
+          )}
+          {isPermanent && (
+            <div className="text-[11px] font-mono text-ink-500">
+              Check /admin → LLM config, or the USCCB feed for today's date.
+            </div>
+          )}
+        </div>
       </Panel>
     );
   }

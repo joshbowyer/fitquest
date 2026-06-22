@@ -415,8 +415,14 @@ export function ActivitiesPage() {
   const [result, setResult] = useState<any | null>(null);
   const [selectedExerciseIdx, setSelectedExerciseIdx] = useState<number | null>(null);
 
-  // History filters
-  const [historyFilter, setHistoryFilter] = useState<'all' | '7d' | '30d' | '90d'>('30d');
+  // History filters. Default to 'all' because the user routinely
+  // bulk-imports a season of workouts at once (e.g. Gadgetbridge's
+  // /tmp/gadgetbridge/ACTIVITY/*.fit dump). The '30d' default from
+  // earlier was hiding anything older than a month — the user
+  // kept wondering where the FIT imports went. The API caps the
+  // page at 200 (see api/src/routes/workouts.ts), which covers a
+  // couple of years of daily activity.
+  const [historyFilter, setHistoryFilter] = useState<'all' | '7d' | '30d' | '90d'>('all');
   const [exerciseFilter, setExerciseFilter] = useState('');
 
   const list = useQuery({

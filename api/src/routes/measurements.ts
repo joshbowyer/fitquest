@@ -154,6 +154,11 @@ export async function measurementRoutes(app: FastifyInstance) {
     const body = z.object({
       value: z.number().positive().max(500),
       notes: z.string().max(500).optional(),
+      // Optional ISO timestamp; defaults to "now". Used by the
+      // Endurain export importer to backdate weigh-ins from a
+      // bulk CSV (otherwise they'd all collapse onto today and
+      // wreck the trend chart).
+      recordedAt: z.string().datetime().optional(),
     }).parse(req.body);
     const m = await prisma.measurement.create({
       data: {
@@ -162,7 +167,7 @@ export async function measurementRoutes(app: FastifyInstance) {
         value: body.value,
         unit: 'kg',
         notes: body.notes,
-        recordedAt: new Date(),
+        recordedAt: body.recordedAt ? new Date(body.recordedAt) : new Date(),
       },
     });
     const [today, streak] = await Promise.all([
