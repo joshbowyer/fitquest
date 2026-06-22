@@ -32,9 +32,14 @@ export function SettingsPage() {
     },
   });
 
-  // Goal + baseline PATCH. Conservative ±250 cal adjustment.
+  // Goal + baseline + USDA key PATCH. Conservative ±250 cal adjustment.
   const goalM = useMutation({
-    mutationFn: (body: { goal: 'CUT' | 'MAINTAIN' | 'BULK'; calorieBaseline?: number }) =>
+    mutationFn: (body: {
+      goal: 'CUT' | 'MAINTAIN' | 'BULK';
+      calorieBaseline?: number;
+      calorieSource?: 'BASELINE' | 'BMR' | 'BMR_NEAT';
+      usdaApiKey?: string;
+    }) =>
       api('/users/me', { method: 'PATCH', body }),
     onSuccess: async () => {
       await refresh();
@@ -221,11 +226,25 @@ export function SettingsPage() {
                 you have 2-3 weeks of weight-stable data.
               </div>
               {/* Source picker: lets power users tell us whether the
-                  baseline is a full TDEE, a BMR alone, or a BMR+NEAT
-                  estimate. Math is the same; only the label changes. */}
+                  baseline number is a full TDEE, a BMR alone, or a
+                  BMR+NEAT estimate. CRUCIALLY the math is the same
+                  regardless of which you pick — the source only
+                  changes the LABEL shown next to the calorie target
+                  on /nutrition, so the daily-target subtitle is
+                  honest about what the number represents. Pick the
+                  option that matches how YOU got the number; if
+                  you don't care, leave it at Maintenance. */}
               <div className="mt-3">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1">
-                  Baseline source
+                <div className="flex items-baseline gap-2 mb-1">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
+                    Baseline source
+                  </div>
+                  <span
+                    className="text-[10px] font-mono text-ink-500"
+                    title="This is a LABEL for your baseline number, not a math change. The actual calorie target (baseline + goal offset) is identical regardless of which you pick. The label just keeps /nutrition honest about where the number came from."
+                  >
+                    (label only — math is identical)
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
                   <SourceOption
