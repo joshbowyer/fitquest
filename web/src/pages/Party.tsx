@@ -30,6 +30,20 @@ export function PartyPage() {
   const [err, setErr] = useState<string | null>(null);
   const [inviteUsername, setInviteUsername] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
+  /// Team-workout launcher state. When the user clicks "Start
+  /// team workout" we open the modal; the modal lets them pick
+  /// 1-4 participants + an optional routine name.
+  const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [teamParticipantIds, setTeamParticipantIds] = useState<string[]>([]);
+  const [teamRoutineName, setTeamRoutineName] = useState('');
+
+  // Always poll for active team workouts so the banner can show
+  // when the user has an invite waiting or a session in progress.
+  const teamActiveQ = useQuery({
+    queryKey: ['team-workouts', 'active'],
+    queryFn: () => api<{ items: any[] }>('/team-workouts/active'),
+    refetchInterval: 5000,
+  });
 
   const partyQ = useQuery({
     queryKey: ['party', 'me'],
@@ -115,6 +129,36 @@ export function PartyPage() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to send invite'),
   }, 800);
 
+  // Team workout launcher: leader-only, picks 1-4 party members
+  // and an optional routine name. The session page lives at
+  // /team-workout/:id so we navigate after creation.
+  const startTeamM = useDelayedMutation<{ id: string }, void>({
+    mutationFn: () =>
+      api('/team-workouts', {
+        method: 'POST',
+        body: {
+          participantIds: teamParticipantIds,
+          routineName: teamRoutineName.trim() || null,
+        },
+      }),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['team-workouts'] });
+      setTeamModalOpen(false);
+      setTeamParticipantIds([]);
+      setTeamRoutineName('');
+      // Bounce to the session page so the leader can see the
+      // invitation status and the share link.
+      window.location.href = `/team-workout/${r.id}`;
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : 'Failed to start'),
+  }, 800);
+
+  const toggleParticipant = (id: string) => {
+    setTeamParticipantIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : cur.length < 4 ? [...cur, id] : cur,
+    );
+  };
+
   const acceptInviteM = useDelayedMutation<{ ok: boolean }, string>({
     mutationFn: (id) => api(`/parties/invites/${id}/accept`, { method: 'POST' }),
     onSuccess: () => {
@@ -142,6 +186,53 @@ export function PartyPage() {
       {err && (
         <div className="mb-4 text-xs font-mono text-neon-magenta border border-neon-magenta/30 bg-neon-magenta/5 p-2">
           ! {err}
+        </div>
+      )}
+
+      {/* Active team-workout banner — surfaces at the top so a
+          leader who's mid-session can return to it, and invitees
+          can see their pending invites at a glance. */}
+      {(teamActiveQ.data?.items ?? []).length > 0 && (
+        <div className="mb-4 space-y-2">
+          {(teamActiveQ.data?.items ?? []).map((tw) => {
+            const meP = (tw.participants ?? []).find((p: any) => p.userId === user?.id);
+            const myStatus = meP?.status ?? 'NOT_INVITED';
+            const isLeader = tw.leaderId === user?.id;
+            const invited = (tw.participants ?? []).filter((p: any) => p.status === 'INVITED').length;
+            const accepted = (tw.participants ?? []).filter((p: any) => p.status === 'ACCEPTED' || p.status === 'JOINED' || p.status === 'CONFIRMED').length;
+            return (
+              <Link
+                key={tw.id}
+                to={`/team-workout/${tw.id}`}
+                className="block border border-neon-lime/40 bg-neon-lime/5 p-3 hover:border-neon-lime"
+              >
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="font-display tracking-widest text-sm text-neon-lime uppercase">
+                    🏋️🤝 Team Workout · {tw.status}
+                  </span>
+                  {tw.routineName && (
+                    <span className="text-[10px] font-mono text-ink-300">· {tw.routineName}</span>
+                  )}
+                  <span className="text-[10px] font-mono text-ink-400 ml-auto">
+                    {accepted}/{tw.participants.length} ready · {invited} pending
+                  </span>
+                </div>
+                {isLeader ? (
+                  <div className="text-[10px] font-mono text-ink-300 mt-1">
+                    You started this. Open to manage invites and confirmations.
+                  </div>
+                ) : myStatus === 'INVITED' ? (
+                  <div className="text-[10px] font-mono text-neon-amber mt-1 animate-pulse">
+                    ! {tw.leader.username} wants to start a team workout with you. Tap to respond.
+                  </div>
+                ) : (
+                  <div className="text-[10px] font-mono text-ink-300 mt-1">
+                    You're in this one. Tap to view your pane.
+                  </div>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
 
@@ -377,6 +468,25 @@ export function PartyPage() {
             >
               {leaveM.isPending ? '…' : 'Leave Party'}
             </button>
+
+            {/* Team-workout launcher — leader-only. Opens a modal
+                that lets the leader pick 1-4 party members + an
+                optional routine name. The session lives at
+                /team-workout/<id> after creation. */}
+            {(role === 'LEADER' || role === 'OFFICER') && (party?.members ?? []).length >= 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTeamParticipantIds([]);
+                  setTeamRoutineName('');
+                  setTeamModalOpen(true);
+                }}
+                className="mt-3 w-full px-3 py-2 text-xs font-display tracking-widest uppercase border border-neon-lime/60 text-neon-lime bg-neon-lime/5 hover:bg-neon-lime/10"
+                title="Start a co-op workout with up to 4 party members. +5 camaraderie, +10% raid damage (24h) on completion."
+              >
+                🏋️🤝 Start Team Workout
+              </button>
+            )}
           </Panel>
 
           {historyQ.data?.items && historyQ.data.items.length > 0 && (
@@ -398,6 +508,90 @@ export function PartyPage() {
               </div>
             </Panel>
           )}
+        </div>
+      )}
+
+      {/* Team workout launcher modal — picks participants and an
+          optional routine name. The leader implicit-accepts; the
+          other picks become INVITED and get a banner on /party. */}
+      {teamModalOpen && party && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+          onClick={() => !startTeamM.isPending && setTeamModalOpen(false)}
+        >
+          <div
+            className="border border-neon-lime/40 bg-bg-800 max-w-md w-full p-4 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-display tracking-widest text-neon-lime uppercase">
+              🏋️🤝 Start Team Workout
+            </div>
+            <div className="text-[10px] font-mono text-ink-300">
+              Pick 1-4 party members to train alongside. You auto-accept;
+              they'll get an in-app invite. On completion: +5 party
+              camaraderie, +10% raid damage (24h), and the "Side by Side"
+              achievement for everyone who finishes.
+            </div>
+
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                Participants ({teamParticipantIds.length}/4)
+              </div>
+              <div className="space-y-1">
+                {(party.members ?? [])
+                  .filter((m: any) => m.userId !== user?.id)
+                  .map((m: any) => {
+                    const checked = teamParticipantIds.includes(m.userId);
+                    return (
+                      <button
+                        key={m.userId}
+                        type="button"
+                        onClick={() => toggleParticipant(m.userId)}
+                        className={`w-full text-left px-2 py-1.5 text-xs font-mono border ${
+                          checked
+                            ? 'border-neon-lime text-neon-lime bg-neon-lime/10'
+                            : 'border-ink-500/40 text-ink-200 hover:border-ink-300'
+                        }`}
+                      >
+                        {checked ? '✓' : '·'} {m.user.username} · L{m.user.level} · {m.user.class ?? 'unclassed'}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                Routine (optional)
+              </div>
+              <input
+                className="input-neon w-full text-xs"
+                placeholder="e.g. Push Day A, 5/3/1 Squat"
+                value={teamRoutineName}
+                onChange={(e) => setTeamRoutineName(e.target.value)}
+                maxLength={80}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTeamModalOpen(false)}
+                disabled={startTeamM.isPending}
+                className="flex-1 px-3 py-2 text-xs font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => startTeamM.run()}
+                disabled={startTeamM.isPending || teamParticipantIds.length === 0}
+                className="flex-1 px-3 py-2 text-xs font-display tracking-widest uppercase border border-neon-lime text-neon-lime bg-neon-lime/10 hover:bg-neon-lime/20 disabled:opacity-40"
+              >
+                {startTeamM.isPending ? 'Starting…' : '⚡ Start'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Layout>

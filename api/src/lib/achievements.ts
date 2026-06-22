@@ -149,6 +149,7 @@ export const ACHIEVEMENT_DEFS: Array<{
   { key: 'owl_hours',         name: 'Owl Hours',         description: 'Log a workout between midnight and 4 AM. The gym staff knows your name.', category: 'CONSISTENCY', icon: 'moon', criteria: { kind: 'time_of_day_workout', hourStart: 0, hourEnd: 4, gte: 1 }, points: 25, witty: true },
   { key: 'lunch_break_lifter', name: 'Lunch Break Lifter', description: 'Log a workout between 11 AM and 1 PM on a weekday. HR noticed.', category: 'CONSISTENCY', icon: 'medal', criteria: { kind: 'time_of_day_workout', hourStart: 11, hourEnd: 13, gte: 5 }, points: 30, witty: true },
   { key: 'profile_complete',  name: 'Calibrated',        description: 'Fill in all frame measurements (height, wrist, ankle, forearm, neck).', category: 'CONSISTENCY', icon: 'body', criteria: { kind: 'profile_complete' }, points: 10, witty: true },
+  { key: 'side_by_side',       name: 'Side By Side',      description: 'Completed a team workout with at least one other party member.', category: 'SOCIAL', icon: 'people', criteria: { kind: 'team_workout_count', gte: 1 }, points: 50 },
 ];
 
 export async function ensureAchievementsSeeded() {

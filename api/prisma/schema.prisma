@@ -248,6 +248,8 @@ model User {
   mealEntries      MealEntry[]
   savedFoods       SavedFood[]
   correlationSnapshots CorrelationSnapshot[]
+  teamWorkoutsLed      TeamWorkout[]      @relation("TeamWorkoutLeader")
+  teamParticipations   TeamParticipant[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -450,12 +452,15 @@ model UserSkill {
 }
 
 model Party {
-  id        String        @id @default(cuid())
-  name      String
-  createdAt DateTime      @default(now())
-  members   PartyMember[]
-  raids     Raid[]
-  invites   PartyInvite[]
+  id          String            @id @default(cuid())
+  name        String
+  createdAt   DateTime          @default(now())
+  members     PartyMember[]
+  raids       Raid[]
+  invites     PartyInvite[]
+  teamWorkouts TeamWorkout[]
+  camaraderie PartyCamaraderie?
+  buff        PartyBuff?
 }
 
 model PartyMember {
@@ -466,6 +471,109 @@ model PartyMember {
   user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role     MemberRole @default(MEMBER)
   joinedAt DateTime   @default(now())
+}
+
+// ============================================================
+// Team workout mode (the social moat) — see fitquest_roadmap.md
+// §26–§34. The team session is purely orchestration: each
+// participant still logs their own per-user Workout row so XP,
+// PR detection, raid damage, etc. all stay unified. The
+// TeamWorkout row tracks the shared lifecycle (pending →
+// active → completed) and TeamParticipant tracks per-member
+// status (invited/joined/confirmed).
+// ============================================================
+
+enum TeamWorkoutStatus {
+  PENDING   // leader has invited members; nobody has joined yet
+  ACTIVE    // at least one member has joined; in progress
+  COMPLETED // all members confirmed "done"
+  ABANDONED // leader cancelled or 1h idle
+}
+
+enum TeamParticipantStatus {
+  INVITED    // invitee hasn't responded
+  ACCEPTED   // invitee accepted; will participate
+  DECLINED   // invitee declined
+  JOINED     // active session, hasn't yet committed a workout
+  CONFIRMED  // workout committed + tapped "I'm done"
+  NO_SHOW    // invited/accepted but never joined within 30 min
+}
+
+model TeamWorkout {
+  id           String              @id @default(cuid())
+  partyId      String
+  party        Party               @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  /// User who hit "Start team workout". Implicit-accept.
+  leaderId     String
+  leader       User                @relation("TeamWorkoutLeader", fields: [leaderId], references: [id], onDelete: Cascade)
+  startedAt    DateTime            @default(now())
+  endedAt      DateTime?
+  status       TeamWorkoutStatus   @default(PENDING)
+  /// Optional shared routine name (leader's choice; surfaced in
+  /// the split-pane as the "session focus" tag).
+  routineName String?
+  /// Set when COMPLETED: all participants confirmed. Drives the
+  /// +5 camaraderie, +10% raid damage (24h), and the
+  /// "Side by Side" achievement.
+  completedAt DateTime?
+
+  participants TeamParticipant[]
+
+  @@index([partyId, status])
+  @@index([leaderId])
+}
+
+model TeamParticipant {
+  id            String                @id @default(cuid())
+  teamWorkoutId String
+  teamWorkout   TeamWorkout           @relation(fields: [teamWorkoutId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        TeamParticipantStatus @default(INVITED)
+  /// Per-user Workout row created when the participant commits
+  /// their session. Same row that single-player mode would have
+  /// produced — XP/PRs/raid damage flow from this.
+  workoutId     String?
+  /// When the user tapped Accept / Decline / Joined / Confirmed.
+  respondedAt   DateTime?
+  confirmedAt   DateTime?
+
+  @@unique([teamWorkoutId, userId])
+  @@index([userId, status])
+}
+
+// ============================================================
+// PartyCamaraderie — per-party 0–100 score, surfaced on /party
+// as "🔥 67/100 — Iron Bond". Drives the unlocks in roadmap
+// §32: 50+ heirloom slot, 75+ shared-daily auto-completion,
+// 100+ free class change.
+// ============================================================
+
+model PartyCamaraderie {
+  partyId   String   @id
+  party     Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  /// 0..100. Capped and floored at the edges so negative events
+  /// (leaving) don't drop below 0.
+  score     Int      @default(0)
+  /// Title tier based on score — kept as a string so the
+  /// threshold names stay in app code, not the schema.
+  tier      String   @default("Cold")
+  /// Set of (reason, delta) entries for the last 30 days so
+  /// the /party page can render a "why is my score X?" log.
+  history   Json     @default("[]")
+  updatedAt DateTime @updatedAt
+}
+
+/// Party-wide buffs granted by social events. Today the only
+/// source is the team-workout completion (+10% raid damage for
+/// 24h, per roadmap §30), but the schema leaves room for future
+/// buffs like +XP from co-op dailies.
+model PartyBuff {
+  partyId         String   @id
+  party           Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  raidDmgBonusPct Int      @default(0)
+  expiresAt       DateTime
+  reason          String
 }
 
 model Raid {

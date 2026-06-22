@@ -12,6 +12,7 @@ import { measurementRoutes } from './routes/measurements.js';
 import { workoutRoutes } from './routes/workouts.js';
 import { geneticMaxRoutes } from './routes/geneticMax.js';
 import { partyRoutes } from './routes/parties.js';
+import { teamWorkoutRoutes } from './routes/teamWorkouts.js';
 import { raidRoutes } from './routes/raids.js';
 import { achievementRoutes } from './routes/achievements.js';
 import { skillRoutes } from './routes/skills.js';
@@ -64,6 +65,7 @@ async function build() {
   await app.register(workoutRoutes, { prefix: '/workouts' });
   await app.register(geneticMaxRoutes, { prefix: '/genetic-max' });
   await app.register(partyRoutes, { prefix: '/parties' });
+  await app.register(teamWorkoutRoutes, { prefix: '/team-workouts' });
   await app.register(raidRoutes, { prefix: '/raids' });
   await app.register(achievementRoutes, { prefix: '/achievements' });
   await app.register(skillRoutes, { prefix: '/skills' });

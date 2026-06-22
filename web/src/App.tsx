@@ -10,6 +10,7 @@ import { InsightsPage } from './pages/Insights';
 import { SettingsPage } from './pages/Settings';
 import { SkillsPage } from './pages/Skills';
 import { PartyPage } from './pages/Party';
+import { TeamWorkoutPage } from './pages/TeamWorkout';
 import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { QuestPage } from './pages/Quest';
@@ -74,6 +75,7 @@ export default function App() {
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />
+      <Route path="/team-workout/:id" element={<RequireAuth><TeamWorkoutPage /></RequireAuth>} />
       <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />
       <Route path="/achievements" element={<RequireAuth><AchievementsPage /></RequireAuth>} />
       <Route path="/inventory" element={<RequireAuth><InventoryPage /></RequireAuth>} />

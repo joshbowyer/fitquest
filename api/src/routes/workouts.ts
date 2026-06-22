@@ -288,14 +288,24 @@ export async function workoutRoutes(app: FastifyInstance) {
           where: { partyId: membership.partyId, status: 'ACTIVE' },
         });
         if (raid) {
-          const newHp = Math.max(0, raid.bossHp - raidDamage.total);
+          // Apply party-wide buffs. Today the only buff is the team-
+          // workout completion grant (10% raid damage for 24h per
+          // roadmap §30). Buffs that have expired are ignored.
+          const buff = await prisma.partyBuff.findUnique({
+            where: { partyId: membership.partyId },
+          });
+          const buffActive = buff && buff.expiresAt > new Date();
+          const buffedDamage = buffActive
+            ? Math.round(raidDamage.total * (1 + (buff?.raidDmgBonusPct ?? 0) / 100))
+            : raidDamage.total;
+          const newHp = Math.max(0, raid.bossHp - buffedDamage);
           const status = newHp <= 0 ? 'VICTORY' : 'ACTIVE';
           const [contribution] = await prisma.$transaction([
             prisma.raidContribution.create({
               data: {
                 raidId: raid.id,
                 userId: me.id,
-                damage: raidDamage.total,
+                damage: buffedDamage,
                 source: 'workout',
               },
             }),
