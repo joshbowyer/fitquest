@@ -619,6 +619,13 @@ export function ActivitiesPage() {
     <Layout>
       <PageHeader title="// Activities" subtitle="Log a session. Auto-detect PRs. Gain XP." />
 
+      {/* Side-by-side layout: Log Session (left, ~66%) + History (right, ~33%).
+          Stacks vertically below the lg breakpoint so phone users get a
+          single-column scroll. The History list itself stays single-column
+          even at lg — the previous 3-col grid crushed the activity cards
+          and made volumes/dates hard to read. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 items-start">
+
       <Panel
         variant="cyan"
         title="Log Session"
@@ -1088,17 +1095,21 @@ export function ActivitiesPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        {/* Single-column history list — see comment on the side-by-side
+            grid above for why we don't multi-col here. Each card needs
+            its own row to keep volumes / dates / FIT metrics readable. */}
+        <div className="space-y-2 max-h-[80vh] overflow-y-auto pr-1">
           {filteredHistory.map((w) => (
             <ActivityCard key={w.id} workout={w} units={units} timezone={user?.timezone ?? null} />
           ))}
           {(list.data?.items || []).length === 0 && (
-            <div className="col-span-full text-xs text-ink-300 font-mono text-center py-6 border border-dashed border-ink-700/30">
+            <div className="text-xs text-ink-300 font-mono text-center py-6 border border-dashed border-ink-700/30">
               No sessions logged yet.
             </div>
           )}
         </div>
       </Panel>
+      </div>
     </Layout>
   );
 }
