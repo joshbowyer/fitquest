@@ -2,7 +2,7 @@
  * OpenFoodFacts (OFF) client. No API key required.
  *
  * OFF has the biggest global food database. Endpoints:
- *   - GET /api/v2/search?search_terms=...
+ *   - GET /cgi/search.pl?search_terms=...
  *   - GET /api/v2/product/{barcode}.json
  *
  * We only consume a subset of each product's fields — enough to
@@ -73,6 +73,114 @@ export function normalizeOffProduct(p: OffProduct): FoodMatch | null {
     sodiumMg: n['sodium_100g'] != null ? n['sodium_100g'] * 1000 : null,
     sourceUrl: `https://world.openfoodfacts.org/product/${p.code}`,
   };
+}
+
+/**
+ * Score a normalized FoodMatch for "basicness" when the user
+ * didn't include a brand in their query. Higher score = better
+ * generic match (what the user usually wants when they search
+ * "chicken breast").
+ *
+ * Penalizes:
+ *   - Products with a brand set (the user didn't search a brand,
+ *     so branded products are usually a worse match than the
+ *     generic item they actually want)
+ *   - Long product names (>5 words is usually a variant — "Organic
+ *     Free-Range Air-Chilled Boneless Skinless Chicken Breast" is
+ *     technically more accurate but not what "chicken breast"
+ *     usually means in a macro log)
+ *   - Words that appear in the query BUT show up at the end of
+ *     the name (suggests a long prefix that swallowed the query —
+ *     e.g. "Annie's Homegrown Organic Whole Wheat Elbows" for
+ *     "elbows")
+ *
+ * Rewards:
+ *   - Query words appearing at the START of the name
+ *   - Short, clean product names
+ *   - More complete nutrient data (basic foods usually have full
+ *     per-100g coverage; obscure variants often only have cal)
+ */
+function basicnessScore(query: string, m: FoodMatch): number {
+  const q = query.toLowerCase().trim();
+  const name = m.name.toLowerCase();
+  const qWords = q.split(/\s+/).filter((w) => w.length >= 3);
+  const nameWords = name.split(/\s+/);
+  let score = 0;
+
+  // Brand penalty
+  if (m.brand && m.brand.trim().length > 0) score -= 25;
+
+  // Name length penalty — slightly penalize >5 words, more for >10
+  if (nameWords.length > 10) score -= 30;
+  else if (nameWords.length > 5) score -= 10;
+
+  // Query-word position reward
+  if (qWords.length > 0) {
+    // Best case: query words appear at the start of the name in order
+    const firstWord = qWords[0]!;
+    const pos = name.indexOf(firstWord);
+    if (pos === 0) score += 25;
+    else if (pos > 0 && pos < 15) score += 10;
+    else if (pos > 30) score -= 15;
+
+    // Bonus: all query words present
+    const allPresent = qWords.every((w) => name.includes(w));
+    if (allPresent) score += 10;
+  }
+
+  // Nutrient completeness reward
+  let filledNutrients = 0;
+  if (m.proteinG > 0) filledNutrients++;
+  if (m.carbG > 0) filledNutrients++;
+  if (m.fatG > 0) filledNutrients++;
+  if (m.fiberG != null) filledNutrients++;
+  if (m.sugarG != null) filledNutrients++;
+  if (m.sodiumMg != null) filledNutrients++;
+  score += filledNutrients * 1.5;
+
+  return score;
+}
+
+/**
+ * Detect whether the user's query looks brand-specific.
+ * Heuristic: contains a known brand token (Trader Joe's, Costco,
+ * Whole Foods, etc.) or quotes a brand-name substring. This is
+ * intentionally loose — false positives just mean we don't
+ * deprioritize branded results, which is fine.
+ */
+function hasBrandHint(query: string): boolean {
+  const KNOWN_BRANDS = [
+    'trader joe', 'trader joe', "trader joe's",
+    'costco', 'kirkland', 'sam', 'walmart', 'great value',
+    'kroger', 'private selection', 'simple truth',
+    'whole foods', '365', 'amazon', 'happy belly',
+    'kraft', 'general mills', 'cheerios', 'kellogg', 'kellogg\'s',
+    'nestle', 'coca cola', 'coke', 'pepsi', 'sprite', 'fanta',
+    'heinz', 'hellmann', 'hellmann\'s', 'best foods', 'dukes',
+    'campbell', 'campbell\'s', ' progresso', 'barilla', 'ragu',
+    'annies', 'annie\'s', 'kashi', 'pop tarts', 'cheez',
+    'oreo', 'nabisco', 'mondelez', 'lay', 'lays', 'lay\'s',
+    'doritos', 'cheetos', 'ruffles', 'tostitos', 'snyder',
+    'lance', 'sun chips', 'pringles', 'm&m', 'm&m\'s',
+    'snickers', 'twix', 'kit kat', 'kitkat', 'reeses', 'reeses',
+    'ben & jerry', 'ben and jerry', 'halo top', 'talenti',
+    'yoplait', 'chobani', 'fage', 'siggi', 'siggis', 'noosa',
+    'sabra', 'stacy', 'tostitos', 'lays', 'lay\'s',
+    'olympic', 'kraft singles', 'tillamook', 'sargento',
+  ];
+  const q = query.toLowerCase();
+  return KNOWN_BRANDS.some((b) => q.includes(b));
+}
+
+export function rankResults(query: string, results: FoodMatch[]): FoodMatch[] {
+  if (results.length === 0) return results;
+  const brandish = hasBrandHint(query);
+  // When the user is searching for a brand, OFF's internal sort
+  // (popularity + completeness) is usually fine — don't reshuffle.
+  // When they're searching generic ("chicken breast"), we want the
+  // most basic match first.
+  if (brandish) return results;
+  return [...results].sort((a, b) => basicnessScore(query, b) - basicnessScore(query, a));
 }
 
 export async function offSearch(query: string, pageSize = 10): Promise<OffProduct[]> {

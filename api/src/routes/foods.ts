@@ -8,6 +8,7 @@ import {
   offSearch,
   offBarcode,
   normalizeOffProduct,
+  rankResults,
   type FoodMatch as OffMatch,
 } from '../lib/openfoodfacts.js';
 import {
@@ -78,10 +79,13 @@ export async function foodRoutes(app: FastifyInstance) {
     const trimmed = q.q.trim();
     if (!trimmed) return { items: [] };
 
-    // Try OFF first
+    // Try OFF first. Fetch a larger page (50) so the rankResults()
+    // pass below has a real pool to choose from — OFF rarely returns
+    // the basic item in the top 10 (branded variants crowd it out)
+    // but it usually appears within the top 50.
     let offHits: OffMatch[] = [];
     try {
-      const raw = await offSearch(trimmed, 10);
+      const raw = await offSearch(trimmed, 50);
       offHits = raw
         .map(normalizeOffProduct)
         .filter((m): m is OffMatch => m !== null);
@@ -140,7 +144,7 @@ export async function foodRoutes(app: FastifyInstance) {
       });
     }
 
-    return { items: allHits.slice(0, 10) };
+    return { items: rankResults(trimmed, allHits).slice(0, 10) };
   });
 
   // GET /foods/barcode/:code

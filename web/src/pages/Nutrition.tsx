@@ -465,8 +465,47 @@ function SubstancesPanel() {
     queryFn: () => api<{ items: SubstanceLog[] }>('/substances?days=7'),
     refetchInterval: 60_000,
   });
+  /// Tracks the key of the most recently-pressed substance button
+  /// so we can flash it lime for 400ms after the tap. Optimistic
+  /// updates happen via query cache mutation so the Recent list
+  /// shows the new entry immediately, before the network round-trip.
+  const [flashKey, setFlashKey] = useState<string | null>(null);
   const logM = useDelayedMutation<{ log: SubstanceLog }, { category: SubstanceCategory; form: string; amount?: number; unit?: string; context?: string }>({
     mutationFn: (body) => api('/substances', { method: 'POST', body }),
+    onMutate: (vars) => {
+      // Optimistic insert: push a placeholder row into the cached
+      // 'recent' list so the Recent panel updates instantly. The
+      // id is fake ('optimistic-<ts>') so the row renders, but it
+      // gets replaced by the real server row when the query
+      // invalidates. If the POST fails we roll back by removing
+      // the optimistic row.
+      const key = `${vars.category}:${vars.form}`;
+      const optimistic: SubstanceLog = {
+        id: `optimistic-${Date.now()}`,
+        category: vars.category,
+        form: vars.form,
+        amount: vars.amount ?? null,
+        unit: vars.unit ?? null,
+        context: vars.context ?? null,
+        loggedAt: new Date().toISOString(),
+      };
+      qc.setQueryData<{ items: SubstanceLog[] }>(['substances', 'recent'], (prev) => ({
+        items: [optimistic, ...(prev?.items ?? [])],
+      }));
+      setFlashKey(key);
+      window.setTimeout(() => {
+        setFlashKey((curr) => (curr === key ? null : curr));
+      }, 450);
+      return { optimisticId: optimistic.id };
+    },
+    onError: (_e, _vars, ctx) => {
+      // Rollback: remove the optimistic row we inserted.
+      if (ctx?.optimisticId) {
+        qc.setQueryData<{ items: SubstanceLog[] }>(['substances', 'recent'], (prev) => ({
+          items: (prev?.items ?? []).filter((l) => l.id !== ctx.optimisticId),
+        }));
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['substances'] }),
   }, 300);
   const delM = useDelayedMutation<{ ok: boolean }, { id: string }>({
@@ -493,10 +532,18 @@ function SubstancesPanel() {
                   logM.run({ category: cat, form: f.form, amount: 1, unit: f.defaultUnit });
                 }}
                 disabled={logM.isPending}
-                className="px-2.5 py-1 text-[11px] font-mono border border-ink-500/30 text-ink-200 hover:border-neon-cyan/60"
+                className={classNames(
+                  'px-2.5 py-1 text-[11px] font-mono border transition-colors duration-300',
+                  flashKey === `${cat}:${f.form}`
+                    // The flash overrides hover/pending for the brief
+                    // 450ms window so the user sees a satisfying
+                    // confirmation that the tap registered.
+                    ? 'border-neon-lime text-neon-lime bg-neon-lime/15 shadow-[0_0_8px_rgba(155,255,92,0.5)]'
+                    : 'border-ink-500/30 text-ink-200 hover:border-neon-cyan/60',
+                )}
                 title={`Log 1 ${f.defaultUnit} of ${f.label}`}
               >
-                + {f.label}
+                {flashKey === `${cat}:${f.form}` ? '✓' : '+'} {f.label}
               </button>
             ))}
           </div>

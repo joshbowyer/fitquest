@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
@@ -67,6 +67,45 @@ export function FoodPanel() {
     queryFn: () => api<{ items: MealEntry[] }>('/meals?days=7'),
   });
 
+  // ---- Manual entry ----
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualBrand, setManualBrand] = useState('');
+  const [manualServingSizeG, setManualServingSizeG] = useState('');
+  const [manualCals, setManualCals] = useState('');
+  const [manualProtein, setManualProtein] = useState('');
+  const [manualCarbs, setManualCarbs] = useState('');
+  const [manualFat, setManualFat] = useState('');
+  const [manualErr, setManualErr] = useState<string | null>(null);
+  const saveManualM = useDelayedMutation<{ item: SavedFoodDto }, void>({
+    mutationFn: () =>
+      api('/foods/saved', {
+        method: 'POST',
+        body: {
+          name: manualName.trim(),
+          brand: manualBrand.trim() || null,
+          servingSizeG: manualServingSizeG ? Number(manualServingSizeG) : null,
+          calories: Number(manualCals) || 0,
+          proteinG: Number(manualProtein) || 0,
+          carbG: Number(manualCarbs) || 0,
+          fatG: Number(manualFat) || 0,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
+      // Reset + close
+      setManualName(''); setManualBrand(''); setManualServingSizeG('');
+      setManualCals(''); setManualProtein(''); setManualCarbs(''); setManualFat('');
+      setManualErr(null);
+      setManualOpen(false);
+    },
+    onError: (e) => setManualErr(e instanceof ApiError ? e.message : 'Save failed'),
+  }, 600);
+  // True when the user has filled in enough to save. We require
+  // name + calories; the rest can be 0 if unknown (the saved food
+  // then shows as best-effort in the meal list).
+  const manualReady = manualName.trim().length > 0 && manualCals.trim().length > 0 && !isNaN(Number(manualCals));
+
   // ---- Saved foods (user's own recipes) ----
   const savedQ = useQuery({
     queryKey: ['foods', 'saved'],
@@ -117,6 +156,14 @@ export function FoodPanel() {
             title="Free-form description → LLM extracts a search query"
           >
             Ask AI
+          </NeonButton>
+          <NeonButton
+            size="sm"
+            variant="amber"
+            onClick={() => setManualOpen(true)}
+            title="Can't find it? Enter the macros yourself. Always works."
+          >
+            Manual
           </NeonButton>
         </div>
       }
@@ -305,6 +352,23 @@ export function FoodPanel() {
           onSavedChanged={() => {
             qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
           }}
+        />
+      )}
+
+      {manualOpen && (
+        <ManualEntryModal
+          manualName={manualName} setManualName={setManualName}
+          manualBrand={manualBrand} setManualBrand={setManualBrand}
+          manualServingSizeG={manualServingSizeG} setManualServingSizeG={setManualServingSizeG}
+          manualCals={manualCals} setManualCals={setManualCals}
+          manualProtein={manualProtein} setManualProtein={setManualProtein}
+          manualCarbs={manualCarbs} setManualCarbs={setManualCarbs}
+          manualFat={manualFat} setManualFat={setManualFat}
+          ready={manualReady}
+          loading={saveManualM.isPending}
+          err={manualErr}
+          onSave={() => saveManualM.run()}
+          onClose={() => { setManualOpen(false); setManualErr(null); }}
         />
       )}
     </Panel>
@@ -1920,5 +1984,161 @@ function LogMealModal({
       </div>
     </div>,
     document.body
+  );
+}
+
+
+// ============================================================================
+// ManualEntryModal — for foods that don't exist on OFF / USDA / Ask AI.
+// Always works: type the name + calories + (optionally) protein/carb/fat.
+// Saved as a SavedFood row, then available in the saved-foods panel
+// like any other entry. The per-100g portion assumption is implicit
+// (we treat all macros as 100g-of-food unless the user fills servingSizeG).
+// ============================================================================
+
+function ManualEntryModal(props: {
+  manualName: string; setManualName: (s: string) => void;
+  manualBrand: string; setManualBrand: (s: string) => void;
+  manualServingSizeG: string; setManualServingSizeG: (s: string) => void;
+  manualCals: string; setManualCals: (s: string) => void;
+  manualProtein: string; setManualProtein: (s: string) => void;
+  manualCarbs: string; setManualCarbs: (s: string) => void;
+  manualFat: string; setManualFat: (s: string) => void;
+  ready: boolean;
+  loading: boolean;
+  err: string | null;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const {
+    manualName, setManualName,
+    manualBrand, setManualBrand,
+    manualServingSizeG, setManualServingSizeG,
+    manualCals, setManualCals,
+    manualProtein, setManualProtein,
+    manualCarbs, setManualCarbs,
+    manualFat, setManualFat,
+    ready, loading, err, onSave, onClose,
+  } = props;
+
+  return (
+    <ModalPortal onClose={onClose}>
+      <div className="border border-neon-amber/40 bg-bg-800 p-4 max-w-md w-full space-y-3">
+        <div className="flex items-baseline justify-between">
+          <div className="font-display tracking-widest text-neon-amber uppercase">
+            Manual food entry
+          </div>
+          <button type="button" onClick={onClose}
+            className="text-ink-400 hover:text-ink-100 text-sm">×</button>
+        </div>
+        <div className="text-[10px] font-mono text-ink-300">
+          Can't find it on OFF / USDA, or Ask AI gave you nothing useful?
+          Type the macros yourself. Saved to your <b>Your saved foods</b>
+          panel for one-tap logging next time. All macros are per-100g
+          unless you set a serving size.
+        </div>
+
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-400 block mb-1">
+            Name (required)
+          </label>
+          <input
+            className="input-neon w-full"
+            placeholder="e.g. Homemade banana bread"
+            value={manualName}
+            onChange={(e) => setManualName(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-400 block mb-1">
+              Brand (optional)
+            </label>
+            <input className="input-neon w-full" placeholder="e.g. Costco" value={manualBrand} onChange={(e) => setManualBrand(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-400 block mb-1">
+              Serving size in grams (optional)
+            </label>
+            <input className="input-neon w-full" type="number" min="0" step="1" placeholder="e.g. 50"
+              value={manualServingSizeG}
+              onChange={(e) => setManualServingSizeG(e.target.value)} />
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">
+            Per 100g (or per serving if you set a serving size above)
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <div>
+              <label className="text-[9px] font-mono uppercase text-ink-500 block mb-0.5">
+                kcal <span className="text-rose-400">*</span>
+              </label>
+              <input className="input-neon w-full" type="number" min="0" step="1"
+                placeholder="0" value={manualCals}
+                onChange={(e) => setManualCals(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] font-mono uppercase text-ink-500 block mb-0.5">protein g</label>
+              <input className="input-neon w-full" type="number" min="0" step="0.1"
+                placeholder="0" value={manualProtein}
+                onChange={(e) => setManualProtein(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] font-mono uppercase text-ink-500 block mb-0.5">carb g</label>
+              <input className="input-neon w-full" type="number" min="0" step="0.1"
+                placeholder="0" value={manualCarbs}
+                onChange={(e) => setManualCarbs(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] font-mono uppercase text-ink-500 block mb-0.5">fat g</label>
+              <input className="input-neon w-full" type="number" min="0" step="0.1"
+                placeholder="0" value={manualFat}
+                onChange={(e) => setManualFat(e.target.value)} />
+            </div>
+          </div>
+          <div className="text-[10px] font-mono text-ink-500 mt-1">
+            <span className="text-rose-400">*</span> Calories is the only required field. Leave protein/carb/fat at 0
+            if you don't know — the saved food will log as best-effort.
+          </div>
+        </div>
+
+        {err && <div className="text-[10px] font-mono text-neon-magenta">! {err}</div>}
+
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!ready || loading}
+            className="flex-1 px-3 py-1.5 text-xs font-display tracking-widest uppercase border border-neon-amber text-neon-amber bg-neon-amber/10 hover:bg-neon-amber/20 disabled:opacity-40"
+          >
+            {loading ? 'Saving…' : 'Save to my foods'}
+          </button>
+          <button type="button" onClick={onClose}
+            className="px-3 py-1.5 text-xs font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
+
+// ============================================================================
+// ModalPortal — simple createPortal wrapper for centered modals.
+// ============================================================================
+
+function ModalPortal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  // Close on backdrop click
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div onClick={(e) => e.stopPropagation()}>{children}</div>
+    </div>
   );
 }
