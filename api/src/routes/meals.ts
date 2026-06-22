@@ -5,6 +5,64 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 
 // ============================================================================
+// Timezone helpers
+// ============================================================================
+//
+// The user's IANA timezone (e.g. 'America/New_York') is stored on
+// the User row. The /meals/today endpoint MUST use this timezone
+// to define "today" — a meal logged at 11pm EDT is "today" for the
+// user even though 11pm EDT = 03:00 UTC the next day. Computing
+// "today" as UTC midnight misses every late-evening meal for any
+// user not in UTC, which makes the daily totals bar read 0 and the
+// meal sections appear empty even after the user has logged food.
+
+// Get "today" as a YYYY-MM-DD string in the given timezone.
+function todayInTz(timezone: string | null, at: Date = new Date()): string {
+  const tz = timezone || 'UTC';
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(at);
+  } catch {
+    return at.toISOString().slice(0, 10);
+  }
+}
+
+// Return the timezone offset (in minutes) for the given IANA tz at
+// the given UTC instant. Uses Intl.DateTimeFormat with the
+// 'longOffset' tzName, which returns strings like 'GMT-04:00' or
+// 'GMT+05:30' (handles half-hour zones correctly). Returns 0 for
+// UTC or on any error so the fallback is "today = UTC", never
+// "yesterday" or "tomorrow".
+function tzOffsetMinutes(timezone: string, at: Date = new Date()): number {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone, timeZoneName: 'longOffset',
+    });
+    const parts = dtf.formatToParts(at);
+    const offset = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+0';
+    // Parse "GMT-04:00" / "GMT+05:30" / "GMT" / "UTC".
+    const m = offset.match(/GMT([+-])(\d{2}):?(\d{2})?/);
+    if (!m) return 0;
+    const sign = m[1] === '+' ? 1 : -1;
+    return sign * (Number(m[2]) * 60 + Number(m[3] ?? '0'));
+  } catch {
+    return 0;
+  }
+}
+
+// Get the UTC instant for local midnight on a given local-date
+// string (YYYY-MM-DD). The local-date is interpreted in the user's
+// timezone; the function returns the UTC equivalent of local 00:00.
+// This is the boundary that /meals/today uses for the lower edge.
+function localMidnightUtc(localDate: string, timezone: string): Date {
+  const offsetMin = tzOffsetMinutes(timezone, new Date(`${localDate}T12:00:00Z`));
+  // The 12:00 UTC anchor is just to pick a DST-safe instant; we only
+  // care about the offset for that calendar day.
+  return new Date(new Date(`${localDate}T00:00:00Z`).getTime() - offsetMin * 60_000);
+}
+
+// ============================================================================
 // MealEntry CRUD
 // ============================================================================
 //
@@ -50,25 +108,20 @@ const CreateMealSchema = z.object({
   loggedAt: z.string().datetime().optional(),
 });
 
-function todayInTz(timezone: string | null): string {
-  const tz = timezone || 'UTC';
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-}
-
 export async function mealRoutes(app: FastifyInstance) {
   // GET /meals/today
   // Returns the user's meal entries for today, grouped by meal,
   // with totals rolled up.
+  //
+  // CRITICAL: "today" is defined in the USER's IANA timezone, not
+  // UTC. A meal logged at 11pm EDT is "today" for the user even
+  // though 11pm EDT = 03:00 UTC the next day. We compute since/until
+  // in the user's tz so late-evening meals aren't lost.
   app.get('/today', async (req) => {
     const me = await requireUser(req);
-    const date = todayInTz(me.timezone);
-    const since = new Date(date + 'T00:00:00Z');
+    const tz = me.timezone || 'UTC';
+    const date = todayInTz(tz);
+    const since = localMidnightUtc(date, tz);
     const until = new Date(since.getTime() + 24 * 60 * 60 * 1000);
     const entries = await prisma.mealEntry.findMany({
       where: {
@@ -233,6 +286,33 @@ export async function mealRoutes(app: FastifyInstance) {
     }
     await prisma.mealEntry.delete({ where: { id } });
     return { ok: true };
+  });
+
+  // PATCH /meals/:id — edit servings / meal / note. The food itself
+  // can't be swapped (delete + re-log is the right flow for that)
+  // because the macros would have to come from a different source.
+  const PatchMealSchema = z.object({
+    meal: z.nativeEnum(MealType).optional(),
+    servings: z.number().min(0.1).max(50).optional(),
+    note: z.string().max(500).optional().nullable(),
+  });
+  app.patch<{ Params: { id: string } }>('/:id', async (req, reply) => {
+    const me = await requireUser(req);
+    const id = (req.params as any).id;
+    const existing = await prisma.mealEntry.findUnique({ where: { id } });
+    if (!existing || existing.userId !== me.id) {
+      return reply.code(404).send({ error: 'Entry not found' });
+    }
+    const body = PatchMealSchema.parse(req.body);
+    const updated = await prisma.mealEntry.update({
+      where: { id },
+      data: {
+        meal: body.meal,
+        servings: body.servings,
+        note: body.note === undefined ? undefined : body.note,
+      },
+    });
+    return { item: updated };
   });
 }
 

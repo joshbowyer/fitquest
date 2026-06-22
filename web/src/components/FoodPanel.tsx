@@ -650,11 +650,22 @@ function SavedFoodEditor({
     unitBasis: 'per_serving' | 'per_100g';
   };
   const [aiResult, setAiResult] = useState<AiSuggestion | null>(null);
+  // Surface API errors INSIDE the modal so the user knows what to
+  // change. On success we close the modal — the suggestion then
+  // shows in the editor as an inline preview (purple banner) with
+  // an Apply button, so the user can review the macros + reasoning
+  // before committing to the form.
+  const [askError, setAskError] = useState<string | null>(null);
   const askM = useDelayedMutation<{ suggestion: AiSuggestion }, { description: string; unitBasis: 'per_serving' | 'per_100g' }>({
     mutationFn: (body) =>
       api('/foods/saved/ask-ai', { method: 'POST', body }),
     onSuccess: (r) => {
       setAiResult(r.suggestion);
+      setAskError(null);
+      setAskOpen(false);
+    },
+    onError: (e: any) => {
+      setAskError(String(e?.message ?? e ?? 'AI call failed.'));
     },
   }, 1500);
 
@@ -670,7 +681,14 @@ function SavedFoodEditor({
     setSodium(s.sodiumMg > 0 ? String(s.sodiumMg) : '');
     setRecipe(s.recipe || recipe);
     setAiResult(null);
-    setAskOpen(false);
+  }
+
+  function openAsk() {
+    setAskOpen(true);
+    setAskError(null);
+    // Don't clear aiResult here — the user might want to refine
+    // their description and re-ask; the existing suggestion stays
+    // visible until a new one comes back.
   }
 
   const valid =
@@ -841,10 +859,7 @@ function SavedFoodEditor({
           type="button"
           variant="amber"
           size="sm"
-          onClick={() => {
-            setAskOpen(true);
-            setAiResult(null);
-          }}
+          onClick={openAsk}
           title="Describe the recipe in plain language; the LLM will estimate the macros"
         >
           ✨ Ask AI
@@ -905,9 +920,16 @@ function SavedFoodEditor({
       <AskAiSavedFoodModal
         open={askOpen}
         loading={askM.isPending}
-        error={askM.error ? String((askM.error as any).message ?? askM.error) : null}
-        onClose={() => setAskOpen(false)}
-        onSubmit={(description, unitBasis) => askM.run({ description, unitBasis })}
+        error={askError}
+        onClose={() => {
+          setAskOpen(false);
+          // Keep askError visible after close so the user can
+          // see what went wrong if they open the modal again.
+        }}
+        onSubmit={(description, unitBasis) => {
+          setAskError(null);
+          askM.run({ description, unitBasis });
+        }}
       />
     </div>
   );
