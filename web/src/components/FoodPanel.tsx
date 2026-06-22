@@ -640,7 +640,32 @@ function RecentFoodsModal({
       fiberG: s.fiberG,
       sugarG: s.sugarG,
       sodiumMg: s.sodiumMg,
-      sourceUrl: '',
+      sourceUrl: null,
+    };
+  }
+
+  // Map a FoodYou diary row into the FoodMatch shape so the user
+  // can quick-log a meal directly from the import list without
+  // first having to add it to their saved foods. We synthesize a
+  // stable sourceId from the foodYouId so the LogMeal modal can
+  // pass it through to the server (which upserts a FoodItem by
+  // (source, sourceId) and creates the MealEntry in one tx).
+  function foodYouToMatch(f: FoodYouImportFood): FoodMatch {
+    return {
+      source: 'MANUAL',
+      sourceId: `foodyou-${f.foodYouId}`,
+      name: f.name,
+      brand: f.brand,
+      imageUrl: null,
+      servingSizeG: f.servingSizeG,
+      calories: f.calories,
+      proteinG: f.proteinG,
+      carbG: f.carbG,
+      fatG: f.fatG,
+      fiberG: f.fiberG,
+      sugarG: f.sugarG,
+      sodiumMg: f.sodiumMg,
+      sourceUrl: null,
     };
   }
 
@@ -895,6 +920,7 @@ function RecentFoodsModal({
                         else next.add(f.foodYouId);
                         setPicked(next);
                       }}
+                      onLog={(row) => onLog(foodYouToMatch(row))}
                     />
                   ))}
                 </>
@@ -912,10 +938,12 @@ function ImportRow({
   f,
   checked,
   onToggle,
+  onLog,
 }: {
   f: FoodYouImportFood;
   checked: boolean;
   onToggle: () => void;
+  onLog: (f: FoodMatch) => void;
 }) {
   return (
     <label
@@ -939,6 +967,22 @@ function ImportRow({
           <span className="text-ink-500"> per {f.servingSizeG ?? 100}g</span>
         </div>
       </div>
+      {/* Quick-log: open the LogMeal modal with the food's macros
+          pre-filled, no import step required. Stops propagation so
+          the label's checkbox toggle doesn't fire when the user
+          is just trying to log a single row. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onLog(f);
+        }}
+        className="px-2 py-0.5 text-[10px] font-mono border border-neon-lime/60 text-neon-lime hover:bg-neon-lime/10 shrink-0"
+        title="Open Log meal modal with these macros pre-filled"
+      >
+        Log
+      </button>
     </label>
   );
 }
@@ -1664,6 +1708,7 @@ function LogMealModal({
   const sNum = Number(servings);
   const valid = Number.isFinite(sNum) && sNum > 0 && sNum <= 50;
 
+  const [logError, setLogError] = useState<string | null>(null);
   const logM = useDelayedMutation({
     mutationFn: () =>
       api('/meals', {
@@ -1691,6 +1736,11 @@ function LogMealModal({
         },
       }),
     onSuccess: onLogged,
+    // Surface API errors inside the modal. The local API is so
+    // fast that without this, a 400 (e.g. validation, save-while-
+    // editing) returns in <100ms and the modal sits on "Logging…"
+    // forever, which feels like "nothing happened".
+    onError: (e: any) => setLogError(String(e?.message ?? e ?? 'Log failed.')),
   }, 400);
 
   return createPortal(
@@ -1759,6 +1809,11 @@ function LogMealModal({
             {(food.fatG * sNum).toFixed(1)}f
           </div>
         )}
+        {logError && (
+          <div className="mb-2 text-[11px] font-mono text-rose-400 border border-rose-500/40 bg-rose-500/5 px-2 py-1">
+            {logError}
+          </div>
+        )}
         <div className="flex justify-end gap-2">
           <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
           <NeonButton
@@ -1766,7 +1821,10 @@ function LogMealModal({
             disabled={!valid || logM.isPending}
             loading={logM.isPending}
             loadingText="Logging…"
-            onClick={() => logM.run()}
+            onClick={() => {
+              setLogError(null);
+              logM.run();
+            }}
           >
             Log
           </NeonButton>

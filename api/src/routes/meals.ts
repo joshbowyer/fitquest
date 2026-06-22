@@ -100,7 +100,11 @@ const CreateMealSchema = z.object({
   fiberG: z.number().min(0).optional().nullable(),
   sugarG: z.number().min(0).optional().nullable(),
   sodiumMg: z.number().min(0).optional().nullable(),
-  sourceUrl: z.string().url().optional().nullable(),
+  // sourceUrl: accept an empty string ('') as null. The UI sends
+  // '' for saved foods (SavedFood has no source URL) and we
+  // don't want a Zod validation error on log. Real OFF/USDA
+  // URLs still pass.
+  sourceUrl: z.union([z.string().url(), z.literal('')]).optional().nullable().transform((v) => v || null),
   meal: z.nativeEnum(MealType),
   /// Multiplier of the FoodItem's per-100g base.
   servings: z.number().positive().max(50),
