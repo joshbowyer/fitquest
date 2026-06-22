@@ -161,9 +161,15 @@ export function ActivitiesPage() {
 
 function ActivityCard({ workout: w, units, timezone }: { workout: any; units: UnitSystem; timezone?: string | null }) {
   const navigate = useNavigate();
-  const totalVolume = (w.exercises ?? []).reduce((acc: number, ex: any) => {
-    return acc + (ex.sets ?? []).reduce((s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0);
-  });
+  // Reduce of an empty array throws if no initial value is passed.
+  // Pass 0 as the initial value so workouts with no exercises (e.g.
+  // a CARDIO or MOBILITY log) render without crashing.
+  const totalVolume = (w.exercises ?? []).reduce(
+    (acc: number, ex: any) => acc + (ex.sets ?? []).reduce(
+      (s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0,
+    ),
+    0,
+  );
   const volDisplay = units === 'IMPERIAL'
     ? Math.round(kgToLb(totalVolume))
     : Math.round(totalVolume);

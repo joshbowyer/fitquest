@@ -10,143 +10,49 @@ import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { RestTimer, REST_PRESETS } from '@/components/RestTimer';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import {
+  emptyExercise,
+  emptyCardio,
+  TYPE_OPTIONS,
+  kgToLb,
+  weightToKg,
+  weightUnitLabel,
+  distanceUnit,
+  toLocalInput,
+  localInputToIso,
+  parseDuration,
+  formatDuration,
+  hasUsableContent,
+  workoutToDraft,
+  cardioToDraft,
+  buildCardioBody,
+  type DraftExercise,
+  type DraftCardio,
+} from './workout-types';
 
 // =============================================================================
-// Shared types + helpers used by both Activities page and TeamWorkout panes.
-// =============================================================================
-
-type DraftSet = {
-  reps: number;
-  /// Displayed in user's preferred unit (kg or lb). Converted back
-  /// to kg at submit time via weightToKg().
-  weight: number;
-  /// Seconds. For timed sets (plank, l-sit, etc.).
-  duration: number;
-  rpe: number;
-};
-
-type DraftExercise = { name: string; sets: DraftSet[] };
-
-export function emptyExercise(): DraftExercise {
-  return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0 }] };
-}
-
-const TYPE_OPTIONS: { value: WorkoutType; label: string; color: 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' }[] = [
-  { value: 'STRENGTH', label: 'Strength', color: 'cyan' },
-  { value: 'HYPERTROPHY', label: 'Hypertrophy', color: 'magenta' },
-  { value: 'CALISTHENICS', label: 'Calisthenics', color: 'lime' },
-  { value: 'CARDIO', label: 'Cardio', color: 'amber' },
-  { value: 'MOBILITY', label: 'Mobility', color: 'violet' },
-  { value: 'OTHER', label: 'Other', color: 'cyan' },
-];
-
-function kgToLb(kg: number): number { return kg * 2.20462; }
-function lbToKg(lb: number): number { return lb / 2.20462; }
-function weightToKg(displayed: number, units: UnitSystem): number | undefined {
-  if (!displayed) return undefined;
-  return units === 'IMPERIAL' ? lbToKg(displayed) : displayed;
-}
-function weightUnitLabel(units: UnitSystem): string {
-  return units === 'IMPERIAL' ? 'lb' : 'kg';
-}
-function distanceUnit(units: UnitSystem): string {
-  return units === 'IMPERIAL' ? 'mi' : 'km';
-}
-function distanceInputToKm(val: number, units: UnitSystem): number {
-  return units === 'IMPERIAL' ? val * 1.609344 : val;
-}
-
-// datetime-local format helpers. The native input always uses
-// local time (no timezone), so the round-trip via toISOString
-// would lose the user's wall-clock selection.
-function toLocalInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function localInputToIso(s: string): string {
-  return new Date(s).toISOString();
-}
-
-// Cardio (non-set) block. Used by CARDIO type or by freeform
-// types that include a distance component (e.g. "hike").
-type CardioPace =
-  | 'WALK_CASUAL' | 'WALK_BRISK' | 'JOG' | 'RUN' | 'SPRINT' | 'CRUISE' | 'INTERVALS';
-
-type DraftCardio = {
-  distanceKm: string;
-  duration: string;
-  pace: CardioPace | '';
-  elevationGainM: string;
-  avgHr: string;
-  maxHr: string;
-  source: 'MANUAL' | 'GPS';
-};
-
-function emptyCardio(): DraftCardio {
-  return { distanceKm: '', duration: '', pace: '', elevationGainM: '', avgHr: '', maxHr: '', source: 'MANUAL' };
-}
-
-function parseDuration(s: string): number | null {
-  if (!s || !s.trim()) return null;
-  const parts = s.trim().split(':').map((p) => Number(p));
-  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 1) return parts[0];
-  return null;
-}
-function formatDuration(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
-}
-
-function hasUsableContent(
-  type: WorkoutType,
-  exercises: DraftExercise[],
-  cardio: DraftCardio,
-  name: string,
-  duration: number,
-): boolean {
-  if (type === 'STRENGTH' || type === 'HYPERTROPHY' || type === 'CALISTHENICS') {
-    return exercises.some((e) => e.name.trim() && e.sets.some((s) => s.reps > 0 || s.duration > 0));
-  }
-  if (type === 'CARDIO') {
-    const dist = Number(cardio.distanceKm);
-    const dur = parseDuration(cardio.duration);
-    return (Number.isFinite(dist) && dist > 0) || (dur != null && dur > 0);
-  }
-  return name.trim().length > 0 && duration > 0;
-}
-
-// =============================================================================
-// Props for <WorkoutLogger>
+// Props
 // =============================================================================
 
 export type WorkoutLoggerProps = {
-  /// User, for bodyweight-derived set weights.
+  /** User, for bodyweight-derived set weights. */
   user: { id: string; weightKg?: number | null } | null;
-  /// Display unit (kg/lb). Falls back to METRIC.
+  /** Display unit (kg/lb). Falls back to METRIC. */
   units: UnitSystem;
-  /// Optional panel title. Defaults to "Log Session".
+  /** Optional panel title. Defaults to "Log Session". */
   title?: string;
-  /// Optional initial type. Defaults to STRENGTH.
+  /** Optional initial type. Defaults to STRENGTH. */
   initialType?: WorkoutType;
-  /// Compact mode (team-workout split-pane): smaller labels, no
-  /// recent-workouts block, no copy-last button, no performed-at
-  /// presets (assumes "now"), no notes, no commit-result banner
-  /// (parent renders its own outcome). Same form shape so the
-  /// user doesn't have to relearn anything.
+  /** Compact mode (team-workout split-pane): smaller labels, no
+   * recent-workouts block, no copy-last button, no performed-at
+   * presets, no notes, no commit-result banner. Same form shape
+   * so users don't relearn anything. */
   compact?: boolean;
-  /// Called AFTER a successful create with the new workout id.
-  /// The parent (Activities page, TeamWorkout pane) handles
-  /// navigation, banner display, and cross-pane state. If
-  /// omitted, the logger just clears its form.
+  /** Called AFTER a successful create with the new workout id.
+   * Used by the team-workout page to chain into /confirm. */
   onCommit?: (workoutId: string, response: any) => void;
-  /// Optional ref to the most-recent workout from this user's
-  /// history (used for the copy-last shortcut). Ignored in compact.
+  /** Optional ref to a past workout to pre-fill from
+   * (?copyFrom=<id> on Activities page). */
   copyFrom?: any;
 };
 
@@ -238,8 +144,6 @@ export function WorkoutLogger({
     },
     onSuccess: (r) => {
       setResult(r);
-      // Compact panes rely on the parent to refetch / refresh.
-      // Full-mode pages refresh their own queries.
       if (!compact) {
         qc.invalidateQueries({ queryKey: ['workouts'] });
         qc.invalidateQueries({ queryKey: ['prs'] });
@@ -275,18 +179,11 @@ export function WorkoutLogger({
       variant="cyan"
       title={title}
       scanline
-      action={!compact ? (
-        copyFrom ? (
-          <span className="text-[10px] font-mono text-neon-cyan tracking-widest uppercase">⎘ from copy</span>
-        ) : null
+      action={!compact && copyFrom ? (
+        <span className="text-[10px] font-mono text-neon-cyan tracking-widest uppercase">⎘ from copy</span>
       ) : null}
     >
       <div className={wrapperClass}>
-        {/* Rest timer — shared global instance; the rest of the
-            app dispatches CustomEvents to drive it. We only show
-            the shortcut buttons (full mode); compact mode skips
-            these to save vertical space (the global timer is still
-            reachable from anywhere via the icon in the top bar). */}
         {!compact && (
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -338,7 +235,6 @@ export function WorkoutLogger({
           </div>
         </div>
 
-        {/* Form sections — only one renders at a time based on type */}
         {isStrength && (
           <div className="space-y-3">
             <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">Exercises</div>
@@ -539,8 +435,6 @@ export function WorkoutLogger({
           </div>
         )}
 
-        {/* Performed-at picker — full mode only. Compact forces "now"
-            so the team-session timeline stays synchronized. */}
         {!compact && (
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
@@ -599,8 +493,6 @@ export function WorkoutLogger({
           </div>
         </div>
 
-        {/* Notes — full mode only. Compact: skip; the team's shared
-            notes come from the session-level recap instead. */}
         {!compact && (
           <div>
             <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
@@ -653,7 +545,7 @@ export function WorkoutLogger({
 }
 
 // =============================================================================
-// Cardio block (inline version, simplified from the original CardioBlock)
+// Cardio block (inline)
 // =============================================================================
 
 function CardioBlockInline({
@@ -763,62 +655,4 @@ function CardioBlockInline({
       )}
     </div>
   );
-}
-
-// =============================================================================
-// Helpers exposed for callers + reuse
-// =============================================================================
-
-export function workoutToDraft(
-  w: { exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number | null; duration: number | null; rpe: number | null }> }> },
-  units: UnitSystem,
-): DraftExercise[] {
-  return w.exercises.map((ex) => ({
-    name: ex.name,
-    sets: ex.sets.map((s) => ({
-      reps: s.reps,
-      weight: s.weight != null
-        ? (units === 'IMPERIAL' ? Math.round(kgToLb(s.weight) * 10) / 10 : Math.round(s.weight * 10) / 10)
-        : 0,
-      duration: s.duration ?? 0,
-      rpe: s.rpe ?? 0,
-    })),
-  }));
-}
-
-export function cardioToDraft(c: any, units: UnitSystem): DraftCardio {
-  return {
-    distanceKm: c?.distanceKm != null
-      ? String(units === 'IMPERIAL' ? c.distanceKm / 1.609344 : c.distanceKm)
-      : '',
-    duration: c?.durationSec != null ? formatDuration(c.durationSec) : '',
-    pace: c?.pace ?? '',
-    elevationGainM: c?.elevationGainM != null ? String(c.elevationGainM) : '',
-    avgHr: c?.avgHr != null ? String(c.avgHr) : '',
-    maxHr: c?.maxHr != null ? String(c.maxHr) : '',
-    source: c?.source === 'GPS' ? 'GPS' : 'MANUAL',
-  };
-}
-
-function buildCardioBody(cardio: DraftCardio, units: UnitSystem): any | null {
-  const distRaw = Number(cardio.distanceKm);
-  const distKm = Number.isFinite(distRaw) && distRaw > 0
-    ? Math.round(distanceInputToKm(distRaw, units) * 1000) / 1000
-    : null;
-  const durSec = parseDuration(cardio.duration);
-  if (distKm == null && durSec == null) return null;
-  const elevM = Number(cardio.elevationGainM);
-  const avgHr = Number(cardio.avgHr);
-  const maxHr = Number(cardio.maxHr);
-  const paceSecPerKm = distKm != null && durSec != null ? Math.round(durSec / distKm) : null;
-  return {
-    distanceKm: distKm ?? undefined,
-    durationSec: durSec ?? undefined,
-    pace: cardio.pace || undefined,
-    elevationGainM: Number.isFinite(elevM) && elevM > 0 ? elevM : undefined,
-    avgHr: Number.isFinite(avgHr) && avgHr > 0 ? Math.round(avgHr) : undefined,
-    maxHr: Number.isFinite(maxHr) && maxHr > 0 ? Math.round(maxHr) : undefined,
-    avgPaceSecPerKm: paceSecPerKm ?? undefined,
-    source: cardio.source,
-  };
 }
