@@ -95,14 +95,36 @@ const ExerciseInput = z.object({
   sets: z.array(SetInput).min(1),
 });
 
+const CardioInput = z.object({
+  distanceKm: z.number().min(0).max(10000).optional(),
+  durationSec: z.number().int().min(0).max(60 * 60 * 24).optional(),
+  pace: z.enum(['WALK_CASUAL', 'WALK_BRISK', 'JOG', 'RUN', 'SPRINT', 'CRUISE', 'INTERVALS']).optional(),
+  elevationGainM: z.number().min(-1000).max(20000).optional(),
+  avgHr: z.number().int().min(20).max(250).optional(),
+  maxHr: z.number().int().min(20).max(250).optional(),
+  avgPaceSecPerKm: z.number().int().min(0).max(60 * 30).optional(),
+  source: z.enum(['MANUAL', 'GPS']).optional(),
+}).optional();
+
 const CreateWorkoutSchema = z.object({
   type: z.nativeEnum(WorkoutType),
   name: z.string().max(100).optional(),
   duration: z.number().int().min(0).max(60 * 24).optional(),
   notes: z.string().max(2000).optional(),
   performedAt: z.string().datetime().optional(),
-  exercises: z.array(ExerciseInput).min(1),
-});
+  // Non-set cardio block. Optional. Lets the user log a hike / run /
+  // cycle / row / swim as a single distance + duration + pace entry
+  // without a full exercise breakdown. Independent of `type` so
+  // future HIKING / RUNNING / CYCLING types can reuse the same shape.
+  cardio: CardioInput,
+  // A workout is valid if it has either exercises OR a cardio block.
+  // Either-or is enforced below in the handler (the schema allows 0
+  // exercises when cardio is present so the cardio-only flow works).
+  exercises: z.array(ExerciseInput).default([]),
+}).refine(
+  (d) => (d.exercises?.length ?? 0) > 0 || !!d.cardio,
+  { message: 'Provide exercises or a cardio block (or both).' },
+);
 
 export async function workoutRoutes(app: FastifyInstance) {
   app.get('/', async (req) => {
@@ -162,6 +184,10 @@ export async function workoutRoutes(app: FastifyInstance) {
           duration,
           notes: body.notes,
           performedAt: body.performedAt ? new Date(body.performedAt) : new Date(),
+          // Non-set cardio block. Prisma Json? column — pass `null`
+          // (not undefined) when the user didn't fill it in so the
+          // stored value is consistent across rows.
+          cardio: body.cardio ?? null,
           exercises: {
             create: body.exercises.map((ex) => ({
               name: ex.name,

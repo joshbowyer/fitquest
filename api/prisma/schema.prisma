@@ -323,6 +323,19 @@ model Workout {
   /// JSONB rather than a separate table since we don't query into individual
   /// points and most workouts are short. Empty array when no GPS / no FIT.
   trackJson   Json        @default("[]")
+  /// Optional cardio block for non-set activities (hike / run / cycle /
+  /// row / swim). Lets the user log a single distance + duration + pace
+  /// without a full exercise breakdown. Stored as JSONB so we can
+  /// add fields later without a migration. All fields are optional;
+  /// `type = CARDIO` is the convention that drives the UI, but the
+  /// block is independent of the type so future HIKING/RUNNING types
+  /// can reuse the same shape.
+  ///
+  /// Shape: { distanceKm?: number, durationSec?: number, pace?:
+  ///   'WALK_CASUAL'|'WALK_BRISK'|'JOG'|'RUN'|'SPRINT'|'CRUISE'|'INTERVALS',
+  ///   elevationGainM?: number, avgHr?: number, maxHr?: number,
+  ///   avgPaceSecPerKm?: number, source?: 'MANUAL'|'GPS' }
+  cardio      Json?
 
   @@index([userId, performedAt])
 }

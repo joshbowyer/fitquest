@@ -78,6 +78,311 @@ function weightUnitLabel(units: UnitSystem): string {
   return units === 'IMPERIAL' ? 'lb' : 'kg';
 }
 
+// Format a Date for a <input type="datetime-local">: "YYYY-MM-DDTHH:mm"
+// in the user's local time. The native input always uses local time
+// (no timezone), so the round-trip via toISOString is wrong: we'd lose
+// the user's wall-clock selection.
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Convert the datetime-local value back into a full ISO string for
+// the API. Treat the local string as the user's wall-clock time.
+function localInputToIso(s: string): string {
+  return new Date(s).toISOString();
+}
+
+// Quick-pick shortcuts for the "Performed at" picker.
+const PERFORMED_AT_PRESETS: { label: string; minutes: number; title: string }[] = [
+  { label: 'Now',       minutes: 0,         title: 'Log at the current time' },
+  { label: '−1h',       minutes: 60,        title: '1 hour ago' },
+  { label: '−3h',       minutes: 180,       title: '3 hours ago' },
+  { label: 'Yesterday', minutes: 60 * 24,   title: 'Same time yesterday' },
+  { label: '−2d',       minutes: 60 * 48,   title: '2 days ago' },
+];
+
+// ============================================================================
+// Non-set cardio (hike / run / cycle / row / swim)
+// ============================================================================
+
+type CardioPace =
+  | 'WALK_CASUAL'
+  | 'WALK_BRISK'
+  | 'JOG'
+  | 'RUN'
+  | 'SPRINT'
+  | 'CRUISE'
+  | 'INTERVALS';
+
+const PACE_OPTIONS: { value: CardioPace; label: string; hint: string }[] = [
+  { value: 'WALK_CASUAL', label: 'Casual walk',  hint: 'leisurely, conversation pace' },
+  { value: 'WALK_BRISK',  label: 'Brisk walk',   hint: 'purposeful, can\'t quite sing' },
+  { value: 'JOG',         label: 'Jog',          hint: 'easy run, can hold a sentence' },
+  { value: 'RUN',         label: 'Run',          hint: 'steady, can speak in phrases' },
+  { value: 'SPRINT',      label: 'Sprint',       hint: 'all-out, max effort' },
+  { value: 'CRUISE',      label: 'Cruise',       hint: 'long, comfortable pace' },
+  { value: 'INTERVALS',   label: 'Intervals',    hint: 'repeats with recovery' },
+];
+
+type DraftCardio = {
+  distanceKm: string;
+  duration: string;
+  pace: CardioPace | '';
+  elevationGainM: string;
+  avgHr: string;
+  maxHr: string;
+  source: 'MANUAL' | 'GPS';
+};
+
+function emptyCardio(): DraftCardio {
+  return {
+    distanceKm: '',
+    duration: '',
+    pace: '',
+    elevationGainM: '',
+    avgHr: '',
+    maxHr: '',
+    source: 'MANUAL',
+  };
+}
+
+function parseDuration(s: string): number | null {
+  if (!s || !s.trim()) return null;
+  const parts = s.trim().split(':').map((p) => Number(p));
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 1) return parts[0];
+  return null;
+}
+
+function formatDuration(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function computePaceSecPerKm(distanceKm: number, durationSec: number): number | null {
+  if (distanceKm <= 0 || durationSec <= 0) return null;
+  return Math.round(durationSec / distanceKm);
+}
+
+const distanceUnit = (units: UnitSystem) => (units === 'IMPERIAL' ? 'mi' : 'km');
+const distanceInputToKm = (val: number, units: UnitSystem) => (units === 'IMPERIAL' ? val * 1.609344 : val);
+
+function cardioToDraft(c: any, units: UnitSystem): DraftCardio {
+  return {
+    distanceKm: c?.distanceKm != null
+      ? String(units === 'IMPERIAL' ? c.distanceKm / 1.609344 : c.distanceKm)
+      : '',
+    duration: c?.durationSec != null ? formatDuration(c.durationSec) : '',
+    pace: c?.pace ?? '',
+    elevationGainM: c?.elevationGainM != null ? String(c.elevationGainM) : '',
+    avgHr: c?.avgHr != null ? String(c.avgHr) : '',
+    maxHr: c?.maxHr != null ? String(c.maxHr) : '',
+    source: c?.source === 'GPS' ? 'GPS' : 'MANUAL',
+  };
+}
+
+function hasUsableContent(exercises: DraftExercise[], cardio: DraftCardio): boolean {
+  const hasExercise = exercises.some(
+    (e) => e.name.trim() && e.sets.some((s) => s.reps > 0 || s.duration > 0),
+  );
+  if (hasExercise) return true;
+  const dist = Number(cardio.distanceKm);
+  const dur = parseDuration(cardio.duration);
+  return (Number.isFinite(dist) && dist > 0) || (dur != null && dur > 0);
+}
+
+function CardioBlock({
+  cardio,
+  setCardio,
+  open,
+  setOpen,
+  units,
+  distanceUnit,
+}: {
+  cardio: DraftCardio;
+  setCardio: (c: DraftCardio) => void;
+  open: boolean;
+  setOpen: (b: boolean) => void;
+  units: UnitSystem;
+  distanceUnit: string;
+}) {
+  const distNum = Number(cardio.distanceKm);
+  const durSec = parseDuration(cardio.duration);
+  const distKm = Number.isFinite(distNum) && distNum > 0
+    ? distanceInputToKm(distNum, units)
+    : null;
+  const pace = distKm != null && durSec != null ? computePaceSecPerKm(distKm, durSec) : null;
+  const paceDisplay = pace != null
+    ? units === 'IMPERIAL'
+      ? `${formatDuration(Math.round(pace * 1.609344))}/mi`
+      : `${formatDuration(pace)}/km`
+    : null;
+  const preview = distKm != null && durSec != null
+    ? `→ ${distKm.toFixed(2)} km · ${formatDuration(durSec)}${paceDisplay ? ` · ${paceDisplay}` : ''}`
+    : null;
+  return (
+    <div className="border border-neon-amber/30 p-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-left"
+        title="Non-set activity — log distance + duration instead of exercises"
+      >
+        <div className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80">
+          ⚡ Cardio block (hike / run / cycle / row / swim)
+        </div>
+        <span className="text-[10px] font-mono text-ink-400">
+          {open ? '▾ collapse' : '▸ expand'}
+        </span>
+      </button>
+      {!open ? (
+        cardio.distanceKm || cardio.duration ? (
+          <div className="mt-2 text-[10px] font-mono text-ink-300">
+            {preview ?? 'partial entry'}
+          </div>
+        ) : null
+      ) : (
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-[10px] uppercase text-slate-500">
+                Distance ({distanceUnit})
+              </span>
+              <input
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={units === 'IMPERIAL' ? '3.1' : '5'}
+                value={cardio.distanceKm}
+                onChange={(e) => setCardio({ ...cardio, distanceKm: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] uppercase text-slate-500">
+                Duration (mm:ss or hh:mm:ss)
+              </span>
+              <input
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                type="text"
+                placeholder="32:14"
+                value={cardio.duration}
+                onChange={(e) => setCardio({ ...cardio, duration: e.target.value })}
+              />
+            </label>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase text-slate-500 mb-1">Pace</div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setCardio({ ...cardio, pace: '' })}
+                className={classNames(
+                  'px-2 py-1 text-[10px] font-mono border',
+                  cardio.pace === ''
+                    ? 'border-amber-400 text-amber-300 bg-amber-400/10'
+                    : 'border-ink-500/30 text-ink-300 hover:border-ink-300',
+                )}
+                title="No pace label — just log the numbers"
+              >
+                none
+              </button>
+              {PACE_OPTIONS.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => setCardio({ ...cardio, pace: p.value })}
+                  className={classNames(
+                    'px-2 py-1 text-[10px] font-mono border',
+                    cardio.pace === p.value
+                      ? 'border-amber-400 text-amber-300 bg-amber-400/10'
+                      : 'border-ink-500/30 text-ink-300 hover:border-ink-300',
+                  )}
+                  title={p.hint}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="block">
+              <span className="text-[10px] uppercase text-slate-500">Elev gain (m)</span>
+              <input
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                type="number"
+                min="0"
+                placeholder="120"
+                value={cardio.elevationGainM}
+                onChange={(e) => setCardio({ ...cardio, elevationGainM: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] uppercase text-slate-500">Avg HR</span>
+              <input
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                type="number"
+                min="0"
+                placeholder="142"
+                value={cardio.avgHr}
+                onChange={(e) => setCardio({ ...cardio, avgHr: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[10px] uppercase text-slate-500">Max HR</span>
+              <input
+                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                type="number"
+                min="0"
+                placeholder="171"
+                value={cardio.maxHr}
+                onChange={(e) => setCardio({ ...cardio, maxHr: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono text-ink-400">
+            <span>Source:</span>
+            <button
+              type="button"
+              onClick={() => setCardio({ ...cardio, source: 'MANUAL' })}
+              className={classNames(
+                'px-2 py-0.5 border',
+                cardio.source === 'MANUAL'
+                  ? 'border-amber-400 text-amber-300 bg-amber-400/10'
+                  : 'border-ink-500/30 text-ink-300',
+              )}
+            >
+              manual
+            </button>
+            <button
+              type="button"
+              onClick={() => setCardio({ ...cardio, source: 'GPS' })}
+              className={classNames(
+                'px-2 py-0.5 border',
+                cardio.source === 'GPS'
+                  ? 'border-amber-400 text-amber-300 bg-amber-400/10'
+                  : 'border-ink-500/30 text-ink-300',
+              )}
+              title="Distance + duration were pulled from a GPS track"
+            >
+              gps
+            </button>
+            {preview && (
+              <span className="text-amber-300 ml-auto">{preview}</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ActivitiesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -86,6 +391,13 @@ export function ActivitiesPage() {
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState('');
+  // performedAt — defaults to "now", can be backdated. datetime-local
+  // string format (YYYY-MM-DDTHH:mm) so the native input round-trips.
+  const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
+  // Non-set cardio block. Shown when the user picks CARDIO type.
+  // Server schema: api/prisma/schema.prisma Workout.cardio (JSONB).
+  const [cardio, setCardio] = useState<DraftCardio>(emptyCardio());
+  const [cardioOpen, setCardioOpen] = useState(false);
   const [exercises, setExercises] = useState<DraftExercise[]>([emptyExercise()]);
   const [result, setResult] = useState<any | null>(null);
   const [selectedExerciseIdx, setSelectedExerciseIdx] = useState<number | null>(null);
@@ -107,6 +419,13 @@ export function ActivitiesPage() {
     setName(last.name ? `${last.name} (copy)` : '');
     setDuration(last.duration ?? 60);
     setNotes(last.notes ?? '');
+    if ((last as any).cardio) {
+      setCardio(cardioToDraft((last as any).cardio, units));
+      setCardioOpen(true);
+    } else {
+      setCardio(emptyCardio());
+      setCardioOpen(false);
+    }
   }
 
   // Honor ?copyFrom=<workoutId> from the detail page. We fetch that one
@@ -147,16 +466,53 @@ export function ActivitiesPage() {
     return true;
   });
 
+  // Build the cardio block from the form state. Returns null if the
+  // user hasn't filled in anything useful so the server can leave the
+  // field as-is. Distance is converted to km before sending; pace is
+  // preserved; GPS source is preserved (the importer will pre-fill
+  // these from trackJson).
+  function buildCardioBody(): any | null {
+    const distRaw = Number(cardio.distanceKm);
+    const distKm = Number.isFinite(distRaw) && distRaw > 0
+      ? Math.round(distanceInputToKm(distRaw, units) * 1000) / 1000
+      : null;
+    const durSec = parseDuration(cardio.duration);
+    if (distKm == null && durSec == null) return null;
+    const elevM = Number(cardio.elevationGainM);
+    const avgHr = Number(cardio.avgHr);
+    const maxHr = Number(cardio.maxHr);
+    const paceSecPerKm = distKm != null && durSec != null
+      ? computePaceSecPerKm(distKm, durSec)
+      : null;
+    return {
+      distanceKm: distKm ?? undefined,
+      durationSec: durSec ?? undefined,
+      pace: cardio.pace || undefined,
+      elevationGainM: Number.isFinite(elevM) && elevM > 0 ? elevM : undefined,
+      avgHr: Number.isFinite(avgHr) && avgHr > 0 ? Math.round(avgHr) : undefined,
+      maxHr: Number.isFinite(maxHr) && maxHr > 0 ? Math.round(maxHr) : undefined,
+      avgPaceSecPerKm: paceSecPerKm ?? undefined,
+      source: cardio.source,
+    };
+  }
+
   const createM = useDelayedMutation({
-    mutationFn: () =>
-      api<any>('/workouts', {
+    mutationFn: () => {
+      const cardioBody = buildCardioBody();
+      // Filter exercises to ones the user actually filled in.
+      const realExercises = exercises.filter(
+        (e) => e.name.trim() && e.sets.some((s) => s.reps > 0 || s.duration > 0),
+      );
+      return api<any>('/workouts', {
         method: 'POST',
         body: {
           type,
           name: name || undefined,
           duration,
           notes: notes || undefined,
-          exercises: exercises.map((e, i) => {
+          performedAt: localInputToIso(performedAt),
+          cardio: cardioBody ?? undefined,
+          exercises: realExercises.map((e, i) => {
             const load = loadForExercise(e.name);
             const bodyweight = user?.weightKg ?? null;
             return {
@@ -190,7 +546,8 @@ export function ActivitiesPage() {
             };
           }),
         },
-      }),
+      });
+    },
     onSuccess: (r) => {
       setResult(r);
       qc.invalidateQueries({ queryKey: ['workouts'] });
@@ -214,6 +571,9 @@ export function ActivitiesPage() {
       setExercises([emptyExercise()]);
       setName('');
       setNotes('');
+      setCardio(emptyCardio());
+      setCardioOpen(false);
+      setPerformedAt(toLocalInput(new Date()));
     },
   }, 1500);
 
@@ -278,7 +638,12 @@ export function ActivitiesPage() {
                 {TYPE_OPTIONS.map((t) => (
                   <button
                     key={t.value}
-                    onClick={() => setType(t.value)}
+                    onClick={() => {
+                      setType(t.value);
+                      if (t.value === 'CARDIO' || t.value === 'OTHER') {
+                        setCardioOpen(true);
+                      }
+                    }}
                     className={classNames(
                       'px-3 py-1.5 text-xs font-display tracking-widest uppercase border transition-all',
                       type === t.value
@@ -287,12 +652,55 @@ export function ActivitiesPage() {
                     )}
                   >
                     {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                   </button>
+                 ))}
+               </div>
+             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+             {/* -------- Non-set cardio block (hike / run / cycle / row / swim) -------- */}
+             <CardioBlock
+               cardio={cardio}
+               setCardio={setCardio}
+               open={cardioOpen}
+               setOpen={setCardioOpen}
+               units={units}
+               distanceUnit={distanceUnit(units)}
+             />
+
+             {/* When did this happen? (date picker for backdating) */}
+             <div>
+               <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                 Performed at
+               </label>
+               <div className="flex flex-wrap items-center gap-2">
+                 <input
+                   className="input-neon flex-1 min-w-[200px]"
+                   type="datetime-local"
+                   value={performedAt}
+                   onChange={(e) => setPerformedAt(e.target.value)}
+                   title="Wall-clock time of the session (your local time)"
+                 />
+                 {PERFORMED_AT_PRESETS.map((p) => (
+                   <button
+                     key={p.label}
+                     type="button"
+                     onClick={() => {
+                       const d = new Date(Date.now() - p.minutes * 60_000);
+                       setPerformedAt(toLocalInput(d));
+                     }}
+                     className="px-2 h-8 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                     title={p.title}
+                   >
+                     {p.label}
+                   </button>
+                 ))}
+               </div>
+               <div className="text-[10px] font-mono text-ink-400 mt-1">
+                 Default is "now". Pick a past time if logging a session you already did.
+               </div>
+             </div>
+
+             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
                   Name (optional)
@@ -529,7 +937,7 @@ export function ActivitiesPage() {
               <NeonButton
                 onClick={() => createM.run()}
                 loading={createM.isPending}
-                disabled={exercises.every((e) => !e.name || e.sets.every((s) => !s.reps && !s.duration))}
+                disabled={!hasUsableContent(exercises, cardio)}
                 icon="⚡"
                 loadingText="Committing…"
               >
@@ -665,6 +1073,21 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
           <span className="text-neon-cyan">{volDisplay.toLocaleString()} {weightUnitLabel(units)} vol</span>
         )}
         {isFitImport && <span className="text-neon-amber">⟂ FIT</span>}
+        {(() => {
+          // Non-set cardio block summary. Show distance + duration
+          // + pace label so the history card stays informative.
+          const c = w.cardio;
+          if (!c) return null;
+          const parts: string[] = [];
+          if (c.distanceKm != null) {
+            const d = units === 'IMPERIAL' ? c.distanceKm / 1.609344 : c.distanceKm;
+            parts.push(`${d.toFixed(2)} ${units === 'IMPERIAL' ? 'mi' : 'km'}`);
+          }
+          if (c.durationSec != null) parts.push(formatDuration(c.durationSec));
+          if (c.pace) parts.push(c.pace.toLowerCase().replace(/_/g, ' '));
+          if (parts.length === 0) return null;
+          return <span className="text-neon-amber">⚡ {parts.join(' · ')}</span>;
+        })()}
       </div>
 
       {/* Key FIT metrics */}
