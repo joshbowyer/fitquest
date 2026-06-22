@@ -101,6 +101,33 @@ function weightUnitLabel(units: UnitSystem): string {
   return units === 'IMPERIAL' ? 'lb' : 'kg';
 }
 
+// Format a Date for a <input type="datetime-local">: "YYYY-MM-DDTHH:mm"
+// in the user's local time. The native input always uses local time
+// (no timezone), so the round-trip via toISOString is wrong: we'd lose
+// the user's wall-clock selection.
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Convert the datetime-local value back into a full ISO string for
+// the API. Treat the local string as the user's wall-clock time.
+function localInputToIso(s: string): string {
+  // new Date('YYYY-MM-DDTHH:mm') parses as LOCAL time, which is what
+  // we want — the user picked their local clock time.
+  return new Date(s).toISOString();
+}
+
+// Quick-pick shortcuts. The label is human-friendly; the value
+// updates performedAt via toLocalInput.
+const PERFORMED_AT_PRESETS: { label: string; minutes: number; title: string }[] = [
+  { label: 'Now',          minutes: 0,         title: 'Log at the current time' },
+  { label: '−1h',          minutes: 60,        title: '1 hour ago' },
+  { label: '−3h',          minutes: 180,       title: '3 hours ago' },
+  { label: 'Yesterday',    minutes: 60 * 24,   title: 'Same time yesterday' },
+  { label: '−2d',          minutes: 60 * 48,   title: '2 days ago' },
+];
+
 export function WorkoutsPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -109,6 +136,10 @@ export function WorkoutsPage() {
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState('');
+  // performedAt — defaults to "now", can be backdated. Stored as a
+  // datetime-local string in the form (YYYY-MM-DDTHH:mm) so the native
+  // input round-trips cleanly. Submitting converts to ISO.
+  const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
   const [exercises, setExercises] = useState<DraftExercise[]>([emptyExercise()]);
   const [result, setResult] = useState<any | null>(null);
   const [selectedExerciseIdx, setSelectedExerciseIdx] = useState<number | null>(null);
@@ -155,6 +186,7 @@ export function WorkoutsPage() {
           name: name || undefined,
           duration,
           notes: notes || undefined,
+          performedAt: localInputToIso(performedAt),
           exercises: exercises.map((e, i) => {
             const load = loadForExercise(e.name);
             const bodyweight = user?.weightKg ?? null;
@@ -215,6 +247,7 @@ export function WorkoutsPage() {
       setExercises([emptyExercise()]);
       setName('');
       setNotes('');
+      setPerformedAt(toLocalInput(new Date()));
     },
   }, 1500);
 
@@ -318,6 +351,39 @@ export function WorkoutsPage() {
                   onChange={(e) => setDuration(Number(e.target.value))}
                   min={0}
                 />
+              </div>
+            </div>
+
+            {/* When did this happen? (date picker for backdating) */}
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                Performed at
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="input-neon flex-1 min-w-[200px]"
+                  type="datetime-local"
+                  value={performedAt}
+                  onChange={(e) => setPerformedAt(e.target.value)}
+                  title="Wall-clock time of the session (your local time)"
+                />
+                {PERFORMED_AT_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      const d = new Date(Date.now() - p.minutes * 60_000);
+                      setPerformedAt(toLocalInput(d));
+                    }}
+                    className="px-2 h-8 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                    title={p.title}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] font-mono text-ink-400 mt-1">
+                Default is "now". Pick a past time if logging a session you already did.
               </div>
             </div>
 
