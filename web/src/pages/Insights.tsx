@@ -147,7 +147,14 @@ export function InsightsPage() {
       metric: 'WEIGHT',
       color: '#ffc34d',
       label: 'Weight',
-      unit: system === 'IMPERIAL' ? 'lb' : 'kg',
+      // Base metric unit — always kg. The OverlayTrendChart
+      // calls convertForDisplay with this unit + the user's
+      // system, so IMPERIAL users get the kg→lb conversion
+      // applied to the plotted values. Earlier bug: this was
+      // set to system-dependent ('lb'/'kg') and the chart
+      // treated data as already-converted, leaving Y-axis at
+      // ~60 with lb legend (visual mismatch).
+      unit: 'kg',
       yAxis: 'left' as const,
     },
   ];

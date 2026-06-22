@@ -1060,7 +1060,6 @@ export function ActivitiesPage() {
       <Panel
         variant="magenta"
         title="History"
-        className="mt-4"
         action={
           <span className="text-[10px] font-mono text-ink-300 tracking-widest">
             {filteredHistory.length} sessions
@@ -1130,13 +1129,16 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
       type="button"
       onClick={() => navigate(`/activities/${w.id}`)}
       className={classNames(
-        'border p-3 text-left transition-all hover:border-neon-cyan/60',
+        // w-full + block override the <button> default inline-block
+        // so cards stack vertically in the history rail instead of
+        // pairing two-up when the column is wide enough.
+        'w-full block border p-3 text-left transition-all hover:border-neon-cyan/60',
         isFitImport
           ? 'border-neon-amber/40 bg-neon-amber/5'
           : 'border-ink-500/30 bg-bg-700/40',
       )}
     >
-      <div className="flex justify-between items-baseline mb-1 gap-2">
+      <div className="flex justify-between items-baseline mb-2 gap-2">
         <span className="font-display tracking-wider text-sm text-neon-cyan truncate">
           {w.name || w.type}
         </span>
@@ -1145,7 +1147,8 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono text-ink-300 mb-1">
+      {/* Top meta row: type / duration / volume / FIT / cardio */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-ink-300 mb-2">
         <span>{w.type}</span>
         <span>· {w.duration ?? 0}m</span>
         {volDisplay > 0 && (
@@ -1169,9 +1172,11 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
         })()}
       </div>
 
-      {/* Key FIT metrics */}
+      {/* Key FIT metrics — own row so they don't get tangled with
+          the type/volume line above. Each metric is its own span
+          so we can give them consistent spacing. */}
       {fitMetrics && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono text-ink-300 mb-1">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-ink-300 mb-2 border-t border-ink-500/15 pt-2">
           {fitMetrics.distance != null && (
             <span>{(() => {
               // distance stored in meters; convert to user units via
@@ -1190,13 +1195,13 @@ function ActivityCard({ workout: w, units, timezone }: { workout: any; units: Un
 
       {/* Strength exercises preview */}
       {!isFitImport && (
-        <div className="text-[10px] font-mono text-ink-500 truncate">
+        <div className="text-[10px] font-mono text-ink-400 truncate mb-2">
           {w.exercises.slice(0, 3).map((ex: any) => ex.name).filter(Boolean).join(' · ')}
           {w.exercises.length > 3 && ` +${w.exercises.length - 3} more`}
         </div>
       )}
 
-      <div className="text-[9px] font-mono text-ink-500 mt-1">→ open</div>
+      <div className="text-[9px] font-mono text-ink-500 pt-1 border-t border-ink-500/10">→ open</div>
     </button>
   );
 }
