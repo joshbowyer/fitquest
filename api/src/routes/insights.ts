@@ -2,7 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeRecovery } from '../lib/recovery.js';
-import { computeCorrelations } from '../lib/correlations.js';
+import {
+  computeCorrelations,
+  snapshotCorrelations,
+  fetchCorrelationHistory,
+} from '../lib/correlations.js';
 import { generateInsights, getInsightsSummary } from '../lib/insights.js';
 
 export async function insightRoutes(app: FastifyInstance) {
@@ -18,7 +22,44 @@ export async function insightRoutes(app: FastifyInstance) {
 
   app.get('/correlations', async (req) => {
     const me = await requireUser(req);
-    return { items: await computeCorrelations(me.id) };
+    // Support ?lag=N to override the lag set when the user toggles
+    // the lag badge in the UI; default to all three (0/1/2 days)
+    // so the first render shows the full picture.
+    const q = req.query as { lag?: string };
+    const lags = q.lag != null ? [Number(q.lag)] : [0, 1, 2];
+    return { items: await computeCorrelations(me.id, { lags }) };
+  });
+
+  // Per-row trend history. Drives the 12-week sparkline next to
+  // each correlation so the user can see whether a pattern is
+  // strengthening, fading, or oscillating.
+  app.get('/correlations/history', async (req) => {
+    const me = await requireUser(req);
+    const q = req.query as {
+      habit?: string;
+      outcome?: string;
+      lookbackDays?: string;
+      lagDays?: string;
+      weeks?: string;
+    };
+    if (!q.habit || !q.outcome) {
+      return { points: [] };
+    }
+    const points = await fetchCorrelationHistory(me.id, q.habit, q.outcome, {
+      lookbackDays: q.lookbackDays ? Number(q.lookbackDays) : 60,
+      lagDays: q.lagDays ? Number(q.lagDays) : 0,
+      weeks: q.weeks ? Number(q.weeks) : 12,
+    });
+    return { points };
+  });
+
+  // Manual trigger for the nightly snapshot. Useful after a bulk
+  // import (e.g. FoodYou weigh-ins) so the user doesn't have to
+  // wait for 03:30 to see fresh correlations.
+  app.post('/correlations/snapshot', async (req) => {
+    const me = await requireUser(req);
+    const result = await snapshotCorrelations(me.id);
+    return result;
   });
 
   app.get('/tips', async (req) => {

@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import { config } from './lib/config.js';
 import { prisma } from './lib/prisma.js';
 import { seedUpcomingReadings } from './lib/usccb.js';
+import { snapshotAllUsers } from './lib/correlations.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { measurementRoutes } from './routes/measurements.js';
@@ -169,6 +170,38 @@ async function main() {
     const r = await seedUpcomingReadings(7);
     app.log.info(r, 'usccb daily refresh complete');
   });
+
+  // Correlation snapshot cron — 03:30 local is fine for the
+  // Pearson-r pipeline too (it scans the last 90 days, so any
+  // new data from yesterday's weigh-ins gets picked up). Run
+  // before USCCB's daily refresh so the morning report's
+  // correlation narrative (when wired) reads from fresh rows.
+  // Using a separate scheduleDaily so failures don't block the
+  // USCCB refresh.
+  const correlationNow = new Date();
+  const correlationFireAt = new Date(correlationNow.getTime());
+  correlationFireAt.setHours(3, 30, 0, 0);
+  if (correlationFireAt.getTime() <= correlationNow.getTime()) correlationFireAt.setDate(correlationFireAt.getDate() + 1);
+  const corrMs = correlationFireAt.getTime() - correlationNow.getTime();
+  app.log.info({ msUntilNext: corrMs }, 'correlation snapshot scheduled');
+  setTimeout(() => {
+    (async () => {
+      try {
+        const r = await snapshotAllUsers();
+        app.log.info(r, 'correlation nightly snapshot complete');
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'correlation nightly snapshot failed');
+      }
+    })();
+    setInterval(async () => {
+      try {
+        const r = await snapshotAllUsers();
+        app.log.info(r, 'correlation nightly snapshot complete');
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'correlation nightly snapshot failed');
+      }
+    }, 24 * 60 * 60 * 1000);
+  }, corrMs);
 
   const shutdown = async () => {
     app.log.info('shutting down');

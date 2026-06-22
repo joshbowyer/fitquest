@@ -247,6 +247,7 @@ model User {
   substanceLogs    SubstanceLog[]
   mealEntries      MealEntry[]
   savedFoods       SavedFood[]
+  correlationSnapshots CorrelationSnapshot[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -1338,4 +1339,41 @@ model SavedFood {
 
   @@unique([userId, name])
   @@index([userId, lastUsedAt])
+}
+
+// ============================================================
+// CorrelationSnapshot — nightly Pearson-r snapshot per (user,
+// habit, outcome, lag). Drives the trend sparklines on /insights
+// so the user can answer "is my sleep→PR correlation getting
+// stronger or weaker over the past 12 weeks?"
+//
+// One row per (userId, snapshotDate, habit, outcome, lag). We
+// delete+rewrite the snapshotDate's rows when re-running so a
+// failed cron doesn't leave stale rows around.
+// ============================================================
+
+model CorrelationSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshotDate DateTime // YYYY-MM-DD 00:00 UTC of the snapshot run
+  /// Rolling window length in days (e.g. 30, 60, 90).
+  lookbackDays Int
+  /// "SLEEP_HOURS", "HRV", "PROTEIN_G", etc. — or synthetic
+  /// habit codes like "WORKOUT_FREQUENCY_7D" that are computed
+  /// inside the correlation engine rather than read directly
+  /// from Measurement.
+  habit        String
+  /// "WORKOUT_VOLUME", "PR_COUNT", "WEIGHT_TREND_7D", etc.
+  outcome      String
+  /// Days the habit leads the outcome. 0 = same day; 1 = habit
+  /// yesterday predicts outcome today.
+  lagDays      Int      @default(0)
+  /// Pearson r in [-1, +1], rounded to 2dp before storage.
+  r            Float
+  /// Number of paired data points used.
+  n            Int
+
+  @@unique([userId, snapshotDate, habit, outcome, lagDays, lookbackDays])
+  @@index([userId, habit, outcome, snapshotDate])
 }
