@@ -13,8 +13,22 @@
  * For the test-connection endpoint we just return the raw text.
  */
 
+export type LlmProvider = 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC';
+
+export type LlmTask = 'food' | 'foodSaved' | 'morningReport' | 'spiritualDirector';
+
+/// One task's override. Only provider + model are required; if
+/// apiKey/baseUrl are absent we reuse the primary's. This keeps a
+/// local Ollama setup clean — one API key / base URL, many models.
+export type LlmTaskConfig = {
+  provider: LlmProvider;
+  model: string;
+  apiKey?: string | null;
+  baseUrl?: string | null;
+};
+
 export type LlmConfig = {
-  provider: 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC';
+  provider: LlmProvider;
   apiKey: string | null;
   baseUrl: string | null;
   model: string;
@@ -24,16 +38,20 @@ export type LlmConfig = {
   // network, model-not-found). Either can be None: e.g. an
   // Ollama-only setup leaves primary blank and sets fallback.
   fallbackEnabled?: boolean;
-  fallbackProvider?: 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC' | null;
+  fallbackProvider?: LlmProvider | null;
   fallbackApiKey?: string | null;
   fallbackBaseUrl?: string | null;
   fallbackModel?: string | null;
+  // Per-task model overrides. Missing entries fall back to the
+  // default primary + fallback chain. See LlmTaskConfig above.
+  taskOverrides?: Partial<Record<LlmTask, LlmTaskConfig>> | null;
 };
 
 /**
  * Read the saved LlmConfig row and return it as the callLlm-ready
- * LlmConfig (includes fallback fields, casts provider strings,
- * returns a sensible default if no row exists yet).
+ * LlmConfig (includes fallback fields + per-task overrides, casts
+ * provider strings, returns a sensible default if no row exists
+ * yet).
  *
  * Centralised so every LLM call site routes through the same
  * fallback chain. The admin /test endpoint uses the same helper
@@ -44,6 +62,14 @@ export async function getActiveLlmConfig(): Promise<LlmConfig | null> {
   const row = await prisma.llmConfig.findFirst();
   if (!row) return null;
   if (!row.enabled) return null;
+  // taskOverrides is stored as JSON. Be defensive: a row written
+  // before this field existed might be null; and the shape inside
+  // is loosely-typed so we cast to the LlmTaskConfig shape after
+  // narrowing.
+  const rawOverrides = (row as any).taskOverrides as
+    | Partial<Record<LlmTask, LlmTaskConfig>>
+    | null
+    | undefined;
   return {
     provider: row.provider as LlmConfig['provider'],
     apiKey: row.apiKey,
@@ -56,6 +82,7 @@ export async function getActiveLlmConfig(): Promise<LlmConfig | null> {
     fallbackApiKey: row.fallbackApiKey,
     fallbackBaseUrl: row.fallbackBaseUrl,
     fallbackModel: row.fallbackModel,
+    taskOverrides: rawOverrides ?? null,
   };
 }
 
@@ -135,6 +162,13 @@ function modelNameFallback(provider: LlmConfig['provider']): string {
  * Throws on transport errors so callers can distinguish them from
  * "model returned an error" cases via the httpStatus field.
  *
+ * Per-task overrides: if `task` is set and a matching override is
+ * configured in `config.taskOverrides`, the override replaces the
+ * primary (provider + model; apiKey/baseUrl fall back to the
+ * primary's). Each task still benefits from the same fallback
+ * chain — a 5xx on the food override falls back to the configured
+ * fallback model.
+ *
  * Fallback chain: if `config.fallbackEnabled` is true and a
  * fallback is configured, a transient primary failure (5xx,
  * network, timeout, model-not-found 404) automatically retries on
@@ -145,9 +179,13 @@ function modelNameFallback(provider: LlmConfig['provider']): string {
 export async function callLlm(
   config: LlmConfig,
   opts: CallOpts,
+  task?: LlmTask,
 ): Promise<LlmCallResult> {
+  // Resolve the effective primary config: task override > config
+  const effective = resolvePrimaryConfig(config, task);
+
   // ---- Attempt 1: primary ----
-  const primary = await callOnce(config, opts, 1);
+  const primary = await callOnce(effective, opts, 1);
 
   if (primary.ok) return primary;
 
@@ -175,6 +213,26 @@ export async function callLlm(
     return { ...primary, attempt: 0 };
   }
   return fallback;
+}
+
+/**
+ * Resolve the effective primary LlmConfig for a given task.
+ * If a task override is set, its provider/model replace the
+ * primary's; apiKey/baseUrl are reused from the primary unless
+ * the override specifies them. Missing override = use the
+ * default primary as-is.
+ */
+function resolvePrimaryConfig(config: LlmConfig, task?: LlmTask): LlmConfig {
+  if (!task) return config;
+  const override = config.taskOverrides?.[task];
+  if (!override) return config;
+  return {
+    ...config,
+    provider: override.provider,
+    model: override.model,
+    apiKey: override.apiKey ?? config.apiKey,
+    baseUrl: override.baseUrl ?? config.baseUrl,
+  };
 }
 
 /**

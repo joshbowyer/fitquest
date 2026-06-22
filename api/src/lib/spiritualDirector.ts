@@ -302,7 +302,7 @@ export async function getOrGenerateReflection(
     temperature: 0.5,
     timeoutMs: 60_000,
     jsonMode: true,
-  });
+  }, 'spiritualDirector');
 
   const parsed = result.ok ? extractJson(result.text ?? '') : null;
   const reflection = clamp(parsed?.reflection ?? '', 320);

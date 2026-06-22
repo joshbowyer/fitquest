@@ -187,14 +187,27 @@ function cardioToDraft(c: any, units: UnitSystem): DraftCardio {
   };
 }
 
-function hasUsableContent(exercises: DraftExercise[], cardio: DraftCardio): boolean {
-  const hasExercise = exercises.some(
-    (e) => e.name.trim() && e.sets.some((s) => s.reps > 0 || s.duration > 0),
-  );
-  if (hasExercise) return true;
-  const dist = Number(cardio.distanceKm);
-  const dur = parseDuration(cardio.duration);
-  return (Number.isFinite(dist) && dist > 0) || (dur != null && dur > 0);
+function hasUsableContent(
+  type: WorkoutType,
+  exercises: DraftExercise[],
+  cardio: DraftCardio,
+  name: string,
+  duration: number,
+): boolean {
+  // Strength types: at least one filled exercise row.
+  if (type === 'STRENGTH' || type === 'HYPERTROPHY' || type === 'CALISTHENICS') {
+    return exercises.some(
+      (e) => e.name.trim() && e.sets.some((s) => s.reps > 0 || s.duration > 0),
+    );
+  }
+  // Cardio: distance OR duration in the cardio block.
+  if (type === 'CARDIO') {
+    const dist = Number(cardio.distanceKm);
+    const dur = parseDuration(cardio.duration);
+    return (Number.isFinite(dist) && dist > 0) || (dur != null && dur > 0);
+  }
+  // Freeform (MOBILITY / OTHER): activity name + duration.
+  return name.trim().length > 0 && duration > 0;
 }
 
 function CardioBlock({
@@ -411,18 +424,33 @@ export function ActivitiesPage() {
     queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=100'),
   });
 
-  // Copy last session helper
+  // Copy last session helper. Matches the new type-specific form
+  // shapes: for CARDIO it pre-fills the cardio block (and clears
+  // the unused exercise list), for freeform types it just copies
+  // the name + duration + notes, for strength types it pre-fills
+  // the exercise list.
   function copyLastSession() {
     if (!list.data?.items.length) return;
     const last = list.data.items[0];
-    setExercises(workoutToDraft(last, units));
+    setType(last.type);
     setName(last.name ? `${last.name} (copy)` : '');
     setDuration(last.duration ?? 60);
     setNotes(last.notes ?? '');
-    if ((last as any).cardio) {
-      setCardio(cardioToDraft((last as any).cardio, units));
-      setCardioOpen(true);
+    if (last.type === 'CARDIO') {
+      if ((last as any).cardio) {
+        setCardio(cardioToDraft((last as any).cardio, units));
+        setCardioOpen(true);
+      } else {
+        setCardio(emptyCardio());
+        setCardioOpen(true);
+      }
+      setExercises([emptyExercise()]);
+    } else if (last.type === 'MOBILITY' || last.type === 'OTHER') {
+      setCardio(emptyCardio());
+      setCardioOpen(false);
+      setExercises([emptyExercise()]);
     } else {
+      setExercises(workoutToDraft(last, units));
       setCardio(emptyCardio());
       setCardioOpen(false);
     }
@@ -640,7 +668,12 @@ export function ActivitiesPage() {
                     key={t.value}
                     onClick={() => {
                       setType(t.value);
-                      if (t.value === 'CARDIO' || t.value === 'OTHER') {
+                      // Auto-expand the cardio block the first time
+                      // the user picks CARDIO. For OTHER we used to
+                      // expand it too, but the new freeform form
+                      // renders its own banner; the cardio block
+                      // only makes sense for CARDIO now.
+                      if (t.value === 'CARDIO' && !cardioOpen) {
                         setCardioOpen(true);
                       }
                     }}
@@ -653,19 +686,236 @@ export function ActivitiesPage() {
                   >
                     {t.label}
                    </button>
-                 ))}
-               </div>
-             </div>
+                  ))}
+                </div>
+              </div>
 
-             {/* -------- Non-set cardio block (hike / run / cycle / row / swim) -------- */}
-             <CardioBlock
-               cardio={cardio}
-               setCardio={setCardio}
-               open={cardioOpen}
-               setOpen={setCardioOpen}
-               units={units}
-               distanceUnit={distanceUnit(units)}
-             />
+              {/* Form sections — only one renders at a time based on type:
+                  - STRENGTH/HYPERTROPHY/CALISTHENICS: exercise list (sets × reps × weight)
+                  - CARDIO: non-set CardioBlock (distance + duration + pace + HR)
+                  - MOBILITY/OTHER: freeform activity (name + duration + notes)
+                The "Name" + "Duration" pair above stays — for freeform
+                types the Name IS the activity name (e.g. "Jumprope"),
+                for strength it's an optional session label. */}
+              {isStrength && (
+              <div className="space-y-3">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">Exercises</div>
+                {exercises.map((ex, i) => {
+                  const muscles = musclesForExercise(ex.name);
+                  const load = loadForExercise(ex.name);
+                  const isBw = load === 'BODYWEIGHT';
+                  const isWeightedBw = load === 'WEIGHTED_BODYWEIGHT';
+                  // For weighted bodyweight: weight input = extra on top of bodyweight
+                  // For bodyweight: weight input disabled, use profile bodyweight
+                  const showWeight = isStrength && !isBw;
+                  const showDuration = isCardio || isTimed;
+                  const bodyweightDisplay = units === 'IMPERIAL'
+                    ? Math.round(kgToLb(user?.weightKg ?? 0))
+                    : Math.round(user?.weightKg ?? 0);
+                  return (
+                    <div key={i} className="border border-ink-500/30 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ExerciseAutocomplete
+                          className="flex-1"
+                          value={ex.name}
+                          onChange={(v) => {
+                            const copy = [...exercises];
+                            copy[i] = { ...copy[i], name: v };
+                            setExercises(copy);
+                          }}
+                          placeholder="Exercise name (start typing…)"
+                        />
+                        {exercises.length > 1 && (
+                          <button
+                            onClick={() => setExercises(exercises.filter((_, j) => j !== i))}
+                            className="btn-ghost"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                      {muscles.length > 0 && (
+                        <div className="text-[10px] font-mono text-ink-400 leading-relaxed">
+                          <span className="text-neon-cyan/70">→ muscles:</span>{' '}
+                          {muscles.slice(0, 8).map((m) => (
+                            <span key={m} className="text-ink-200 mr-2">{m.replace(/_/g, ' ').toLowerCase()}</span>
+                          ))}
+                          {muscles.length > 8 && <span className="text-ink-500">+{muscles.length - 8} more</span>}
+                        </div>
+                      )}
+                      {isBw && user?.weightKg && (
+                        <div className="text-[10px] font-mono text-neon-lime/80">
+                          ⚖ bodyweight exercise · weight = profile ({bodyweightDisplay} {weightUnitLabel(units)}) · input disabled
+                        </div>
+                      )}
+                      {isWeightedBw && user?.weightKg && (
+                        <div className="text-[10px] font-mono text-neon-amber/80">
+                          ⚖ weighted · effective load = bodyweight ({bodyweightDisplay} {weightUnitLabel(units)}) + extra you enter below
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        {ex.sets.map((s, j) => (
+                          <div
+                            key={j}
+                            className={classNames(
+                              'gap-2 items-center',
+                              'grid grid-cols-1 sm:grid-cols-[20px_1fr_1fr_1fr_1fr_30px]',
+                            )}
+                          >
+                            <span className="text-[10px] font-mono text-ink-400">#{j + 1}</span>
+                            <input
+                              className="input-neon text-xs"
+                              type="number"
+                              placeholder="reps"
+                              value={s.reps || ''}
+                              onChange={(e) => {
+                                const copy = [...exercises];
+                                copy[i].sets[j] = { ...s, reps: Number(e.target.value) };
+                                setExercises(copy);
+                              }}
+                            />
+                            {showWeight ? (
+                              <div className="relative">
+                                {isWeightedBw && (
+                                  <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] font-mono text-neon-amber pointer-events-none">+</span>
+                                )}
+                                <input
+                                  className={classNames(
+                                    'input-neon text-xs',
+                                    isWeightedBw && 'pl-3',
+                                  )}
+                                  type="number"
+                                  step="0.5"
+                                  placeholder={weightUnitLabel(units)}
+                                  value={s.weight || ''}
+                                  onChange={(e) => {
+                                    const copy = [...exercises];
+                                    copy[i].sets[j] = { ...s, weight: Number(e.target.value) };
+                                    setExercises(copy);
+                                  }}
+                                  title={
+                                    isWeightedBw
+                                      ? `Extra weight on top of bodyweight (${bodyweightDisplay} ${weightUnitLabel(units)})`
+                                      : `Weight in ${weightUnitLabel(units)}`
+                                  }
+                                />
+                              </div>
+                            ) : isBw ? (
+                              <input
+                                className="input-neon text-xs opacity-40 cursor-not-allowed"
+                                type="number"
+                                disabled
+                                placeholder="BW"
+                                title="Bodyweight exercise — uses your profile bodyweight"
+                              />
+                            ) : (
+                              <input
+                                className="input-neon text-xs opacity-40 cursor-not-allowed"
+                                type="number"
+                                disabled
+                                placeholder="—"
+                                title="Weight doesn't apply to this workout type"
+                              />
+                            )}
+                            <input
+                              className="input-neon text-xs"
+                              type="number"
+                              placeholder="min"
+                              value={s.duration ? Math.round(s.duration / 60) : ''}
+                              onChange={(e) => {
+                                const copy = [...exercises];
+                                copy[i].sets[j] = { ...s, duration: Number(e.target.value) * 60 };
+                                setExercises(copy);
+                              }}
+                            />
+                            <input
+                              className="input-neon text-xs"
+                              type="number"
+                              step="0.5"
+                              min={0}
+                              max={10}
+                              placeholder="RPE"
+                              value={s.rpe || ''}
+                              onChange={(e) => {
+                                const copy = [...exercises];
+                                copy[i].sets[j] = { ...s, rpe: Number(e.target.value) };
+                                setExercises(copy);
+                              }}
+                            />
+                            {ex.sets.length > 1 && (
+                              <button
+                                onClick={() => {
+                                  const copy = [...exercises];
+                                  copy[i].sets = copy[i].sets.filter((_, k) => k !== j);
+                                  setExercises(copy);
+                                }}
+                                className="text-ink-400 hover:text-neon-magenta text-xs"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            const copy = [...exercises];
+                            copy[i].sets.push({ reps: 0, weight: 0, duration: 0, rpe: 0 });
+                            setExercises(copy);
+                          }}
+                          className="btn-ghost text-[10px] mt-1"
+                        >
+                          + Set
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <NeonButton
+                  variant="magenta"
+                  onClick={() => setExercises([...exercises, emptyExercise()])}
+                >
+                  + Exercise
+                </NeonButton>
+              </div>
+              )}
+
+              {/* Non-set cardio block (hike / run / cycle / row / swim).
+                  Only rendered when type is CARDIO — for strength
+                  types the old "always present, collapsed" banner was
+                  visual noise; for freeform types the cardio-specific
+                  fields (pace / distance / HR) don't apply. */}
+              {isCardio && (
+                <CardioBlock
+                  cardio={cardio}
+                  setCardio={setCardio}
+                  open={cardioOpen}
+                  setOpen={setCardioOpen}
+                  units={units}
+                  distanceUnit={distanceUnit(units)}
+                />
+              )}
+
+              {/* Freeform activity form for MOBILITY/OTHER. Just name +
+                  duration + notes. For jumprope, rock climbing, hiking
+                  (without GPS), stretching, etc. The top-of-form Name +
+                  Duration fields above are reused: the "Name" is the
+                  activity name (e.g. "Jumprope"), "Duration" is the
+                  total session time in minutes. */}
+              {isTimed && (
+                <div className="border border-neon-violet/30 p-3 space-y-2">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-neon-violet/80">
+                    ◌ Freeform activity
+                    <span className="text-ink-500 normal-case tracking-normal ml-2">
+                      · {type === 'MOBILITY' ? 'mobility / stretching / yoga' : 'misc: jumprope, climbing, hike, …'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-400">
+                    The "Name" + "Duration" fields above define this session.
+                    Add optional notes below (e.g. "5 boulder problems V0–V2",
+                    "10 sets of 100 jumps", "rope 5.10a/b").
+                  </div>
+                </div>
+              )}
 
              {/* When did this happen? (date picker for backdating) */}
              <div>
@@ -726,199 +976,11 @@ export function ActivitiesPage() {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">Exercises</div>
-              {exercises.map((ex, i) => {
-                const muscles = musclesForExercise(ex.name);
-                const load = loadForExercise(ex.name);
-                const isBw = load === 'BODYWEIGHT';
-                const isWeightedBw = load === 'WEIGHTED_BODYWEIGHT';
-                // For weighted bodyweight: weight input = extra on top of bodyweight
-                // For bodyweight: weight input disabled, use profile bodyweight
-                const showWeight = isStrength && !isBw;
-                const showDuration = isCardio || isTimed;
-                const bodyweightDisplay = units === 'IMPERIAL'
-                  ? Math.round(kgToLb(user?.weightKg ?? 0))
-                  : Math.round(user?.weightKg ?? 0);
-                return (
-                  <div key={i} className="border border-ink-500/30 p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <ExerciseAutocomplete
-                        className="flex-1"
-                        value={ex.name}
-                        onChange={(v) => {
-                          const copy = [...exercises];
-                          copy[i] = { ...copy[i], name: v };
-                          setExercises(copy);
-                        }}
-                        placeholder="Exercise name (start typing…)"
-                      />
-                      {exercises.length > 1 && (
-                        <button
-                          onClick={() => setExercises(exercises.filter((_, j) => j !== i))}
-                          className="btn-ghost"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                    {muscles.length > 0 && (
-                      <div className="text-[10px] font-mono text-ink-400 leading-relaxed">
-                        <span className="text-neon-cyan/70">→ muscles:</span>{' '}
-                        {muscles.slice(0, 8).map((m) => (
-                          <span key={m} className="text-ink-200 mr-2">{m.replace(/_/g, ' ').toLowerCase()}</span>
-                        ))}
-                        {muscles.length > 8 && <span className="text-ink-500">+{muscles.length - 8} more</span>}
-                      </div>
-                    )}
-                    {isBw && user?.weightKg && (
-                      <div className="text-[10px] font-mono text-neon-lime/80">
-                        ⚖ bodyweight exercise · weight = profile ({bodyweightDisplay} {weightUnitLabel(units)}) · input disabled
-                      </div>
-                    )}
-                    {isWeightedBw && user?.weightKg && (
-                      <div className="text-[10px] font-mono text-neon-amber/80">
-                        ⚖ weighted · effective load = bodyweight ({bodyweightDisplay} {weightUnitLabel(units)}) + extra you enter below
-                      </div>
-                    )}
-                    <div className="space-y-1">
-                      {ex.sets.map((s, j) => (
-                        <div
-                          key={j}
-                          className={classNames(
-                            'gap-2 items-center',
-                            // Mobile: stack vertically. Desktop: 5 or 6 columns.
-                            showDuration
-                              ? 'grid grid-cols-1 sm:grid-cols-[20px_1fr_1fr_1fr_30px]'
-                              : 'grid grid-cols-1 sm:grid-cols-[20px_1fr_1fr_1fr_1fr_30px]',
-                          )}
-                        >
-                          <span className="text-[10px] font-mono text-ink-400">#{j + 1}</span>
-                          <input
-                            className="input-neon text-xs"
-                            type="number"
-                            placeholder="reps"
-                            value={s.reps || ''}
-                            onChange={(e) => {
-                              const copy = [...exercises];
-                              copy[i].sets[j] = { ...s, reps: Number(e.target.value) };
-                              setExercises(copy);
-                            }}
-                          />
-                          {showWeight ? (
-                            <div className="relative">
-                              {isWeightedBw && (
-                                <span className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] font-mono text-neon-amber pointer-events-none">+</span>
-                              )}
-                              <input
-                                className={classNames(
-                                  'input-neon text-xs',
-                                  isWeightedBw && 'pl-3',
-                                )}
-                                type="number"
-                                step="0.5"
-                                placeholder={weightUnitLabel(units)}
-                                value={s.weight || ''}
-                                onChange={(e) => {
-                                  const copy = [...exercises];
-                                  copy[i].sets[j] = { ...s, weight: Number(e.target.value) };
-                                  setExercises(copy);
-                                }}
-                                title={
-                                  isWeightedBw
-                                    ? `Extra weight on top of bodyweight (${bodyweightDisplay} ${weightUnitLabel(units)})`
-                                    : `Weight in ${weightUnitLabel(units)}`
-                                }
-                              />
-                            </div>
-                          ) : !isStrength ? (
-                            <input
-                              className="input-neon text-xs opacity-40 cursor-not-allowed"
-                              type="number"
-                              disabled
-                              placeholder="—"
-                              title="Weight doesn't apply to this workout type"
-                            />
-                          ) : (
-                            // Bodyweight: weight column greyed out, value not stored
-                            <input
-                              className="input-neon text-xs opacity-40 cursor-not-allowed"
-                              type="number"
-                              disabled
-                              placeholder="BW"
-                              title="Bodyweight exercise — uses your profile bodyweight"
-                            />
-                          )}
-                          {showDuration ? (
-                            <input
-                              className="input-neon text-xs"
-                              type="number"
-                              placeholder="min"
-                              value={s.duration ? Math.round(s.duration / 60) : ''}
-                              onChange={(e) => {
-                                const copy = [...exercises];
-                                copy[i].sets[j] = { ...s, duration: Number(e.target.value) * 60 };
-                                setExercises(copy);
-                              }}
-                            />
-                          ) : (
-                            <input
-                              className="input-neon text-xs opacity-40 cursor-not-allowed"
-                              type="number"
-                              disabled
-                              placeholder="—"
-                              title="Duration doesn't apply to this workout type"
-                            />
-                          )}
-                          <input
-                            className="input-neon text-xs"
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            max="10"
-                            placeholder="RPE"
-                            value={s.rpe || ''}
-                            onChange={(e) => {
-                              const copy = [...exercises];
-                              copy[i].sets[j] = { ...s, rpe: Number(e.target.value) };
-                              setExercises(copy);
-                            }}
-                          />
-                          {ex.sets.length > 1 && (
-                            <button
-                              onClick={() => {
-                                const copy = [...exercises];
-                                copy[i].sets = copy[i].sets.filter((_, k) => k !== j);
-                                setExercises(copy);
-                              }}
-                              className="text-ink-400 hover:text-neon-magenta text-xs"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <button
-                        onClick={() => {
-                          const copy = [...exercises];
-                          copy[i].sets.push({ reps: 0, weight: 0, duration: 0, rpe: 0 });
-                          setExercises(copy);
-                        }}
-                        className="btn-ghost text-[10px] mt-1"
-                      >
-                        + Set
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              <NeonButton
-                variant="magenta"
-                onClick={() => setExercises([...exercises, emptyExercise()])}
-              >
-                + Exercise
-              </NeonButton>
-            </div>
+            {/* The exercise list is rendered above conditionally
+                (only for STRENGTH/HYPERTROPHY/CALISTHENICS). For
+                CARDIO we show the cardio block, for MOBILITY/OTHER
+                we show the freeform activity banner. The single
+                Notes textarea below applies to all types. */}
 
             <div>
               <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
@@ -937,7 +999,7 @@ export function ActivitiesPage() {
               <NeonButton
                 onClick={() => createM.run()}
                 loading={createM.isPending}
-                disabled={!hasUsableContent(exercises, cardio)}
+                disabled={!hasUsableContent(type, exercises, cardio, name, duration)}
                 icon="⚡"
                 loadingText="Committing…"
               >

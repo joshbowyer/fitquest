@@ -213,7 +213,7 @@ export async function foodRoutes(app: FastifyInstance) {
       // way, the fallback parser in extractAskAiResult() is
       // rarely needed.
       jsonMode: true,
-    });
+    }, 'food');
     if (!result.ok) {
       return reply.code(502).send({ error: result.error ?? 'LLM failed' });
     }
@@ -517,7 +517,7 @@ export async function savedFoodRoutes(app: FastifyInstance) {
       jsonMode: true,
       temperature: 0.2,
       timeoutMs: 60_000,
-    });
+    }, 'foodSaved');
     if (!result.ok) {
       return reply.code(502).send({ error: result.error ?? 'LLM failed' });
     }

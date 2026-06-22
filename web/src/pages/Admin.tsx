@@ -24,6 +24,13 @@ type AdminUser = {
   _count: { sessions: number; workouts: number };
 };
 
+type LlmTaskOverride = {
+  provider: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'MINIMAX';
+  model: string;
+  apiKey?: string | null;
+  baseUrl?: string | null;
+} | null;
+
 type LlmConfig = {
   id?: string;
   provider: 'OPENAI' | 'ANTHROPIC' | 'OLLAMA' | 'MINIMAX';
@@ -37,6 +44,14 @@ type LlmConfig = {
   fallbackApiKey: string | null;
   fallbackBaseUrl: string | null;
   fallbackModel: string | null;
+  // Per-task model overrides. Missing / null = use the default
+  // primary + fallback chain for that task.
+  taskOverrides: {
+    food: LlmTaskOverride;
+    foodSaved: LlmTaskOverride;
+    morningReport: LlmTaskOverride;
+    spiritualDirector: LlmTaskOverride;
+  };
   // Shared
   systemPrompt: string | null;
   createdAt?: string;
@@ -676,6 +691,144 @@ export function AdminPage() {
                   Test request failed: {String((testLlmM.error as any)?.message ?? testLlmM.error)}
                 </div>
               )}
+
+              {/* Per-task model overrides. Each task can route to a
+                  different model so you can use the right tool for
+                  each job: e.g. a strong JSON model for food Ask-AI,
+                  a warmer persona model for the spiritual director.
+                  Empty override = use the default primary + fallback
+                  chain. The apiKey/baseUrl are optional per task;
+                  if absent, the task reuses the primary's. This
+                  keeps a local Ollama setup clean (one baseUrl, one
+                  apiKey, many models). */}
+              <div className="sm:col-span-2 mt-4 pt-3 border-t border-ink-500/30">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                  Per-task model overrides
+                </div>
+                <div className="text-[10px] font-mono text-ink-500 mb-3">
+                  Each task inherits the primary + fallback chain unless overridden below.
+                  Credentials (apiKey / baseUrl) are optional per task — leave empty to reuse the primary's.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {([
+                    { key: 'food',              label: 'Food search Ask-AI', hint: 'parses a freeform description into a search query' },
+                    { key: 'foodSaved',         label: 'Saved food Ask-AI',   hint: 'estimates macros for a description (no OFF lookup)' },
+                    { key: 'morningReport',     label: 'Morning report',      hint: 'long structured JSON briefing, last 7d vs prior 7d' },
+                    { key: 'spiritualDirector', label: 'Spiritual director',  hint: 'Ignatian / warm tone reflection on todays Gospel' },
+                  ] as const).map(({ key, label, hint }) => {
+                    const ov = llmForm.taskOverrides[key];
+                    return (
+                      <div
+                        key={key}
+                        className="border border-ink-500/30 p-2.5 space-y-1.5 bg-bg-900/40"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-200">
+                              {label}
+                            </div>
+                            <div className="text-[9px] font-mono text-ink-500 mt-0.5">
+                              {hint}
+                            </div>
+                          </div>
+                          <label className="flex items-center gap-1 text-[10px] font-mono text-ink-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={!!ov}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  // Seed with the primary so the form has
+                                  // a sensible starting point. The user
+                                  // can change provider + model.
+                                  setLlmForm({
+                                    ...llmForm,
+                                    taskOverrides: {
+                                      ...llmForm.taskOverrides,
+                                      [key]: { provider: llmForm.provider, model: llmForm.model },
+                                    },
+                                  });
+                                } else {
+                                  setLlmForm({
+                                    ...llmForm,
+                                    taskOverrides: {
+                                      ...llmForm.taskOverrides,
+                                      [key]: null,
+                                    },
+                                  });
+                                }
+                              }}
+                            />
+                            override
+                          </label>
+                        </div>
+                        {ov && (
+                          <div className="space-y-1.5 pt-1">
+                            <select
+                              className="w-full rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-xs font-mono"
+                              value={ov.provider}
+                              onChange={(e) => {
+                                const nextProvider = e.target.value as LlmConfig['provider'];
+                                const preset = providersQ.data?.providers?.[nextProvider];
+                                setLlmForm({
+                                  ...llmForm,
+                                  taskOverrides: {
+                                    ...llmForm.taskOverrides,
+                                    [key]: {
+                                      ...ov,
+                                      provider: nextProvider,
+                                      // If the user picked a different
+                                      // provider, auto-fill its default
+                                      // model so they don't have to type
+                                      // it from scratch.
+                                      model: ov.model || preset?.defaultModel || ov.model,
+                                      baseUrl: ov.baseUrl ?? preset?.baseUrl ?? null,
+                                    },
+                                  },
+                                });
+                              }}
+                            >
+                              <option value="OPENAI">OpenAI</option>
+                              <option value="ANTHROPIC">Anthropic</option>
+                              <option value="OLLAMA">Ollama (local)</option>
+                              <option value="MINIMAX">Minimax</option>
+                            </select>
+                            <input
+                              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-mono"
+                              type="text"
+                              placeholder="model name (e.g. gemma3:12b)"
+                              value={ov.model}
+                              onChange={(e) => {
+                                setLlmForm({
+                                  ...llmForm,
+                                  taskOverrides: {
+                                    ...llmForm.taskOverrides,
+                                    [key]: { ...ov, model: e.target.value },
+                                  },
+                                });
+                              }}
+                            />
+                            <input
+                              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-mono"
+                              type="text"
+                              placeholder={`baseUrl (optional, e.g. ${ov.provider === 'OLLAMA' ? 'http://localhost:11434/v1' : 'leave empty to reuse primary'})`}
+                              value={ov.baseUrl ?? ''}
+                              onChange={(e) => {
+                                setLlmForm({
+                                  ...llmForm,
+                                  taskOverrides: {
+                                    ...llmForm.taskOverrides,
+                                    [key]: { ...ov, baseUrl: e.target.value || null },
+                                  },
+                                });
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </Panel>

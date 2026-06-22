@@ -117,13 +117,20 @@ const CreateWorkoutSchema = z.object({
   // without a full exercise breakdown. Independent of `type` so
   // future HIKING / RUNNING / CYCLING types can reuse the same shape.
   cardio: CardioInput,
-  // A workout is valid if it has either exercises OR a cardio block.
-  // Either-or is enforced below in the handler (the schema allows 0
-  // exercises when cardio is present so the cardio-only flow works).
+  // A workout is valid if it has any of: exercises, a cardio block,
+  // or (for freeform MOBILITY/OTHER types like jumprope / rock
+  // climbing / yoga) a name + duration. The freeform path is the
+  // newest addition — those types never have exercises or cardio
+  // fields, so we can't require either.
   exercises: z.array(ExerciseInput).default([]),
 }).refine(
-  (d) => (d.exercises?.length ?? 0) > 0 || !!d.cardio,
-  { message: 'Provide exercises or a cardio block (or both).' },
+  (d) =>
+    (d.exercises?.length ?? 0) > 0
+    || !!d.cardio
+    || (d.type === 'MOBILITY' || d.type === 'OTHER')
+        && (d.name?.trim().length ?? 0) > 0
+        && (d.duration ?? 0) > 0,
+  { message: 'Provide exercises, a cardio block, or (for freeform types) a name + duration.' },
 );
 
 export async function workoutRoutes(app: FastifyInstance) {

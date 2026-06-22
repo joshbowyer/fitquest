@@ -479,7 +479,7 @@ export async function getOrGenerateToday(
     // that ignore the system prompt still return parseable JSON
     // because of the response_format constraint.
     jsonMode: true,
-  });
+  }, 'morningReport');
 
   let parsed = result.ok ? extractJson(result.text ?? '') : null;
   if (!parsed || typeof parsed !== 'object') {

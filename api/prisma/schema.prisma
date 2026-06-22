@@ -1000,6 +1000,15 @@ model LlmConfig {
   fallbackApiKey    String?
   fallbackBaseUrl   String?
   fallbackModel     String?
+  // ---- Per-task overrides ----
+  // Each entry replaces the primary for one task. Use case: route
+  // food Ask-AI to a JSON-reliable local model (gemma3:12b) while
+  // the spiritual director runs on a warmer persona model
+  // (dolphin3:8b). Missing entries fall back to the default
+  // primary + fallback chain. The apiKey/baseUrl are optional per
+  // task — if absent, we reuse the primary's. This keeps a local-
+  // only Ollama setup clean (one key, one baseUrl, many models).
+  taskOverrides     Json?    // { food?, foodSaved?, morningReport?, spiritualDirector? }
   // ---- Shared ----
   systemPrompt      String?
   createdAt         DateTime @default(now())

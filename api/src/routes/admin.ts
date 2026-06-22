@@ -24,6 +24,25 @@ const baseUrlSchema = z
   .optional()
   .nullable();
 
+const LlmTaskOverrideSchema = z.object({
+  provider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']),
+  model: z.string().min(1).max(200),
+  // Optional per-task credentials. Null/empty = reuse the primary's
+  // (most useful for a local Ollama setup where all models share
+  // one baseUrl + no apiKey).
+  apiKey: z.string().max(500).optional().nullable(),
+  baseUrl: baseUrlSchema,
+});
+
+// Per-task overrides. Stored as JSON on the LlmConfig row.
+// Missing tasks fall back to the default primary.
+const TaskOverridesSchema = z.object({
+  food: LlmTaskOverrideSchema.optional().nullable(),
+  foodSaved: LlmTaskOverrideSchema.optional().nullable(),
+  morningReport: LlmTaskOverrideSchema.optional().nullable(),
+  spiritualDirector: LlmTaskOverrideSchema.optional().nullable(),
+}).optional().nullable();
+
 const LlmConfigSchema = z.object({
   provider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']),
   apiKey: z.string().max(500).optional().nullable(),
@@ -36,6 +55,8 @@ const LlmConfigSchema = z.object({
   fallbackApiKey: z.string().max(500).optional().nullable(),
   fallbackBaseUrl: baseUrlSchema,
   fallbackModel: z.string().min(1).max(200).optional().nullable(),
+  // ---- Per-task model overrides ----
+  taskOverrides: TaskOverridesSchema,
   // ---- Shared ----
   systemPrompt: z.string().max(4000).optional().nullable(),
 });
@@ -87,14 +108,30 @@ async function getLlmConfig() {
       fallbackApiKey: null,
       fallbackBaseUrl: null,
       fallbackModel: null,
+      taskOverrides: {
+        food: null,
+        foodSaved: null,
+        morningReport: null,
+        spiritualDirector: null,
+      },
       systemPrompt: null,
     };
   }
+  // taskOverrides is stored as JSON. Older rows may have it null
+  // (the column was added later). Always return the canonical
+  // 4-key shape so the web form doesn't crash on the edit screen.
+  const stored = (row as any).taskOverrides as Record<string, any> | null | undefined;
   return {
     ...row,
     // Redact apiKey: only show last 4 chars
     apiKey: row.apiKey ? `••••${row.apiKey.slice(-4)}` : null,
     fallbackApiKey: row.fallbackApiKey ? `••••${row.fallbackApiKey.slice(-4)}` : null,
+    taskOverrides: {
+      food: stored?.food ?? null,
+      foodSaved: stored?.foodSaved ?? null,
+      morningReport: stored?.morningReport ?? null,
+      spiritualDirector: stored?.spiritualDirector ?? null,
+    },
   };
 }
 
@@ -171,6 +208,19 @@ export async function adminRoutes(app: FastifyInstance) {
       fallbackProvider: body.fallbackProvider || null,
       fallbackBaseUrl: body.fallbackBaseUrl || null,
       fallbackModel: body.fallbackModel || null,
+      // Persist per-task overrides. We strip any redacted apiKey
+      // markers (••••) so the form round-trip doesn't accidentally
+      // overwrite the real key with a redaction string. Per-task
+      // apiKey is currently unused in the UI but we still strip it
+      // defensively for forward-compat.
+      taskOverrides: body.taskOverrides
+        ? {
+            food: redactOverrideApiKey(body.taskOverrides.food),
+            foodSaved: redactOverrideApiKey(body.taskOverrides.foodSaved),
+            morningReport: redactOverrideApiKey(body.taskOverrides.morningReport),
+            spiritualDirector: redactOverrideApiKey(body.taskOverrides.spiritualDirector),
+          }
+        : null,
       systemPrompt: body.systemPrompt,
     };
     // Only update apiKey if a real (non-redacted) value is passed.
@@ -194,6 +244,20 @@ export async function adminRoutes(app: FastifyInstance) {
       : await prisma.llmConfig.create({ data });
     return { config: await getLlmConfig().then(c => ({ ...c, id: config.id })) };
   });
+
+  /// Strip the redaction marker (••••) from a per-task override's
+  /// apiKey so the form round-trip doesn't accidentally write the
+  /// redaction string back to the DB. The override is stored as a
+  /// plain object on the JSON column; passing null/undefined in
+  /// means "no override for this task" (caller cleared it).
+  function redactOverrideApiKey(o: any): any {
+    if (!o) return null;
+    const out = { ...o };
+    if (typeof out.apiKey === 'string' && out.apiKey.startsWith('••••')) {
+      delete out.apiKey;
+    }
+    return out;
+  }
 
   // Expose provider presets so the web form can auto-fill baseUrl + model
   // when the admin switches providers.
