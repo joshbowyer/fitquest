@@ -766,6 +766,14 @@ model Daily {
   // Days this daily is due on (0-6 Sun-Sat). If empty array, due every day.
   // Built-in dailies (WORKOUT/SPIRITUAL/SLEEP) auto-populate this.
   days        DayOfWeek[]
+  // Master switch for "show on /today". When false, the daily is
+  // archived from the user's daily checklist (still loggable, just
+  // not auto-due). This is the user-defined analog of toggling a
+  // built-in PrayerType on/off in User.spiritualDailyPrayers.
+  // Defaults true so newly-created custom practices appear on
+  // /today immediately (matching the previous implicit behavior
+  // where any non-archived SPIRITUAL row showed up).
+  isDaily     Boolean       @default(true)
   notes       String?
   // Reward on completion (gold/xp). 0 = no reward. Default 5/2.
   goldReward  Int           @default(5)

@@ -15,6 +15,11 @@ const createSchema = z.object({
   goldReward: z.number().int().min(0).max(1000).default(5),
   xpReward: z.number().int().min(0).max(1000).default(5),
   category: z.nativeEnum(DailyCategory).default('USER'),
+  // Master switch for "show on /today". Custom SPIRITUAL practices
+  // are created with isDaily=true by default so they appear in the
+  // daily checklist immediately. Toggleable from the /spiritual
+  // "Daily prayers" panel (click to add/remove).
+  isDaily: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
 });
 
@@ -96,7 +101,12 @@ export async function dailyRoutes(app: FastifyInstance) {
 
     const [userDailies, routineDays, todayLogs, recentWorkout] = await Promise.all([
       prisma.daily.findMany({
-        where: { userId: me.id, archived: false },
+        // Only dailies the user has marked as "show on /today".
+        // Custom practices with isDaily=false are still loggable
+        // (visible in the prayer picker on /spiritual) but don't
+        // auto-appear in the daily checklist. This mirrors the
+        // built-in PrayerType toggle on User.spiritualDailyPrayers.
+        where: { userId: me.id, archived: false, isDaily: true },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
       prisma.routineDay.findMany({ where: { userId: me.id } }),

@@ -56,6 +56,7 @@ type CustomPractice = {
   goldReward: number;
   xpReward: number;
   archived: boolean;
+  isDaily: boolean;
   createdAt: string;
 };
 
@@ -571,7 +572,37 @@ function DailyPrayerConfig({
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<PrayerType[]>(current);
-  const [confirmArchive, setConfirmArchive] = useState<CustomPractice | null>(null);
+  // Local optimistic copy of the custom-practice "is on /today"
+  // toggle. Each click flips the draft and fires a PATCH. We keep
+  // the server's view in `customPractices` for re-syncs (e.g. when
+  // a different tab updates) — when `customPractices` changes, we
+  // re-seed the draft to match.
+  const [customDraft, setCustomDraft] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(customPractices.map((cp) => [cp.id, cp.isDaily])),
+  );
+
+  // Re-seed customDraft when the server's customPractices list
+  // changes (e.g. after invalidation following a successful toggle,
+  // or after creating a new practice from the + Custom practice
+  // modal). Without this, toggling one practice could leave the
+  // draft out of sync with the server, and newly-created practices
+  // wouldn't show in the panel until a hard reload.
+  useEffect(() => {
+    setCustomDraft((cur) => {
+      const next: Record<string, boolean> = {};
+      for (const cp of customPractices) {
+        // Preserve the user's pending toggle if the server value
+        // hasn't been updated yet (we just optimistically flipped it).
+        // When the server catches up to our optimistic value, it
+        // matches `cur[cp.id]` and we keep it; if the server is
+        // different (shouldn't happen for in-flight toggles, but
+        // covers external changes), we adopt the server's value.
+        next[cp.id] = cur[cp.id] !== undefined ? cur[cp.id] : cp.isDaily;
+      }
+      return next;
+    });
+  }, [customPractices]);
+
   const dirty =
     draft.length !== current.length ||
     draft.some((d) => !current.includes(d));
@@ -582,21 +613,26 @@ function DailyPrayerConfig({
     onSuccess: () => onSaved(),
   }, 400);
 
-  // Archive a custom spiritual practice. This sets archived=true on
-  // the Daily row, removing it from /today's checklist and from the
-  // "Log a Prayer" grid on this page. The practice's prayer logs are
-  // preserved (cascade: SetNull on dailyId) so the user's history
-  // is not lost — the row just stops being offered as an option.
-  const archiveM = useDelayedMutation<{ ok: boolean }, string>({
-    mutationFn: (id) => api(`/dailies/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
-      setConfirmArchive(null);
-      onSaved();
-    },
-  }, 400);
+  // Toggle a custom practice's isDaily flag. PATCHes the row in
+  // place — same shape as the built-in toggle (single click,
+  // single round trip, no confirm modal). We update the local
+  // draft immediately for snappy UX, then on success the parent
+  // invalidates ['spiritual'] and re-seeds customDraft from the
+  // fresh server payload.
+  const toggleCustomM = useDelayedMutation<{ daily: CustomPractice }, { id: string; isDaily: boolean }>({
+    mutationFn: ({ id, isDaily }) =>
+      api(`/dailies/${id}`, { method: 'PATCH', body: { isDaily } }),
+    onSuccess: () => onSaved(),
+  }, 250);
 
   function toggle(t: PrayerType) {
     setDraft((d) => (d.includes(t) ? d.filter((x) => x !== t) : [...d, t]));
+  }
+
+  function toggleCustom(cp: CustomPractice) {
+    const next = !(customDraft[cp.id] ?? cp.isDaily);
+    setCustomDraft((d) => ({ ...d, [cp.id]: next }));
+    toggleCustomM.run({ id: cp.id, isDaily: next });
   }
 
   return (
@@ -629,40 +665,42 @@ function DailyPrayerConfig({
         })}
       </div>
 
-      {/* User-defined custom practices. These are USER SPIRITUAL
-          dailies — they always show on /today when their days match
-          (creation defaults to every day). The toggle here would
-          be misleading since "off" doesn't really mean anything
-          for them; instead we expose archive so the user can prune
-          a practice they no longer want. */}
+      {/* User-defined custom practices — same click-to-toggle UX as
+          the built-in chips above. Click to add/remove from /today.
+          A practice is still loggable from the "Log a Prayer" grid
+          regardless of its daily status; the toggle only controls
+          whether it auto-appears on the daily checklist. */}
       {customPractices.length > 0 && (
         <div className="mt-4 pt-3 border-t border-ink-500/20">
           <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
             Your custom practices
             <span className="text-ink-500 normal-case tracking-normal ml-2">
-              · always on /today · × to remove
+              · click to toggle on /today
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {customPractices.map((cp) => (
-              <div
-                key={cp.id}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono border border-neon-cyan/50 text-neon-cyan bg-neon-cyan/5"
-                title="Always shows on /today — click × to remove the practice"
-              >
-                <span>✦</span>
-                <span className="max-w-[16rem] truncate">{cp.name}</span>
-                <span className="text-ink-500">+{cp.xpReward}xp</span>
+            {customPractices.map((cp) => {
+              const on = customDraft[cp.id] ?? cp.isDaily;
+              return (
                 <button
+                  key={cp.id}
                   type="button"
-                  onClick={() => setConfirmArchive(cp)}
-                  className="ml-1 text-ink-500 hover:text-neon-red"
-                  title="Remove this custom practice"
+                  onClick={() => toggleCustom(cp)}
+                  className={
+                    'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-mono border transition-all ' +
+                    (on
+                      ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                      : 'border-ink-500/30 text-ink-300 hover:border-ink-300')
+                  }
+                  title={on ? 'On /today — click to remove' : 'Click to add to /today'}
                 >
-                  ×
+                  <span>✦</span>
+                  <span className="max-w-[16rem] truncate">{cp.name}</span>
+                  <span className="text-ink-500">+{cp.xpReward}xp</span>
+                  <span className={on ? 'text-neon-cyan' : 'text-ink-500'}>{on ? '✓ daily' : '+ add'}</span>
                 </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -679,30 +717,6 @@ function DailyPrayerConfig({
             Save daily prayers
           </NeonButton>
         </div>
-      )}
-
-      {confirmArchive && (
-        <Modal open onClose={() => setConfirmArchive(null)} title="Remove custom practice?">
-          <div className="space-y-3">
-            <div className="text-xs font-mono text-ink-100">
-              Remove <span className="text-neon-cyan">✦ {confirmArchive.name}</span> from your spiritual
-              practices? It will stop appearing on /today and the Log a Prayer grid. Your past prayer
-              logs for it are kept (just unmarked).
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <NeonButton variant="cyan" onClick={() => setConfirmArchive(null)}>Cancel</NeonButton>
-              <NeonButton
-                variant="magenta"
-                icon="×"
-                loading={archiveM.isPending}
-                loadingText="Removing…"
-                onClick={() => archiveM.run(confirmArchive.id)}
-              >
-                Remove
-              </NeonButton>
-            </div>
-          </div>
-        </Modal>
       )}
     </Panel>
   );
