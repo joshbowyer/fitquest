@@ -250,6 +250,8 @@ model User {
   correlationSnapshots CorrelationSnapshot[]
   teamWorkoutsLed      TeamWorkout[]      @relation("TeamWorkoutLeader")
   teamParticipations   TeamParticipant[]
+  trustedDevices       TrustedDevice[]
+  recoveryCodes        RecoveryCode[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -286,6 +288,27 @@ model User {
   /// upcoming food tracker; the LLM will use this when looking up
   /// foods that aren't in OpenFoodFacts. Private to the user.
   usdaApiKey      String?
+  /// Per-user sidebar order. JSON array of route paths ('/dashboard',
+  /// '/quest', etc.) in the user's preferred sequence. Replaces the
+  /// localStorage-only order so mobile + laptop stay in sync.
+  /// Persists across devices, login sessions, and browser switches.
+  /// Null = use the canonical default order from the frontend.
+  navOrder        Json?
+  /// TOTP secret, base32-encoded. Null when 2FA is not configured.
+  /// Setup flow generates a fresh secret + recovery codes; user
+  /// must verify one code before the secret is committed (and
+  /// totpEnabled flips to true).
+  totpSecret      String?
+  /// Whether the user must complete a TOTP code at login. False
+  /// during the grace window after first registration so the user
+  /// isn't locked out if the authenticator app setup fails.
+  totpEnabled     Boolean  @default(false)
+  /// Counter for failed login attempts. Reset on successful login.
+  /// Used by the brute-force protection in the auth route.
+  failedLogins    Int      @default(0)
+  /// When the account was last locked out due to too many failed
+  /// attempts. Null = not locked. Resets on successful login.
+  lockedUntil     DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -634,6 +657,11 @@ model Session {
   createdAt DateTime @default(now())
   userAgent String?
   ipAddress String?
+  /// 'FULL' = normal authenticated session. 'TOTP_PENDING' = the
+  /// user has supplied their password but hasn't yet passed the
+  /// TOTP step; expires in 5 min and is consumed by /auth/login/totp
+  /// to upgrade to 'FULL'.
+  kind      String   @default("FULL")
 }
 
 model UserWorldProgress {
@@ -1507,4 +1535,63 @@ model CorrelationSnapshot {
 
   @@unique([userId, snapshotDate, habit, outcome, lagDays, lookbackDays])
   @@index([userId, habit, outcome, snapshotDate])
+}
+
+// ============================================================
+// TrustedDevice — "remember this device for 90 days" feature.
+// On successful TOTP login, the user can opt to issue a long-
+// lived HttpOnly cookie bound to a TrustedDevice row. On
+// subsequent logins, if the cookie's hashed token matches a
+// non-expired row, the TOTP step is skipped.
+//
+// The token in the cookie is opaque + random; the row stores
+// only its sha256 hash so a DB leak doesn't let an attacker
+// forge a "trusted" cookie.
+// ============================================================
+
+model TrustedDevice {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// sha256(opaque-token). 32 hex chars.
+  tokenHash   String   @unique
+  /// User-supplied label like "MacBook Pro" or "iPhone 15". Falls
+  /// back to the User-Agent prefix if the client doesn't supply one.
+  label       String
+  /// Last User-Agent that used this token. Surfaces in the
+  /// trusted-devices list so the user can recognize which row
+  /// to revoke if something looks off.
+  userAgent   String?
+  /// Last IP. Same purpose as userAgent — surfaces in the list.
+  lastIp      String?
+  /// Last time this token was used to skip TOTP. Used to prune
+  /// stale rows (e.g. > 90 days since last use → drop).
+  lastUsedAt  DateTime @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+// ============================================================
+// RecoveryCode — single-use backup codes for users who lose
+// access to their authenticator app. Generated at 2FA setup
+// time; the user is told to write them down once. Stored as
+// sha256 hashes so a DB read doesn't leak the codes.
+// ============================================================
+
+model RecoveryCode {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// sha256(normalized code). The row is deleted on use, so a
+  /// given hash only exists once in the table.
+  codeHash   String
+  /// null = unused. Set when the user burns this code in place
+  /// of a TOTP code at login.
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, codeHash])
+  @@index([userId])
 }

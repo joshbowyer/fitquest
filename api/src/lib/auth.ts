@@ -6,6 +6,17 @@ import { config } from './config.js';
 
 const SALT_ROUNDS = 12;
 
+/// How long a TOTP_PENDING session is valid before it expires
+/// without the user entering a code. Five minutes is enough time
+/// to grab a phone and type 6 digits without being so long that
+/// a stolen cookie becomes a long-lived attack window.
+const TOTP_PENDING_TTL_MS = 5 * 60 * 1000;
+
+/// Cookie name for the "remember this device for 90 days" token.
+/// Different from the session cookie so the two can have different
+/// lifetimes and we can revoke them independently.
+export const TRUSTED_DEVICE_COOKIE = 'fq_trust';
+
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
 }
@@ -18,13 +29,30 @@ export function generateSessionToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-export async function createSession(userId: string, req: FastifyRequest) {
+/**
+ * Create a session row. `kind` is 'FULL' (normal authenticated
+ * session) or 'TOTP_PENDING' (password passed, awaiting TOTP
+ * code — see /auth/login + /auth/login/totp below).
+ *
+ * TOTP_PENDING sessions are short-lived (5 min) and can ONLY be
+ * consumed by /auth/login/totp which upgrades them to FULL or
+ * deletes them on failure. requireUser() rejects TOTP_PENDING so
+ * a half-completed login can't reach the API.
+ */
+export async function createSession(
+  userId: string,
+  req: FastifyRequest,
+  options: { kind?: 'FULL' | 'TOTP_PENDING' } = {}
+) {
   const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + config.sessionTtlDays * 24 * 60 * 60 * 1000);
+  const kind = options.kind ?? 'FULL';
+  const ttlMs = kind === 'TOTP_PENDING' ? TOTP_PENDING_TTL_MS : config.sessionTtlDays * 24 * 60 * 60 * 1000;
+  const expiresAt = new Date(Date.now() + ttlMs);
   const session = await prisma.session.create({
     data: {
       userId,
       token,
+      kind,
       expiresAt,
       userAgent: req.headers['user-agent'] ?? null,
       ipAddress: req.ip,
@@ -37,6 +65,18 @@ export async function createSessionAndFetchUser(userId: string, req: FastifyRequ
   const session = await createSession(userId, req);
   const user = await prisma.user.findUnique({ where: { id: userId } });
   return { session, user };
+}
+
+/**
+ * Promote a TOTP_PENDING session to FULL by updating its kind
+ * and extending the expiresAt. Returns the updated session.
+ */
+export async function promotePendingSession(token: string) {
+  const expiresAt = new Date(Date.now() + config.sessionTtlDays * 24 * 60 * 60 * 1000);
+  return prisma.session.update({
+    where: { token },
+    data: { kind: 'FULL', expiresAt },
+  });
 }
 
 export async function setSessionCookie(reply: FastifyReply, token: string) {
@@ -54,12 +94,50 @@ export function clearSessionCookie(reply: FastifyReply) {
   reply.clearCookie(config.cookieName, { path: '/' });
 }
 
-export async function getSessionUser(req: FastifyRequest) {
+/**
+ * Set the trusted-device cookie. Holds the raw token; the DB
+ * stores the sha256 hash so a leak of the DB doesn't leak trust.
+ * 90-day lifetime matches the TrustedDevice row's expiresAt.
+ */
+export function setTrustedDeviceCookie(reply: FastifyReply, token: string) {
+  reply.setCookie(TRUSTED_DEVICE_COOKIE, token, {
+    httpOnly: true,
+    secure: !config.isDev,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 90 * 24 * 60 * 60,
+    signed: true,
+  });
+}
+
+export function clearTrustedDeviceCookie(reply: FastifyReply) {
+  reply.clearCookie(TRUSTED_DEVICE_COOKIE, { path: '/' });
+}
+
+/**
+ * Read the trusted-device cookie + return its hash (suitable for
+ * TrustedDevice.tokenHash lookup). Returns null if the cookie is
+ * missing or the signed value is invalid.
+ */
+export function readTrustedDeviceCookie(req: FastifyRequest): string | null {
+  const raw = req.cookies[TRUSTED_DEVICE_COOKIE];
+  if (!raw) return null;
+  const unsigned = req.unsignCookie(raw);
+  if (!unsigned.valid || !unsigned.value) return null;
+  // Mirror of totp.sha256 — kept inline to avoid an import cycle.
+  return crypto.createHash('sha256').update(unsigned.value).digest('hex');
+}
+
+/**
+ * Look up the session attached to the request cookie and return
+ * the full session row. Returns null if the cookie is missing,
+ * invalid, or the session has expired.
+ */
+export async function getSession(req: FastifyRequest) {
   const raw = req.cookies[config.cookieName];
   if (!raw) return null;
   const unsigned = req.unsignCookie(raw);
   if (!unsigned.valid || !unsigned.value) return null;
-
   const session = await prisma.session.findUnique({
     where: { token: unsigned.value },
     include: { user: true },
@@ -69,6 +147,19 @@ export async function getSessionUser(req: FastifyRequest) {
     await prisma.session.delete({ where: { id: session.id } }).catch(() => {});
     return null;
   }
+  return session;
+}
+
+/**
+ * Authenticated user lookup. TOTP_PENDING sessions are rejected
+ * here so a half-finished login can't reach any protected route.
+ * The /auth/login/totp route uses getSession() directly to read
+ * the pending session, so it's the one place TOTP_PENDING leaks.
+ */
+export async function getSessionUser(req: FastifyRequest) {
+  const session = await getSession(req);
+  if (!session) return null;
+  if (session.kind === 'TOTP_PENDING') return null;
   return session.user;
 }
 

@@ -179,4 +179,39 @@ export async function userRoutes(app: FastifyInstance) {
       nextLevel: levelFromXp(me.xp + 1) > me.level ? me.level + 1 : me.level,
     };
   });
+
+  // Per-user sidebar order. Returns the saved array of route paths
+  // (or null if the user hasn't reordered yet). The frontend uses
+  // null to fall back to the canonical default order.
+  app.get('/me/nav-order', async (req) => {
+    const me = await requireUser(req);
+    return { order: me.navOrder ?? null };
+  });
+
+  // Persist the user's preferred sidebar order. Body is
+  // { order: string[] } — array of route paths. We accept any
+  // length and validate against the canonical NAV list on the
+  // client; the server just stores whatever the client sends so
+  // adding a new nav item doesn't require a schema migration.
+  app.put('/me/nav-order', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = req.body as { order?: unknown };
+    if (!Array.isArray(body.order)) {
+      return reply.code(400).send({ error: 'order must be an array of route paths' });
+    }
+    // Defensive: cap length, force strings, drop empties.
+    const cleaned = body.order
+      .filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length < 100)
+      .slice(0, 100);
+    if (cleaned.length === 0) {
+      // Empty array = "use default" — clear the column.
+      await prisma.user.update({ where: { id: me.id }, data: { navOrder: null } });
+      return { ok: true, order: null };
+    }
+    await prisma.user.update({
+      where: { id: me.id },
+      data: { navOrder: cleaned as any },
+    });
+    return { ok: true, order: cleaned };
+  });
 }
