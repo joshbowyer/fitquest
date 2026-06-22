@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
@@ -10,6 +10,7 @@ import {
   type FoodMatch,
   type MealEntry,
   type MealType,
+  type TodayMealsResponse,
   MEAL_TYPE_LABEL,
   MEAL_TYPE_ORDER,
 } from '@/lib/types';
@@ -179,36 +180,14 @@ export function FoodPanel() {
             </button>
           </div>
           <div className="space-y-1 max-h-44 overflow-y-auto">
-            {savedQ.data.items.slice(0, 8).map((s) => {
-              const defaultMeal: MealType = (() => {
-                const h = new Date().getHours();
-                return h < 10 ? 'BREAKFAST' : h < 14 ? 'LUNCH' : h < 21 ? 'DINNER' : 'SNACK';
-              })();
-              return (
-                <div
-                  key={s.id}
-                  className="text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 flex items-center gap-2"
-                  title={s.recipe ?? s.name}
-                >
-                  <span className="text-slate-200 truncate flex-1">{s.name}</span>
-                  <span className="text-amber-300 text-[10px] shrink-0">
-                    {s.calories.toFixed(0)} cal
-                  </span>
-                  <span className="text-ink-500 text-[10px] shrink-0">
-                    ·{s.proteinG.toFixed(0)}p
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => logSavedM.run({ id: s.id, meal: defaultMeal, servings: 1 })}
-                    disabled={logSavedM.isPending}
-                    className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
-                    title={`Quick-log to ${defaultMeal.toLowerCase()}`}
-                  >
-                    + log
-                  </button>
-                </div>
-              );
-            })}
+            {savedQ.data.items.slice(0, 8).map((s) => (
+              <SavedFoodRow
+                key={s.id}
+                saved={s}
+                logging={logSavedM.isPending}
+                onLog={(meal) => logSavedM.run({ id: s.id, meal, servings: 1 })}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -1024,6 +1003,144 @@ function AskAiSavedFoodModal({
 // ============================================================================
 // Log Meal modal — pick meal section + set servings
 // ============================================================================
+
+// ============================================================================
+// SavedFoodRow — one row in the "Your saved foods" list. Hosts a
+// little popover menu on the + log button so the user can pick
+// which meal section to log the food to. Defaults to the current
+// time-of-day meal but a single click on the chevron reveals all
+// four. The popover also shows the current total for each meal
+// so the user can pre-log to whichever section they're planning
+// to eat it in (often the case for someone who tracks end-of-day
+// totals in advance).
+// ============================================================================
+
+function SavedFoodRow({
+  saved,
+  logging,
+  onLog,
+}: {
+  saved: SavedFoodDto;
+  logging: boolean;
+  onLog: (meal: MealType) => void;
+}) {
+  const todayQ = useQuery({
+    queryKey: ['meals', 'today'],
+    queryFn: () => api<TodayMealsResponse>('/meals/today'),
+  });
+  // Today's calorie totals per meal (read-only, just for the
+  // popover's preview). NaN-safe — totals are 0 when the meal
+  // section has no entries yet.
+  const mealCal = (m: MealType): number =>
+    todayQ.data?.meals[m]?.totals.calories ?? 0;
+
+  // Default meal by hour: a quick-log without picking just goes
+  // to whatever section "now" is in.
+  const defaultMeal: MealType = (() => {
+    const h = new Date().getHours();
+    return h < 10 ? 'BREAKFAST' : h < 14 ? 'LUNCH' : h < 21 ? 'DINNER' : 'SNACK';
+  })();
+
+  const [open, setOpen] = useState(false);
+
+  // Close the popover when the user clicks anywhere else. Using
+  // a ref + outside-click handler so we don't depend on focus
+  // state (which is unreliable on mobile).
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  function commit(meal: MealType) {
+    setOpen(false);
+    onLog(meal);
+  }
+
+  return (
+    <div
+      className="text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 flex items-center gap-2"
+      title={saved.recipe ?? saved.name}
+    >
+      <span className="text-slate-200 truncate flex-1">{saved.name}</span>
+      <span className="text-amber-300 text-[10px] shrink-0">
+        {saved.calories.toFixed(0)} cal
+      </span>
+      <span className="text-ink-500 text-[10px] shrink-0">
+        ·{saved.proteinG.toFixed(0)}p
+      </span>
+      {/* The + log button + a chevron that opens the meal picker.
+          Clicking the button itself quick-logs to the default
+          (time-of-day) meal. Clicking the chevron reveals all
+          four so the user can pre-log to a future section. */}
+      <div ref={ref} className="relative flex items-center">
+        <div className="flex border border-neon-amber/50">
+          <button
+            type="button"
+            onClick={() => commit(defaultMeal)}
+            disabled={logging}
+            className="px-2 py-0.5 text-[10px] font-mono text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50"
+            title={`Quick-log to ${MEAL_TYPE_LABEL[defaultMeal].toLowerCase()} (now)`}
+          >
+            + log
+          </button>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            disabled={logging}
+            className="px-1 py-0.5 text-[10px] font-mono text-neon-amber border-l border-neon-amber/50 hover:bg-neon-amber/10 disabled:opacity-50"
+            title="Pick a different meal section"
+            aria-label="Pick meal"
+          >
+            ▾
+          </button>
+        </div>
+        {open && (
+          <div
+            className="absolute right-0 top-full mt-1 z-30 bg-bg-800 border border-amber-500/40 min-w-[180px] shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[9px] font-mono uppercase tracking-widest text-ink-500 px-2 py-1 border-b border-ink-500/20">
+              Add to meal
+            </div>
+            {MEAL_TYPE_ORDER.map((m) => {
+              const cal = mealCal(m);
+              const isDefault = m === defaultMeal;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => commit(m)}
+                  disabled={logging}
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] font-mono text-left text-slate-200 hover:bg-neon-amber/10 disabled:opacity-50"
+                >
+                  <span className="flex items-center gap-1.5">
+                    {MEAL_TYPE_LABEL[m]}
+                    {isDefault && (
+                      <span className="text-ink-500 text-[9px]">· now</span>
+                    )}
+                  </span>
+                  <span className="text-amber-300/80 text-[10px] tabular-nums">
+                    {todayQ.isLoading ? '…' : `${cal.toFixed(0)} cal`}
+                  </span>
+                </button>
+              );
+            })}
+            <div className="border-t border-ink-500/20 px-2 py-1 text-[9px] font-mono text-ink-500">
+              pre-log any meal to see end-of-day totals early
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function LogMealModal({
   food,
