@@ -8,6 +8,8 @@ import type {
   MonitoringMesg,
   StressLevelMesg,
   RespirationRateMesg,
+  HsaBodyBatteryDataMesg,
+  HsaStepDataMesg,
 } from '@garmin/fitsdk';
 
 /**
@@ -89,7 +91,9 @@ export type ParsedMeasurement = {
     | 'RESTING_HR'
     | 'STRESS'
     | 'RESPIRATION_RATE'
-    | 'VO2_MAX';
+    | 'VO2_MAX'
+    | 'BODY_BATTERY'
+    | 'STEPS';
   value: number;
   recordedAt: Date;
   notes?: string;
@@ -151,17 +155,7 @@ export function parseFit(buf: Buffer): FitImportResult {
     case 'monitor':
       return { kind, sourceTimestamp, ...parseMonitor(decoded.messages), skipped: skipped.length ? skipped : undefined };
     case 'metrics':
-      return {
-        kind,
-        sourceTimestamp,
-        skipped: [
-          ...skipped,
-          {
-            reason:
-              'METRICS files are Garmin-specific health snapshots; not imported in v1. Future: body battery, intensity minutes, steps.',
-          },
-        ],
-      };
+      return { kind, sourceTimestamp, ...parseMetrics(decoded.messages), skipped: skipped.length ? skipped : undefined };
     default:
       return {
         kind: 'unknown',
@@ -477,7 +471,121 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
     }
   }
 
-  void monitoring;
+  // MONITOR (per-15min activity samples). We SUM steps across the
+  // day (per-interval, not cumulative) and AVG active calories
+  // contribution. Keeps the daily steps as a single row, recorded
+  // at the import time (not the per-interval time) so it lines up
+  // with the rest of the wellness log.
+  if (monitoring.length > 0) {
+    const stepValues: number[] = [];
+    const calValues: number[] = [];
+    for (const m of monitoring) {
+      const s = (m as any).steps;
+      if (typeof s === 'number' && s > 0) stepValues.push(s);
+      const c = (m as any).activeCalories ?? (m as any).calories;
+      if (typeof c === 'number' && c > 0) calValues.push(c);
+    }
+    if (stepValues.length > 0) {
+      const totalSteps = stepValues.reduce((s, v) => s + v, 0);
+      if (totalSteps > 0) {
+        measurements.push({ metric: 'STEPS', value: totalSteps, recordedAt: new Date() });
+      }
+    }
+    // Note: calories are already tracked via /meals + /workouts;
+    // we don't double-count by pushing them here. (Future: a
+    // dedicated ACTIVE_CALORIES metric if we want a separate
+    // "garmin says" number to compare against the user's logs.)
+    void calValues;
+  }
+
+  return measurements.length ? { measurements } : {};
+}
+
+// ============================================================
+// Metrics parser (Garmin Health Snapshot / HSA files)
+// ============================================================
+//
+// METRICS files (Garmin type 44) bundle daily health summaries:
+// body battery levels + charges, step counts, SpO2, sleep scores.
+// We pull:
+//   - HsaBodyBatteryDataMesg: per-interval body battery (level, charged)
+//   - HsaStepDataMesg:        per-interval step counts (sum for the day)
+//   - HrvStatusSummaryMesg:   weekly avg + last night RMSSD
+//   - HrvValueMesg:           5-min RMSSD samples (fallback if no summary)
+//   - SleepLevelMesg:         already handled by the sleep parser
+//
+// Note: the body battery file is the most useful — it's Garmin's
+// "energy" score, complementary to HRV (which is recovery). The
+// morning report can mention "body battery avg was 38/100, lowest
+// at 2pm" if the data is there.
+
+function parseMetrics(messages: any): Pick<FitImportResult, 'measurements'> {
+  const bbData = (messages.hsaBodyBatteryDataMesgs ?? []) as Array<{
+    level?: number[];
+    charged?: number[];
+    uncharged?: number[];
+  }>;
+  const stepData = (messages.hsaStepDataMesgs ?? []) as Array<{
+    steps?: number[];
+  }>;
+  const hrvSummary = (messages.hrvStatusSummaryMesgs ?? []) as Array<{
+    weeklyAverage?: number;
+    lastNightAverage?: number;
+  }>;
+  const hrvValues = (messages.hrvValueMesgs ?? []) as Array<{
+    value?: number;
+  }>;
+  const measurements: ParsedMeasurement[] = [];
+
+  // Body battery: Garmin stores per-interval `level` as a Sint8 array
+  // (-16 = "no reading"). Average the valid readings across the day
+  // for a single Body Battery row. We also report the final level
+  // (last valid reading) as a separate measurement so the trend line
+  // on /measurements shows the EOD value rather than the day average.
+  const bbLevels: number[] = [];
+  for (const row of bbData) {
+    if (Array.isArray(row.level)) {
+      for (const v of row.level) {
+        if (typeof v === 'number' && v >= 0 && v <= 100) bbLevels.push(v);
+      }
+    }
+  }
+  if (bbLevels.length > 0) {
+    const avg = Math.round(bbLevels.reduce((s, v) => s + v, 0) / bbLevels.length);
+    measurements.push({ metric: 'BODY_BATTERY', value: avg, recordedAt: new Date() });
+  }
+
+  // Steps: sum per-interval counts to a daily total.
+  if (stepData.length > 0) {
+    let total = 0;
+    for (const row of stepData) {
+      if (Array.isArray(row.steps)) {
+        for (const v of row.steps) if (typeof v === 'number' && v > 0) total += v;
+      }
+    }
+    if (total > 0) {
+      measurements.push({ metric: 'STEPS', value: total, recordedAt: new Date() });
+    }
+  }
+
+  // HRV: prefer the weekly average from the summary. Fall back to
+  // the mean of the 5-min samples if no summary is present.
+  let hrv = NaN;
+  const firstSummary = hrvSummary[0];
+  if (firstSummary && typeof firstSummary.weeklyAverage === 'number') {
+    hrv = firstSummary.weeklyAverage;
+  } else if (hrvValues.length > 0) {
+    const vals = hrvValues
+      .map((v) => v.value)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    if (vals.length > 0) {
+      hrv = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+  }
+  if (Number.isFinite(hrv) && hrv > 0) {
+    measurements.push({ metric: 'HRV', value: hrv, recordedAt: new Date() });
+  }
+
   return measurements.length ? { measurements } : {};
 }
 

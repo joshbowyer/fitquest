@@ -147,6 +147,10 @@ function unitFor(metric: string): string {
       return 'bpm';
     case 'STRESS':
       return '/100';
+    case 'BODY_BATTERY':
+      return '/100';
+    case 'STEPS':
+      return '';
     case 'RESPIRATION_RATE':
       return 'brpm';
     case 'VO2_MAX':

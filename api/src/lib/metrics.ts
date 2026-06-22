@@ -443,6 +443,32 @@ export const METRICS: Record<MetricType, MetricMeta> = {
     format: (v) => `${v.toFixed(0)}/10`,
     description: 'Subjective stress (1-10).',
   },
+  // Garmin HSA / METRICS file imports
+  BODY_BATTERY: {
+    type: 'BODY_BATTERY',
+    category: 'WELLNESS',
+    label: 'Body battery',
+    shortLabel: 'BB',
+    unit: '/100',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => `${v.toFixed(0)}/100`,
+    // Garmin: 5-100. Higher = more energy. Lower scores (<30) flag
+    // the user as depleted. Useful as a secondary recovery signal
+    // alongside HRV + sleep.
+    description: 'Garmin body battery (0-100). Higher = more energy.',
+  },
+  STEPS: {
+    type: 'STEPS',
+    category: 'WELLNESS',
+    label: 'Steps',
+    shortLabel: 'Steps',
+    unit: '',
+    inverted: false,
+    defaultMin: 5,
+    format: (v) => v.toLocaleString(),
+    description: 'Daily step count (from FIT MONITOR/METRICS files).',
+  },
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
@@ -453,7 +479,7 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'PUSHUP_MAX', 'PULLUP_MAX'],
   SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
   NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
-  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],
+  WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS', 'BODY_BATTERY', 'STEPS'],
 };
 
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {

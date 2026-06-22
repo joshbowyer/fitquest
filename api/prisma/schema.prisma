@@ -65,6 +65,11 @@ enum MetricType {
   ENERGY
   SORENESS
   STRESS
+  // Garmin HSA / METRICS file imports
+  // BODY_BATTERY: 0-100, 5 min sample. Higher = more recovered.
+  // STEPS: total daily step count.
+  BODY_BATTERY
+  STEPS
 }
 
 enum MetricCategory {
