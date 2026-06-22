@@ -464,16 +464,16 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
     }
   }
 
-  // Average respiration rate (breaths per minute)
+  // Average respiration rate (breaths per minute). Garmin's
+  // RespirationRateMesg has both a standard rate and an "enhanced"
+  // reading; we average whatever values are > 0.
   if (resp.length > 0) {
     const values = resp
       .map((r) => (r as any).respirationRate ?? (r as any).enhancedRespirationRate ?? 0)
       .filter((v: number) => v > 0);
     if (values.length > 0) {
       const avg = Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10;
-      void avg;
-      // We don't have a RESPIRATION_RATE metric in METRICS yet, so skip
-      // silently. Future: add it.
+      measurements.push({ metric: 'RESPIRATION_RATE', value: avg, recordedAt: new Date() });
     }
   }
 
