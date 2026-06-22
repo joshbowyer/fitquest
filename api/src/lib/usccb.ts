@@ -1,31 +1,42 @@
 /**
  * USCCB daily Mass readings fetcher.
  *
- * The USCCB publishes daily readings via two channels:
- *   1. A FeedBurner RSS feed at https://feeds.feedburner.com/UsccbDailyReadings
- *      — accessible to plain HTTP, no auth, contains ~10 most recent days.
- *   2. Per-day HTML pages at https://bible.usccb.org/bible/readings/MMDDYY.cfm
- *      — these are gated by a Cloudflare "Obolus" proof-of-work JS
- *      challenge, so curl/fetch gets a challenge page, not the readings.
+ * The USCCB publishes daily readings via several channels. None of
+ * them are perfect for a self-hosted server, so we cascade through
+ * all of them in order of preference:
+ *
+ *   1. The Prisma cache (UsccbDailyReading) — instant, populated by
+ *      the previous two paths.
+ *   2. A FeedBurner RSS feed at https://feeds.feedburner.com/UsccbDailyReadings
+ *      — accessible to plain HTTP, no auth. Holds ~10 most recent
+ *      days, so anything older than a week needs a fallback.
+ *   3. The Wayback Machine snapshot of the per-day HTML page at
+ *      https://bible.usccb.org/bible/readings/MMDDYY.cfm — that page
+ *      itself is gated by a Cloudflare "Obolus" proof-of-work JS
+ *      challenge, so curl/fetch gets the challenge page, not the
+ *      readings. The Wayback Machine captures it without the
+ *      challenge. Snapshots exist for almost every date going back
+ *      years. The "closest" snapshot is fine for our use case
+ *      since readings don't change once published.
  *
  * Strategy:
- *   - Hit the RSS feed (works, gives us the last 10 days).
- *   - Parse the date from the item's <link> URL (MMDDYY.cfm or
- *     memorial slug like 'memorial-immaculate-heart-blessed-virgin-mary').
- *   - Parse the description HTML into structured readings.
- *   - Cache in UsccbDailyReading table.
+ *   - On startup, seed the next 7 days (RSS first, Wayback for
+ *     dates RSS missed).
+ *   - A 24-hour timer re-seeds the next 7 days, so the cache stays
+ *     one week ahead of the calendar.
+ *   - getDailyReading(date) chains the same cascade for the date
+ *     the user is asking about.
  *
- * The cache fills naturally: each day's reading is available on the
- * feed for ~10 days, so by the time it's gone, it's cached. For a
- * full 1-year offline cache, the roadmap calls for scraping the .cfm
- * pages through a headless browser (Puppeteer) or via the USCCB API
- * (which exists but requires an API key).
+ * Mass readings don't change once published, so the Wayback
+ * snapshot from any time is safe to cache forever.
  */
 
 import { prisma } from './prisma.js';
 
 const FEED_URL = 'https://feeds.feedburner.com/UsccbDailyReadings';
+const WAYBACK_PREFIX = 'https://web.archive.org/web/';
 
+// Date in YYYY-MM-DD form.
 export type DailyReading = {
   date: string;
   liturgicalInfo: string;
@@ -80,11 +91,13 @@ function stripCopyright(body: string): string {
 }
 
 function extractRef(headerLine: string): { ref: string; rest: string } {
-  // Header lines look like:
+  // RSS header lines look like:
   //   "Reading 1 <a href="...">1 Kings 21:1-16</a>"
   //   "Responsorial Psalm <a href="...">Psalm 5:2-3ab, 4b-6a, 6b-7</a>"
   //   "Alleluia <a href="...">Psalm 119:105</a>"
   //   "Gospel <a href="...">Matthew 5:38-42</a>"
+  // Wayback HTML wraps each ref in <div class="address"><a href="...">REF</a></div>
+  // — handled by parseWaybackPage below.
   const refMatch = headerLine.match(/<a[^>]*>([^<]+)<\/a>/);
   const ref = refMatch && refMatch[1] ? refMatch[1].trim() : '';
   const rest = headerLine.replace(/<a[^>]*>[^<]+<\/a>/, '').trim();
@@ -230,6 +243,333 @@ async function fetchRssFeed(): Promise<string> {
   return await res.text();
 }
 
+// =============================================================================
+// Wayback Machine fallback
+// =============================================================================
+//
+// The live per-day HTML page at bible.usccb.org/bible/readings/MMDDYY.cfm
+// is gated by a Cloudflare Obolus proof-of-work challenge that returns
+// "Checking connection..." for non-browser clients. The Wayback Machine
+// snapshots the page without that challenge. Their JSON API
+// (archive.org/wayback/available) tells us the closest snapshot URL.
+//
+// Parsed structure (verified 2026-06-22 against a snapshot of 2026-06-12):
+//
+//   <title>Solemnity of the Most Sacred Heart of Jesus | USCCB</title>
+//   ...
+//   <h2>Solemnity of the Most Sacred Heart of Jesus</h2>
+//   ...
+//   <h3 class="name">Reading 1 </h3>
+//   <div class="address"><a href="...">Deuteronomy 7:6-11</a></div>
+//   <div class="content-body"><p>SCRIPTURE TEXT</p></div>
+//   ...
+//   <h3 class="name">Responsorial Psalm </h3>
+//   ...
+//   <h3 class="name">Alleluia </h3>
+//   ...
+//   <h3 class="name">Gospel </h3>
+//   <div class="address"><a href="...">Luke 15:3-7</a></div>
+//   <div class="content-body"><p>GOSPEL TEXT</p></div>
+//
+// Mass readings don't change once published, so any Wayback snapshot
+// (often weeks older than the live page) is correct content.
+
+const WAYBACK_AVAILABLE = 'https://archive.org/wayback/available';
+
+async function findWaybackSnapshot(url: string): Promise<string | null> {
+  // archive.org/wayback/available?url=... returns
+  // { archived_snapshots: { closest: { available, url, timestamp } } }
+  // or empty object if nothing captured.
+  try {
+    const res = await fetch(`${WAYBACK_AVAILABLE}?url=${encodeURIComponent(url)}`, {
+      headers: { 'User-Agent': 'FitQuest/1.0 (+https://fitquest.local)' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const snap = data?.archived_snapshots?.closest;
+    if (!snap || snap.available !== true) return null;
+    return snap.url as string;
+  } catch {
+    return null;
+  }
+}
+
+function mmddyy(date: string): string {
+  // YYYY-MM-DD → MMDDYY (USCCB's URL format). The regex groups
+  // are (year, month, day), so we capture as y/m/d and reassemble
+  // as month-day-year2 — easy to flip if you go from "ymd" to "mdy"
+  // naming in destructuring, hence the comment.
+  const m = date.match(/^\d{4}-(\d{2})-\d{2}$/)?.[1] ?? '00';
+  const d = date.match(/^\d{4}-\d{2}-(\d{2})$/)?.[1] ?? '00';
+  const y = date.match(/^\d{4}-\d{2}-\d{2}$/)?.[0]?.slice(2, 4) ?? '00';
+  return `${m}${d}${y}`;
+}
+
+async function fetchReadingByWayback(date: string): Promise<DailyReading | null> {
+  const cfm = mmddyy(date);
+  const usccbUrl = `https://bible.usccb.org/bible/readings/${cfm}.cfm`;
+  // Some solemnities (e.g. Nativity of St. John the Baptist on
+  // 6/24) have two reading sets: a Vigil Mass and a Mass during
+  // the Day. The main /MMDDYY.cfm page just lists both options.
+  // We want the "during the day" readings, which live at
+  // /MMDDYY-Day.cfm. Try the Day variant first; if it doesn't
+  // exist, fall back to the main page.
+  const dayUrl = `https://bible.usccb.org/bible/readings/${cfm}-Day.cfm`;
+  const daySnapshot = await findWaybackSnapshot(dayUrl);
+  let snapshotUrl: string | null = daySnapshot;
+  if (!daySnapshot) {
+    snapshotUrl = await findWaybackSnapshot(usccbUrl);
+  }
+  if (!snapshotUrl) {
+    console.log(`[fetchReadingByWayback] ${date}: no wayback snapshot for ${usccbUrl}`);
+    return null;
+  }
+
+  let html: string;
+  try {
+    const res = await fetch(snapshotUrl, {
+      headers: { 'User-Agent': 'FitQuest/1.0 (+https://fitquest.local)' },
+      signal: AbortSignal.timeout(15_000),
+      redirect: 'follow',
+    });
+    if (!res.ok) {
+      console.log(`[fetchReadingByWayback] ${date}: snapshot fetch ${res.status}`);
+      return null;
+    }
+    html = await res.text();
+  } catch (err: any) {
+    console.log(`[fetchReadingByWayback] ${date}: fetch error ${err?.message ?? err}`);
+    return null;
+  }
+
+  // If the main page only contains the "Vigil/Day" picker and
+  // no actual readings, fall back to fetching the -Day variant
+  // directly (the previous Wayback lookup for -Day may have
+  // missed a snapshot; try harder here).
+  if (!/Reading\s+(?:[0-9]+|[IVX]+)/i.test(html)) {
+    if (snapshotUrl !== dayUrl && daySnapshot) {
+      try {
+        const r2 = await fetch(dayUrl, {
+          headers: { 'User-Agent': 'FitQuest/1.0 (+https://fitquest.local)' },
+          signal: AbortSignal.timeout(15_000),
+          redirect: 'follow',
+        });
+        if (r2.ok) {
+          const h2 = await r2.text();
+          if (/Reading\s+(?:[0-9]+|[IVX]+)/i.test(h2)) html = h2;
+        }
+      } catch { /* ignore */ }
+    }
+    if (!/Reading\s+(?:[0-9]+|[IVX]+)/i.test(html)) {
+      console.log(`[fetchReadingByWayback] ${date}: HTML has no Reading sections (page might be a vigil/day picker)`);
+      return null;
+    }
+  }
+
+  return parseWaybackPage(html, date);
+}
+
+function parseWaybackPage(html: string, date: string): DailyReading | null {
+  // Liturgical title from <title>...</title>: "Foo | USCCB"
+  const titleMatch = html.match(/<title>([\s\S]*?)\s*\|\s*USCCB<\/title>/i);
+  let liturgicalInfo = '';
+  if (titleMatch && titleMatch[1]) {
+    liturgicalInfo = stripTags(titleMatch[1]);
+  }
+  // Fallback: the first non-menu <h2> on the page (the menu h2s
+  // are class="visually-hidden" and get filtered by parseString).
+  if (!liturgicalInfo) {
+    const h2Match = html.match(/<h2(?![^>]*visually-hidden)[^>]*>([^<]+)<\/h2>/i);
+    if (h2Match && h2Match[1]) liturgicalInfo = stripTags(h2Match[1]);
+  }
+  if (!liturgicalInfo) {
+    console.log(`[parseWaybackPage] ${date}: no title found`);
+    return null;
+  }
+
+  // Helper: extract the body text between a section marker (h3.name)
+  // and the next h3. Returns { ref, text }.
+  //
+  // The section name passed in is matched as a regex after a
+  // \\s+ so we can accept either Arabic (Reading 1) or Roman
+  // (Reading I) numerals — USCCB's HTML used Roman numerals on
+  // older snapshots and Arabic on newer ones.
+  function readSection(sectionRegex: string): { ref: string; text: string } {
+    const re = new RegExp(
+      `<h3 class="name">\\s*${sectionRegex}\\s*</h3>([\\s\\S]*?)(?=<h3 class="name">|<div class="wr-block)`,
+      'i',
+    );
+    const m = html.match(re);
+    if (!m || !m[1]) return { ref: '', text: '' };
+    const block = m[1];
+    // Reference: <a href="...">REF</a> inside <div class="address">
+    const refMatch = block.match(/<div class="address">[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
+    const ref = refMatch && refMatch[1] ? stripTags(refMatch[1]) : '';
+    // Body: <div class="content-body"><p>...</p></div>
+    const bodyMatch = block.match(/<div class="content-body">([\s\S]*?)<\/div>/i);
+    let text = '';
+    if (bodyMatch && bodyMatch[1]) {
+      text = stripTags(bodyMatch[1]);
+    }
+    return { ref, text: stripCopyright(text) };
+  }
+
+  // Roman numeral helper: matches "1", "2", "3", "I", "II", "III"
+  // as the trailing marker on "Reading N" / "Reading N".
+  const num = '(?:[0-9]+|[IVX]+)';
+  const r1 = readSection(`Reading\\s+${num}`);
+  const r2 = readSection(`Reading\\s+${num}\\s*2|Reading\\s+II`);
+  const psalm = readSection('Responsorial Psalm');
+  const alleluia = readSection('Alleluia');
+  const gospel = readSection('Gospel');
+
+  return {
+    date,
+    liturgicalInfo,
+    firstReading: r1.text,
+    firstReadingRef: r1.ref,
+    responsorialPsalm: psalm.text,
+    psalmRef: psalm.ref,
+    gospelAcclamation: alleluia.text,
+    gospel: gospel.text,
+    gospelRef: gospel.ref,
+  };
+}
+
+// =============================================================================
+// Cache + lookup
+// =============================================================================
+
+/**
+ * Save one parsed reading to the cache. Idempotent: skips when the
+ * sourceHash is unchanged so re-fetches don't churn the DB.
+ */
+async function saveReading(reading: DailyReading, source: 'usccb-rss' | 'usccb-wayback'): Promise<void> {
+  // Source hash: lightweight summary of the actual content fields
+  // (skipping date + liturgicalInfo because they vary for the
+  // same reading across snapshots). Two snapshots of the same
+  // content → same hash → no update churn.
+  const sourceHash = Buffer.from(JSON.stringify({
+    r1: reading.firstReading, p: reading.responsorialPsalm,
+    a: reading.gospelAcclamation, g: reading.gospel,
+  })).toString('base64').slice(0, 32);
+
+  const existing = await prisma.usccbDailyReading.findUnique({
+    where: { date: reading.date },
+    select: { id: true, sourceHash: true },
+  });
+  if (existing && existing.sourceHash === sourceHash) return;
+
+  await prisma.usccbDailyReading.upsert({
+    where: { date: reading.date },
+    create: {
+      date: reading.date,
+      liturgicalInfo: reading.liturgicalInfo,
+      firstReading: reading.firstReading,
+      firstReadingRef: reading.firstReadingRef,
+      responsorialPsalm: reading.responsorialPsalm,
+      psalmRef: reading.psalmRef,
+      gospelAcclamation: reading.gospelAcclamation,
+      gospel: reading.gospel,
+      gospelRef: reading.gospelRef,
+      source,
+      sourceHash,
+    },
+    update: {
+      liturgicalInfo: reading.liturgicalInfo,
+      firstReading: reading.firstReading,
+      firstReadingRef: reading.firstReadingRef,
+      responsorialPsalm: reading.responsorialPsalm,
+      psalmRef: reading.psalmRef,
+      gospelAcclamation: reading.gospelAcclamation,
+      gospel: reading.gospel,
+      gospelRef: reading.gospelRef,
+      source,
+      sourceHash,
+      fetchedAt: new Date(),
+    },
+  });
+}
+
+function toRow(r: DailyReading | null): DailyReading | null {
+  if (!r) return null;
+  return {
+    date: r.date,
+    liturgicalInfo: r.liturgicalInfo,
+    firstReading: r.firstReading,
+    firstReadingRef: r.firstReadingRef,
+    responsorialPsalm: r.responsorialPsalm,
+    psalmRef: r.psalmRef,
+    gospelAcclamation: r.gospelAcclamation,
+    gospel: r.gospel,
+    gospelRef: r.gospelRef,
+  };
+}
+
+/**
+ * Try to fetch + cache a reading for `date`. Cascade: RSS first
+ * (it's the canonical source for the past ~10 days), then Wayback
+ * for older dates. Returns the reading on success, null otherwise.
+ */
+export async function seedReading(date: string): Promise<DailyReading | null> {
+  // Cache hit → return immediately
+  const cached = await prisma.usccbDailyReading.findUnique({ where: { date } });
+  if (cached) {
+    return toRow({
+      date: cached.date,
+      liturgicalInfo: cached.liturgicalInfo ?? '',
+      firstReading: cached.firstReading ?? '',
+      firstReadingRef: cached.firstReadingRef ?? '',
+      responsorialPsalm: cached.responsorialPsalm ?? '',
+      psalmRef: cached.psalmRef ?? '',
+      gospelAcclamation: cached.gospelAcclamation ?? '',
+      gospel: cached.gospel ?? '',
+      gospelRef: cached.gospelRef ?? '',
+    });
+  }
+
+  // Try RSS first — covers ~10 most recent days. We always re-fetch
+  // the RSS even when asking for a single date because (a) it's the
+  // canonical source and (b) refreshUsccbCache fills all the dates
+  // it has at once, so the next date lookup will be a cache hit.
+  let xml: string | null = null;
+  try {
+    xml = await fetchRssFeed();
+  } catch {
+    // Network error — fall through to Wayback.
+  }
+  if (xml) {
+    const items = parseRss(xml);
+    let found = null;
+    for (const it of items) {
+      try {
+        const parsed = parseDescription(it.description);
+        await saveReading({
+          date: it.date,
+          liturgicalInfo: it.title,
+          ...parsed,
+        }, 'usccb-rss');
+        if (it.date === date) found = { date: it.date, liturgicalInfo: it.title, ...parsed };
+      } catch {
+        // skip malformed entry
+      }
+    }
+    if (found) return toRow(found);
+  }
+
+  // RSS didn't have it (date is older than ~10 days). Wayback
+  // fallback. This is slower (~1s) but covers the entire historical
+  // archive.
+  const wb = await fetchReadingByWayback(date);
+  if (wb) {
+    await saveReading(wb, 'usccb-wayback');
+    return toRow(wb);
+  }
+
+  return null;
+}
+
 /**
  * Refresh the local cache from the RSS feed. Idempotent — re-fetches
  * update existing rows. Returns the number of rows updated.
@@ -251,8 +591,10 @@ export async function refreshUsccbCache(): Promise<{ updated: number; skipped: n
         where: { date: it.date },
         select: { id: true, sourceHash: true },
       });
-      // Compute a simple source hash so we can detect USCCB site changes
-      const sourceHash = Buffer.from(it.description).toString('base64').slice(0, 32);
+      const sourceHash = Buffer.from(JSON.stringify({
+        r1: parsed.firstReading, p: parsed.responsorialPsalm,
+        a: parsed.gospelAcclamation, g: parsed.gospel,
+      })).toString('base64').slice(0, 32);
       if (existing && existing.sourceHash === sourceHash) {
         skipped++;
         continue;
@@ -282,38 +624,67 @@ export async function refreshUsccbCache(): Promise<{ updated: number; skipped: n
 }
 
 /**
- * Get the reading for a given date. Tries cache first, then refreshes
- * the feed and re-tries. Returns null if USCCB doesn't have a reading
- * we can find (e.g. a date older than the feed window).
+ * Pre-cache the next N days. Called on startup + daily by the
+ * scheduler. Each date tries the cache, then RSS, then Wayback
+ * (so the FIRST call after a fresh server boot fills everything,
+ * and later calls are quick because the cache is warm).
+ *
+ * We pass `today` as a parameter so tests / seeds from arbitrary
+ * dates work the same way.
+ */
+export async function seedUpcomingReadings(days: number, today: Date = new Date()): Promise<{
+  fromCache: number;
+  fromRss: number;
+  fromWayback: number;
+  failed: number;
+}> {
+  let fromCache = 0, fromRss = 0, fromWayback = 0, failed = 0;
+
+  // Always refresh the RSS first — it covers the next ~10 days
+  // for free and any date outside that window falls through to
+  // Wayback individually.
+  await refreshUsccbCache();
+
+  const start = new Date(today.getTime());
+  start.setHours(12, 0, 0, 0); // noon UTC; tz safety
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start.getTime());
+    d.setUTCDate(d.getUTCDate() + i);
+    const date = d.toISOString().slice(0, 10);
+
+    // Cache hit?
+    const cached = await prisma.usccbDailyReading.findUnique({ where: { date } });
+    if (cached) {
+      fromCache++;
+      continue;
+    }
+
+    // Otherwise hit Wayback directly (RSS already refreshed).
+    try {
+      const wb = await fetchReadingByWayback(date);
+      if (wb) {
+        await saveReading(wb, 'usccb-wayback');
+        fromWayback++;
+        console.log(`[usccb] wayback cached ${date} (${wb.gospelRef})`);
+      } else {
+        failed++;
+        console.log(`[usccb] wayback miss for ${date} (no snapshot or parse failed)`);
+      }
+    } catch (err: any) {
+      failed++;
+      console.log(`[usccb] wayback error for ${date}: ${err?.message ?? err}`);
+    }
+  }
+
+  return { fromCache, fromRss: 0, fromWayback, failed };
+}
+
+/**
+ * Get the reading for a given date. Tries cache → RSS → Wayback.
+ * Returns null if every source fails (e.g. date outside both
+ * windows AND no Wayback snapshot, which shouldn't happen for
+ * anything in the last ~10 years).
  */
 export async function getDailyReading(date: string): Promise<DailyReading | null> {
-  const cached = await prisma.usccbDailyReading.findUnique({ where: { date } });
-  if (cached) {
-    return {
-      date: cached.date,
-      liturgicalInfo: cached.liturgicalInfo ?? '',
-      firstReading: cached.firstReading ?? '',
-      firstReadingRef: cached.firstReadingRef ?? '',
-      responsorialPsalm: cached.responsorialPsalm ?? '',
-      psalmRef: cached.psalmRef ?? '',
-      gospelAcclamation: cached.gospelAcclamation ?? '',
-      gospel: cached.gospel ?? '',
-      gospelRef: cached.gospelRef ?? '',
-    };
-  }
-  // Cache miss — refresh and re-try.
-  await refreshUsccbCache();
-  const refetched = await prisma.usccbDailyReading.findUnique({ where: { date } });
-  if (!refetched) return null;
-  return {
-    date: refetched.date,
-    liturgicalInfo: refetched.liturgicalInfo ?? '',
-    firstReading: refetched.firstReading ?? '',
-    firstReadingRef: refetched.firstReadingRef ?? '',
-    responsorialPsalm: refetched.responsorialPsalm ?? '',
-    psalmRef: refetched.psalmRef ?? '',
-    gospelAcclamation: refetched.gospelAcclamation ?? '',
-    gospel: refetched.gospel ?? '',
-    gospelRef: refetched.gospelRef ?? '',
-  };
+  return seedReading(date);
 }

@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import { config } from './lib/config.js';
 import { prisma } from './lib/prisma.js';
+import { seedUpcomingReadings } from './lib/usccb.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { measurementRoutes } from './routes/measurements.js';
@@ -120,6 +121,54 @@ async function main() {
   const app = await build();
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`fitquest API listening on http://${config.host}:${config.port}`);
+
+  // USCCB daily readings: pre-cache the next 7 days on startup
+  // so the spiritual director never has to wait on a cold fetch
+  // + the RSS is the freshest source for the next 10 days. Any
+  // dates RSS misses (e.g. today if the RSS hasn't published yet)
+  // fall through to the Wayback Machine fallback inside
+  // seedUpcomingReadings.
+  try {
+    const result = await seedUpcomingReadings(7);
+    app.log.info(
+      { fromCache: result.fromCache, fromWayback: result.fromWayback, failed: result.failed },
+      'usccb readings seeded for next 7 days',
+    );
+  } catch (err: any) {
+    app.log.warn({ err: String(err?.message ?? err) }, 'usccb seedUpcomingReadings failed on startup');
+  }
+
+  // Refresh once a day. Calendar-aligned to 04:30 EDT which is
+  // when USCCB typically publishes — we want the new day's reading
+  // to be in the cache shortly after it goes live. Falls back to
+  // 24h from startup if the scheduler can't be aligned.
+  const scheduleDaily = (cb: () => Promise<void>) => {
+    const tick = async () => {
+      try {
+        await cb();
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'usccb daily refresh failed');
+      }
+    };
+    const now = new Date();
+    const next = new Date(now.getTime());
+    // 04:30 USCCB publish window. Compute next 04:30 in local tz;
+    // we don't bother with tz math because the publish is
+    // approximately +0..+30min from 04:30 EDT, and missing by an
+    // hour is fine — the cache is good for the full day.
+    next.setHours(4, 30, 0, 0);
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+    const ms = next.getTime() - now.getTime();
+    app.log.info({ msUntilNext: ms }, 'usccb daily refresh scheduled');
+    setTimeout(() => {
+      tick();
+      setInterval(tick, 24 * 60 * 60 * 1000);
+    }, ms);
+  };
+  scheduleDaily(async () => {
+    const r = await seedUpcomingReadings(7);
+    app.log.info(r, 'usccb daily refresh complete');
+  });
 
   const shutdown = async () => {
     app.log.info('shutting down');
