@@ -599,7 +599,7 @@ type FoodYouImportFood = {
   fiberG: number | null;
   sugarG: number | null;
   sodiumMg: number | null;
-  source: 'logged' | 'recent' | 'search';
+  source: 'diary';
   foodYouId: number;
 };
 
@@ -607,9 +607,7 @@ type FoodYouImportResponse =
   | {
       available: true;
       path: string;
-      logged: FoodYouImportFood[];
-      recent: FoodYouImportFood[];
-      searches: FoodYouImportFood[];
+      diary: FoodYouImportFood[];
     }
   | { available: false; reason: string; message: string; path?: string };
 
@@ -669,35 +667,25 @@ function RecentFoodsModal({
   const [picked, setPicked] = useState<Set<number>>(new Set());
 
   const importData = importQ.data && importQ.data.available ? importQ.data : null;
-  // Combined pickable list: logged first, then searches, then recent.
-  // We dedupe by (name+brand) so a food showing up in both
-  // logged AND search doesn't show twice.
-  const allImportable = (() => {
-    if (!importData) return [];
-    const seen = new Set<string>();
-    const out: FoodYouImportFood[] = [];
-    for (const f of [...importData.logged, ...importData.searches, ...importData.recent]) {
-      const key = `${f.name}|${f.brand ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(f);
-    }
-    return out;
-  })();
+  // Diary entries: every distinct food the user actually logged
+  // in FoodYou (the DiaryProduct table, ordered by id DESC so
+  // most recent first). Deduped by (name+brand) so logging the
+  // same item 5 times shows once. The user explicitly asked
+  // for THIS — the actual meal log, not custom-adds or searches.
+  const allImportable = importData?.diary ?? [];
 
-  // Quick helper: "import all" = check every logged + search item
-  // (NOT the long recent-tail, which is mostly noise).
+  // "Import all" = check every diary entry.
   function pickAll() {
     const next = new Set<number>();
     if (!importData) return next;
-    for (const f of [...importData.logged, ...importData.searches]) {
+    for (const f of importData.diary) {
       next.add(f.foodYouId);
     }
     return next;
   }
   const allPicked = picked.size > 0 && (() => {
-    const pickable = [...(importData?.logged ?? []), ...(importData?.searches ?? [])];
-    return pickable.every((f) => picked.has(f.foodYouId));
+    const pickable = importData?.diary ?? [];
+    return pickable.length > 0 && pickable.every((f) => picked.has(f.foodYouId));
   })();
 
   return createPortal(
@@ -771,7 +759,7 @@ function RecentFoodsModal({
                   onClick={() => setPicked(allPicked ? new Set() : pickAll())}
                   className="text-[10px] font-mono text-violet-300 hover:underline"
                 >
-                  {allPicked ? 'clear' : 'select logged + searched'}
+                  {allPicked ? 'clear' : 'select all'}
                 </button>
                 <NeonButton
                   size="sm"
@@ -829,12 +817,11 @@ function RecentFoodsModal({
                 </div>
               ) : (
                 <>
-                  {importData.logged.length > 0 && (
-                    <div className="text-[10px] font-mono text-amber-300 mt-1 mb-1">
-                      {importData.logged.length} you actually logged
-                    </div>
-                  )}
-                  {importData.logged.map((f) => (
+                  <div className="text-[10px] font-mono text-amber-300 mt-1 mb-1">
+                    {allImportable.length} foods you actually ate
+                    <span className="text-ink-500"> · newest first</span>
+                  </div>
+                  {allImportable.map((f) => (
                     <ImportRow
                       key={f.foodYouId}
                       f={f}
@@ -847,46 +834,6 @@ function RecentFoodsModal({
                       }}
                     />
                   ))}
-                  {importData.searches.length > 0 && (
-                    <div className="text-[10px] font-mono text-cyan-300 mt-2 mb-1">
-                      {importData.searches.length} from your recent search terms
-                    </div>
-                  )}
-                  {importData.searches.map((f) => (
-                    <ImportRow
-                      key={f.foodYouId}
-                      f={f}
-                      checked={picked.has(f.foodYouId)}
-                      onToggle={() => {
-                        const next = new Set(picked);
-                        if (next.has(f.foodYouId)) next.delete(f.foodYouId);
-                        else next.add(f.foodYouId);
-                        setPicked(next);
-                      }}
-                    />
-                  ))}
-                  {importData.recent.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="text-[10px] font-mono text-ink-500 cursor-pointer hover:text-ink-300">
-                        + {importData.recent.length} recent catalog additions (click to expand)
-                      </summary>
-                      <div className="space-y-1 mt-1">
-                        {importData.recent.slice(0, 30).map((f) => (
-                          <ImportRow
-                            key={f.foodYouId}
-                            f={f}
-                            checked={picked.has(f.foodYouId)}
-                            onToggle={() => {
-                              const next = new Set(picked);
-                              if (next.has(f.foodYouId)) next.delete(f.foodYouId);
-                              else next.add(f.foodYouId);
-                              setPicked(next);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </details>
-                  )}
                 </>
               )}
             </div>

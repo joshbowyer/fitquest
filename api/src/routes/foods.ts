@@ -639,7 +639,7 @@ type ImportedFood = {
   foodYouId: number;
 };
 
-function readFoodYouDb(dbPath: string): { logged: ImportedFood[]; recent: ImportedFood[]; searches: ImportedFood[] } | { error: string } {
+function readFoodYouDb(dbPath: string): { diary: ImportedFood[] } | { error: string } {
   if (!fs.existsSync(dbPath)) {
     return { error: `File not found: ${dbPath}` };
   }
@@ -650,80 +650,40 @@ function readFoodYouDb(dbPath: string): { logged: ImportedFood[]; recent: Import
     return { error: `Failed to open DB: ${e?.message ?? e}` };
   }
   try {
-    // Logged foods: every FoodEvent.type = 0 maps to a Product
-    // (or Recipe). Recipes aren't supported here — we import
-    // products only. Dedupe by (name, brand) so logging the
-    // same product 5 times doesn't show 5 entries.
-    const loggedRows = db.prepare(`
-      SELECT fe.id AS event_id, fe.epochSeconds AS ts,
-             p.id, p.name, p.brand, p.servingWeight, p.energy,
-             p.proteins, p.fats, p.carbohydrates, p.sugars,
-             p.dietaryFiber, p.sodiumMilli
-      FROM FoodEvent fe
-      INNER JOIN Product p ON p.id = fe.productId
-      WHERE fe.type = 0
-      ORDER BY fe.epochSeconds DESC
+    // The actual meal log. FoodYou's DiaryProduct is a per-entry
+    // row: each time the user logs a food (whether from the
+    // catalog, from a barcode scan, from a recipe ingredient,
+    // or as a quick-add) a row is inserted with the macros
+    // snapshot at log time. There is no separate date column —
+    // we order by id DESC since newer ids = more recent entries.
+    //
+    // Note: FoodEvent.type=0 is the "add custom food" event,
+    // not the meal log. The 8 rows there were custom adds the
+    // user made, not things they ate.
+    const diaryRows = db.prepare(`
+      SELECT id, name, packageWeight, servingWeight,
+             energy, proteins, fats, carbohydrates, sugars,
+             dietaryFiber, sodiumMilli
+      FROM DiaryProduct
+      WHERE energy IS NOT NULL AND energy > 0
+      ORDER BY id DESC
+      LIMIT 200
     `).all() as any[];
 
-    // Recent additions: distinct products by highest rowid in the
-    // last 200 (i.e. anything the user added recently that
-    // may not be in their log history). We use rowid DESC so
-    // "most recent in their catalog" is the order.
-    const recentRows = db.prepare(`
-      SELECT p.id, p.name, p.brand, p.servingWeight, p.energy,
-             p.proteins, p.fats, p.carbohydrates, p.sugars,
-             p.dietaryFiber, p.sodiumMilli, p.rowid
-      FROM Product p
-      WHERE p.rowid > (SELECT MAX(rowid) - 200 FROM Product)
-        AND p.energy IS NOT NULL AND p.energy > 0
-      ORDER BY p.rowid DESC
-      LIMIT 100
-    `).all() as any[];
-
-    // Recent searches: the user's last 20 distinct search terms.
-    // Each one is resolved to its best-matching Product (the
-    // first result OFF/USDA returned) so we can import it as a
-    // concrete food with macros. The user mentioned
-    // "alcoholic beverage wint table white" — that's a search
-    // for "white wine" with a typo. The actual OFF/USDA matches
-    // get imported as the food, not the search term.
-    const searchRows = db.prepare(`
-      SELECT DISTINCT query FROM SearchEntry
-      ORDER BY epochSeconds DESC LIMIT 20
-    `).all() as any[];
-
-    // For each search term, do a CASE-INSENSITIVE LIKE match
-    // against the Product name and grab the top result. We
-    // can't reuse the OFF API here (we're offline); a LIKE on
-    // the local Product table is the next best thing.
-    const searchHits: any[] = [];
-    for (const row of searchRows) {
-      const q = (row.query ?? '').trim();
-      if (q.length < 2) continue;
-      const hit = db.prepare(`
-        SELECT id, name, brand, servingWeight, energy,
-               proteins, fats, carbohydrates, sugars,
-               dietaryFiber, sodiumMilli
-        FROM Product
-        WHERE LOWER(name) LIKE LOWER(?) ESCAPE '\\'
-          AND energy IS NOT NULL AND energy > 0
-        ORDER BY
-          CASE WHEN LOWER(name) = LOWER(?) THEN 0 ELSE 1 END,
-          CASE WHEN LOWER(name) LIKE LOWER(?) || '%' ESCAPE '\\' THEN 0 ELSE 1 END,
-          id DESC
-        LIMIT 1
-      `).get(
-        `%${q.replace(/[\\%_]/g, '\\$&')}%`,
-        q,
-        q,
-      ) as any;
-      if (hit) searchHits.push({ query: q, hit });
-    }
-
-    function toImported(r: any, source: 'logged' | 'recent' | 'search'): ImportedFood {
+    function toImported(r: any): ImportedFood {
+      // DiaryProduct has no brand column. The brand is usually
+      // embedded in the name as a parenthetical suffix:
+      //   "Brioche French Toast (Good Food Made Simple)"
+      //   "Yakult Probiotic Drink (Yakult U.S.A. Inc.)"
+      // We strip that off and store it in `brand` so the
+      // SavedFood row matches the existing schema.
+      const { name, brand } = splitNameAndBrand(r.name ?? '');
       return {
-        name: r.name,
-        brand: r.brand ?? null,
+        name,
+        brand,
+        // DiaryProduct rows store their per-100g macros already,
+        // so servingSizeG is just the reference weight (100g for
+        // OFF/USDA, the entry's own servingWeight for recipes).
         servingSizeG: r.servingWeight ?? 100,
         calories: r.energy ?? 0,
         proteinG: r.proteins ?? 0,
@@ -732,43 +692,43 @@ function readFoodYouDb(dbPath: string): { logged: ImportedFood[]; recent: Import
         fiberG: r.dietaryFiber ?? null,
         sugarG: r.sugars ?? null,
         sodiumMg: r.sodiumMilli ?? null,
-        source,
+        source: 'diary',
         foodYouId: r.id,
       };
     }
 
+    // Dedupe by (name, brand) so logging the same product
+    // 5 times doesn't show 5 entries. Keep the highest-id
+    // (most recent) version. The set's iteration order matches
+    // the DESC ordering of the SQL, so the first hit wins.
     const seen = new Set<string>();
-    const logged: ImportedFood[] = [];
-    for (const r of loggedRows) {
-      const key = `${r.name}|${r.brand ?? ''}`;
+    const diary: ImportedFood[] = [];
+    for (const r of diaryRows) {
+      const f = toImported(r);
+      const key = `${f.name}|${f.brand ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const f = toImported(r, 'logged');
-      if (f.calories > 0) logged.push(f);
+      diary.push(f);
     }
 
-    const recent: ImportedFood[] = [];
-    for (const r of recentRows) {
-      const key = `${r.name}|${r.brand ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const f = toImported(r, 'recent');
-      if (f.calories > 0) recent.push(f);
-    }
-
-    const searches: ImportedFood[] = [];
-    for (const sh of searchHits) {
-      const key = `${sh.hit.name}|${sh.hit.brand ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const f = toImported(sh.hit, 'search');
-      if (f.calories > 0) searches.push(f);
-    }
-
-    return { logged, recent, searches };
+    return { diary };
   } finally {
     db.close();
   }
+}
+
+// Strip the trailing " (Brand Name)" off a DiaryProduct name.
+// Returns { name, brand } where brand is the extracted text or null.
+// "1 Egg" → { name: "1 Egg", brand: null }
+// "Brioche French Toast (Good Food Made Simple)" →
+//   { name: "Brioche French Toast", brand: "Good Food Made Simple" }
+function splitNameAndBrand(full: string): { name: string; brand: string | null } {
+  const m = full.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
+  if (!m) return { name: full.trim(), brand: null };
+  const name = m[1].trim();
+  const brand = m[2].trim();
+  if (!name) return { name: full.trim(), brand: null };
+  return { name, brand };
 }
 
 export async function foodYouImportRoutes(app: FastifyInstance) {
@@ -806,9 +766,7 @@ export async function foodYouImportRoutes(app: FastifyInstance) {
     return {
       available: true,
       path: dbPath,
-      logged: result.logged,
-      recent: result.recent,
-      searches: result.searches,
+      diary: result.diary,
     };
   });
 
