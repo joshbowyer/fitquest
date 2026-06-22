@@ -204,15 +204,73 @@ export async function adminRoutes(app: FastifyInstance) {
   // POST /admin/llm-test - send a tiny prompt to verify the saved
   // config actually works end-to-end. The prompt asks the model to
   // self-identify so the response confirms the right model answered.
-  // Uses the SAVED config (not anything in the form), so the admin
-  // can verify persistence without saving first.
   //
-  // Body: { which?: 'primary' | 'fallback' }. Defaults to 'primary'.
-  // The two test buttons in the UI call this once each.
+  // Body:
+  //   { which?: 'primary' | 'fallback' }   defaults to 'primary'
+  //   { override?: { ...LlmConfig-shaped fields } }   when present, used
+  //     INSTEAD of the saved row. Lets the admin test a form they're
+  //     still filling in (e.g. they just toggled Fallback Enabled and
+  //     don't want to Save first). The override is also persisted to
+  //     the DB if the form is dirty, so the next /llm-config GET
+  //     reflects the new value.
   app.post('/llm-test', async (req, reply) => {
-    const body = z.object({ which: z.enum(['primary', 'fallback']).default('primary') })
-      .safeParse(req.body ?? {});
-    const which = body.success ? body.data.which : 'primary';
+    const Body = z.object({
+      which: z.enum(['primary', 'fallback']).default('primary'),
+      // Optional override: full or partial LLM config. Anything
+      // missing is filled in from the saved row. If `override` is
+      // present we save it to the DB first (so the test always
+      // matches what the form will eventually commit).
+      override: z
+        .object({
+          provider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']).optional(),
+          apiKey: z.string().optional().nullable(),
+          baseUrl: z.string().optional().nullable(),
+          model: z.string().optional(),
+          enabled: z.boolean().optional(),
+          fallbackEnabled: z.boolean().optional(),
+          fallbackProvider: z.enum(['OPENAI', 'ANTHROPIC', 'OLLAMA', 'MINIMAX']).optional().nullable(),
+          fallbackApiKey: z.string().optional().nullable(),
+          fallbackBaseUrl: z.string().optional().nullable(),
+          fallbackModel: z.string().optional().nullable(),
+        })
+        .optional(),
+    });
+    const parsed = Body.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ ok: false, error: 'Bad request: ' + parsed.error.message });
+    }
+    const { which, override } = parsed.data;
+    const existing = await prisma.llmConfig.findFirst();
+
+    // Persist the override first (if provided) so the test reflects
+    // what the user just typed. The previous behaviour was to read
+    // the saved row, which made the test button useless for changes
+    // the user hadn't yet committed.
+    if (override) {
+      const merge = (cur: any, ov: any) => {
+        const out: any = { ...cur };
+        for (const [k, v] of Object.entries(ov)) {
+          if (v === undefined) continue;
+          out[k] = v;
+        }
+        return out;
+      };
+      const merged = merge(existing ?? {}, override);
+      // Same redacted-key rules as the PUT handler: don't overwrite
+      // a real key with the redacted mask "••••last4".
+      if (override.apiKey && String(override.apiKey).startsWith('••••')) {
+        delete merged.apiKey;
+      }
+      if (override.fallbackApiKey && String(override.fallbackApiKey).startsWith('••••')) {
+        delete merged.fallbackApiKey;
+      }
+      if (existing) {
+        await prisma.llmConfig.update({ where: { id: existing.id }, data: merged });
+      } else {
+        await prisma.llmConfig.create({ data: merged });
+      }
+    }
+
     const row = await prisma.llmConfig.findFirst();
     if (!row) {
       return reply.code(400).send({

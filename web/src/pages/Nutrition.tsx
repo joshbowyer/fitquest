@@ -53,6 +53,10 @@ export function NutritionPage() {
       {/* Daily totals summary — derived from meal log + water measurements */}
       <DailyTotalsBar />
 
+      {/* Water intake — preset chips + custom amount. Appends a WATER_ML
+          measurement; the totals bar above picks it up on refetch. */}
+      <WaterLogPanel units={system} />
+
       {/* Two-column: Food tracker (left) + Meal sections (right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 md:mb-6">
         <FoodPanel />
@@ -529,6 +533,145 @@ function SubstancesPanel() {
           </div>
         </div>
       )}
+    </Panel>
+  );
+}
+
+// ============================================================================
+// WaterLogPanel
+// ============================================================================
+//
+// Inline "log a glass" UI. Preset chips for the common amounts + a
+// custom ml input + Undo last. Each tap appends a WATER_ML
+// measurement; the totals bar refetches on success.
+
+function WaterLogPanel({ units }: { units: UnitSystem }) {
+  const qc = useQueryClient();
+  const [custom, setCustom] = useState('');
+  const customNum = Number(custom);
+
+  const todayQ = useQuery({
+    queryKey: ['measurements', 'today', 'WATER_ML'],
+    queryFn: () =>
+      api<{ items: Array<{ id: string; recordedAt: string; value: number; unit: string }> }>(
+        '/measurements?metric=WATER_ML&days=1',
+      ),
+    refetchInterval: 60_000,
+  });
+  const total = (todayQ.data?.items ?? []).reduce((s, m) => s + m.value, 0);
+  const totalDisplay = convertForDisplay(total, 'ml', units);
+
+  const logM = useDelayedMutation<{ item: { id: string } }, number>({
+    mutationFn: (ml) =>
+      api('/measurements', {
+        method: 'POST',
+        body: { metric: 'WATER_ML', value: ml, unit: 'ml' },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['measurements', 'today', 'WATER_ML'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      setCustom('');
+    },
+  }, 300);
+  const undoM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/measurements/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['measurements', 'today', 'WATER_ML'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+    },
+  }, 250);
+
+  // Preset chips sized for both unit systems. Imperial uses fl oz
+  // (small glass ~8oz, large ~16oz); metric uses ml (250/350/500).
+  // Tooltips explain the size.
+  const presets: { ml: number; label: string; title: string }[] =
+    units === 'IMPERIAL'
+      ? [
+          { ml: 237, label: '+8 oz',   title: 'Small glass (~8 fl oz / 237 ml)' },
+          { ml: 355, label: '+12 oz',  title: 'Tall glass / can (~12 fl oz / 355 ml)' },
+          { ml: 473, label: '+16 oz',  title: 'Large cup / bottle (~16 fl oz / 473 ml)' },
+          { ml: 710, label: '+24 oz',  title: 'Big bottle (~24 fl oz / 710 ml)' },
+        ]
+      : [
+          { ml: 200, label: '+200',    title: 'Small cup (~200 ml)' },
+          { ml: 250, label: '+250',    title: 'Standard glass (~250 ml)' },
+          { ml: 350, label: '+350',    title: 'Tall glass / can (~350 ml)' },
+          { ml: 500, label: '+500',    title: 'Bottle (~500 ml)' },
+          { ml: 750, label: '+750',    title: 'Large bottle (~750 ml)' },
+        ];
+
+  // Most recent entry (top of the list) — the one Undo deletes.
+  const lastEntry = (todayQ.data?.items ?? [])[0];
+
+  return (
+    <Panel variant="cyan" title="Water intake" className="mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        {presets.map((p) => (
+          <button
+            key={p.ml}
+            type="button"
+            onClick={() => logM.run(p.ml)}
+            disabled={logM.isPending}
+            className="px-3 h-8 text-[11px] font-mono border border-ink-500/40 text-ink-200 hover:border-neon-cyan/60 hover:bg-neon-cyan/5"
+            title={p.title}
+          >
+            {p.label}
+          </button>
+        ))}
+        <div className="flex items-center gap-1 ml-auto">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder={units === 'IMPERIAL' ? 'fl oz' : 'ml'}
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            className="w-20 input-neon text-xs"
+            title={units === 'IMPERIAL' ? 'Custom amount in fl oz' : 'Custom amount in ml'}
+          />
+          {units === 'IMPERIAL' && (
+            <span className="text-[10px] font-mono text-ink-400">fl oz</span>
+          )}
+          <NeonButton
+            size="sm"
+            variant="cyan"
+            disabled={!Number.isFinite(customNum) || customNum <= 0 || logM.isPending}
+            loading={logM.isPending}
+            loadingText="…"
+            onClick={() => {
+              if (units === 'IMPERIAL') {
+                // convert fl oz to ml for storage
+                logM.run(Math.round(customNum * 29.5735));
+              } else {
+                logM.run(Math.round(customNum));
+              }
+            }}
+          >
+            Log
+          </NeonButton>
+        </div>
+      </div>
+      <div className="flex items-center justify-between text-[10px] font-mono text-ink-300">
+        <span>
+          {todayQ.isLoading ? '…' : `${totalDisplay.value.toFixed(0)} ${totalDisplay.unit} logged today`}
+          {lastEntry && (
+            <span className="ml-2 text-ink-500">
+              · last {new Date(lastEntry.recordedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </span>
+          )}
+        </span>
+        {lastEntry && (
+          <button
+            type="button"
+            onClick={() => undoM.run(lastEntry.id)}
+            disabled={undoM.isPending}
+            className="text-ink-400 hover:text-rose-400"
+            title="Delete the most recent water entry"
+          >
+            ↶ undo last
+          </button>
+        )}
+      </div>
     </Panel>
   );
 }

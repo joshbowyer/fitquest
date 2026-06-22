@@ -288,6 +288,7 @@ export function ConstellationMap({
               archetype={archetype}
               hairStyle={avatar?.hairStyle ?? 'SHORT'}
               hairColor={avatar?.hairColor ?? 'brown'}
+              skinTone={avatar?.skinTone ?? '#915533'}
               shirtColor={avatar?.shirtColor ?? '#14d6e8'}
               sprites
               weapon="weapon_warrior_2"

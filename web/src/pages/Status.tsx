@@ -139,8 +139,11 @@ export function StatusPage() {
             <Legend color="#9bff5c" label="recovered" />
             <Legend color="#ffc34d" label="active" />
             <Legend color="#f55cc4" label="fatigued" />
-            <Legend color="#ff3060" label="overworked" />
-            <Legend color="#14d6e8" label="pain" />
+            <Legend color="#6b1fb8" label="overworked" />
+            <Legend color="#ffd28a" label="pain · mild" />
+            <Legend color="#ff9a3c" label="pain · mod" />
+            <Legend color="#ff6420" label="pain · high" />
+            <Legend color="#ff3030" label="pain · severe" />
           </div>
         </Panel>
 

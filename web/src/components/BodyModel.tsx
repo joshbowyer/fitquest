@@ -398,10 +398,10 @@ function BodyPartMesh({
 
 export function intensityToColor(intensity: number): string {
   if (intensity <= 0) return '#14d6e8';
-  if (intensity <= 3) return '#9bff5c'; // mild — lime
-  if (intensity <= 6) return '#ffc34d'; // moderate — goldenrod
-  if (intensity <= 8) return '#f55cc4'; // high — magenta
-  return '#ff3060';                     // severe — red
+  if (intensity <= 3) return '#ffd28a'; // mild — light orange
+  if (intensity <= 6) return '#ff9a3c'; // moderate — orange
+  if (intensity <= 8) return '#ff6420'; // high — dark orange
+  return '#ff3030';                     // severe — red
 }
 
 export function intensityLabel(intensity: number): string {
@@ -414,13 +414,16 @@ export function intensityLabel(intensity: number): string {
 
 /**
  * Recovery score (0-100) to color. 100 = fully recovered (lime),
- * 50 = active / mid-recovery (goldenrod), 0 = overworked (red).
+ * 50 = active / mid-recovery (goldenrod), 25 = fatigued (magenta),
+ * 0 = overworked (deep purple). Deep purple reads as "too fatigued
+ * to train" — distinct from "in pain" which uses the warm pain
+ * palette below.
  */
 export function recoveryToColor(score: number): string {
   if (score >= 80) return '#9bff5c';
   if (score >= 50) return '#ffc34d';
   if (score >= 25) return '#f55cc4';
-  return '#ff3060';
+  return '#6b1fb8';   // overworked — deep purple
 }
 
 export function recoveryLabel(score: number): string {

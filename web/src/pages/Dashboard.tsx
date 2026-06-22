@@ -29,7 +29,7 @@ import {
   type Skill,
 } from '@/lib/types';
 import { formatRelative, formatSeconds } from '@/lib/format';
-import { displayUnit } from '@/lib/units';
+import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { WORLD_COLOR_HEX as CLASS_COLOR_HEX } from '@/lib/quest';
 import { idealBandsFor, monotonicBandsFor, SHO_WAIST_RATIO } from '@/lib/metricBands';
 import { BetterGauge } from '@/components/BetterGauge';
@@ -449,17 +449,32 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Panel variant="lime" title="Recent PRs">
           <div className="space-y-2 max-h-72 overflow-y-auto">
-            {(prsQ.data?.items || []).slice(0, 10).map((p) => (
-              <div key={p.id} className="flex items-center justify-between text-sm font-mono border-b border-neon-lime/10 pb-1">
-                <span className="text-ink-100">{p.exercise}</span>
-                <span className="neon-text-lime">
-                  {p.exercise.toLowerCase().includes('plank') || p.exercise.toLowerCase().includes('l-sit')
-                    ? formatSeconds(p.value)
-                    : `${p.value.toFixed(1)} ${displayUnit('kg', user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC')}`}
-                </span>
-                <span className="text-ink-400 text-[10px]">{formatRelative(p.achievedAt)}</span>
-              </div>
-            ))}
+            {(prsQ.data?.items || []).slice(0, 10).map((p) => {
+              // PR weight is stored in kg; convert at the edge for
+              // imperial users. Plank / l-sit are time-based (seconds).
+              const isTime = p.exercise.toLowerCase().includes('plank') || p.exercise.toLowerCase().includes('l-sit');
+              const system: UnitSystem = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
+              const weightDisplay = isTime
+                ? formatSeconds(p.value)
+                : (() => {
+                    const d = convertForDisplay(p.value, 'kg', system);
+                    return `${d.value.toFixed(d.value >= 100 ? 0 : 1)} ${d.unit}`;
+                  })();
+              return (
+                <div
+                  key={p.id}
+                  className="grid grid-cols-[1fr_auto_auto] gap-x-3 items-baseline text-sm font-mono border-b border-neon-lime/10 pb-1"
+                >
+                  <span className="text-ink-100 truncate">{p.exercise}</span>
+                  <span className="neon-text-lime text-right whitespace-nowrap">
+                    {weightDisplay}
+                  </span>
+                  <span className="text-ink-400 text-[10px] whitespace-nowrap text-right">
+                    {formatRelative(p.achievedAt)}
+                  </span>
+                </div>
+              );
+            })}
             {(prsQ.data?.items || []).length === 0 && (
               <div className="text-xs text-ink-300 font-mono text-center py-4">No PRs logged yet.</div>
             )}

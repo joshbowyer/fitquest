@@ -101,8 +101,35 @@ export function AdminPage() {
     which?: 'primary' | 'fallback';
   };
   const testLlmM = useDelayedMutation<LlmTestResult, 'primary' | 'fallback'>({
+    // Send the live form state as `override` so the test reflects
+    // what the user just typed (and persists it to the DB if it's
+    // not saved yet). Falls back to the saved row on the server
+    // when override fields are null.
     mutationFn: (which) =>
-      api<LlmTestResult>('/admin/llm-test', { method: 'POST', body: { which } }),
+      api<LlmTestResult>('/admin/llm-test', {
+        method: 'POST',
+        body: {
+          which,
+          override: llmForm ? {
+            provider: llmForm.provider,
+            apiKey: llmForm.apiKey,
+            baseUrl: llmForm.baseUrl,
+            model: llmForm.model,
+            enabled: llmForm.enabled,
+            fallbackEnabled: llmForm.fallbackEnabled,
+            fallbackProvider: llmForm.fallbackProvider,
+            fallbackApiKey: llmForm.fallbackApiKey,
+            fallbackBaseUrl: llmForm.fallbackBaseUrl,
+            fallbackModel: llmForm.fallbackModel,
+          } : undefined,
+        },
+      }),
+    onSuccess: () => {
+      // The server may have persisted the override; refresh the
+      // canonical config so the form re-syncs (in case the user
+      // hit Test without clicking Save).
+      qc.invalidateQueries({ queryKey: ['admin', 'llm-config'] });
+    },
   }, 1500);
 
   const resetPwM = useDelayedMutation({

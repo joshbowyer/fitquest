@@ -58,13 +58,17 @@ export function Avatar({
   shield,
 }: AvatarProps) {
   // Branch: sprite-based avatar when `sprites` is enabled and the
-  // browser has loaded the sprite assets.
+  // browser has loaded the sprite assets. We forward skinTone too —
+  // the DB has it per-user (avatars.ts) and dropping it here is
+  // what made the Quest constellation map fall back to the default
+  // brown tint (#915533) regardless of the user's customization.
   if (sprites) {
     return (
       <SpriteAvatar
         archetype={archetype}
         hairStyle={hairStyle}
         hairColor={hairColor}
+        skinTone={skinTone}
         shirtColor={shirtColor}
         weapon={weapon}
         shield={shield}
