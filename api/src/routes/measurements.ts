@@ -12,6 +12,7 @@ import {
   getWeighInDelta7d,
   getTodayHabitStatus,
 } from '../lib/streaks.js';
+import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
 // Metrics that are derived from other data — not user-enterable.
 // LEAN_MASS = weight × (1 - bf%); FFMI = lean mass / height² (with
@@ -44,8 +45,17 @@ export async function measurementRoutes(app: FastifyInstance) {
     const where: any = { userId: me.id };
     if (q.metric) where.metric = q.metric;
     if (q.days) {
-      const since = new Date();
-      since.setDate(since.getDate() - q.days);
+      // days=1 is the "today" case (used by the daily totals bar
+      // for water + the water intake panel). Naive `now - 1 day`
+      // leaks yesterday's late-evening entries (e.g. water at 6pm
+      // yesterday still shows up at 10am today), which is the bug
+      // we just fixed. For days=1, snap the lower bound to local
+      // midnight in the user's timezone; for days>1, the loose
+      // "last N days" window is fine and matches what the
+      // /insights chart wants.
+      const since = q.days === 1
+        ? localMidnightUtc(todayInTz(me.timezone ?? null), me.timezone ?? 'UTC')
+        : new Date(Date.now() - q.days * 24 * 60 * 60 * 1000);
       where.recordedAt = { gte: since };
     }
     // Newest-first so existing callers (MetricTrendChart, MetricDetailModal)

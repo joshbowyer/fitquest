@@ -1702,10 +1702,42 @@ function LogMealModal({
   const defaultMeal: MealType =
     hour < 10 ? 'BREAKFAST' : hour < 14 ? 'LUNCH' : hour < 21 ? 'DINNER' : 'SNACK';
 
-  const [meal, setMeal] = useState<MealType>(defaultMeal);
-  const [servings, setServings] = useState<string>('1.0');
+  // Per-serving size from the food record (may be null — many OFF
+  // / USDA entries don't carry it). When set, we expose the
+  // 'serving' unit; otherwise only ×100g and oz are available.
+  const servingSizeG = food.servingSizeG ?? null;
+  const hasServing = servingSizeG != null && servingSizeG > 0;
+
+  // Unit picker for the quantity. The number stored in `servings`
+  // is always the ×100g multiplier the server expects — we just
+  // convert from whatever unit the user typed.
+  //   ×100g → 1:1
+  //   oz    → /28.3495 × 100
+  //   serving (when servingSizeG is known) → × servingSizeG / 100
+  type Unit = 'x100g' | 'oz' | 'serving';
+  const [unit, setUnit] = useState<Unit>('x100g');
+
+  // Display value: the number the user types. Always positive,
+  // accepts decimals. We pre-fill it to the equivalent of 1.0
+  // ×100g in the chosen unit so the first log isn't a 0 serving.
+  const initialDisplay = (): string => {
+    if (unit === 'x100g') return '1.0';
+    if (unit === 'oz') return (100 / 28.3495).toFixed(1); // ~3.53 oz
+    // serving: 1.0 servings = servingSizeG grams = servingSizeG/100 ×100g
+    return '1.0';
+  };
+  const [servings, setServings] = useState<string>(initialDisplay);
   const [note, setNote] = useState('');
-  const sNum = Number(servings);
+  const [meal, setMeal] = useState<MealType>(defaultMeal);
+
+  // The actual ×100g multiplier we POST to the server. Recompute
+  // on every render so the preview always matches the form state.
+  const inputNum = Number(servings);
+  const sNum =
+    unit === 'x100g' ? inputNum
+    : unit === 'oz'   ? (inputNum * 28.3495) / 100
+    /* serving */      : hasServing ? (inputNum * servingSizeG!) / 100
+    : NaN;
   const valid = Number.isFinite(sNum) && sNum > 0 && sNum <= 50;
 
   const [logError, setLogError] = useState<string | null>(null);
@@ -1743,6 +1775,29 @@ function LogMealModal({
     onError: (e: any) => setLogError(String(e?.message ?? e ?? 'Log failed.')),
   }, 400);
 
+  // Re-default the display value when the user switches units so
+  // the input shows a sensible starting point in the new unit
+  // (preserving the ×100g amount they had typed if possible).
+  function changeUnit(next: Unit) {
+    if (next === unit) return;
+    // Convert the CURRENT ×100g amount into the new unit so the
+    // user doesn't lose their work on a unit swap.
+    let preserved: number;
+    if (unit === 'x100g') preserved = inputNum;
+    else if (unit === 'oz') preserved = inputNum * 28.3495 / 100;
+    else if (hasServing) preserved = inputNum * servingSizeG! / 100;
+    else preserved = 1;
+    if (!Number.isFinite(preserved) || preserved <= 0) preserved = 1;
+
+    let display: number;
+    if (next === 'x100g') display = preserved;
+    else if (next === 'oz') display = preserved * 100 / 28.3495;
+    else /* serving */ display = hasServing ? preserved * 100 / servingSizeG! : 1;
+
+    setUnit(next);
+    setServings(display.toFixed(display >= 10 ? 0 : 1));
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
@@ -1763,6 +1818,11 @@ function LogMealModal({
         <div className="text-[10px] font-mono text-ink-400 mb-3">
           Per 100g: {food.calories.toFixed(0)} cal · {food.proteinG.toFixed(1)}p ·{' '}
           {food.carbG.toFixed(1)}c · {food.fatG.toFixed(1)}f
+          {hasServing && (
+            <span className="ml-2 text-neon-amber">
+              · {servingSizeG!.toFixed(0)}g/serving
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -1781,12 +1841,34 @@ function LogMealModal({
             </select>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase text-slate-500">Servings (×100g)</span>
+            <span className="text-[10px] uppercase text-slate-500 flex items-center justify-between">
+              <span>
+                Quantity (
+                {unit === 'x100g'   && '×100g'}
+                {unit === 'oz'      && 'oz'}
+                {unit === 'serving' && 'servings'}
+                )
+              </span>
+              {/* Unit picker. The 'serving' option is only shown
+                  when the food record carries a servingSizeG — many
+                  OFF entries don't, and there's no sane default to
+                  fall back on. */}
+              <select
+                value={unit}
+                onChange={(e) => changeUnit(e.target.value as Unit)}
+                className="text-[9px] font-mono uppercase bg-bg-900 border border-ink-500/40 px-1 py-0 text-ink-300"
+                title="Switch between ×100g, oz, and per-serving units. Conversion is automatic."
+              >
+                <option value="x100g">×100g</option>
+                <option value="oz">oz</option>
+                {hasServing && <option value="serving">serving</option>}
+              </select>
+            </span>
             <input
               type="number"
               step="0.1"
               min="0.1"
-              max="50"
+              max={unit === 'oz' ? Math.round(50 * 100 / 28.3495) : 50}
               className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
               value={servings}
               onChange={(e) => setServings(e.target.value)}
@@ -1807,6 +1889,12 @@ function LogMealModal({
             Served: {(food.calories * sNum).toFixed(0)} cal ·{' '}
             {(food.proteinG * sNum).toFixed(1)}p · {(food.carbG * sNum).toFixed(1)}c ·{' '}
             {(food.fatG * sNum).toFixed(1)}f
+            <span className="ml-2 text-ink-500">
+              ({sNum.toFixed(2)}× 100g
+              {hasServing && unit === 'serving' && ` · ${(sNum * 100 / servingSizeG!).toFixed(1)}g`}
+              {unit === 'oz' && ` · ${(sNum * 100 / 28.3495).toFixed(1)}oz`}
+              )
+            </span>
           </div>
         )}
         {logError && (
