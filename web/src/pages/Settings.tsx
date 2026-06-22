@@ -6,6 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { ProgressBar } from '@/components/ProgressBar';
+import { TwoFactorSetup } from '@/components/TwoFactorSetup';
 import { useAuth } from '@/lib/auth';
 import { convertForDisplay, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames, formatDate, formatRelative } from '@/lib/format';
@@ -526,22 +527,8 @@ export function SettingsPage() {
           </div>
         </Panel>
 
-        {/* ACCOUNT (placeholder) */}
-        <Panel title="Account" variant="amber">
-          <div className="space-y-2 text-xs font-mono">
-            <Field k="Email" v={user.email} />
-            <Field k="Username" v={user.username} />
-            <Field k="2FA" v="Off (coming soon)" muted />
-            <div className="flex gap-2 pt-2">
-              <button disabled className="btn-ghost opacity-40 cursor-not-allowed">
-                Change password
-              </button>
-              <button disabled className="btn-ghost opacity-40 cursor-not-allowed">
-                Delete account
-              </button>
-            </div>
-          </div>
-        </Panel>
+        {/* ACCOUNT */}
+        <TwoFactorSetup />
       </div>
     </Layout>
   );
