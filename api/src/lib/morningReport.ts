@@ -475,6 +475,10 @@ export async function getOrGenerateToday(
     maxTokens: 1500,
     temperature: 0.4,
     timeoutMs: 60_000,
+    // Force JSON. Minimax respects it; smaller Ollama models
+    // that ignore the system prompt still return parseable JSON
+    // because of the response_format constraint.
+    jsonMode: true,
   });
 
   let parsed = result.ok ? extractJson(result.text ?? '') : null;

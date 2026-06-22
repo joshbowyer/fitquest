@@ -207,6 +207,12 @@ export async function foodRoutes(app: FastifyInstance) {
       maxTokens: 200,
       temperature: 0.2,
       timeoutMs: 30_000,
+      // jsonMode forces the model to output valid JSON. With
+      // Ollama, this sets `format: 'json'`; with OpenAI, it
+      // sets `response_format: { type: 'json_object' }`. Either
+      // way, the fallback parser in extractAskAiResult() is
+      // rarely needed.
+      jsonMode: true,
     });
     if (!result.ok) {
       return reply.code(502).send({ error: result.error ?? 'LLM failed' });
@@ -508,6 +514,7 @@ export async function savedFoodRoutes(app: FastifyInstance) {
       system: SAVED_FOOD_SYSTEM_PROMPT,
       prompt: SAVED_FOOD_ESTIMATE_PROMPT(body.description, body.unitBasis),
       maxTokens: 400,
+      jsonMode: true,
       temperature: 0.2,
       timeoutMs: 60_000,
     });

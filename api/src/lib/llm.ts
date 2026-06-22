@@ -83,6 +83,20 @@ type CallOpts = {
   temperature?: number;
   /** Per-request timeout in ms. Default 30s. */
   timeoutMs?: number;
+  /**
+   * Force the model to output valid JSON. Sets `response_format:
+   * { type: 'json_object' }` for OpenAI-compatible APIs and the
+   * equivalent `format: 'json'` for Ollama. Use this whenever the
+   * caller relies on the LLM returning parseable JSON (extractJson
+   * in api/src/routes/foods.ts, etc). The model prompt should
+   * still describe the expected schema — JSON mode is a
+   * structural guarantee, not a content one.
+   *
+   * Note: Anthropic doesn't support response_format; the field is
+   * silently dropped for that provider. Anthropic is good enough
+   * at JSON to not need it.
+   */
+  jsonMode?: boolean;
 };
 
 function defaultBaseUrl(provider: LlmConfig['provider']): string {
@@ -196,6 +210,17 @@ async function callOnce(
   const maxTokens = opts.maxTokens ?? 256;
   const temperature = opts.temperature ?? 0.2;
   const timeoutMs = opts.timeoutMs ?? 30_000;
+  // jsonMode is implemented differently per provider:
+  //   - OpenAI / OpenAI-compat (Ollama, etc): set
+  //     `response_format: { type: 'json_object' }` (OpenAI) or
+  //     `format: 'json'` (Ollama). We use Ollama's `format`
+  //     because OpenAI's strict json_object requires the user
+  //     message to mention 'json' (browsers' content filters
+  //     will sometimes refuse). Ollama's is unconditional.
+  //   - Anthropic: no response_format support. Anthropic's own
+  //     tool-use / structured output works differently and isn't
+  //     wired here. We just skip the field for that provider.
+  const jsonMode = opts.jsonMode === true;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -208,7 +233,7 @@ async function callOnce(
     if (config.provider === 'ANTHROPIC' || config.provider === 'MINIMAX') {
       return await callAnthropic(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start, attempt);
     }
-    return await callOpenAiCompatible(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start, attempt);
+    return await callOpenAiCompatible(config, baseUrl, model, systemPrompt, opts.prompt, maxTokens, temperature, controller.signal, start, attempt, jsonMode);
   } catch (err: any) {
     return {
       ok: false,
@@ -235,6 +260,7 @@ async function callOpenAiCompatible(
   signal: AbortSignal,
   start: number,
   attempt: 1 | 2,
+  jsonMode: boolean,
 ): Promise<LlmCallResult> {
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
   if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
@@ -243,17 +269,30 @@ async function callOpenAiCompatible(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
 
+  const body: any = {
+    model,
+    messages,
+    max_tokens: maxTokens,
+    temperature,
+    stream: false,
+  };
+  // Ollama reads `format: 'json'`; OpenAI reads
+  // `response_format: { type: 'json_object' }`. Ollama is
+  // OpenAI-compat but only honours its own `format` field for
+  // forcing JSON, so prefer that. OpenAI's flag also works for
+  // any other OpenAI-compat server that supports it.
+  if (jsonMode) {
+    if (config.provider === 'OLLAMA') {
+      body.format = 'json';
+    } else {
+      body.response_format = { type: 'json_object' };
+    }
+  }
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers,
     signal,
-    body: JSON.stringify({
-      model,
-      messages,
-      max_tokens: maxTokens,
-      temperature,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
   });
 
   const latencyMs = Date.now() - start;

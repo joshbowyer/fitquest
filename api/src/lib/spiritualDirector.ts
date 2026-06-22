@@ -301,6 +301,7 @@ export async function getOrGenerateReflection(
     maxTokens: 600,
     temperature: 0.5,
     timeoutMs: 60_000,
+    jsonMode: true,
   });
 
   const parsed = result.ok ? extractJson(result.text ?? '') : null;
