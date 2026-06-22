@@ -296,3 +296,150 @@ function extractJson(text: string): any | null {
   }
   return null;
 }
+
+// ============================================================================
+// Saved foods (the user's own recipes — daily shake etc)
+// ============================================================================
+//
+// CRUD over the user's SavedFood table. Logging a saved food creates
+// a FoodItem (source=MANUAL) on the fly and writes a MealEntry the
+// usual way, so the rest of the food tracker doesn't have to know
+// whether the food came from OFF/USDA or the user's own list.
+
+const SavedFoodUpsertSchema = z.object({
+  name: z.string().min(1).max(120),
+  brand: z.string().max(80).optional().nullable(),
+  servingSizeG: z.number().min(0).max(10000).optional().nullable(),
+  calories: z.number().min(0).max(10000),
+  proteinG: z.number().min(0).max(1000),
+  carbG: z.number().min(0).max(1000),
+  fatG: z.number().min(0).max(1000),
+  fiberG: z.number().min(0).max(1000).optional().nullable(),
+  sugarG: z.number().min(0).max(1000).optional().nullable(),
+  sodiumMg: z.number().min(0).max(100000).optional().nullable(),
+  recipe: z.string().max(2000).optional().nullable(),
+});
+
+const SavedFoodLogSchema = z.object({
+  meal: z.nativeEnum(MealType),
+  servings: z.number().min(0.1).max(50).default(1),
+  note: z.string().max(500).optional().nullable(),
+});
+
+// Note: a separate route file would be cleaner, but we already
+// have foodRoutes registered for /foods/* so the new endpoints
+// live under /foods/saved/*.
+export async function savedFoodRoutes(app: FastifyInstance) {
+  // GET /foods/saved - list the user's saved foods, sorted by
+  // useCount + lastUsedAt. The "recent" panel on the food tracker
+  // calls this.
+  app.get('/foods/saved', async (req) => {
+    const me = await requireUser(req);
+    const items = await prisma.savedFood.findMany({
+      where: { userId: me.id },
+      orderBy: [{ useCount: 'desc' }, { lastUsedAt: 'desc' }],
+    });
+    return { items };
+  });
+
+  // POST /foods/saved - upsert a saved food by (userId, name).
+  // The same name on a second call updates the macros in place
+  // (so tweaking a recipe is one POST away).
+  app.post('/foods/saved', async (req) => {
+    const me = await requireUser(req);
+    const body = SavedFoodUpsertSchema.parse(req.body);
+    const item = await prisma.savedFood.upsert({
+      where: { userId_name: { userId: me.id, name: body.name } },
+      create: {
+        userId: me.id,
+        name: body.name,
+        brand: body.brand ?? null,
+        servingSizeG: body.servingSizeG ?? null,
+        calories: body.calories,
+        proteinG: body.proteinG,
+        carbG: body.carbG,
+        fatG: body.fatG,
+        fiberG: body.fiberG ?? null,
+        sugarG: body.sugarG ?? null,
+        sodiumMg: body.sodiumMg ?? null,
+        recipe: body.recipe ?? null,
+      },
+      update: {
+        brand: body.brand ?? null,
+        servingSizeG: body.servingSizeG ?? null,
+        calories: body.calories,
+        proteinG: body.proteinG,
+        carbG: body.carbG,
+        fatG: body.fatG,
+        fiberG: body.fiberG ?? null,
+        sugarG: body.sugarG ?? null,
+        sodiumMg: body.sodiumMg ?? null,
+        recipe: body.recipe ?? null,
+      },
+    });
+    return { item };
+  });
+
+  // DELETE /foods/saved/:id - remove a saved food.
+  app.delete('/foods/saved/:id', async (req) => {
+    const me = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const existing = await prisma.savedFood.findFirst({ where: { id, userId: me.id } });
+    if (!existing) return { ok: true, deleted: 0 };
+    await prisma.savedFood.delete({ where: { id } });
+    return { ok: true, deleted: 1 };
+  });
+
+  // POST /foods/saved/:id/log - quick-log a saved food as a meal.
+  // Bumps useCount + lastUsedAt so the recent list re-orders.
+  // Creates a FoodItem (source=MANUAL) on the fly with the saved
+  // food's macros, then a MealEntry pointing to it.
+  app.post('/foods/saved/:id/log', async (req, reply) => {
+    const me = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const body = SavedFoodLogSchema.parse(req.body);
+    const saved = await prisma.savedFood.findFirst({ where: { id, userId: me.id } });
+    if (!saved) return reply.code(404).send({ error: 'Saved food not found' });
+    // Upsert a MANUAL FoodItem keyed on (source=MANUAL, sourceId=savedFood.id).
+    // The unique constraint guarantees one row per saved food; updating
+    // the saved food's macros here would also work but we keep FoodItem
+    // immutable per MealEntry (ServingSizeSnapshot pattern).
+    const food = await prisma.foodItem.upsert({
+      where: { source_sourceId: { source: 'MANUAL', sourceId: saved.id } },
+      create: {
+        source: 'MANUAL',
+        sourceId: saved.id,
+        name: saved.name,
+        brand: saved.brand,
+        servingSizeG: saved.servingSizeG,
+        calories: saved.calories,
+        proteinG: saved.proteinG,
+        carbG: saved.carbG,
+        fatG: saved.fatG,
+        fiberG: saved.fiberG,
+        sugarG: saved.sugarG,
+        sodiumMg: saved.sodiumMg,
+        sourceUrl: null,
+      },
+      update: {
+        // Keep these stable so historical MealEntries don't drift if
+        // the user later edits the saved food's macros.
+      },
+    });
+    const entry = await prisma.mealEntry.create({
+      data: {
+        userId: me.id,
+        foodId: food.id,
+        meal: body.meal,
+        servings: body.servings,
+        note: body.note ?? null,
+      },
+    });
+    // Bump useCount + lastUsedAt so the recent list re-orders.
+    await prisma.savedFood.update({
+      where: { id: saved.id },
+      data: { useCount: { increment: 1 }, lastUsedAt: new Date() },
+    });
+    return { entry, food };
+  });
+}

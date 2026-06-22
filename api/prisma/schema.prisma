@@ -236,6 +236,7 @@ model User {
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
   mealEntries      MealEntry[]
+  savedFoods       SavedFood[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
@@ -1273,4 +1274,41 @@ model MealEntry {
 
   @@index([userId, loggedAt])
   @@index([userId, meal, loggedAt])
+}
+
+/// User's own saved foods. The "daily shake" use case: a recipe
+/// the user eats every day with stable macros. Stored separately
+/// from FoodItem (which is a third-party cache: OFF + USDA rows
+/// keyed by (source, sourceId)) so the user's edits don't pollute
+/// the shared cache. When the user logs a SavedFood, we copy the
+/// macros into a FoodItem (source = MANUAL) on the fly and link
+/// the MealEntry to it — the MealEntry path stays the same.
+model SavedFood {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  brand         String?
+  /// Per-serving macros. Servings in the UI = 1 by default; the
+  /// meal entry stores servings * these numbers.
+  servingSizeG  Float?
+  calories      Float
+  proteinG      Float
+  carbG         Float
+  fatG          Float
+  fiberG        Float?
+  sugarG        Float?
+  sodiumMg      Float?
+  /// Free-form note ("whey + banana + oat milk", "Lentils, 1 cup dry")
+  recipe        String?
+  /// For sorting the "recent" list. Decremented on each quick-log
+  /// so the user's most-eaten items bubble to the top without
+  /// needing a separate join table.
+  useCount      Int      @default(0)
+  lastUsedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, lastUsedAt])
 }

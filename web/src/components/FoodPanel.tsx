@@ -20,6 +20,25 @@ type AskAiResult = {
   items: FoodMatch[];
 };
 
+// User's own saved food (recipe). Mirrors api/prisma/schema.prisma
+// SavedFood. The recent-entered list sorts by useCount + lastUsedAt.
+type SavedFoodDto = {
+  id: string;
+  name: string;
+  brand: string | null;
+  servingSizeG: number | null;
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG: number | null;
+  sugarG: number | null;
+  sodiumMg: number | null;
+  recipe: string | null;
+  useCount: number;
+  lastUsedAt: string;
+};
+
 export function FoodPanel() {
   const qc = useQueryClient();
 
@@ -46,6 +65,24 @@ export function FoodPanel() {
     queryKey: ['meals', 'recent'],
     queryFn: () => api<{ items: MealEntry[] }>('/meals?days=7'),
   });
+
+  // ---- Saved foods (user's own recipes) ----
+  const savedQ = useQuery({
+    queryKey: ['foods', 'saved'],
+    queryFn: () => api<{ items: SavedFoodDto[] }>('/foods/saved'),
+  });
+  const [savedOpen, setSavedOpen] = useState(false);
+  // Quick-log a saved food. No modal: defaults to time-of-day meal
+  // and 1 serving. Long-press / manage opens the modal.
+  const logSavedM = useDelayedMutation<{ entry: any }, { id: string; meal: MealType; servings: number }>({
+    mutationFn: ({ id, meal, servings }) =>
+      api(`/foods/saved/${id}/log`, { method: 'POST', body: { meal, servings } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+      qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
+      qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
+    },
+  }, 300);
 
   // Reset search when the panel re-mounts (e.g. after route change).
   useEffect(() => () => {
@@ -122,6 +159,78 @@ export function FoodPanel() {
         />
       )}
 
+      {/* Saved foods (user's own recipes) — the daily shake etc.
+          Sorted by useCount + lastUsedAt on the server. Each row
+          has a quick-log button that POSTs /foods/saved/:id/log with
+          the time-of-day default meal; long meals open the modal. */}
+      {savedQ.data && savedQ.data.items.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-ink-500/15">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-[10px] font-display tracking-widest uppercase text-ink-400">
+              Your saved foods
+            </div>
+            <button
+              type="button"
+              onClick={() => setSavedOpen(true)}
+              className="text-[10px] font-mono text-violet-300 hover:underline"
+              title="Manage your saved recipes"
+            >
+              manage →
+            </button>
+          </div>
+          <div className="space-y-1 max-h-44 overflow-y-auto">
+            {savedQ.data.items.slice(0, 8).map((s) => {
+              const defaultMeal: MealType = (() => {
+                const h = new Date().getHours();
+                return h < 10 ? 'BREAKFAST' : h < 14 ? 'LUNCH' : h < 21 ? 'DINNER' : 'SNACK';
+              })();
+              return (
+                <div
+                  key={s.id}
+                  className="text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 flex items-center gap-2"
+                  title={s.recipe ?? s.name}
+                >
+                  <span className="text-slate-200 truncate flex-1">{s.name}</span>
+                  <span className="text-amber-300 text-[10px] shrink-0">
+                    {s.calories.toFixed(0)} cal
+                  </span>
+                  <span className="text-ink-500 text-[10px] shrink-0">
+                    ·{s.proteinG.toFixed(0)}p
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => logSavedM.run({ id: s.id, meal: defaultMeal, servings: 1 })}
+                    disabled={logSavedM.isPending}
+                    className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
+                    title={`Quick-log to ${defaultMeal.toLowerCase()}`}
+                  >
+                    + log
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* If no saved foods, show a hint */}
+      {savedQ.data && savedQ.data.items.length === 0 && (
+        <div className="mt-4 pt-3 border-t border-ink-500/15">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-ink-500">
+              No saved foods yet. Save the daily shake for one-tap logging.
+            </span>
+            <button
+              type="button"
+              onClick={() => setSavedOpen(true)}
+              className="text-[10px] font-mono text-violet-300 hover:underline"
+            >
+              + add saved food
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Recent log */}
       {recentQ.data && recentQ.data.items.length > 0 && (
         <div className="mt-4 pt-3 border-t border-ink-500/15">
@@ -181,6 +290,13 @@ export function FoodPanel() {
           }}
         />
       )}
+
+      {savedOpen && (
+        <ManageSavedFoodsModal
+          items={savedQ.data?.items ?? []}
+          onClose={() => setSavedOpen(false)}
+        />
+      )}
     </Panel>
   );
 }
@@ -237,6 +353,30 @@ function FoodResultsList({
 }
 
 function FoodResultRow({ food, onLog }: { food: FoodMatch; onLog: (f: FoodMatch) => void }) {
+  const qc = useQueryClient();
+  // "Save as recipe" — turns an OFF/USDA result into a SavedFood so
+  // the user can one-tap log it tomorrow without re-searching. The
+  // saved recipe reuses these per-100g macros; servings=1 by default.
+  const saveM = useDelayedMutation<{ item: SavedFoodDto }>({
+    mutationFn: () =>
+      api('/foods/saved', {
+        method: 'POST',
+        body: {
+          name: food.name,
+          brand: food.brand ?? null,
+          servingSizeG: food.servingSizeG ?? 100,
+          calories: food.calories,
+          proteinG: food.proteinG,
+          carbG: food.carbG,
+          fatG: food.fatG,
+          fiberG: food.fiberG ?? null,
+          sugarG: food.sugarG ?? null,
+          sodiumMg: food.sodiumMg ?? null,
+          recipe: `per 100g — sourced from ${food.source}`,
+        },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['foods', 'saved'] }),
+  }, 600);
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-800/30">
       {food.imageUrl ? (
@@ -262,6 +402,14 @@ function FoodResultRow({ food, onLog }: { food: FoodMatch; onLog: (f: FoodMatch)
           {food.carbG.toFixed(1)}c · {food.fatG.toFixed(1)}f <span className="text-ink-500">per 100g</span>
         </div>
       </div>
+      <button
+        onClick={() => saveM.run()}
+        disabled={saveM.isPending}
+        className="px-1.5 py-0.5 text-[10px] font-mono text-violet-300 hover:bg-violet-500/10 border border-violet-500/30"
+        title="Save as a recipe for one-tap logging tomorrow"
+      >
+        {saveM.isPending ? '…' : '☆ save'}
+      </button>
       <NeonButton size="sm" variant="lime" onClick={() => onLog(food)}>
         + Log
       </NeonButton>
@@ -350,6 +498,314 @@ function AskAiModal({
       </div>
     </div>,
     document.body
+  );
+}
+
+// ============================================================================
+// Manage Saved Foods modal — list, add, edit, delete the user's recipes
+// ============================================================================
+
+function ManageSavedFoodsModal({
+  items,
+  onClose,
+}: {
+  items: SavedFoodDto[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState<SavedFoodDto | null>(null);
+  const [adding, setAdding] = useState(false);
+  const delM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/foods/saved/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['foods', 'saved'] }),
+  }, 400);
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg-800 border border-neon-violet/40 max-w-2xl w-full p-5 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-display tracking-widest text-ink-50">Saved foods</div>
+          <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
+        </div>
+        <div className="text-[10px] font-mono text-ink-400 mb-3">
+          Recipes you eat often (the daily shake, your go-to breakfast, etc).
+          Click a row to edit. New foods can be created from here.
+        </div>
+        {adding || editing ? (
+          <SavedFoodEditor
+            existing={editing}
+            onClose={() => {
+              setEditing(null);
+              setAdding(false);
+            }}
+          />
+        ) : (
+          <>
+            <NeonButton
+              variant="violet"
+              size="sm"
+              onClick={() => setAdding(true)}
+              icon="+"
+              className="mb-3"
+            >
+              Add saved food
+            </NeonButton>
+            {items.length === 0 ? (
+              <div className="text-xs text-ink-300 font-mono text-center py-6">
+                No saved foods yet. Add one to enable one-tap logging.
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {items.map((s) => (
+                  <div
+                    key={s.id}
+                    className="border border-ink-500/30 p-2 text-xs font-mono flex items-center gap-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-slate-100 truncate">{s.name}</div>
+                      <div className="text-[10px] text-ink-400">
+                        {s.calories.toFixed(0)} cal · {s.proteinG.toFixed(0)}p ·{' '}
+                        {s.carbG.toFixed(0)}c · {s.fatG.toFixed(0)}f
+                        {s.useCount > 0 && (
+                          <span className="text-ink-500 ml-2">· used {s.useCount}×</span>
+                        )}
+                      </div>
+                      {s.recipe && (
+                        <div className="text-[10px] text-ink-500 mt-0.5 italic truncate">
+                          {s.recipe}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setEditing(s)}
+                      className="px-2 py-1 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-100"
+                    >
+                      edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Remove "${s.name}" from saved foods?`)) {
+                          delM.run(s.id);
+                        }
+                      }}
+                      disabled={delM.isPending}
+                      className="px-2 py-1 text-[10px] font-mono text-ink-400 hover:text-rose-400"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function SavedFoodEditor({
+  existing,
+  onClose,
+}: {
+  existing: SavedFoodDto | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(existing?.name ?? '');
+  const [brand, setBrand] = useState(existing?.brand ?? '');
+  const [servingSize, setServingSize] = useState<string>(existing?.servingSizeG != null ? String(existing.servingSizeG) : '');
+  const [cal, setCal] = useState<string>(existing ? String(existing.calories) : '');
+  const [protein, setProtein] = useState<string>(existing ? String(existing.proteinG) : '');
+  const [carb, setCarb] = useState<string>(existing ? String(existing.carbG) : '');
+  const [fat, setFat] = useState<string>(existing ? String(existing.fatG) : '');
+  const [fiber, setFiber] = useState<string>(existing?.fiberG != null ? String(existing.fiberG) : '');
+  const [sugar, setSugar] = useState<string>(existing?.sugarG != null ? String(existing.sugarG) : '');
+  const [sodium, setSodium] = useState<string>(existing?.sodiumMg != null ? String(existing.sodiumMg) : '');
+  const [recipe, setRecipe] = useState(existing?.recipe ?? '');
+
+  const valid =
+    name.trim().length > 0 &&
+    Number(cal) > 0 &&
+    Number(protein) >= 0 &&
+    Number(carb) >= 0 &&
+    Number(fat) >= 0;
+
+  const saveM = useDelayedMutation<{ item: SavedFoodDto }>({
+    mutationFn: () =>
+      api('/foods/saved', {
+        method: 'POST',
+        body: {
+          name: name.trim(),
+          brand: brand.trim() || null,
+          servingSizeG: Number(servingSize) > 0 ? Number(servingSize) : null,
+          calories: Number(cal),
+          proteinG: Number(protein),
+          carbG: Number(carb),
+          fatG: Number(fat),
+          fiberG: Number(fiber) > 0 ? Number(fiber) : null,
+          sugarG: Number(sugar) > 0 ? Number(sugar) : null,
+          sodiumMg: Number(sodium) > 0 ? Number(sodium) : null,
+          recipe: recipe.trim() || null,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
+      onClose();
+    },
+  }, 500);
+
+  return (
+    <div className="border border-neon-violet/30 p-3 space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block col-span-2">
+          <span className="text-[10px] uppercase text-slate-500">Name</span>
+          <input
+            autoFocus
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Daily Shake"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Brand (optional)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            value={brand}
+            onChange={(e) => setBrand(e.target.value)}
+            placeholder="Trader Joe's"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Serving size (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={servingSize}
+            onChange={(e) => setServingSize(e.target.value)}
+            placeholder="600"
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <label className="block">
+          <span className="text-[10px] uppercase text-amber-400">Calories</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={cal}
+            onChange={(e) => setCal(e.target.value)}
+            placeholder="480"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-lime-400">Protein (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={protein}
+            onChange={(e) => setProtein(e.target.value)}
+            placeholder="38"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-cyan-400">Carbs (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={carb}
+            onChange={(e) => setCarb(e.target.value)}
+            placeholder="52"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-violet-400">Fat (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={fat}
+            onChange={(e) => setFat(e.target.value)}
+            placeholder="14"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Fiber (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={fiber}
+            onChange={(e) => setFiber(e.target.value)}
+            placeholder="8"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Sugar (g)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={sugar}
+            onChange={(e) => setSugar(e.target.value)}
+            placeholder="22"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Sodium (mg)</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            type="number"
+            min="0"
+            value={sodium}
+            onChange={(e) => setSodium(e.target.value)}
+            placeholder="320"
+          />
+        </label>
+        <label className="block">
+          <span className="text-[10px] uppercase text-slate-500">Servings</span>
+          <input
+            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm bg-slate-800/40 cursor-not-allowed"
+            disabled
+            value="1"
+            title="Always 1 serving per row. Log it N times via quick-log × N."
+          />
+        </label>
+      </div>
+      <label className="block">
+        <span className="text-[10px] uppercase text-slate-500">Recipe / notes (optional)</span>
+        <textarea
+          className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          rows={2}
+          value={recipe}
+          onChange={(e) => setRecipe(e.target.value)}
+          placeholder="1 scoop whey, 1 banana, 1 cup oat milk, 1/2 cup oats…"
+        />
+      </label>
+      <div className="flex justify-end gap-2">
+        <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
+        <NeonButton
+          variant="violet"
+          disabled={!valid || saveM.isPending}
+          loading={saveM.isPending}
+          loadingText="Saving…"
+          onClick={() => saveM.run()}
+        >
+          {existing ? 'Update saved food' : 'Add saved food'}
+        </NeonButton>
+      </div>
+    </div>
   );
 }
 

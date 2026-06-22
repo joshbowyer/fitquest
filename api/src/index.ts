@@ -31,7 +31,7 @@ import { morningReportRoutes } from './routes/morningReport.js';
 import { importRoutes } from './routes/import.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
-import { foodRoutes } from './routes/foods.js';
+import { foodRoutes, savedFoodRoutes } from './routes/foods.js';
 import { mealRoutes } from './routes/meals.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
@@ -80,6 +80,7 @@ async function build() {
   await app.register(supplementsRoutes, { prefix: '/supplements' });
   await app.register(substanceRoutes, { prefix: '/substances' });
   await app.register(foodRoutes, { prefix: '/foods' });
+  await app.register(savedFoodRoutes);
   await app.register(mealRoutes, { prefix: '/meals' });
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
   await app.register(habitRoutes, { prefix: '/habits' });
