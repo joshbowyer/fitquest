@@ -1042,20 +1042,47 @@ function SavedFoodRow({
   })();
 
   const [open, setOpen] = useState(false);
+  // Anchor the popover to this button's bounding rect so it can
+  // render via createPortal outside the panel's overflow clip.
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
 
-  // Close the popover when the user clicks anywhere else. Using
-  // a ref + outside-click handler so we don't depend on focus
-  // state (which is unreliable on mobile).
-  const ref = useRef<HTMLDivElement | null>(null);
+  function togglePicker() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    // Measure the chevron button's position; the popover renders
+    // to document.body so it escapes the parent overflow:hidden.
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPopoverPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.right + window.scrollX - 180, // right-align with the button
+      });
+    }
+    setOpen(true);
+  }
+
+  // Close on outside click + on Esc.
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (popoverRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   function commit(meal: MealType) {
@@ -1079,7 +1106,7 @@ function SavedFoodRow({
           Clicking the button itself quick-logs to the default
           (time-of-day) meal. Clicking the chevron reveals all
           four so the user can pre-log to a future section. */}
-      <div ref={ref} className="relative flex items-center">
+      <div className="relative flex items-center">
         <div className="flex border border-neon-amber/50">
           <button
             type="button"
@@ -1091,20 +1118,32 @@ function SavedFoodRow({
             + log
           </button>
           <button
+            ref={triggerRef}
             type="button"
-            onClick={() => setOpen((o) => !o)}
+            onClick={togglePicker}
             disabled={logging}
             className="px-1 py-0.5 text-[10px] font-mono text-neon-amber border-l border-neon-amber/50 hover:bg-neon-amber/10 disabled:opacity-50"
             title="Pick a different meal section"
             aria-label="Pick meal"
+            aria-expanded={open}
+            aria-haspopup="menu"
           >
             ▾
           </button>
         </div>
-        {open && (
+      </div>
+      {open && popoverPos &&
+        createPortal(
           <div
-            className="absolute right-0 top-full mt-1 z-30 bg-bg-800 border border-amber-500/40 min-w-[180px] shadow-lg"
-            onClick={(e) => e.stopPropagation()}
+            ref={popoverRef}
+            role="menu"
+            style={{
+              position: 'absolute',
+              top: popoverPos.top,
+              left: popoverPos.left,
+              zIndex: 50,
+            }}
+            className="bg-bg-800 border border-amber-500/40 min-w-[180px] shadow-lg"
           >
             <div className="text-[9px] font-mono uppercase tracking-widest text-ink-500 px-2 py-1 border-b border-ink-500/20">
               Add to meal
@@ -1116,6 +1155,7 @@ function SavedFoodRow({
                 <button
                   key={m}
                   type="button"
+                  role="menuitem"
                   onClick={() => commit(m)}
                   disabled={logging}
                   className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] font-mono text-left text-slate-200 hover:bg-neon-amber/10 disabled:opacity-50"
@@ -1135,9 +1175,9 @@ function SavedFoodRow({
             <div className="border-t border-ink-500/20 px-2 py-1 text-[9px] font-mono text-ink-500">
               pre-log any meal to see end-of-day totals early
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
-      </div>
     </div>
   );
 }

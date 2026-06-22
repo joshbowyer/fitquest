@@ -54,9 +54,17 @@ Schema:
 {
   "query": "2-4 keyword search string OR null",
   "reason": "short explanation (1 sentence)"
-}`;
+}
 
-const FOOD_SEARCH_PROMPT = (description: string) => `User description: ${description}\n\nExtract a search query.`;
+Example (expected output):
+User description: Trader Joe's vanilla Greek yogurt
+{"query":"Trader Joe's vanilla Greek yogurt","reason":"Branded product; keep brand for accurate OFF match."}
+
+Example (expected output):
+User description: a banana
+{"query":"banana","reason":"Single generic food, no brand or modifiers present."}`;
+
+const FOOD_SEARCH_PROMPT = (description: string) => `User description: ${description}\n\nRespond with strict JSON only: {"query":"...","reason":"..."}.`;
 
 export async function foodRoutes(app: FastifyInstance) {
   // GET /foods/search?q=...
@@ -203,13 +211,13 @@ export async function foodRoutes(app: FastifyInstance) {
     if (!result.ok) {
       return reply.code(502).send({ error: result.error ?? 'LLM failed' });
     }
-    const parsed = extractJson(result.text);
-    const query = parsed?.query;
-    if (typeof query !== 'string' || query.length < 2) {
+    const extracted = extractAskAiResult(result.text);
+    if (!extracted) {
       return reply.code(422).send({
-        error: parsed?.reason ?? "Couldn't figure out a search query from that description.",
+        error: "Couldn't figure out a search query from that description.",
       });
     }
+    const { query, reason: askReason } = extracted;
     // Run the extracted query through the same /search pipeline.
     // Call the libs directly rather than self-fetching (avoids the
     // cookie-fwd dance and lets the LLM's request trigger fresh
@@ -276,7 +284,7 @@ export async function foodRoutes(app: FastifyInstance) {
     }
     return {
       query,
-      reason: parsed.reason,
+      reason: askReason,
       items: allHits,
     };
   });
@@ -293,6 +301,38 @@ function extractJson(text: string): any | null {
   const last = trimmed.lastIndexOf('}');
   if (first >= 0 && last > first) {
     try { return JSON.parse(trimmed.slice(first, last + 1)); } catch {}
+  }
+  return null;
+}
+
+// Parse the LLM's response and pull out a search query, reason, and
+// optional items array. Handles three formats we see in practice:
+//   1. Strict JSON: {"query":"chicken breast","reason":"…","items":[]}
+//      (Anthropic, OpenAI, well-tuned local models)
+//   2. JSON-ish:   {"query":"chicken breast", "reason":"…"}
+//      (trailing-comma / space variants)
+//   3. Plain text: "chicken breast"
+//      (smaller instruction-tuned models that ignore the JSON rule
+//      and just echo the user input)
+//
+// For (3), we use the whole text as the query — better than failing
+// the user with a 422 when the LLM clearly understood the task but
+// just didn't follow the format.
+function extractAskAiResult(text: string): { query: string; reason: string; items: any[] } | null {
+  const parsed = extractJson(text);
+  if (parsed && typeof parsed.query === 'string' && parsed.query.length >= 2) {
+    return {
+      query: parsed.query,
+      reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+    };
+  }
+  // Fallback: treat the whole text as a query. Strip surrounding
+  // quotes / whitespace / punctuation. Reject if the model went on
+  // a tangent (>120 chars or no alphabetic content).
+  const cleaned = text.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
+  if (cleaned.length >= 2 && cleaned.length <= 120 && /[a-zA-Z]/.test(cleaned)) {
+    return { query: cleaned, reason: 'Model returned a plain query instead of JSON; used as-is.', items: [] };
   }
   return null;
 }
