@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { DeleteButton } from '@/components/DeleteButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
 import { classNames } from '@/lib/format';
@@ -568,13 +569,12 @@ function SubstancesPanel() {
                   </span>
                   {l.context && <span className="text-slate-500 text-[10px] italic truncate">— {l.context}</span>}
                 </div>
-                <button
+                <DeleteButton
                   onClick={() => delM.run({ id: l.id })}
-                  className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 text-xs shrink-0"
+                  showOnHover
+                  size="sm"
                   title="Delete this log"
-                >
-                  ×
-                </button>
+                />
               </div>
             ))}
           </div>

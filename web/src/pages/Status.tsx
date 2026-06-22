@@ -344,14 +344,13 @@ export function StatusPage() {
                       <div className="text-ink-300 italic text-[10px] mt-0.5">"{log.notes}"</div>
                     )}
                   </div>
-                  <button
+                  <DeleteButton
                     onClick={() => archive.run(log.id)}
                     disabled={archive.isPending}
-                    className="text-ink-400 hover:text-neon-magenta text-[10px] font-mono"
+                    size="sm"
+                    showOnHover
                     title="Delete this log"
-                  >
-                    ✕
-                  </button>
+                  />
                 </div>
               );
             })}

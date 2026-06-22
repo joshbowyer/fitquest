@@ -1135,17 +1135,15 @@ function ManageSavedFoodsModal({
                     >
                       edit
                     </button>
-                    <button
+                    <DeleteButton
                       onClick={() => {
                         if (confirm(`Remove "${s.name}" from saved foods?`)) {
                           delM.run(s.id);
                         }
                       }}
                       disabled={delM.isPending}
-                      className="px-2 py-1 text-[10px] font-mono text-ink-400 hover:text-rose-400"
-                    >
-                      ✕
-                    </button>
+                      title="Remove from saved foods"
+                    />
                   </div>
                 ))}
               </div>
