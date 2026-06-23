@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { calcPlates, formatPlates } from '@/lib/plateCalc';
 import { classNames } from '@/lib/format';
-import type { UnitSystem } from '@/lib/types';
+import type { UnitSystem } from '@/lib/units';
 
 type Props = {
   /** The target weight in the user's current display unit (kg or lb).

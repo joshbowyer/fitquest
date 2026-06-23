@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { PageHeader } from '@/components/Layout';
+import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { PlateCalculator } from '@/components/PlateCalculator';
 import { useAuth } from '@/lib/auth';
 import { classNames } from '@/lib/format';
 import { calcPlates, formatPlates } from '@/lib/plateCalc';
-import type { UnitSystem } from '@/lib/types';
+import type { UnitSystem } from '@/lib/units';
 
 const LS_KEY = 'fq.tools.plateCalc.v1';
 
@@ -105,11 +105,12 @@ export function ToolsPage() {
   }
 
   return (
-    <div className="px-4 py-4 md:px-8 md:py-6 max-w-3xl mx-auto pb-24 md:pb-6">
-      <PageHeader
-        title="Tools"
-        subtitle="Stand-alone utilities. Plate calculator for now; rest timer + more to come."
-      />
+    <Layout>
+      <div className="px-4 py-4 md:px-8 md:py-6 max-w-3xl mx-auto pb-24 md:pb-6">
+        <PageHeader
+          title="Tools"
+          subtitle="Stand-alone utilities. Plate calculator for now; rest timer + more to come."
+        />
 
       <Panel
         variant="cyan"
@@ -343,6 +344,7 @@ export function ToolsPage() {
           </ul>
         </Panel>
       )}
-    </div>
+      </div>
+    </Layout>
   );
 }
