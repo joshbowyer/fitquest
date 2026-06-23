@@ -153,14 +153,14 @@ export async function workoutRoutes(app: FastifyInstance) {
     return { items, total };
   });
 
-  app.get('/:id', async (req) => {
+  app.get('/:id', async (req, reply) => {
     const me = await requireUser(req);
     const id = (req.params as any).id;
     const item = await prisma.workout.findFirst({
       where: { id, userId: me.id },
       include: { exercises: { include: { sets: { orderBy: { order: 'asc' } } }, orderBy: { order: 'asc' } } },
     });
-    if (!item) return { error: 'Not found' };
+    if (!item) return reply.code(404).send({ error: 'Workout not found' });
     return { item };
   });
 

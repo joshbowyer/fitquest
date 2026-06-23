@@ -471,8 +471,12 @@ export function ActivityDetailPage() {
           </Panel>
 
           {/* AI insight. Loads on mount; first time shows a "Generate"
-              button, after that the cached insight renders directly. */}
-          <ActivityInsightPanel workoutId={w.id} />
+              button, after that the cached insight renders directly.
+              `key` ensures a fresh panel instance when navigating
+              between activities — otherwise React would reuse the
+              same component and the inner React Query cache key
+              would lag the URL. */}
+          <ActivityInsightPanel key={w.id} workoutId={w.id} />
 
           {/* Achievements unlocked by this session */}
           {sessionAchievements.length > 0 && (

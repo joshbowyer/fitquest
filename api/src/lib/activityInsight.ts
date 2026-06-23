@@ -527,12 +527,36 @@ export function offlineFallback(ctx: GatheredContext): InsightPayload {
 
   score = clampInt(score, 1, 10);
   return {
-    summary: `Offline analysis: ${workout.exercises.length} exercise${workout.exercises.length === 1 ? '' : 's'}, ${workout.setVolume.toFixed(0)} kg total volume${workout.avgRpe != null ? `, avg RPE ${workout.avgRpe.toFixed(1)}` : ''}.`,
+    summary: offlineSummary(workout),
     qualityScore: score,
     recoveryLoad: score <= 4 ? 'rest' : score <= 6 ? 'light' : 'normal',
     confidence: 'low',
     factors,
   };
+}
+
+/**
+ * Build a human-readable summary that reflects the workout's actual
+ * structure. Strength / hypertrophy / calisthenics sessions report
+ * exercise count + total set volume + average RPE. Cardio sessions
+ * report duration + distance (if present). Mobility / other sessions
+ * fall back to a generic note.
+ */
+function offlineSummary(workout: GatheredContext['workout']): string {
+  const dur = workout.durationMin;
+  const durStr = dur != null && dur > 0 ? `${dur}min ` : '';
+  const type = (workout.type || '').toUpperCase();
+  if (type === 'CARDIO') {
+    return `Offline analysis: ${durStr}cardio session.`;
+  }
+  if (type === 'MOBILITY' || type === 'OTHER') {
+    return `Offline analysis: ${durStr}${type.toLowerCase()} session.`;
+  }
+  // Strength / hypertrophy / calisthenics.
+  const ex = workout.exercises.length;
+  const vol = workout.setVolume;
+  const rpe = workout.avgRpe != null ? `, avg RPE ${workout.avgRpe.toFixed(1)}` : '';
+  return `Offline analysis: ${ex} exercise${ex === 1 ? '' : 's'}, ${vol.toFixed(0)} kg total volume${rpe}.`;
 }
 
 export function extractJson(text: string): any | null {

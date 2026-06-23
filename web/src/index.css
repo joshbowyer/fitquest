@@ -67,9 +67,14 @@ body {
            hover:bg-neon-cyan/10 hover:border-neon-cyan/80
            transition-all duration-200 cursor-pointer
            shadow-neon-cyan/30 hover:shadow-neon-cyan
-           disabled:opacity-40 disabled:cursor-not-allowed;
+           disabled:opacity-40 disabled:cursor-not-allowed
+           whitespace-nowrap;
+    /* min-height keeps tap targets accessible on mobile. min-width
+       was 44px but that clipped button text when the button sat
+       inside a constrained row (e.g. the AI insight "Generate"
+       button next to a description); the text needs to be able to
+       expand horizontally. */
     min-height: 44px;
-    min-width: 44px;
   }
   .btn-neon-magenta {
     @apply px-4 py-2 font-display tracking-widest uppercase text-sm

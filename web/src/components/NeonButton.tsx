@@ -26,8 +26,8 @@ type Props = {
 };
 
 const SIZE_CLASS = {
-  sm: 'text-xs px-2 py-1',
-  md: '',
+  sm: 'text-xs px-2 py-1 whitespace-nowrap',
+  md: 'whitespace-nowrap',
 };
 
 const LOADING_CLASSES: Record<Variant, string> = {
