@@ -27,6 +27,7 @@ const NAV: NavItem[] = [
   { to: '/habits',      label: 'Habits',   icon: '✓', mobile: false },
   { to: '/measurements', label: 'Measure',  icon: '◎', mobile: false },
   { to: '/insights',    label: 'Insights', icon: '◈', mobile: false },
+  { to: '/tools',       label: 'Tools',    icon: '⚒', mobile: false },
   { to: '/skills',      label: 'Skills',   icon: '✦', mobile: false },
   { to: '/party',       label: 'Party',    icon: '⚑', mobile: false },
   { to: '/inventory',   label: 'Inventory', icon: '⚔', mobile: false },
