@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 import { formatRelative, formatSeconds, classNames } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
@@ -594,6 +595,35 @@ export function WorkoutsPage() {
     },
     onSuccess: (r) => {
       setResult(r);
+      // Emit reward events so the global overlay can show XP float,
+      // level-up pulse, and raid-damage number. Each event auto-
+      // removes itself when its CSS animation finishes.
+      const rw = r?.rewards;
+      if (rw?.xp && rw.xp > 0) {
+        emitReward({
+          kind: 'xp',
+          id: nextRewardId('xp'),
+          amount: rw.xp,
+          source: 'workout',
+        });
+      }
+      if (rw?.leveledUp) {
+        emitReward({
+          kind: 'levelUp',
+          id: nextRewardId('lvl'),
+          level: rw.level,
+          previousLevel: rw.previousLevel ?? rw.level - 1,
+        });
+      }
+      const dmg = r?.raid?.damage?.total;
+      if (dmg && dmg > 0) {
+        emitReward({
+          kind: 'raidDamage',
+          id: nextRewardId('dmg'),
+          damage: dmg,
+          bossName: undefined,
+        });
+      }
       qc.invalidateQueries({ queryKey: ['workouts'] });
       qc.invalidateQueries({ queryKey: ['prs'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });

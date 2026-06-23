@@ -209,3 +209,82 @@ body {
 .portal-pulse {
   animation: portalPulse 2.6s ease-in-out infinite;
 }
+
+/* === Reward overlay animations === */
+
+/* XP / raid-damage float: spawns at the anchor point (or centre),
+   drifts upward, fades. */
+@keyframes rewardFloater {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.8);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -10px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -90px) scale(0.9);
+  }
+}
+.reward-floater {
+  animation: rewardFloater 1.4s ease-out forwards;
+  white-space: nowrap;
+  /* When anchored to a DOM point we use position:absolute; the
+     translate(-50%, ...) in the keyframes keeps it centred on the
+     anchor. The renderer sets left/top directly. */
+}
+
+/* Level-up: full-screen cyan flash + expanding ring + the new
+   level number scales up with a slight overshoot then settles. */
+@keyframes rewardLevelRing {
+  0% { transform: scale(0.4); opacity: 0; border-color: rgba(20, 214, 232, 0); }
+  40% { transform: scale(1); opacity: 1; border-color: rgba(20, 214, 232, 0.6); }
+  100% { transform: scale(2.4); opacity: 0; border-color: rgba(20, 214, 232, 0); }
+}
+.levelup-ring {
+  border: 4px solid rgba(20, 214, 232, 0.6);
+  border-radius: 9999px;
+  animation: rewardLevelRing 2s ease-out forwards;
+}
+@keyframes rewardLevelFlash {
+  0%, 100% { background: rgba(20, 214, 232, 0); }
+  20% { background: rgba(20, 214, 232, 0.18); }
+  60% { background: rgba(20, 214, 232, 0); }
+}
+.levelup-flash {
+  animation: rewardLevelFlash 1.2s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes rewardLevelNumber {
+  0% { transform: scale(0.5); opacity: 0; }
+  35% { transform: scale(1.4); opacity: 1; }
+  60% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.levelup-number {
+  animation: rewardLevelNumber 1.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Achievement: slides in from the right, lingers, slides out. */
+@keyframes rewardAchievement {
+  0%   { transform: translateX(120%); opacity: 0; }
+  10%  { transform: translateX(0);    opacity: 1; }
+  85%  { transform: translateX(0);    opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+.reward-achievement {
+  animation: rewardAchievement 4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Loot: drops in from above the viewport, settles, fades. */
+@keyframes rewardLoot {
+  0%   { transform: translate(-50%, -200px); opacity: 0; }
+  60%  { transform: translate(-50%, 0);     opacity: 1; }
+  85%  { transform: translate(-50%, 0);     opacity: 1; }
+  100% { transform: translate(-50%, -40px); opacity: 0; }
+}
+.reward-loot {
+  animation: rewardLoot 2.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}

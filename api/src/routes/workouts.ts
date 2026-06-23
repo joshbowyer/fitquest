@@ -249,12 +249,25 @@ export async function workoutRoutes(app: FastifyInstance) {
       const newXp = me.xp + xp;
       const newGold = me.gold + gold;
       const newLevel = levelFromXp(newXp);
+      // leveledUp drives the level-up pulse animation on the client.
+      // Also include the level-before so the bus can render the
+      // before/after without an extra GET.
+      const previousLevel = me.level;
       await tx.user.update({
         where: { id: me.id },
         data: { xp: newXp, gold: newGold, level: newLevel },
       });
 
-      return { workout, xp, gold, totalXp: newXp, totalGold: newGold, level: newLevel };
+      return {
+        workout,
+        xp,
+        gold,
+        totalXp: newXp,
+        totalGold: newGold,
+        level: newLevel,
+        previousLevel,
+        leveledUp: newLevel > previousLevel,
+      };
     });
 
     await checkAchievements(me.id);
@@ -368,6 +381,8 @@ export async function workoutRoutes(app: FastifyInstance) {
         totalXp: result.totalXp,
         totalGold: result.totalGold,
         level: result.level,
+        previousLevel: result.previousLevel,
+        leveledUp: result.leveledUp,
         progress: progressInLevel(result.totalXp, result.level),
         prs,
       },

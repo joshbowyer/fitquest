@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
+import { emitReward, nextRewardId } from './RewardOverlay';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { WORLD_COLOR_HEX } from '@/lib/quest';
 import { classNames } from '@/lib/format';
@@ -49,7 +50,27 @@ export function BossCard({ worldId, bossName, bossGlyph, worldColor, allCleared 
         method: 'POST',
         body: { damage: dmg },
       }),
-    onSuccess: () => {
+    onSuccess: (r) => {
+      // Raid damage floater — anchored to the boss card.
+      const card = document.querySelector(`[data-boss-card="${worldId}"]`);
+      const rect = card?.getBoundingClientRect();
+      const anchor = rect
+        ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+        : undefined;
+      emitReward({
+        kind: 'raidDamage',
+        id: nextRewardId('dmg'),
+        damage: r.actualDamage,
+        anchor,
+      });
+      if (r.rewards) {
+        emitReward({
+          kind: 'xp',
+          id: nextRewardId('xp'),
+          amount: r.rewards.xp,
+          source: 'raid',
+        });
+      }
       qc.invalidateQueries({ queryKey: ['bosses'] });
       qc.invalidateQueries({ queryKey: ['user'] });
     },
@@ -117,6 +138,7 @@ export function BossCard({ worldId, bossName, bossGlyph, worldColor, allCleared 
   const damageDealt = boss.bossMaxHp - boss.bossHp;
 
   return (
+    <div data-boss-card={worldId}>
     <Panel
       title={`Boss — ${boss.bossName}`}
       variant="magenta"
@@ -211,5 +233,6 @@ export function BossCard({ worldId, bossName, bossGlyph, worldColor, allCleared 
         )}
       </div>
     </Panel>
+    </div>
   );
 }
