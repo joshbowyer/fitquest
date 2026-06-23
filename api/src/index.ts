@@ -32,6 +32,7 @@ import { dailyRoutes } from './routes/dailies.js';
 import { adminRoutes } from './routes/admin.js';
 import { morningReportRoutes } from './routes/morningReport.js';
 import { checkInRoutes } from './routes/checkIns.js';
+import { activityInsightRoutes } from './routes/activityInsights.js';
 import { importRoutes } from './routes/import.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
@@ -94,6 +95,7 @@ async function build() {
   await app.register(adminRoutes, { prefix: '/admin' });
   await app.register(morningReportRoutes, { prefix: '/morning-report' });
   await app.register(checkInRoutes);
+  await app.register(activityInsightRoutes);
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');

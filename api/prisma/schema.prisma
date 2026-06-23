@@ -242,6 +242,7 @@ model User {
   inventoryItems   InventoryItem[]
   morningReports   MorningReport[]
   spiritualReflections SpiritualReflection[]
+  activityInsights    ActivityInsight[]
   trackedItems     UserTrackedItem[]
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
@@ -1593,5 +1594,53 @@ model RecoveryCode {
   createdAt  DateTime @default(now())
 
   @@unique([userId, codeHash])
+  @@index([userId])
+}
+
+/// Per-activity AI analysis. One row per workout, generated on
+/// demand from the activity detail page. The LLM is given the
+/// workout's exercises + sets + RPE + the user's recent HRV/sleep/
+/// soreness/mood context and asked to score training quality,
+/// flag risk factors, and recommend recovery load for the next
+/// 24-48h.
+///
+/// Caching: the first POST creates a row; subsequent reads return
+/// the cached insight. Force-regenerate via POST with ?force=1
+/// (used by the "Regenerate" button — picks up new context the
+/// user logged after the first generation).
+///
+/// `factors` is a JSON array of {label, signal, weight, note} so
+/// the UI can render structured chips. `promptVersion` lets us
+/// invalidate cache if the prompt changes in a way that matters.
+model ActivityInsight {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutId    String   @unique
+  /// 2-4 sentence overall summary of how this session landed.
+  summary      String
+  /// Training quality score 1-10. Computed from RPE + volume vs
+  /// recent baseline + HRV/sleep context.
+  qualityScore Int
+  /// light | normal | rest. Drives the "next session should be…"
+  /// recommendation.
+  recoveryLoad String
+  /// low | medium | high. Reflects how much context was available
+  /// to score this — no HRV data = low; HRV + sleep + RPE + 14d
+  /// baseline = high.
+  confidence   String
+  /// JSON: [{label, signal: 'positive'|'negative'|'neutral', weight: 0..1, note}]
+  /// Renders as a "key factors" list in the UI. Max 6 entries.
+  factors      String
+  /// LLM model identifier (for audit + regen-when-model-changes).
+  model        String?
+  /// Latency in ms.
+  latencyMs    Int?
+  /// Schema/prompt version. Bump when the prompt changes in a way
+  /// that should invalidate existing cached insights.
+  promptVersion Int    @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
   @@index([userId])
 }

@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ActivityMap, type TrackPoint } from '@/components/ActivityMap';
 import { ActivityStreamsChart } from '@/components/ActivityStreamsChart';
+import { ActivityInsightPanel } from '@/components/ActivityInsightPanel';
 import { api, ApiError } from '@/lib/api';
 import { classNames, formatRelative, formatSeconds, formatMetricWithUnit, formatAbsolute } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
@@ -468,6 +469,10 @@ export function ActivityDetailPage() {
               <Row k="Started" v={formatRelative(w.performedAt)} />
             </div>
           </Panel>
+
+          {/* AI insight. Loads on mount; first time shows a "Generate"
+              button, after that the cached insight renders directly. */}
+          <ActivityInsightPanel workoutId={w.id} />
 
           {/* Achievements unlocked by this session */}
           {sessionAchievements.length > 0 && (

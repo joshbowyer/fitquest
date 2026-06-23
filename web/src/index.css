@@ -6,17 +6,32 @@
   color-scheme: dark;
 }
 
-html, body, #root {
-  height: 100%;
-  background: #2c2f3a;
+html, body {
+  min-height: 100%;
+  background-color: #2c2f3a;
+}
+
+#root {
+  min-height: 100vh;
+  /* Linear gradient stretches the full document height so the fade
+     from #2c2f3a (top) to #232531 (bottom) covers tall pages
+     without repeating. Three stops smooth the transition — the
+     previous two-stop version read as a hard band on long pages. */
   background-image:
-    radial-gradient(circle at 20% 10%, rgba(20, 214, 232, 0.07), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(245, 92, 196, 0.06), transparent 40%),
-    linear-gradient(180deg, #2c2f3a 0%, #232531 100%);
+    radial-gradient(circle at 20% 8%, rgba(20, 214, 232, 0.07), transparent 40%),
+    radial-gradient(circle at 80% 75%, rgba(245, 92, 196, 0.06), transparent 40%),
+    linear-gradient(180deg,
+      #2c2f3a 0%,
+      #2a2d38 35%,
+      #262932 65%,
+      #232531 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: scroll;
 }
 
 body {
-  background-attachment: fixed;
+  background-color: #2c2f3a;
 }
 
 @layer base {
