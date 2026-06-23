@@ -8,6 +8,7 @@ import {
   fetchCorrelationHistory,
 } from '../lib/correlations.js';
 import { generateInsights, getInsightsSummary } from '../lib/insights.js';
+import { setVolumeKg } from '../lib/exerciseVolume.js';
 
 export async function insightRoutes(app: FastifyInstance) {
   app.get('/summary', async (req) => {
@@ -72,6 +73,10 @@ export async function insightRoutes(app: FastifyInstance) {
   // "session count" overlay charts.
   app.get('/weekly-volume', async (req) => {
     const me = await requireUser(req);
+    const meWithWeight = me.weightKg
+      ? me
+      : await prisma.user.findUnique({ where: { id: me.id }, select: { weightKg: true } });
+    const userWeightKg = meWithWeight?.weightKg ?? 0;
     const weeks = 12;
     const since = new Date();
     since.setDate(since.getDate() - weeks * 7);
@@ -83,6 +88,7 @@ export async function insightRoutes(app: FastifyInstance) {
         duration: true,
         exercises: {
           select: {
+            name: true,
             sets: {
               where: { completed: true, skipped: false },
               select: { weight: true, reps: true },
@@ -111,7 +117,7 @@ export async function insightRoutes(app: FastifyInstance) {
       if (!buckets[key]) continue;
       const vol = w.exercises.reduce(
         (s, ex) =>
-          s + ex.sets.reduce((ss, st) => ss + (st.weight ?? 0) * (st.reps ?? 0), 0),
+          s + ex.sets.reduce((ss, st) => ss + setVolumeKg(st, ex.name, userWeightKg), 0),
         0,
       );
       buckets[key].volume += vol;

@@ -31,6 +31,7 @@ import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
 import { tickHearts, hardcoreSubstanceCapReason, HARDCORE_SUBSTANCE_CAPS } from './mode.js';
+import { setVolumeKg } from './exerciseVolume.js';
 
 type DateStr = string; // YYYY-MM-DD in user's timezone
 
@@ -80,6 +81,8 @@ async function metricDomain(
 }
 
 async function workoutsDomain(userId: string, since7: Date, since14: Date) {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { weightKg: true } });
+  const userWeightKg = me?.weightKg ?? 0;
   const last = await prisma.workout.findMany({
     where: { userId, performedAt: { gte: since7 } },
     select: {
@@ -87,6 +90,7 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
       duration: true,
       exercises: {
         select: {
+          name: true,
           sets: {
             where: { completed: true, skipped: false },
             select: { weight: true, reps: true },
@@ -97,12 +101,12 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
   });
   const prior = await prisma.workout.findMany({
     where: { userId, performedAt: { gte: since14, lt: since7 } },
-    select: { type: true, duration: true, exercises: { select: { sets: { select: { weight: true, reps: true } } } } },
+    select: { type: true, duration: true, exercises: { select: { name: true, sets: { select: { weight: true, reps: true } } } } },
   });
   const sum = (xs: typeof last) => {
     const vol = xs.reduce(
       (s, w) =>
-        s + w.exercises.reduce((ss, ex) => ss + ex.sets.reduce((sss, st) => sss + (st.weight ?? 0) * (st.reps ?? 0), 0), 0),
+        s + w.exercises.reduce((ss, ex) => ss + ex.sets.reduce((sss, st) => sss + setVolumeKg(st, ex.name, userWeightKg), 0), 0),
       0,
     );
     const min = xs.reduce((s, w) => s + (w.duration ?? 0), 0) / 60;

@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { setVolumeKg } from './exerciseVolume.js';
 
 export type Correlation = {
   habit: string;
@@ -245,6 +246,8 @@ async function workoutDaily(
   from: Date,
   to: Date
 ): Promise<{ volume: DailyMap; rpe: DailyMap; pr: DailyMap; sets: DailyMap }> {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { weightKg: true } });
+  const userWeightKg = me?.weightKg ?? 0;
   const workouts = await prisma.workout.findMany({
     where: { userId, performedAt: { gte: from, lt: to } },
     include: { exercises: { include: { sets: true } } },
@@ -263,7 +266,7 @@ async function workoutDaily(
     for (const ex of w.exercises) {
       for (const s of ex.sets) {
         if (!s.completed) continue;
-        if (s.weight != null && s.reps > 0) dayVolume += s.weight * s.reps;
+        dayVolume += setVolumeKg(s, ex.name, userWeightKg);
         if (s.rpe != null) { rpe.sum += s.rpe; rpe.count += 1; }
         daySets += 1;
       }

@@ -12,6 +12,7 @@ import { ActivityInsightPanel } from '@/components/ActivityInsightPanel';
 import { api, ApiError } from '@/lib/api';
 import { classNames, formatRelative, formatSeconds, formatMetricWithUnit, formatAbsolute } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { setVolumeKg } from '@/lib/exerciseVolume';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
 type SetEntry = {
@@ -256,9 +257,10 @@ export function ActivityDetailPage() {
   const isFit = typeof w.notes === 'string' && w.notes.startsWith('[FIT]');
   const fit = isFit && w.notes ? parseFitNotes(w.notes) : null;
 
-  // Aggregates
+  // Aggregates (bodyweight-aware: see web/src/lib/exerciseVolume.ts)
+  const userWeightKg = user?.weightKg ?? 0;
   const totalVolumeKg = w.exercises.reduce(
-    (acc, ex) => acc + ex.sets.reduce((s, set) => s + (set.weight ?? 0) * set.reps, 0),
+    (acc, ex) => acc + ex.sets.reduce((s, set) => s + setVolumeKg(set, ex.name, userWeightKg), 0),
     0,
   );
   const totalSets = w.exercises.reduce((acc, ex) => acc + ex.sets.length, 0);
@@ -333,7 +335,7 @@ export function ActivityDetailPage() {
               {w.exercises.map((ex) => {
                 const isPr = prsSet.has(ex.name);
                 const exVolume = ex.sets.reduce(
-                  (s, set) => s + (set.weight ?? 0) * set.reps,
+                  (s, set) => s + setVolumeKg(set, ex.name, userWeightKg),
                   0,
                 );
                 const exMaxWeight = Math.max(0, ...ex.sets.map((s) => s.weight ?? 0));
@@ -377,7 +379,7 @@ export function ActivityDetailPage() {
                         const wDisp = s.weight != null
                           ? convertForDisplay(s.weight, 'kg', system)
                           : null;
-                        const setVol = (s.weight ?? 0) * s.reps;
+                        const setVol = setVolumeKg(s, ex.name, userWeightKg);
                         // Bar width as % of this exercise's heaviest set
                         const barPct = exMaxWeight > 0 && s.weight
                           ? Math.round((s.weight / exMaxWeight) * 100)

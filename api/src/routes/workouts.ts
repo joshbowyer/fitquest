@@ -9,6 +9,7 @@ import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
 import { checkRoutineProgress } from './routine.js';
 import { tickHearts, heartMultiplier } from '../lib/mode.js';
+import { setVolumeKg } from '../lib/exerciseVolume.js';
 
 /**
  * Per-exercise absolute caps for "this value is almost certainly
@@ -174,10 +175,18 @@ export async function workoutRoutes(app: FastifyInstance) {
     // in the response so the client can show a confirm / correction UI.
     const validityFlags = flagSuspectSets(body.exercises, me.units);
 
+    // Bodyweight-aware volume: pushups at weight=0 count as
+    // 0.64 × bodyweight × reps, not bodyweight × reps. Pulls the
+    // user's current weight so the coefficient is applied against
+    // a live measurement (changes when they bulk/cut).
+    const meWithWeight = me.weightKg
+      ? me
+      : await prisma.user.findUnique({ where: { id: me.id }, select: { weightKg: true } });
+    const userWeightKg = meWithWeight?.weightKg ?? 0;
     const totalVolumeKg = body.exercises.reduce((acc, ex) => {
       return acc + ex.sets.reduce((s, set) => {
         if (!set.completed || set.skipped) return s;
-        return s + (set.weight ?? 0) * set.reps;
+        return s + setVolumeKg(set, ex.name, userWeightKg);
       }, 0);
     }, 0);
     const duration = body.duration ?? 0;

@@ -8,6 +8,7 @@ import { Panel } from '@/components/Panel';
 import { formatSeconds, classNames, formatAbsolute } from '@/lib/format';
 import type { Workout } from '@/lib/types';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
+import { setVolumeKg } from '@/lib/exerciseVolume';
 import { WorkoutLogger } from '@/components/WorkoutLogger';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -145,7 +146,7 @@ export function ActivitiesPage() {
 
           <div className="space-y-2 max-h-[80vh] overflow-y-auto pr-1">
             {filteredHistory.map((w) => (
-              <ActivityCard key={w.id} workout={w} units={units} timezone={user?.timezone ?? null} />
+              <ActivityCard key={w.id} workout={w} units={units} timezone={user?.timezone ?? null} userWeightKg={user?.weightKg ?? null} />
             ))}
             {(list.data?.items || []).length === 0 && (
               <div className="text-xs text-ink-300 font-mono text-center py-6 border border-dashed border-ink-700/30">
@@ -159,14 +160,16 @@ export function ActivitiesPage() {
   );
 }
 
-function ActivityCard({ workout: w, units, timezone }: { workout: any; units: UnitSystem; timezone?: string | null }) {
+function ActivityCard({ workout: w, units, timezone, userWeightKg }: { workout: any; units: UnitSystem; timezone?: string | null; userWeightKg?: number | null }) {
   const navigate = useNavigate();
   // Reduce of an empty array throws if no initial value is passed.
   // Pass 0 as the initial value so workouts with no exercises (e.g.
-  // a CARDIO or MOBILITY log) render without crashing.
+  // a CARDIO or MOBILITY log) render without crashing. Use the
+  // bodyweight-aware helper so pushups don't inflate to 100% of
+  // user weight (they're ~0.64).
   const totalVolume = (w.exercises ?? []).reduce(
     (acc: number, ex: any) => acc + (ex.sets ?? []).reduce(
-      (s: number, set: any) => s + (set.weight ?? 0) * set.reps, 0,
+      (s: number, set: any) => s + setVolumeKg(set, ex.name ?? '', userWeightKg ?? 0), 0,
     ),
     0,
   );
