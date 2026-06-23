@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
@@ -71,6 +71,7 @@ export function AdminPage() {
   const qc = useQueryClient();
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [newPassword, setNewPassword] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
 
   // ---- Users ----
   const usersQ = useQuery({
@@ -176,6 +177,25 @@ export function AdminPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   }, 800);
 
+  // Destructive: deletes the user + all their data (cascade).
+  // Requires confirmation in the modal — the form lists what gets
+  // wiped so the admin knows what they're committing to.
+  const deleteUserM = useDelayedMutation<
+    { ok: boolean; deleted: { id: string; username: string } },
+    string
+  >({
+    mutationFn: (id) =>
+      api<{ ok: boolean; deleted: { id: string; username: string } }>(
+        `/admin/users/${id}`,
+        { method: 'DELETE' },
+      ),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Delete failed'),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  }, 800);
+
   // ---- Render ----
   if (!user) {
     return (
@@ -207,110 +227,142 @@ export function AdminPage() {
         subtitle={`${usersQ.data?.users.length ?? 0} users · LLM: ${llmQ.data?.config.enabled ? 'ON' : 'OFF'}`}
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-2">
         {/* -------- Users -------- */}
-        <Panel title="Users" className="lg:col-span-2">
+        <Panel title="Users" className="sm:col-span-2 lg:col-span-2">
           {usersQ.isLoading ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : usersQ.isError ? (
             <p className="text-sm text-rose-300">Failed to load users.</p>
           ) : (
-            <div className="overflow-x-auto -mx-2">
-              <table className="w-full text-sm">
-                <thead className="text-xs uppercase text-slate-500 border-b border-slate-700">
-                  <tr>
-                    <th className="text-left py-2 px-2">Username</th>
-                    <th className="text-left py-2 px-2">Class</th>
-                    <th className="text-right py-2 px-2">Level</th>
-                    <th className="text-right py-2 px-2">Gold</th>
-                    <th className="text-right py-2 px-2">Stones</th>
-                    <th className="text-center py-2 px-2">2FA</th>
-                    <th className="text-center py-2 px-2">Admin</th>
-                    <th className="text-right py-2 px-2">Joined</th>
-                    <th className="text-right py-2 px-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersQ.data?.users.map((u) => (
-                    <tr
-                      key={u.id}
-                      className="border-b border-slate-800 hover:bg-slate-800/30"
-                    >
-                      <td className="py-2 px-2">
-                        <div className="font-medium text-slate-100">{u.username}</div>
-                        <div className="text-xs text-slate-500">{u.email}</div>
-                      </td>
-                      <td className="py-2 px-2 text-slate-300">
-                        {u.class ?? <span className="text-slate-600">—</span>}
-                      </td>
-                      <td className="py-2 px-2 text-right tabular-nums">
-                        {u.level}
-                      </td>
-                      <td className="py-2 px-2 text-right tabular-nums text-amber-300">
-                        {u.gold}
-                      </td>
-                      <td className="py-2 px-2 text-right tabular-nums text-violet-300">
-                        {u.soulstones}
-                      </td>
-                      <td className="py-2 px-2 text-center">
-                        {u.twoFactorEnabled ? (
-                          <span className="text-emerald-400">●</span>
-                        ) : (
-                          <span className="text-slate-600">○</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-2 text-center">
-                        {u.isAdmin ? (
-                          <span className="text-violet-300 text-xs">★</span>
-                        ) : (
-                          <span className="text-slate-600 text-xs">·</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-2 text-right text-xs text-slate-500">
-                        {formatRelative(u.createdAt)}
-                      </td>
-                      <td className="py-2 px-2 text-right">
-                        <div className="flex gap-1 justify-end">
-                          <NeonButton
-                            size="sm"
-                            variant="amber"
-                            onClick={() => setResetTarget(u)}
-                          >
-                            Reset PW
-                          </NeonButton>
-                          {u.twoFactorEnabled && (
+            <>
+              {/* Mobile: stacked cards. Each card shows the user's
+                  identity strip + stats + a wrap-friendly action row. */}
+              <div className="md:hidden space-y-2">
+                {usersQ.data?.users.map((u) => (
+                  <UserCardMobile
+                    key={u.id}
+                    user={u}
+                    isSelf={u.id === user?.id}
+                    onResetPw={() => setResetTarget(u)}
+                    onClear2fa={() => clear2faM.run(u.id)}
+                    onToggleAdmin={() =>
+                      toggleAdminM.run({ id: u.id, isAdmin: !u.isAdmin })
+                    }
+                    onDelete={() => setDeleteTarget(u)}
+                    isClearing2fa={clear2faM.isPending}
+                    isTogglingAdmin={toggleAdminM.isPending}
+                  />
+                ))}
+              </div>
+
+              {/* Tablet+: full table. Wraps horizontally if the
+                  viewport is narrower than the natural width. */}
+              <div className="hidden md:block overflow-x-auto -mx-2">
+                <table className="w-full text-sm">
+                  <thead className="text-xs uppercase text-slate-500 border-b border-slate-700">
+                    <tr>
+                      <th className="text-left py-2 px-2">Username</th>
+                      <th className="text-left py-2 px-2">Class</th>
+                      <th className="text-right py-2 px-2">Level</th>
+                      <th className="text-right py-2 px-2">Gold</th>
+                      <th className="text-right py-2 px-2">Stones</th>
+                      <th className="text-center py-2 px-2">2FA</th>
+                      <th className="text-center py-2 px-2">Admin</th>
+                      <th className="text-right py-2 px-2">Joined</th>
+                      <th className="text-right py-2 px-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usersQ.data?.users.map((u) => (
+                      <tr
+                        key={u.id}
+                        className="border-b border-slate-800 hover:bg-slate-800/30"
+                      >
+                        <td className="py-2 px-2">
+                          <div className="font-medium text-slate-100">{u.username}</div>
+                          <div className="text-xs text-slate-500">{u.email}</div>
+                        </td>
+                        <td className="py-2 px-2 text-slate-300">
+                          {u.class ?? <span className="text-slate-600">—</span>}
+                        </td>
+                        <td className="py-2 px-2 text-right tabular-nums">
+                          {u.level}
+                        </td>
+                        <td className="py-2 px-2 text-right tabular-nums text-amber-300">
+                          {u.gold}
+                        </td>
+                        <td className="py-2 px-2 text-right tabular-nums text-violet-300">
+                          {u.soulstones}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {u.twoFactorEnabled ? (
+                            <span className="text-emerald-400">●</span>
+                          ) : (
+                            <span className="text-slate-600">○</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {u.isAdmin ? (
+                            <span className="text-violet-300 text-xs">★</span>
+                          ) : (
+                            <span className="text-slate-600 text-xs">·</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right text-xs text-slate-500">
+                          {formatRelative(u.createdAt)}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <div className="flex flex-wrap gap-1 justify-end">
                             <NeonButton
                               size="sm"
                               variant="amber"
-                              onClick={() => clear2faM.run(u.id)}
-                              disabled={clear2faM.isPending}
+                              onClick={() => setResetTarget(u)}
                             >
-                              Clear 2FA
+                              Reset PW
                             </NeonButton>
-                          )}
-                          <NeonButton
-                            size="sm"
-                            variant={u.isAdmin ? 'magenta' : 'lime'}
-                            onClick={() =>
-                              toggleAdminM.run({
-                                id: u.id,
-                                isAdmin: !u.isAdmin,
-                              })
-                            }
-                            disabled={
-                              toggleAdminM.isPending || u.id === user.id
-                            }
-                            title={u.id === user.id ? "Can't change your own admin" : ''}
-                          >
-                            {u.isAdmin ? 'Demote' : 'Promote'}
-                          </NeonButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                            {u.twoFactorEnabled && (
+                              <NeonButton
+                                size="sm"
+                                variant="amber"
+                                onClick={() => clear2faM.run(u.id)}
+                                disabled={clear2faM.isPending}
+                              >
+                                Clear 2FA
+                              </NeonButton>
+                            )}
+                            <NeonButton
+                              size="sm"
+                              variant={u.isAdmin ? 'magenta' : 'lime'}
+                              onClick={() =>
+                                toggleAdminM.run({
+                                  id: u.id,
+                                  isAdmin: !u.isAdmin,
+                                })
+                              }
+                              disabled={
+                                toggleAdminM.isPending || u.id === user?.id
+                              }
+                              title={u.id === user?.id ? "Can't change your own admin" : ''}
+                            >
+                              {u.isAdmin ? 'Demote' : 'Promote'}
+                            </NeonButton>
+                            <NeonButton
+                              size="sm"
+                              variant="magenta"
+                              onClick={() => setDeleteTarget(u)}
+                              disabled={u.id === user?.id}
+                            >
+                              Delete
+                            </NeonButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </Panel>
 
@@ -838,6 +890,14 @@ export function AdminPage() {
         </Panel>
       </div>
 
+      {/* -------- Delete-user confirmation modal -------- */}
+      <DeleteUserModal
+        target={deleteTarget}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={(id) => deleteUserM.run(id)}
+        isPending={deleteUserM.isPending}
+      />
+
       {/* -------- Reset password modal -------- */}
       <Modal
         open={!!resetTarget}
@@ -885,5 +945,183 @@ export function AdminPage() {
         )}
       </Modal>
     </Layout>
+  );
+}
+
+/**
+ * Mobile-only user card. Replaces the wide table on phones so the
+ * users section doesn't require horizontal scroll. Each card is a
+ * self-contained identity strip + stats row + wrap-friendly actions.
+ */
+function UserCardMobile({
+  user,
+  isSelf,
+  onResetPw,
+  onClear2fa,
+  onToggleAdmin,
+  onDelete,
+  isClearing2fa,
+  isTogglingAdmin,
+}: {
+  user: AdminUser;
+  isSelf: boolean;
+  onResetPw: () => void;
+  onClear2fa: () => void;
+  onToggleAdmin: () => void;
+  onDelete: () => void;
+  isClearing2fa: boolean;
+  isTogglingAdmin: boolean;
+}) {
+  return (
+    <div className="border border-ink-500/30 rounded p-3 bg-bg-900/40">
+      {/* Identity strip */}
+      <div className="flex items-baseline justify-between mb-2 gap-2">
+        <div className="min-w-0">
+          <div className="font-display text-base text-slate-100 truncate">
+            {user.username}
+            {user.isAdmin && (
+              <span className="text-violet-300 text-xs ml-1">★</span>
+            )}
+          </div>
+          <div className="text-[10px] font-mono text-slate-500 truncate">
+            {user.email}
+          </div>
+        </div>
+        <div className="text-right text-[10px] font-mono text-ink-400 shrink-0">
+          {user.class ?? <span className="text-ink-500">no class</span>}
+          <div className="flex gap-2 justify-end mt-0.5">
+            <span className="text-neon-cyan">L{user.level}</span>
+            <span className="text-neon-amber">{user.gold}G</span>
+            <span className="text-violet-300">{user.soulstones}◆</span>
+          </div>
+        </div>
+      </div>
+      {/* Meta strip: 2FA, joined, sessions/workouts */}
+      <div className="flex items-center gap-3 text-[10px] font-mono text-ink-400 mb-2">
+        <span>
+          2FA:{' '}
+          <span className={user.twoFactorEnabled ? 'text-emerald-400' : 'text-ink-500'}>
+            {user.twoFactorEnabled ? 'on' : 'off'}
+          </span>
+        </span>
+        <span>joined {formatRelative(user.createdAt)}</span>
+        <span>
+          {user._count.workouts} workouts · {user._count.sessions} sessions
+        </span>
+      </div>
+      {/* Action row: wraps on narrow screens */}
+      <div className="flex flex-wrap gap-1.5">
+        <NeonButton size="sm" variant="amber" onClick={onResetPw}>
+          Reset PW
+        </NeonButton>
+        {user.twoFactorEnabled && (
+          <NeonButton
+            size="sm"
+            variant="amber"
+            onClick={onClear2fa}
+            disabled={isClearing2fa}
+          >
+            Clear 2FA
+          </NeonButton>
+        )}
+        <NeonButton
+          size="sm"
+          variant={user.isAdmin ? 'magenta' : 'lime'}
+          onClick={onToggleAdmin}
+          disabled={isTogglingAdmin || isSelf}
+        >
+          {user.isAdmin ? 'Demote' : 'Promote'}
+        </NeonButton>
+        <NeonButton
+          size="sm"
+          variant="magenta"
+          onClick={onDelete}
+          disabled={isSelf}
+        >
+          Delete
+        </NeonButton>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Destructive-action confirmation. Asks the admin to type the
+ * target username before the Delete button enables — defends
+ * against muscle-memory clicks on a real name.
+ */
+function DeleteUserModal({
+  target,
+  onCancel,
+  onConfirm,
+  isPending,
+}: {
+  target: AdminUser | null;
+  onCancel: () => void;
+  onConfirm: (id: string) => void;
+  isPending: boolean;
+}) {
+  const [typed, setTyped] = useState('');
+  // Reset typed text every time the target changes so the confirm
+  // field starts empty for the next delete.
+  useEffect(() => {
+    setTyped('');
+  }, [target?.id]);
+  if (!target) return null;
+  const matches = typed === target.username;
+  return (
+    <Modal
+      open={!!target}
+      onClose={onCancel}
+      title={`Delete ${target.username}?`}
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-ink-300">
+          This permanently deletes the user and{' '}
+          <b>all of their data</b>:
+        </p>
+        <ul className="text-xs font-mono text-ink-400 space-y-0.5 list-disc pl-5">
+          <li>Workouts + sets + exercises</li>
+          <li>Measurements (weight, HRV, sleep, body comp)</li>
+          <li>Spiritual reflections + prayer logs</li>
+          <li>Quest progress, achievements, skill trees</li>
+          <li>Saved foods + nutrition logs</li>
+          <li>Inventory, raid contributions, party membership</li>
+          <li>All sessions (they will be logged out immediately)</li>
+        </ul>
+        <p className="text-xs font-mono text-rose-300">
+          This cannot be undone. Type the username to confirm.
+        </p>
+        <label className="block">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            Type <span className="text-neon-cyan">{target.username}</span> below
+          </span>
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            className="mt-1 w-full rounded border border-ink-500/40 bg-bg-900 px-2 py-1.5 text-sm font-mono"
+            placeholder={target.username}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <NeonButton variant="cyan" onClick={onCancel}>
+            Cancel
+          </NeonButton>
+          <NeonButton
+            variant="magenta"
+            onClick={() => onConfirm(target.id)}
+            disabled={!matches || isPending}
+            loading={isPending}
+            loadingText="Deleting…"
+          >
+            Delete user
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
   );
 }

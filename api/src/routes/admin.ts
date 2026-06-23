@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin } from '../lib/auth.js';
+import { requireAdmin, requireUser } from '../lib/auth.js';
 import { hashPassword } from '../lib/auth.js';
 import { callLlm } from '../lib/llm.js';
 
@@ -187,6 +187,30 @@ export async function adminRoutes(app: FastifyInstance) {
       select: { id: true, username: true, isAdmin: true },
     });
     return { ok: true, user };
+  });
+
+  // Delete a user (admin override). The User model cascades on most
+  // relations (workouts, measurements, raid contributions, etc.) so a
+  // single delete cleans up the user. Sessions cascade too. Refuses
+  // to delete yourself — that's almost always a misclick with a
+  // destructive, hard-to-reverse outcome.
+  app.delete('/users/:id', async (req, reply) => {
+    const me = await requireUser(req);
+    const { id } = req.params as { id: string };
+    if (id === me.id) {
+      return reply.code(400).send({ error: "You can't delete your own account from here" });
+    }
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, username: true, isAdmin: true },
+    });
+    if (!target) return reply.code(404).send({ error: 'User not found' });
+    // Belt-and-suspenders: kill sessions first (cascade handles it
+    // but we want the auth gate to fail immediately for any in-flight
+    // request from this user).
+    await prisma.session.deleteMany({ where: { userId: id } });
+    await prisma.user.delete({ where: { id } });
+    return { ok: true, deleted: { id: target.id, username: target.username } };
   });
 
   // Get current LLM config (single-row table)
