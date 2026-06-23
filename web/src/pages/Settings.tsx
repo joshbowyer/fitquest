@@ -595,6 +595,19 @@ export function SettingsPage() {
           </div>
         </Panel>
 
+        {/* DIFFICULTY MODE */}
+        <Panel
+          title="Difficulty mode"
+          variant={user.mode === 'HARDCORE' ? 'magenta' : 'cyan'}
+          action={
+            <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+              current: {user.mode === 'HARDCORE' ? 'HARDCORE' : 'CASUAL'}
+            </span>
+          }
+        >
+          <ModeSection />
+        </Panel>
+
         {/* FRAME */}
         <Panel
           title="Frame"
