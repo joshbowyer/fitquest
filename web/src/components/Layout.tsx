@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type User } from '@/lib/auth';
 import { CLASS_META } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { useNavOrder } from '@/hooks/useNavOrder';
@@ -10,38 +10,43 @@ type Props = { children: ReactNode };
 
 type NavItem = { to: string; label: string; icon: string; mobile?: boolean; requiresAdmin?: boolean };
 
-// Mobile = primary 5 items shown in bottom nav on phones.
-// Desktop sidebar shows all items.
-// Items not in `mobile` only appear on tablet+ via the "More" drawer.
-// `requiresAdmin` items only show for users with isAdmin=true.
+// Desktop sidebar shows all items, in the user's preferred order.
+// On mobile, the top-bar hamburger opens a full-screen overlay that
+// also shows every item (no separate "primary" subset + overflow
+// drawer anymore — that split felt arbitrary once we hit ~15 items).
+// The `mobile: true` flag is now only used for sidebar grouping
+// decisions on desktop (e.g. badge for admin-only).
 const NAV: NavItem[] = [
-  { to: '/dashboard',   label: 'Dashboard', icon: '◆', mobile: true },
-  { to: '/quest',       label: 'Quest',    icon: '◇', mobile: true },
-  { to: '/status',      label: 'Status',   icon: '◊', mobile: true },
-  { to: '/today',       label: 'Today',    icon: '◐', mobile: true },
-  { to: '/activities',  label: 'Activity',  icon: '▣', mobile: true },
-  { to: '/spiritual',   label: 'Spiritual', icon: '☩', mobile: false },
-  { to: '/recovery',    label: 'Recovery', icon: '☾', mobile: false },
-  { to: '/import',      label: 'Import',   icon: '↥', mobile: false },
-  { to: '/nutrition',   label: 'Nutrition', icon: '⌬', mobile: false },
-  { to: '/habits',      label: 'Habits',   icon: '✓', mobile: false },
-  { to: '/measurements', label: 'Measure',  icon: '◎', mobile: false },
-  { to: '/insights',    label: 'Insights', icon: '◈', mobile: false },
-  { to: '/tools',       label: 'Tools',    icon: '⚒', mobile: false },
-  { to: '/check-ins',   label: 'Check-ins', icon: '◷', mobile: false },
-  { to: '/skills',      label: 'Skills',   icon: '✦', mobile: false },
-  { to: '/party',       label: 'Party',    icon: '⚑', mobile: false },
-  { to: '/inventory',   label: 'Inventory', icon: '⚔', mobile: false },
-  { to: '/achievements', label: 'Achieve',  icon: '◆', mobile: false },
-  { to: '/profile',     label: 'Profile',  icon: '◉', mobile: false },
-  { to: '/settings',    label: 'Settings', icon: '⚙', mobile: false },
-  { to: '/admin',       label: 'Admin',    icon: '★', mobile: false, requiresAdmin: true },
+  { to: '/dashboard',    label: 'Dashboard',  icon: '◆', mobile: true },
+  { to: '/quest',        label: 'Quest',      icon: '◇', mobile: true },
+  { to: '/status',       label: 'Status',     icon: '◊', mobile: true },
+  { to: '/today',        label: 'Today',      icon: '◐', mobile: true },
+  { to: '/activities',   label: 'Activity',   icon: '▣', mobile: true },
+  { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
+  { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },
+  { to: '/import',       label: 'Import',     icon: '↥', mobile: false },
+  { to: '/nutrition',    label: 'Nutrition',  icon: '⌬', mobile: false },
+  { to: '/habits',       label: 'Habits',     icon: '✓', mobile: false },
+  { to: '/measurements', label: 'Measure',    icon: '◎', mobile: false },
+  { to: '/insights',     label: 'Insights',   icon: '◈', mobile: false },
+  { to: '/tools',        label: 'Tools',      icon: '⚒', mobile: false },
+  { to: '/check-ins',    label: 'Check-ins',  icon: '◷', mobile: false },
+  { to: '/body-comp',     label: 'Body comp',  icon: '⚖', mobile: false },
+  { to: '/skills',       label: 'Skills',     icon: '✦', mobile: false },
+  { to: '/party',        label: 'Party',      icon: '⚑', mobile: false },
+  { to: '/inventory',    label: 'Inventory',  icon: '⚔', mobile: false },
+  { to: '/achievements', label: 'Achieve',    icon: '◆', mobile: false },
+  { to: '/profile',      label: 'Profile',    icon: '◉', mobile: false },
+  { to: '/settings',     label: 'Settings',   icon: '⚙', mobile: false },
+  { to: '/admin',        label: 'Admin',      icon: '★', mobile: false, requiresAdmin: true },
 ];
 
 export function Layout({ children }: Props) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [moreOpen, setMoreOpen] = useState(false);
+  /// Mobile menu overlay. Single boolean — when true, the
+  /// hamburger morphs into an X and a full-screen menu renders.
+  const [menuOpen, setMenuOpen] = useState(false);
   /// Sidebar reorder edit-mode. When true, each NavLink becomes
   /// draggable and a drag-handle glyph appears on hover. A "Done"
   /// pill at the bottom of the sidebar flips it back off.
@@ -52,26 +57,46 @@ export function Layout({ children }: Props) {
 
   const filteredNav = NAV.filter((n) => !n.requiresAdmin || user?.isAdmin);
   const { order: visibleNav, reorder, reset } = useNavOrder<NavItem>('fq.navOrder.v1', filteredNav);
-  const mobileNav = visibleNav.filter((n) => n.mobile);
 
   async function handleLogout() {
     await logout();
+    setMenuOpen(false);
     navigate('/login');
   }
 
   return (
     <div className="min-h-full md:grid md:grid-cols-[220px_1fr] md:grid-rows-[60px_1fr]">
-      {/* Top bar — desktop shows full status, mobile is condensed */}
+      {/* Top bar. Desktop shows full status row + Logout button on the
+          right; mobile shows hamburger left, FIT//QUEST centered,
+          and a condensed status pill on the right. */}
       <header
-        className="md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800/95 backdrop-blur-md z-20
+        className="md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800/95 backdrop-blur-md z-30
                    sticky top-0 border-b border-neon-cyan/15"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
-        <div className="flex items-center px-4 md:px-6 gap-3 md:gap-6 h-[60px]">
-          <div className="font-display tracking-[0.4em] text-sm neon-text-cyan">
+        <div className="flex items-center px-3 md:px-6 gap-2 md:gap-6 h-[60px] relative">
+          {/* Mobile hamburger / X. The button morphs into an X when
+              the menu is open so the close affordance is in the same
+              spot the user opened it from. aria-expanded drives
+              screen-reader announcements. */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            className="md:hidden w-10 h-10 flex items-center justify-center text-neon-cyan text-2xl hover:bg-bg-700/60 rounded transition-colors"
+          >
+            {menuOpen ? '✕' : '☰'}
+          </button>
+
+          {/* Title — mobile is centered absolutely so it survives the
+              variable-width left button + right status pill. Desktop
+              uses the normal flow. */}
+          <div className="font-display tracking-[0.4em] text-sm neon-text-cyan md:static md:translate-x-0 absolute left-0 right-0 text-center pointer-events-none md:pointer-events-auto">
             FIT<span className="hidden md:inline">//</span><span className="md:hidden">·</span>QUEST
           </div>
-          <div className="flex-1" />
+
+          <div className="flex-1 hidden md:block" />
 
           {/* Desktop-only status row */}
           {user && (
@@ -107,20 +132,20 @@ export function Layout({ children }: Props) {
             </div>
           )}
 
-          {/* Mobile-only: condensed status pill + logout */}
+          {/* Mobile-only: condensed status pill on the right. Logout
+              moved into the menu overlay so the top bar stays
+              minimal. */}
           {user && (
-            <div className="flex md:hidden items-center gap-2 text-xs font-mono">
+            <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
               <span className="neon-text-cyan font-bold">L{user.level}</span>
               <span className="neon-text-amber">{user.gold}G</span>
-              <button onClick={handleLogout} className="text-ink-300 hover:text-ink-50 text-xs ml-1">
-                ⎋
-              </button>
             </div>
           )}
         </div>
       </header>
 
-      {/* Sidebar — desktop only */}
+      {/* Sidebar — desktop only. Renders the same NavLink list as
+          the mobile overlay so behaviour stays consistent. */}
       <aside className="hidden md:block md:row-start-2 md:border-r md:border-neon-cyan/15 bg-bg-800/40 grid-bg p-3">
         <nav className="flex flex-col gap-1">
           {visibleNav.map((item, i) => (
@@ -131,8 +156,6 @@ export function Layout({ children }: Props) {
               onDragStart={(e) => {
                 if (!editingNav) return;
                 dragIndex.current = i;
-                // dataTransfer is required by Chrome/Safari even when
-                // we don't read it — they won't fire drop otherwise.
                 e.dataTransfer.effectAllowed = 'move';
                 try { e.dataTransfer.setData('text/plain', item.to); } catch { /* ignore */ }
               }}
@@ -149,9 +172,7 @@ export function Layout({ children }: Props) {
                 if (from !== i) reorder(from, i);
                 dragIndex.current = null;
               }}
-              onDragEnd={() => {
-                dragIndex.current = null;
-              }}
+              onDragEnd={() => { dragIndex.current = null; }}
               className={({ isActive }) =>
                 classNames(
                   'flex items-center gap-3 px-3 py-2 font-display tracking-widest text-xs uppercase transition-all border',
@@ -177,10 +198,7 @@ export function Layout({ children }: Props) {
           ))}
         </nav>
 
-        {/* Sidebar footer: reorder toggle (edit mode) + local clock.
-            Edit mode swaps the icon to a "Done" pill and surfaces a
-            "Reset to default" link. Hidden in normal mode to keep
-            the chrome minimal. */}
+        {/* Sidebar footer: reorder toggle (edit mode) + local clock. */}
         <div className="mt-6 pt-4 border-t border-neon-cyan/10 space-y-3">
           {editingNav ? (
             <div className="flex items-center gap-2">
@@ -220,96 +238,116 @@ export function Layout({ children }: Props) {
         </div>
       </aside>
 
-      {/* Bottom nav — mobile only */}
-      <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-bg-800/95 backdrop-blur-md border-t border-neon-cyan/20"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="grid grid-cols-5 h-14">
-          {mobileNav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                classNames(
-                  'flex flex-col items-center justify-center gap-0.5 font-display tracking-widest text-[9px] uppercase transition-colors',
-                  isActive ? 'text-neon-cyan' : 'text-ink-300',
-                )
-              }
-            >
-              <span className="text-base">{item.icon}</span>
-              {item.label}
-            </NavLink>
-          ))}
+      {/* Mobile full-screen menu overlay. Renders every item the user
+          can see (respects user.isAdmin for /admin). Auto-closes on
+          navigation via the NavLink's onClick handler so back/forward
+          and direct deep-links behave naturally. Escape also closes. */}
+      {menuOpen && (
+        <MobileMenuOverlay
+          items={visibleNav}
+          user={user}
+          onClose={() => setMenuOpen(false)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {/* Main content. Mobile gets bottom padding to clear the bottom
+          nav... but the bottom nav is gone now, so only a small
+          safe-area inset for phones with a home indicator. */}
+      <main className="md:row-start-2 p-4 md:p-6 overflow-y-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1rem)' }}>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+/**
+ * Full-screen mobile navigation overlay. Slides in from the top,
+ * covers the entire viewport, and lists every nav item in a 3-col
+ * grid. Tapping a route closes the overlay (handled by the NavLink
+ * onClick via the parent).
+ */
+function MobileMenuOverlay({
+  items,
+  user,
+  onClose,
+  onLogout,
+}: {
+  items: Array<{ to: string; label: string; icon: string }>;
+  user: User | null;
+  onClose: () => void;
+  onLogout: () => void;
+}) {
+  // Escape closes the overlay. Listener cleans up on unmount.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="md:hidden fixed inset-0 z-40 bg-bg-900/95 backdrop-blur-md overflow-y-auto"
+      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div className="flex items-center justify-between px-3 h-[60px]">
+        <div className="w-10 h-10" /> {/* spacer to match the hamburger's column width */}
+        <div className="font-display tracking-[0.4em] text-sm neon-text-cyan pointer-events-none">
+          FIT<span className="hidden md:inline">//</span><span className="md:hidden">·</span>QUEST
         </div>
-      </nav>
+        {/* The X-close button is already rendered in the top bar
+            (the hamburger morphs into X), so this side just shows a
+            spacer to keep the title centered. */}
+        <div className="w-10 h-10" />
+      </div>
 
-      {/* "More" FAB — mobile only. Opens drawer with non-primary nav items. */}
-      <button
-        onClick={() => setMoreOpen(true)}
-        className="md:hidden fixed bottom-16 right-3 z-40 w-12 h-12 rounded-full bg-neon-cyan/20 border border-neon-cyan text-neon-cyan text-xl shadow-neon-cyan/40 flex items-center justify-center"
-        aria-label="More navigation"
-      >
-        ☰
-      </button>
-
-      {moreOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-50 bg-bg-900/80 backdrop-blur-sm flex items-end"
-          onClick={() => setMoreOpen(false)}
-        >
-          <div
-            className="w-full panel-magenta p-4 max-h-[70vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-            style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-display tracking-widest text-sm neon-text-magenta uppercase">
-                // More
-              </div>
-              <button
-                onClick={() => setMoreOpen(false)}
-                className="text-ink-300 hover:text-ink-50 text-lg"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {visibleNav.filter((n) => !n.mobile).map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMoreOpen(false)}
-                  className={({ isActive }) =>
-                    classNames(
-                      'flex flex-col items-center gap-2 py-4 border',
-                      isActive
-                        ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-ink-700/50 text-ink-200 hover:border-ink-300',
-                    )
-                  }
-                >
-                  <span className="text-2xl">{item.icon}</span>
-                  <span className="font-display tracking-widest text-[10px] uppercase">{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-            {user && (
-              <div className="mt-4 pt-4 border-t border-ink-700/30 flex items-center justify-between text-xs font-mono">
-                <span className="text-ink-300">{user.username}</span>
-                <button onClick={handleLogout} className="btn-ghost text-[10px]">
-                  Logout
-                </button>
-              </div>
-            )}
+      {/* User summary */}
+      {user && (
+        <div className="px-4 py-3 border-b border-neon-cyan/15 bg-bg-800/40 flex items-center gap-3">
+          <div className="font-display tracking-widest text-base neon-text-cyan uppercase">
+            {user.username}
           </div>
+          <div className="flex-1" />
+          <span className="font-mono text-xs text-neon-cyan">L{user.level}</span>
+          <span className="font-mono text-xs text-neon-amber">{user.gold}G</span>
         </div>
       )}
 
-      {/* Main content. Mobile gets bottom padding to clear the bottom nav. */}
-      <main className="md:row-start-2 p-4 md:p-6 overflow-y-auto pb-24 md:pb-6">
-        {children}
-      </main>
+      {/* Item grid. Same active-state styling as the sidebar so users
+          get visual continuity between mobile and desktop. */}
+      <nav className="p-3">
+        <div className="grid grid-cols-3 gap-2">
+          {items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                classNames(
+                  'flex flex-col items-center gap-2 py-4 border transition-colors',
+                  isActive
+                    ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
+                    : 'border-ink-700/50 text-ink-200 hover:border-ink-300 hover:bg-bg-700/40',
+                )
+              }
+            >
+              <span className="text-2xl">{item.icon}</span>
+              <span className="font-display tracking-widest text-[10px] uppercase">{item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+
+        {user && (
+          <div className="mt-6 pt-4 border-t border-ink-700/30 flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+              signed in as <span className="text-ink-200">{user.username}</span>
+            </span>
+            <button onClick={onLogout} className="btn-ghost text-[10px]">
+              Logout
+            </button>
+          </div>
+        )}
+      </nav>
     </div>
   );
 }

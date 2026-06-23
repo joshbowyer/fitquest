@@ -479,17 +479,38 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
   if (monitoring.length > 0) {
     const stepValues: number[] = [];
     const calValues: number[] = [];
+    // Resting heart rate: Garmin exposes a single daily RHR value
+    // on the first MonitoringMesg of the day. The field is
+    // `restingHeartRate` (bpm, uint8). We take the first non-zero
+    // reading we see; Garmin only writes one per day so this is
+    // effectively the day's RHR.
+    const rhrValues: number[] = [];
     for (const m of monitoring) {
       const s = (m as any).steps;
       if (typeof s === 'number' && s > 0) stepValues.push(s);
       const c = (m as any).activeCalories ?? (m as any).calories;
       if (typeof c === 'number' && c > 0) calValues.push(c);
+      const r = (m as any).restingHeartRate;
+      if (typeof r === 'number' && r > 0 && r < 200) rhrValues.push(r);
     }
     if (stepValues.length > 0) {
       const totalSteps = stepValues.reduce((s, v) => s + v, 0);
       if (totalSteps > 0) {
         measurements.push({ metric: 'STEPS', value: totalSteps, recordedAt: new Date() });
       }
+    }
+    if (rhrValues.length > 0) {
+      // Take the minimum — Garmin occasionally writes a "still
+      // calibrating" placeholder higher than the true resting value,
+      // and the actual resting heart rate is the lowest stable
+      // measurement of the day.
+      const rhr = Math.min(...rhrValues);
+      measurements.push({
+        metric: 'RESTING_HR',
+        value: rhr,
+        recordedAt: new Date(),
+        notes: `FIT restingHeartRate (min of ${rhrValues.length} monitoring samples)`,
+      });
     }
     // Note: calories are already tracked via /meals + /workouts;
     // we don't double-count by pushing them here. (Future: a
