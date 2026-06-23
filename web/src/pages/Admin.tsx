@@ -51,6 +51,8 @@ type LlmConfig = {
     foodSaved: LlmTaskOverride;
     morningReport: LlmTaskOverride;
     spiritualDirector: LlmTaskOverride;
+    activityInsight: LlmTaskOverride;
+    metricInsight: LlmTaskOverride;
   };
   // Shared
   systemPrompt: string | null;
@@ -715,6 +717,8 @@ export function AdminPage() {
                     { key: 'foodSaved',         label: 'Saved food Ask-AI',   hint: 'estimates macros for a description (no OFF lookup)' },
                     { key: 'morningReport',     label: 'Morning report',      hint: 'long structured JSON briefing, last 7d vs prior 7d' },
                     { key: 'spiritualDirector', label: 'Spiritual director',  hint: 'Ignatian / warm tone reflection on todays Gospel' },
+                    { key: 'activityInsight',   label: 'AI activity insight', hint: 'per-workout score 1-10 + recovery recommendation' },
+                    { key: 'metricInsight',     label: 'AI metric deep-dive', hint: 'per-measurement narrative for the /insights/metrics page' },
                   ] as const).map(({ key, label, hint }) => {
                     const ov = llmForm.taskOverrides[key];
                     return (

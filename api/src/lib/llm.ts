@@ -15,7 +15,7 @@
 
 export type LlmProvider = 'OPENAI' | 'OLLAMA' | 'MINIMAX' | 'ANTHROPIC';
 
-export type LlmTask = 'food' | 'foodSaved' | 'morningReport' | 'spiritualDirector';
+export type LlmTask = 'food' | 'foodSaved' | 'morningReport' | 'spiritualDirector' | 'activityInsight' | 'metricInsight';
 
 /// One task's override. Only provider + model are required; if
 /// apiKey/baseUrl are absent we reuse the primary's. This keeps a

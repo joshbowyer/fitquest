@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
@@ -164,6 +165,14 @@ export function InsightsPage() {
       <PageHeader
         title="// Insights"
         subtitle="Deep-dive trends, correlations, anti-staleness diagnostics."
+        action={
+          <Link
+            to="/insights/metrics"
+            className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
+          >
+            per-metric deep-dive →
+          </Link>
+        }
       />
 
       {/* Top row: 90-day overlays */}

@@ -243,6 +243,7 @@ model User {
   morningReports   MorningReport[]
   spiritualReflections SpiritualReflection[]
   activityInsights    ActivityInsight[]
+  metricInsights      MetricInsight[]
   trackedItems     UserTrackedItem[]
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
@@ -1594,6 +1595,37 @@ model RecoveryCode {
   createdAt  DateTime @default(now())
 
   @@unique([userId, codeHash])
+  @@index([userId])
+}
+
+/// Per-metric AI deep-dive. One row per (user, metric) tuple,
+/// regenerated on demand or when the cache TTL expires. Powers the
+/// `/insights/metrics` page where every tracked measurement gets a
+/// short narrative ("your HRV averaged 51ms, down 4 vs the prior
+/// 30d — typically a sign of accumulated training stress").
+///
+/// `factors` is a JSON array of {label, signal, weight, note} so
+/// the UI can render structured chips alongside the prose summary.
+model MetricInsight {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric       MetricType
+  /// 2-3 sentence summary, written for the user.
+  summary      String
+  /// JSON array of {label, signal, weight, note} factors. Max 6.
+  factors      String
+  /// Model that generated the insight (audit + force-regen on
+  /// model swap).
+  model        String?
+  /// Latency in ms (informational).
+  latencyMs    Int?
+  /// Schema/prompt version. Bump to invalidate cached insights.
+  promptVersion Int    @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, metric])
   @@index([userId])
 }
 
