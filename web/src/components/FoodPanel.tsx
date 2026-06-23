@@ -144,7 +144,8 @@ export function FoodPanel() {
             onClick={() => setRecentOpen(true)}
             title="Browse all foods you've logged + saved + import from FoodYou backup"
           >
-            Recent foods
+            <span className="sm:hidden">Recent</span>
+            <span className="hidden sm:inline">Recent foods</span>
           </NeonButton>
           <NeonButton
             size="sm"
@@ -288,7 +289,7 @@ export function FoodPanel() {
                   {m.food.name}
                 </span>
                 <span className="text-amber-300 text-[10px] shrink-0">
-                  ×{m.servings}
+                  ×{m.servings.toFixed(2)}
                 </span>
                 <span className="text-slate-400 text-[10px] shrink-0">
                   {m.served.calories.toFixed(0)} cal
