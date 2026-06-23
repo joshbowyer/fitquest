@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { classNames } from '@/lib/format';
-import type { MorningReport } from '@/lib/types';
+import type { MorningReport, Penalty } from '@/lib/types';
 
 type Props = {
   /** When true, the per-metric insights are also rendered in their
@@ -56,9 +56,10 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
   if (!r) return null;
 
   // Hide the whole card if everything is empty (no data logged yet,
-  // or LLM not configured).
+  // or LLM not configured). Penalties count as content so the user
+  // always sees an active Hardcore-mode ledger.
   const hasContent = r.general || r.sleep || r.training || r.recovery || r.nutrition || r.spiritual;
-  if (!hasContent && r.riskFlags.length === 0) {
+  if (!hasContent && r.riskFlags.length === 0 && (r.penalties?.length ?? 0) === 0) {
     return (
       <Panel title="Morning briefing" variant="cyan">
         <div className="text-sm text-slate-400 font-mono py-1">
@@ -128,6 +129,26 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
           ))}
         </div>
       )}
+
+      {/* Hardcore-mode penalty ledger. Only renders when there are
+          active penalties; the array is empty for Casual users OR
+          for Hardcore users who are currently clean (full hearts,
+          no caps exceeded). */}
+      {r.penalties && r.penalties.length > 0 && (
+        <div className="mt-3 border-t border-rose-500/30 pt-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-display tracking-widest uppercase text-rose-300">
+              ⚠ Penalties · Hardcore
+            </div>
+            <span className="text-[10px] font-mono text-rose-400">
+              {r.penalties.length} active
+            </span>
+          </div>
+          {r.penalties.map((p, i) => (
+            <PenaltyRow key={i} penalty={p} />
+          ))}
+        </div>
+      )}
       <div className="mt-2 text-[10px] font-mono text-slate-500">
         {r.cached ? 'cached' : 'fresh'} · {r.model ?? '—'} · {r.latencyMs != null ? `${r.latencyMs}ms` : ''} · {new Date(r.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
       </div>
@@ -159,6 +180,38 @@ function MetricRow({
         {label}
       </span>
       <span className="text-slate-200">{text}</span>
+    </div>
+  );
+}
+
+/**
+ * One row in the Penalties ledger. Visual tone follows severity:
+ *   - 'warn'  = amber chip, advisory
+ *   - 'scold' = magenta chip, active penalty (e.g. halved rewards)
+ *
+ * The label is the chip on the left (Hearts / Caffeine / etc.),
+ * the note is the prose on the right. Wraps cleanly on narrow
+ * viewports.
+ */
+function PenaltyRow({ penalty }: { penalty: Penalty }) {
+  const isScold = penalty.severity === 'scold';
+  const tone = isScold ? 'magenta' : 'amber';
+  return (
+    <div
+      className={classNames(
+        'flex items-baseline gap-2 p-2 border text-xs leading-snug',
+        `border-neon-${tone}/30 bg-neon-${tone}/5`,
+      )}
+    >
+      <span
+        className={classNames(
+          'shrink-0 text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5',
+          `neon-text-${tone} border border-neon-${tone}/50 bg-bg-900/40`,
+        )}
+      >
+        {isScold ? '⚡' : '⚠'} {penalty.label}
+      </span>
+      <span className="text-ink-200 flex-1">{penalty.note}</span>
     </div>
   );
 }

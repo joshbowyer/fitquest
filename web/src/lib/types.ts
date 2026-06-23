@@ -314,6 +314,12 @@ export type SetEntry = {
 };
 
 /** Server-generated morning briefing. One row per user per day. */
+export type Penalty = {
+  label: string;
+  severity: 'warn' | 'scold';
+  note: string;
+};
+
 export type MorningReport = {
   id: string;
   userId: string;
@@ -325,6 +331,10 @@ export type MorningReport = {
   nutrition: string;
   spiritual: string;
   riskFlags: string[];
+  /// Hardcore-mode penalty ledger. Empty array for Casual users or
+  /// when no penalties are active. Surfaced as a dedicated
+  /// "Penalties" section in MorningReportCard.
+  penalties: Penalty[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;

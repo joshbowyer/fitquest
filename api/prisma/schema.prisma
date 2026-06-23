@@ -1208,6 +1208,11 @@ model MorningReport {
   /// JSON array of risk-flag strings surfaced as amber toasts.
   /// E.g. "HRV below 30d baseline 3 of last 5 days".
   riskFlags String?
+  /// Hardcore-mode penalty ledger. JSON array of
+  /// {label, severity: 'warn'|'scold', note}. Empty string when the
+  /// user is in Casual mode OR has nothing to flag. Surfaced as a
+  /// dedicated "Penalties" section on the dashboard card.
+  penalties String?
   /// Model that generated the report (for audit + forcing regen
   /// when the LLM provider changes).
   model     String?

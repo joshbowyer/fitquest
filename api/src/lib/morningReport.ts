@@ -30,6 +30,7 @@
 import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
+import { tickHearts, hardcoreSubstanceCapReason, HARDCORE_SUBSTANCE_CAPS } from './mode.js';
 
 type DateStr = string; // YYYY-MM-DD in user's timezone
 
@@ -115,7 +116,7 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
     last7: l,
     prior7: p,
     deltaPct: pctDelta(l.volume, p.volume),
-    coverageDays: new Set(),
+    coverageDays: 0,
   };
 }
 
@@ -150,6 +151,81 @@ async function supplementsDomain(userId: string, since7: Date) {
   });
   const days = new Set(logs.map((l) => l.takenAt.toISOString().slice(0, 10))).size;
   return { daysLogged: days, total: logs.length, adherencePct: Math.round((days / 7) * 100) };
+}
+
+/**
+ * Counts of substances relevant to the Hardcore cap rules. Caffeine
+ * counts use a 24h window (rolling); alcohol counts use a 7d window.
+ * Counts are number of substance log rows in the window — the
+ * SubstanceLog model doesn't enforce unit (a beer == a spirit ==
+ * a glass of wine), which is intentional: the cap flags
+ * "you logged too many drinks this week" and lets the user
+ * decide whether that's accurate.
+ */
+async function substanceCountsDomain(
+  userId: string,
+  since1d: Date,
+  since7d: Date,
+): Promise<{ caffeineLast24h: number; alcoholLast7d: number; caffeineAllLast7d: number }> {
+  const [caffeine24h, alcohol7d, caffeine7d] = await Promise.all([
+    prisma.substanceLog.count({
+      where: { userId, category: 'CAFFEINE', loggedAt: { gte: since1d } },
+    }),
+    prisma.substanceLog.count({
+      where: { userId, category: 'ALCOHOL', loggedAt: { gte: since7d } },
+    }),
+    prisma.substanceLog.count({
+      where: { userId, category: 'CAFFEINE', loggedAt: { gte: since7d } },
+    }),
+  ]);
+  return {
+    caffeineLast24h: caffeine24h,
+    alcoholLast7d: alcohol7d,
+    caffeineAllLast7d: caffeine7d,
+  };
+}
+
+/**
+ * Routine streak state — for the "missed-week reset" penalty and
+ * the streak label on the dashboard. We don't write here; this
+ * is read-only.
+ */
+async function streakDomain(userId: string): Promise<{
+  currentStreak: number;
+  lastCompletedWeek: string | null;
+  brokenThisWeek: boolean;
+}> {
+  const routine = await prisma.routine.findUnique({ where: { userId } });
+  if (!routine) return { currentStreak: 0, lastCompletedWeek: null, brokenThisWeek: false };
+
+  const now = new Date();
+  const monday = (() => {
+    const d = new Date(now);
+    const day = d.getUTCDay();
+    // 0 = Sunday, 1 = Monday, ...
+    const offset = day === 0 ? -6 : 1 - day;
+    d.setUTCDate(d.getUTCDate() + offset);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  })();
+
+  const weekKey = monday.toISOString().slice(0, 10);
+  const lastKey = routine.lastCompletedWeek;
+  // "Broken this week" = the user has a streak from before this
+  // week but didn't complete last week. We compute: if lastKey is
+  // before the previous Monday, the streak is stale.
+  if (!lastKey) {
+    return { currentStreak: 0, lastCompletedWeek: null, brokenThisWeek: false };
+  }
+  const last = new Date(lastKey + 'T00:00:00Z');
+  const prevMonday = new Date(monday);
+  prevMonday.setUTCDate(monday.getUTCDate() - 7);
+  const brokenThisWeek = last.getTime() < prevMonday.getTime();
+  return {
+    currentStreak: routine.currentStreak,
+    lastCompletedWeek: lastKey,
+    brokenThisWeek,
+  };
 }
 
 async function spiritualDomain(userId: string, since7: Date) {
@@ -187,6 +263,15 @@ export type ReportPayload = {
   supplements: Awaited<ReturnType<typeof supplementsDomain>>;
   spiritual: Awaited<ReturnType<typeof spiritualDomain>>;
   recovery: { score: number | null; trend: number | null };
+  // Hardcore-mode context. The LLM sees these so it can fold
+  // penalty-aware coaching into its sections (e.g. "skip caffeine
+  // this afternoon — you're already at the 24h cap"). The actual
+  // Penalties array surfaced to the UI is computed deterministically
+  // (see buildPenalties) so the LLM can't lie or miss one.
+  mode: 'CASUAL' | 'HARDCORE';
+  hearts: number;
+  streak: Awaited<ReturnType<typeof streakDomain>>;
+  substanceCounts: Awaited<ReturnType<typeof substanceCountsDomain>>;
 };
 
 function todayInTz(timezone: string | null): DateStr {
@@ -211,14 +296,19 @@ export async function gatherReportData(
   const now = new Date();
   const since7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const since14 = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const since1d = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const me = await prisma.user.findUnique({
     where: { id: userId },
-    select: { class: true, level: true, xp: true, ordained: true, timezone: true },
+    select: {
+      id: true,
+      class: true, level: true, xp: true, ordained: true, timezone: true,
+      mode: true, hearts: true,
+    },
   });
   const recovery = await computeRecovery(userId);
 
-  const [sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual] =
+  const [sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual, substanceCounts, streak] =
     await Promise.all([
       metricDomain(userId, 'SLEEP_HOURS', since7, since14),
       metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
@@ -229,6 +319,8 @@ export async function gatherReportData(
       habitsDomain(userId, since7, since14),
       supplementsDomain(userId, since7),
       spiritualDomain(userId, since7),
+      substanceCountsDomain(userId, since1d, since7),
+      streakDomain(userId),
     ]);
 
   return {
@@ -249,6 +341,13 @@ export async function gatherReportData(
     supplements,
     spiritual,
     recovery: { score: recovery.score, trend: null },
+    mode: me?.mode === 'HARDCORE' ? 'HARDCORE' : 'CASUAL',
+    // Tick hearts on gather so the count in the payload matches
+    // what the dashboard would see right now. No-op for Casual
+    // (returns 5).
+    hearts: me ? await tickHearts(me.id) : 5,
+    streak,
+    substanceCounts,
   };
 }
 
@@ -268,6 +367,7 @@ Hard rules:
 - Mention concrete numbers from the data when relevant ("HRV averaged 52ms, down 6 from prior 7d").
 - For spiritual: do not preach. If the user logged prayers, note it warmly. If not, stay silent (the user opted into this section).
 - For weight: never comment on weight gain/loss direction unless it's a clear trend (>2% delta). Body comp is sensitive.
+- Hardcore mode (payload.mode === 'HARDCORE'): when hearts are low or substance caps exceeded, fold a short, direct acknowledgement into the recovery or nutrition section (e.g. "skip caffeine this afternoon — you're already at the cap"). Stay concrete, not preachy. The actual penalty ledger is computed server-side, so don't try to enumerate it; just acknowledge the most important one.
 
 Output: strict JSON object, no prose, no markdown fences. Schema:
 {
@@ -326,6 +426,85 @@ const EMPTY_FALLBACK = {
   risk_flags: [] as string[],
 };
 
+// ---- Penalty ledger (Hardcore mode) ----
+
+export type Penalty = {
+  /** Short tag for grouping + icon picking. */
+  label: string;
+  /** "warn" = advisory, "scold" = penalty active. UI picks colour. */
+  severity: 'warn' | 'scold';
+  /** Human-readable note (≤ 200 chars). */
+  note: string;
+};
+
+/**
+ * Build the deterministic Hardcore-mode penalty array for the
+ * today's report. Returns [] for Casual users — penalties only
+ * surface when the user has opted in.
+ *
+ * Heuristics (each can produce one entry):
+ *  - hearts === 0          → "Hearts depleted" (scold)
+ *  - hearts ≤ 2            → "Hearts low" (warn)
+ *  - caffeine > cap/24h    → "Caffeine cap exceeded" (scold if >=2x, warn otherwise)
+ *  - alcohol > cap/7d      → "Alcohol cap exceeded" (scold)
+ *  - streak broken this week → "Streak broken" (warn, only when streak > 0)
+ *
+ * Deterministic so the user gets the same panel regardless of which
+ * model LLM-generated the surrounding sections.
+ */
+export function buildPenalties(payload: ReportPayload): Penalty[] {
+  if (payload.mode === 'CASUAL') return [];
+  const out: Penalty[] = [];
+
+  if (payload.hearts <= 0) {
+    out.push({
+      label: 'Hearts',
+      severity: 'scold',
+      note: '0 hearts. XP, gold, and raid damage are halved until a heart regenerates (~8h).',
+    });
+  } else if (payload.hearts <= 2) {
+    out.push({
+      label: 'Hearts',
+      severity: 'warn',
+      note: `${payload.hearts} hearts remaining. Try to log a workout today — HeartLoss flag is now active.`,
+    });
+  } else if (payload.hearts < 5) {
+    out.push({
+      label: 'Hearts',
+      severity: 'warn',
+      note: `${payload.hearts}/5 hearts. ${5 - payload.hearts} more heart(s) before you're back to full.`,
+    });
+  }
+
+  const { caffeineLast24h, alcoholLast7d } = payload.substanceCounts;
+  if (caffeineLast24h > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
+    const overshoot = caffeineLast24h - HARDCORE_SUBSTANCE_CAPS.caffeinePerDay;
+    out.push({
+      label: 'Caffeine',
+      severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.caffeinePerDay ? 'scold' : 'warn',
+      note: `${caffeineLast24h} espressos in the last 24h (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}). HRV credit reduced.`,
+    });
+  }
+  if (alcoholLast7d > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
+    const overshoot = alcoholLast7d - HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek;
+    out.push({
+      label: 'Alcohol',
+      severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek ? 'scold' : 'warn',
+      note: `${alcoholLast7d} drinks in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}). Weekly XP multiplier reduced.`,
+    });
+  }
+
+  if (payload.streak.brokenThisWeek && payload.streak.currentStreak > 0) {
+    out.push({
+      label: 'Streak',
+      severity: 'warn',
+      note: `Missed last week's routine — your ${payload.streak.currentStreak}-week streak just reset to 0.`,
+    });
+  }
+
+  return out;
+}
+
 // ---- Public API ----
 
 export type MorningReportResult = {
@@ -339,6 +518,10 @@ export type MorningReportResult = {
   nutrition: string;
   spiritual: string;
   riskFlags: string[];
+  /** Hardcore-mode penalty ledger. Empty array for Casual users or
+   *  when there are no active penalties. Built deterministically
+   *  from the gather payload — never from LLM output. */
+  penalties: Penalty[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;
@@ -357,6 +540,7 @@ function rowToResult(
     nutrition: string | null;
     spiritual: string | null;
     riskFlags: string | null;
+    penalties: string | null;
     model: string | null;
     latencyMs: number | null;
     createdAt: Date;
@@ -370,6 +554,19 @@ function rowToResult(
       if (Array.isArray(parsed)) flags = parsed.map((x) => String(x));
     }
   } catch {}
+  let penalties: Penalty[] = [];
+  try {
+    if (row.penalties) {
+      const parsed = JSON.parse(row.penalties);
+      if (Array.isArray(parsed)) {
+        penalties = parsed.filter((p: any) =>
+          p && typeof p.label === 'string' &&
+          (p.severity === 'warn' || p.severity === 'scold') &&
+          typeof p.note === 'string',
+        );
+      }
+    }
+  } catch {}
   return {
     id: row.id,
     userId: row.userId,
@@ -381,6 +578,7 @@ function rowToResult(
     nutrition: row.nutrition ?? '',
     spiritual: row.spiritual ?? '',
     riskFlags: flags,
+    penalties,
     model: row.model,
     latencyMs: row.latencyMs,
     createdAt: row.createdAt.toISOString(),
@@ -431,6 +629,7 @@ export async function getOrGenerateToday(
         nutrition: '',
         spiritual: '',
         riskFlags: '[]',
+        penalties: '[]',
         model: null,
         latencyMs: null,
       },
@@ -454,6 +653,7 @@ export async function getOrGenerateToday(
         nutrition: '',
         spiritual: '',
         riskFlags: '[]',
+        penalties: '[]',
         model: null,
         latencyMs: null,
       },
@@ -498,6 +698,10 @@ export async function getOrGenerateToday(
   const flags = Array.isArray(parsed.risk_flags)
     ? parsed.risk_flags.map((x: any) => clamp(String(x), 140)).filter(Boolean).slice(0, 5)
     : [];
+  // Build the Hardcore-mode penalty ledger deterministically from
+  // the gather payload. Empty for Casual users. The LLM never gets
+  // to decide what's a penalty.
+  const penalties = buildPenalties(payload);
 
   const saved = await prisma.morningReport.upsert({
     where: { userId_date: { userId, date } },
@@ -506,12 +710,14 @@ export async function getOrGenerateToday(
       date,
       ...fields,
       riskFlags: JSON.stringify(flags),
+      penalties: JSON.stringify(penalties),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
     },
     update: {
       ...fields,
       riskFlags: JSON.stringify(flags),
+      penalties: JSON.stringify(penalties),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
       updatedAt: new Date(),
