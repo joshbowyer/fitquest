@@ -829,7 +829,6 @@ export function ProfilePage() {
         <Panel variant="cyan" title="Identity">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
             <Row k="Callsign" v={user.username} />
-            <Row k="Email" v={user.email} />
             <Row k="Class" v={user.class ? CLASS_META[user.class].label : '—'} />
             <Row k="Level" v={String(user.level)} />
             <Row k="Total XP" v={String(user.xp)} />

@@ -214,6 +214,7 @@ export function InsightsPage() {
             units={system}
             series={overlaySeries2}
             history={history}
+            yPad={20}
           />
           <div className="text-[10px] font-mono text-slate-400 mt-1">
             Daily weigh-ins reveal the trend beneath the noise.

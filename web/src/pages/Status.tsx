@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
 import { Avatar } from '@/components/Avatar';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   BodyModel,
@@ -115,6 +116,101 @@ export function StatusPage() {
         title="Status"
         subtitle="Holographic readout of your body. Click to log pain. Color = recovery status."
       />
+      <ErrorBoundary>
+        <StatusBody
+          user={user}
+          data={data}
+          painMarkers={painMarkers}
+          selected={selected}
+          setSelected={setSelected}
+          hovered={hovered}
+          setHovered={setHovered}
+          archive={archive}
+          archetype={archetype}
+          avatar={avatar}
+          meta={meta}
+          bf={bf}
+          weight={weight}
+          height={height}
+          lbm={lbm}
+          ffmi={ffmi}
+          avgRecovery={avgRecovery}
+          recovered={recovered}
+          fatigued={fatigued}
+          recoveryToColor={recoveryToColor}
+          intensityToColor={intensityToColor}
+          intensityLabel={intensityLabel}
+          recoveryLabel={recoveryLabel}
+          isLoading={isLoading}
+          qc={qc}
+        />
+      </ErrorBoundary>
+    </Layout>
+  );
+}
+
+/**
+ * StatusBody renders the inner status content wrapped by an
+ * ErrorBoundary in StatusPage. Splitting it out keeps a single
+ * component-tree failure (e.g. R3F failing to init) from blanking
+ * the whole page — the outer Layout + PageHeader stay visible and
+ * the ErrorBoundary renders a fallback panel with the error.
+ */
+function StatusBody({
+  user,
+  data,
+  painMarkers,
+  selected,
+  setSelected,
+  hovered,
+  setHovered,
+  archive,
+  archetype,
+  avatar,
+  meta,
+  bf,
+  weight,
+  height,
+  lbm,
+  ffmi,
+  avgRecovery,
+  recovered,
+  fatigued,
+  recoveryToColor,
+  intensityToColor,
+  intensityLabel,
+  recoveryLabel,
+  isLoading,
+  qc,
+}: {
+  user: NonNullable<ReturnType<typeof useAuth>['user']>;
+  data: StatusResponse | undefined;
+  painMarkers: PainMarker[];
+  selected: BodyPartMeta | null;
+  setSelected: (v: BodyPartMeta | null) => void;
+  hovered: BodyPartMeta | null;
+  setHovered: (v: BodyPartMeta | null) => void;
+  archive: ReturnType<typeof useDelayedMutation<{ ok: boolean }, string>>;
+  archetype: ReturnType<typeof getFrameArchetype> | null;
+  avatar: UserAvatar | null;
+  meta: typeof ARCHETYPE_META[keyof typeof ARCHETYPE_META];
+  bf: number | null;
+  weight: number | null;
+  height: number | null;
+  lbm: number | null;
+  ffmi: number | null;
+  avgRecovery: number | null;
+  recovered: number;
+  fatigued: number;
+  recoveryToColor: (s: number) => string;
+  intensityToColor: (i: number) => string;
+  intensityLabel: (i: number) => string;
+  recoveryLabel: (s: number) => string;
+  isLoading: boolean;
+  qc: ReturnType<typeof useQueryClient>;
+}) {
+  return (
+    <>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <Panel
@@ -160,7 +256,7 @@ export function StatusPage() {
           <Panel title="Identity" variant="amber">
             <div className="flex items-center gap-3 mb-3">
               <Avatar
-                archetype={archetype}
+                archetype={archetype ?? 'SPRITE'}
                 accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
                 size={64}
                 sprites
@@ -357,7 +453,7 @@ export function StatusPage() {
           </div>
         </Panel>
       )}
-    </Layout>
+    </>
   );
 }
 

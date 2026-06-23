@@ -10,7 +10,8 @@ import {
   Legend,
 } from 'recharts';
 import { convertForDisplay, formatInUnits } from '@/lib/units';
-import type { UnitSystem, MetricType } from '@/lib/types';
+import type { UnitSystem } from '@/lib/units';
+import type { MetricType } from '@/lib/types';
 
 type Series = {
   metric: MetricType;
@@ -27,6 +28,15 @@ type Props = {
   series: Series[];
   // API data: array of { recordedAt, metric, value }
   history: Array<{ recordedAt: string; metric: string; value: number }>;
+  /**
+   * Optional padding around the data range when computing the Y-axis
+   * domain. Useful for single-series charts (weight, HRV) where the
+   * default Recharts auto-scale pads from 0, leaving the line as a
+   * squiggle at the bottom of the plot area. `20` = ±20 units of
+   * headroom around the actual data range. Default: 0 (Recharts
+   * default — fits tight from 0).
+   */
+  yPad?: number;
 };
 
 /**
@@ -44,7 +54,7 @@ type Props = {
  * where imperial users saw kg values on the Y axis but lb in the
  * tooltip — visually identical numbers, mismatched meaning.
  */
-export function OverlayTrendChart({ days, units, series, history }: Props) {
+export function OverlayTrendChart({ days, units, series, history, yPad = 0 }: Props) {
   // Convert raw history values once per render. Recharts only sees
   // the converted numbers, so the line, Y axis, and tooltip all agree.
   const data = useMemo(() => {
@@ -88,6 +98,34 @@ export function OverlayTrendChart({ days, units, series, history }: Props) {
   const leftSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'left');
   const rightSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'right');
 
+  // Compute a per-side YAxis domain when yPad is set. Default
+  // Recharts auto-scale uses padding around the data range; for a
+  // single-series chart that only varies a few units, the default
+  // makes the line hug the bottom. We pad by `yPad` units on each
+  // side so the line uses the full vertical real estate.
+  function domainFor(seriesList: typeof seriesWithDisplayUnit): [number | string, number | string] | undefined {
+    if (yPad <= 0 || seriesList.length === 0) return undefined;
+    let min = Infinity;
+    let max = -Infinity;
+    let hasData = false;
+    for (const row of data) {
+      for (const s of seriesList) {
+        // row is {date, [MetricType]: number}; we read by the series
+        // metric key which may or may not be present. Use a runtime
+        // lookup so the type stays loose.
+        const v = (row as Record<string, unknown>)[s.metric] as number | undefined;
+        if (typeof v === 'number' && Number.isFinite(v)) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+          hasData = true;
+        }
+      }
+    }
+    if (!hasData) return undefined;
+    // Recharts accepts [min, max] tuples for explicit domain.
+    return [Math.floor(min - yPad), Math.ceil(max + yPad)];
+  }
+
   return (
     <ResponsiveContainer width="100%" height={220}>
       <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -104,6 +142,7 @@ export function OverlayTrendChart({ days, units, series, history }: Props) {
             tick={{ fontSize: 9, fill: '#94a3b8' }}
             width={36}
             orientation="left"
+            domain={domainFor(leftSeries)}
           />
         )}
         {rightSeries.length > 0 && (
@@ -112,6 +151,7 @@ export function OverlayTrendChart({ days, units, series, history }: Props) {
             tick={{ fontSize: 9, fill: '#94a3b8' }}
             width={36}
             orientation="right"
+            domain={domainFor(rightSeries)}
           />
         )}
         <Tooltip

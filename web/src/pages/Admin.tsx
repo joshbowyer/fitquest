@@ -279,22 +279,21 @@ export function AdminPage() {
                         key={u.id}
                         className="border-b border-slate-800 hover:bg-slate-800/30"
                       >
-                        <td className="py-2 px-2">
-                          <div className="font-medium text-slate-100">{u.username}</div>
-                          <div className="text-xs text-slate-500">{u.email}</div>
-                        </td>
-                        <td className="py-2 px-2 text-slate-300">
-                          {u.class ?? <span className="text-slate-600">—</span>}
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums">
-                          {u.level}
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums text-amber-300">
-                          {u.gold}
-                        </td>
-                        <td className="py-2 px-2 text-right tabular-nums text-violet-300">
-                          {u.soulstones}
-                        </td>
+<td className="py-2 px-2">
+                        <div className="font-medium text-slate-100">{u.username}</div>
+                      </td>
+                      <td className="py-2 px-2 text-slate-300">
+                        {u.class ?? <span className="text-slate-600">—</span>}
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums">
+                        {u.level}
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums text-amber-300">
+                        {u.gold}
+                      </td>
+                      <td className="py-2 px-2 text-right tabular-nums text-violet-300">
+                        {u.soulstones}
+                      </td>
                         <td className="py-2 px-2 text-center">
                           {u.twoFactorEnabled ? (
                             <span className="text-emerald-400">●</span>
@@ -978,9 +977,6 @@ function UserCardMobile({
             {user.isAdmin && (
               <span className="text-violet-300 text-xs ml-1">★</span>
             )}
-          </div>
-          <div className="text-[10px] font-mono text-slate-500 truncate">
-            {user.email}
           </div>
         </div>
         <div className="text-right text-[10px] font-mono text-ink-400 shrink-0">
