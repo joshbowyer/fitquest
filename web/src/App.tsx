@@ -25,6 +25,7 @@ import { RecoveryPage } from './pages/Recovery';
 import { ImportPage } from './pages/Import';
 import { StatusPage } from './pages/Status';
 import { ToolsPage } from './pages/Tools';
+import { CheckInsPage } from './pages/CheckIns';
 import type { ReactNode } from 'react';
 
 function FullPageLoader() {
@@ -74,6 +75,7 @@ export default function App() {
       <Route path="/import" element={<RequireAuth><ImportPage /></RequireAuth>} />
       <Route path="/insights" element={<RequireAuth><InsightsPage /></RequireAuth>} />
       <Route path="/tools" element={<RequireAuth><ToolsPage /></RequireAuth>} />
+      <Route path="/check-ins" element={<RequireAuth><CheckInsPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />

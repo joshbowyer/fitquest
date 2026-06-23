@@ -12,6 +12,7 @@ import { WeighInPanel } from '@/components/WeighInPanel';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { MorningReportCard } from '@/components/MorningReportCard';
+import { CheckInsPanel } from '@/components/CheckInsPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
 import { RoutinePanel } from '@/components/RoutinePanel';
@@ -291,6 +292,9 @@ export function DashboardPage() {
       </div>
 
       {/* Routine (weekly training goal + streak) */}
+      <div className="mb-4 md:mb-6">
+        <CheckInsPanel />
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
         <div className="lg:col-span-1">
           <RoutinePanel />
