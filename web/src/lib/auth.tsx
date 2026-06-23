@@ -92,6 +92,19 @@ export type User = {
   // key itself never leaves the server; the Settings page shows
   // a masked version and lets the user replace or clear it.
   hasUsdaKey?: boolean;
+  // Casual / Hardcore difficulty mode. Casual = current no-penalty
+  // behavior (default). Hardcore = full penalty ladder (hearts,
+  // streak-break, substance caps).
+  mode?: 'CASUAL' | 'HARDCORE';
+  // Current heart count (Hardcore mode only). 5 = full, 0 = -50%
+  // rewards. Always 5 in Casual mode.
+  hearts?: number;
+  // Multiplier applied to XP/gold/raid-damage right now based on
+  // hearts. 1.0 unless hearts === 0 in Hardcore.
+  heartMultiplier?: number;
+  // Thresholds for Hardcore substance caps (sourced from the
+  // server so the UI can't drift from the actual logic).
+  hardcoreCaps?: { caffeinePerDay: number; alcoholPerWeek: number };
   // Last fetched body weight in kg. Used for water + protein
   // floor calculations. Not always present.
   weightKg?: number | null;

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { ProgressBar } from '@/components/ProgressBar';
 import { TwoFactorSetup } from '@/components/TwoFactorSetup';
+import { Modal } from '@/components/Modal';
+import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { useAuth } from '@/lib/auth';
 import { convertForDisplay, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames, formatDate, formatRelative } from '@/lib/format';
@@ -15,6 +17,280 @@ import type { GeneticMax, Measurement, MetricType } from '@/lib/types';
 import { METRICS, METRICS_BY_CATEGORY } from '@/lib/types';
 
 type Change = { metric: string; from: number | null; to: number };
+
+/**
+ * Casual/Hardcore mode toggle. Renders a 2-card picker with
+ * explainers for each mode's behavior. The toggle PATCHes the
+ * server immediately; the dashboard's Hearts card will appear /
+ * disappear on next /users/me fetch.
+ *
+ * The explainers list *exactly* what changes so the user can pick
+ * informed. The penalty ladder is:
+ *  - 5 hearts, lose 1 per missed planned workout, regen 1 per 8h
+ *  - At 0 hearts: -50% XP, -50% gold, -50% raid damage
+ *  - Streak break: a missed-week routine now resets the streak
+ *  - Substance caps: >3 espressos/day or >5 drinks/week shows a
+ *    "substance over-use" flag in the morning report
+ *
+ * Casual leaves all of this off — same behaviour as before this
+ * feature shipped.
+ */
+function ModeSection() {
+  const { user, refresh } = useAuth();
+  const [err, setErr] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<'CASUAL' | 'HARDCORE' | null>(null);
+
+  const { data: me } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: () => api<{ mode?: 'CASUAL' | 'HARDCORE' }>('/users/me'),
+  });
+  const current = me?.mode ?? 'CASUAL';
+
+  const modeM = useDelayedMutation<{ ok: boolean }, 'CASUAL' | 'HARDCORE'>(
+    {
+      mutationFn: (mode) =>
+        api('/users/me', { method: 'PATCH', body: { mode } }),
+      onError: (e) => setErr(e instanceof ApiError ? e.message : 'Mode change failed'),
+      onSuccess: () => {
+        setConfirming(null);
+        setErr(null);
+        // Force-refresh the auth context so the dashboard's Hearts
+        // card mounts/unmounts without waiting for the next /me poll.
+        refresh();
+      },
+    },
+    600,
+  );
+
+  function pickMode(mode: 'CASUAL' | 'HARDCORE') {
+    if (mode === current) return;
+    setErr(null);
+    // Going to Hardcore from Casual: confirm (the user wants to know
+    // what they're getting into). Going to Casual from Hardcore: also
+    // confirm (they might be rage-quitting after a bad run — let them
+    // confirm rather than tap-out by accident).
+    setConfirming(mode);
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-[10px] font-mono text-ink-400 leading-relaxed">
+        Pick the difficulty. Casual = current no-consequences behavior
+        (streaks don't break, no hearts). Hardcore = full penalty ladder.
+        You can switch back any time, but the switch is a real choice —
+        no mid-session toggles.
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <ModeCard
+          tone="cyan"
+          title="Casual"
+          subtitle="Default · no penalties"
+          features={[
+            'No heart system',
+            'Missed workouts are free (streaks just sit frozen)',
+            'All XP / gold / raid damage at full value',
+            'Substance over-use is logged but ignored',
+          ]}
+          active={current === 'CASUAL'}
+          onClick={() => pickMode('CASUAL')}
+          disabled={modeM.isPending}
+        />
+        <ModeCard
+          tone="magenta"
+          title="Hardcore"
+          subtitle={current === 'HARDCORE' ? 'Active' : 'Engages penalty ladder'}
+          features={[
+            '5 hearts — lose 1 per missed planned workout, regen 1 per 8h',
+            'At 0 hearts: −50% XP, −50% gold, −50% raid damage',
+            'Missed-week routine resets the streak (no silent freeze)',
+            'Substance caps flag in the morning report',
+          ]}
+          active={current === 'HARDCORE'}
+          onClick={() => pickMode('HARDCORE')}
+          disabled={modeM.isPending}
+        />
+      </div>
+
+      {err && (
+        <div className="text-[10px] text-rose-300 font-mono">{err}</div>
+      )}
+
+      <Modal
+        open={confirming !== null}
+        onClose={() => {
+          setConfirming(null);
+          setErr(null);
+        }}
+        title={
+          confirming === 'HARDCORE'
+            ? 'Engage Hardcore mode?'
+            : 'Switch back to Casual?'
+        }
+      >
+        {confirming === 'HARDCORE' ? (
+          <HardcoreConfirmBody
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => modeM.run('HARDCORE')}
+            isPending={modeM.isPending}
+            hearts={user?.hearts ?? 5}
+          />
+        ) : confirming === 'CASUAL' ? (
+          <CasualConfirmBody
+            onCancel={() => setConfirming(null)}
+            onConfirm={() => modeM.run('CASUAL')}
+            isPending={modeM.isPending}
+          />
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+
+function ModeCard({
+  tone,
+  title,
+  subtitle,
+  features,
+  active,
+  onClick,
+  disabled,
+}: {
+  tone: 'cyan' | 'magenta';
+  title: string;
+  subtitle: string;
+  features: string[];
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={classNames(
+        'text-left p-3 border transition-colors',
+        active
+          ? tone === 'cyan'
+            ? 'border-neon-cyan/70 bg-neon-cyan/10'
+            : 'border-neon-magenta/70 bg-neon-magenta/10'
+          : 'border-ink-500/30 bg-bg-900/40 hover:border-ink-300',
+        disabled && 'opacity-50 cursor-not-allowed',
+      )}
+    >
+      <div className="flex items-baseline justify-between mb-1">
+        <span
+          className={classNames(
+            'font-display tracking-widest text-xs uppercase',
+            active
+              ? tone === 'cyan' ? 'text-neon-cyan' : 'text-neon-magenta'
+              : 'text-ink-200',
+          )}
+        >
+          {title}
+        </span>
+        <span className="text-[10px] font-mono text-ink-500">{subtitle}</span>
+      </div>
+      <ul className="space-y-0.5 text-[11px] font-mono text-ink-300">
+        {features.map((f) => (
+          <li key={f} className="flex gap-1.5">
+            <span className="text-ink-500">·</span>
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+      {active && (
+        <div className={classNames(
+          'mt-2 text-[10px] font-mono uppercase tracking-widest',
+          tone === 'cyan' ? 'text-neon-cyan' : 'text-neon-magenta',
+        )}>
+          ✓ Active
+        </div>
+      )}
+    </button>
+  );
+}
+
+function HardcoreConfirmBody({
+  onCancel,
+  onConfirm,
+  isPending,
+  hearts,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  isPending: boolean;
+  hearts: number;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-200">
+        You'll start with{' '}
+        <b className="text-neon-magenta">{hearts} hearts</b>. From here on:
+      </p>
+      <ul className="text-xs font-mono text-ink-300 space-y-1 list-disc pl-5">
+        <li>Missed planned workouts cost a heart</li>
+        <li>0 hearts = −50% XP, gold, raid damage until regen</li>
+        <li>Missed-week routines break the streak (no silent freeze)</li>
+        <li>Substance over-use gets flagged in the morning report</li>
+      </ul>
+      <p className="text-[10px] font-mono text-ink-500">
+        You can switch back to Casual any time from this same page.
+      </p>
+      <div className="flex justify-end gap-2 pt-1">
+        <NeonButton variant="cyan" onClick={onCancel}>
+          Cancel
+        </NeonButton>
+        <NeonButton
+          variant="magenta"
+          loading={isPending}
+          loadingText="Engaging…"
+          onClick={onConfirm}
+        >
+          Engage Hardcore
+        </NeonButton>
+      </div>
+    </div>
+  );
+}
+
+function CasualConfirmBody({
+  onCancel,
+  onConfirm,
+  isPending,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-200">
+        Switching back to Casual immediately removes all penalty tracking.
+      </p>
+      <ul className="text-xs font-mono text-ink-300 space-y-1 list-disc pl-5">
+        <li>Hearts refill to 5 (the field stays but no penalty applies)</li>
+        <li>Streak freeze behaviour restored (missed weeks don't break streak)</li>
+        <li>Substance caps ignored again</li>
+        <li>All XP / gold / raid damage back at full value</li>
+      </ul>
+      <div className="flex justify-end gap-2 pt-1">
+        <NeonButton variant="cyan" onClick={onCancel}>
+          Cancel
+        </NeonButton>
+        <NeonButton
+          variant="cyan"
+          loading={isPending}
+          loadingText="Switching…"
+          onClick={onConfirm}
+        >
+          Switch to Casual
+        </NeonButton>
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage() {
   const { user, refresh } = useAuth();

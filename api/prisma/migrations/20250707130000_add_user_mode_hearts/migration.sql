@@ -1,0 +1,8 @@
+-- CreateEnum
+CREATE TYPE "UserMode" AS ENUM ('CASUAL', 'HARDCORE');
+
+-- AlterTable
+ALTER TABLE "User"
+  ADD COLUMN "mode" "UserMode" NOT NULL DEFAULT 'CASUAL',
+  ADD COLUMN "hearts" INTEGER NOT NULL DEFAULT 5,
+  ADD COLUMN "heartsLastRegenAt" TIMESTAMP(3);

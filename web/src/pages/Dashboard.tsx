@@ -16,6 +16,7 @@ import { CheckInsPanel } from '@/components/CheckInsPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
 import { RoutinePanel } from '@/components/RoutinePanel';
+import { HeartsCard } from '@/components/HeartsCard';
 import { NutritionWidget } from '@/components/NutritionWidget';
 import { HabitsWidget } from '@/components/HabitsWidget';
 import { useAuth } from '@/lib/auth';
@@ -296,7 +297,8 @@ export function DashboardPage() {
         <CheckInsPanel />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-3">
+          <HeartsCard />
           <RoutinePanel />
         </div>
         <div className="lg:col-span-2 text-[10px] font-mono text-ink-400 leading-relaxed self-center">

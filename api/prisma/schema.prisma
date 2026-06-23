@@ -145,6 +145,14 @@ enum SkillTier {
   TIER_3
 }
 
+/// Difficulty / penalty mode. Casual is the legacy no-consequences
+/// behavior; Hardcore engages the heart system, streak-break penalty,
+/// and substance over-use caps. Users toggle in /settings.
+enum UserMode {
+  CASUAL
+  HARDCORE
+}
+
 enum AchievementCategory {
   STRENGTH
   HYPERTROPHY
@@ -277,6 +285,21 @@ model User {
   /// Default MAINTAIN. User can override individual targets in
   /// /settings to fine-tune.
   goal             CalorieGoal   @default(MAINTAIN)
+  /// Casual/Hardcore difficulty toggle. Casual = current no-consequences
+  /// behavior (streaks can be broken freely, no heart system). Hardcore =
+  /// full penalty ladder (heart system, streak-break on miss, reduced XP
+  /// when hearts are low). Default Casual so existing users aren't
+  /// surprised by a difficulty change.
+  mode             UserMode      @default(CASUAL)
+  /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
+  /// missed planned workout in the routine, regen 1 per 8h. Always 5
+  /// in Casual mode (the value is preserved but unused).
+  hearts           Int           @default(5)
+  /// Timestamp of last heart regeneration tick. Used to compute
+  /// accrued regeneration since last read; the server applies the
+  /// accrued delta on every /users/me read so the UI stays honest
+  /// about regen even if the user is offline for days.
+  heartsLastRegenAt DateTime?   
   /// User-set baseline (TDEE-ish). The actual calorie target is
   /// this + goal offset (cut -250, maintain 0, bulk +250). Default
   /// 2200 is a reasonable placeholder; the user should set this to

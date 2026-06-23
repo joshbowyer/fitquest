@@ -8,6 +8,7 @@ import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '..
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
 import { checkRoutineProgress } from './routine.js';
+import { tickHearts, heartMultiplier } from '../lib/mode.js';
 
 /**
  * Per-exercise absolute caps for "this value is almost certainly
@@ -238,14 +239,21 @@ export async function workoutRoutes(app: FastifyInstance) {
         }
       }
 
-      // XP / gold
-      const xp = xpFromWorkout({
+      // XP / gold. Apply heart multiplier when the user is in
+      // Hardcore mode with 0 hearts — halves both rewards until
+      // they tick back up. Casual mode always returns 1.0 so the
+      // math is identical to before.
+      const currentHearts = await tickHearts(me.id);
+      const mult = heartMultiplier(currentHearts);
+      const baseXp = xpFromWorkout({
         type: workout.type,
         totalVolumeKg,
         durationMin: duration,
         prCount: prs.length,
       });
-      const gold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: duration });
+      const baseGold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: duration });
+      const xp = Math.round(baseXp * mult);
+      const gold = Math.round(baseGold * mult);
       const newXp = me.xp + xp;
       const newGold = me.gold + gold;
       const newLevel = levelFromXp(newXp);
@@ -308,9 +316,12 @@ export async function workoutRoutes(app: FastifyInstance) {
             where: { partyId: membership.partyId },
           });
           const buffActive = buff && buff.expiresAt > new Date();
+          // Heart multiplier stacks with the team-workout buff. At 0
+          // hearts the user deals half damage to the boss; the buff
+          // then adds its percent on top.
           const buffedDamage = buffActive
-            ? Math.round(raidDamage.total * (1 + (buff?.raidDmgBonusPct ?? 0) / 100))
-            : raidDamage.total;
+            ? Math.round(raidDamage.total * mult * (1 + (buff?.raidDmgBonusPct ?? 0) / 100))
+            : Math.round(raidDamage.total * mult);
           const newHp = Math.max(0, raid.bossHp - buffedDamage);
           const status = newHp <= 0 ? 'VICTORY' : 'ACTIVE';
           const [contribution] = await prisma.$transaction([
@@ -384,6 +395,11 @@ export async function workoutRoutes(app: FastifyInstance) {
         previousLevel: result.previousLevel,
         leveledUp: result.leveledUp,
         progress: progressInLevel(result.totalXp, result.level),
+        // Hearts + mode so the frontend can refresh the Hearts card
+        // and the rewards multiplier chip without a separate /users/me.
+        hearts: currentHearts,
+        heartMultiplier: mult,
+        mode: me.mode ?? 'CASUAL',
         prs,
       },
       // Validity flags surface in the morning report / a quick toast

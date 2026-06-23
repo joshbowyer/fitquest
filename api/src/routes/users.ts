@@ -7,6 +7,7 @@ import { computeAllGeneticMaxes } from '../lib/geneticMax.js';
 import { levelFromXp, progressInLevel } from '../lib/xp.js';
 import { assertCanChangeClass, getClassLockStatus } from '../lib/classLock.js';
 import { isCreatineActive } from './supplements.js';
+import { tickHearts, heartMultiplier, HARDCORE_SUBSTANCE_CAPS } from '../lib/mode.js';
 
 const ProfileSchema = z.object({
   class: z.nativeEnum(ClassName).optional(),
@@ -41,11 +42,19 @@ const ProfileSchema = z.object({
   /// https://fdc.nal.usda.gov/api-key-signup.html. Empty string
   /// clears the key.
   usdaApiKey: z.string().max(200).optional().nullable(),
+  /// Casual / Hardcore difficulty mode. Switches the penalty ladder
+  /// on/off (hearts, streak-break, substance caps). Casual is the
+  /// default and behaves identically to the legacy no-penalty app.
+  mode: z.enum(['CASUAL', 'HARDCORE']).optional(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
   app.get('/me', async (req) => {
     const user = await requireUser(req);
+    // Tick hearts on every /me read so the UI always reflects the
+    // current regen state, even if the user has been offline for
+    // days. tickHearts is a no-op for Casual mode (returns 5).
+    const hearts = await tickHearts(user.id);
     return {
       id: user.id,
       email: user.email,
@@ -77,6 +86,13 @@ export async function userRoutes(app: FastifyInstance) {
       creatine: user.creatine,
       creatineActive: await isCreatineActive(user.id),
       timezone: user.timezone,
+      // Casual / Hardcore mode + heart state. Hearts is read-tick'd
+      // above so the value here is fresh. multiplier is computed
+      // here too so the UI doesn't have to redo the math.
+      mode: user.mode ?? 'CASUAL',
+      hearts,
+      heartMultiplier: heartMultiplier(hearts),
+      hardcoreCaps: HARDCORE_SUBSTANCE_CAPS,
     };
   });
 
@@ -132,6 +148,7 @@ export async function userRoutes(app: FastifyInstance) {
           : {}),
         ...(body.creatine !== undefined ? { creatine: body.creatine } : {}),
         ...(body.timezone !== undefined ? { timezone: body.timezone || null } : {}),
+        ...(body.mode !== undefined ? { mode: body.mode } : {}),
         ...(body.goal !== undefined ? { goal: body.goal } : {}),
         ...(body.calorieBaseline !== undefined ? { calorieBaseline: body.calorieBaseline } : {}),
         ...(body.calorieSource !== undefined ? { calorieSource: body.calorieSource } : {}),
