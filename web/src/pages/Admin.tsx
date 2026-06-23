@@ -370,17 +370,17 @@ export function AdminPage() {
         <Panel
           title="LLM Configuration"
           subtitle="Provider + key for future in-app coach/quest narrator."
-          className="lg:col-span-2"
+          className="sm:col-span-2 lg:col-span-2"
         >
           {llmQ.isLoading || !llmForm ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs uppercase text-slate-500">Provider</span>
                 <div className="flex gap-2 mt-1">
                   <select
-                    className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                    className="flex-1 min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
                     value={llmForm.provider}
                     onChange={(e) => {
                       const next = e.target.value as LlmConfig['provider'];
@@ -406,7 +406,6 @@ export function AdminPage() {
                         model: preset.defaultModel,
                       });
                     }}
-                    title="Auto-fill base URL and default model for this provider"
                   >
                     Preset
                   </NeonButton>
@@ -416,7 +415,7 @@ export function AdminPage() {
                 <span className="text-xs uppercase text-slate-500">Model</span>
                 <input
                   type="text"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
                   value={llmForm.model}
                   onChange={(e) => setLlmForm({ ...llmForm, model: e.target.value })}
                   placeholder={
@@ -425,7 +424,7 @@ export function AdminPage() {
                 />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs uppercase text-slate-500 flex items-center gap-2">
+                <span className="text-xs uppercase text-slate-500 flex items-center gap-2 flex-wrap">
                   API Key
                   {llmQ.data?.config.apiKey ? (
                     <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
@@ -447,7 +446,7 @@ export function AdminPage() {
                   placeholder="sk-... (enter to save, blank to keep current)"
                 />
                 {llmQ.data?.config.apiKey && (
-                  <div className="mt-1 text-[10px] font-mono text-slate-500">
+                  <div className="mt-1 text-[10px] font-mono text-slate-500 break-all">
                     Currently saved as <span className="text-slate-300">{llmQ.data.config.apiKey}</span>
                     {' '}<span className="text-slate-600">— leave blank to keep</span>
                   </div>
@@ -497,13 +496,12 @@ export function AdminPage() {
                   Enabled — use this config for AI features
                 </span>
               </label>
-              <div className="sm:col-span-2 flex justify-end gap-2">
+              <div className="sm:col-span-2 flex flex-col sm:flex-row sm:justify-end gap-2">
                 <NeonButton
                   type="button"
                   variant="cyan"
                   disabled={testLlmM.isPending}
                   onClick={() => testLlmM.run('primary')}
-                  title="Sends a test prompt to the saved primary model"
                 >
                   {testLlmM.isPending ? 'Testing…' : 'Test Connection'}
                 </NeonButton>
@@ -523,8 +521,8 @@ export function AdminPage() {
 
               {/* -------- Fallback (secondary) model -------- */}
               <div className="sm:col-span-2 mt-3 pt-3 border-t border-ink-500/20">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
+                <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
+                  <div className="min-w-0 flex-1">
                     <div className="text-sm font-display tracking-widest text-ink-50">
                       Fallback (secondary) model
                     </div>
@@ -535,7 +533,7 @@ export function AdminPage() {
                       primary blank and fill in fallback.
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 shrink-0 ml-3">
+                  <label className="flex items-center gap-2 shrink-0">
                     <input
                       type="checkbox"
                       checked={llmForm.fallbackEnabled}
@@ -547,12 +545,12 @@ export function AdminPage() {
                     <span className="text-sm text-slate-300">Enabled</span>
                   </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   <label className="block">
                     <span className="text-xs uppercase text-slate-500">Provider</span>
                     <div className="flex gap-2 mt-1">
                       <select
-                        className="flex-1 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                        className="flex-1 min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
                         value={llmForm.fallbackProvider ?? ''}
                         onChange={(e) => {
                           const next = (e.target.value || null) as LlmConfig['fallbackProvider'];
@@ -580,7 +578,6 @@ export function AdminPage() {
                             fallbackModel: preset.defaultModel,
                           });
                         }}
-                        title="Auto-fill base URL and default model for the fallback provider"
                       >
                         Preset
                       </NeonButton>
@@ -590,7 +587,7 @@ export function AdminPage() {
                     <span className="text-xs uppercase text-slate-500">Model</span>
                     <input
                       type="text"
-                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
                       value={llmForm.fallbackModel ?? ''}
                       onChange={(e) =>
                         setLlmForm({ ...llmForm, fallbackModel: e.target.value || null })
@@ -603,7 +600,7 @@ export function AdminPage() {
                     />
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="text-xs uppercase text-slate-500 flex items-center gap-2">
+                    <span className="text-xs uppercase text-slate-500 flex items-center gap-2 flex-wrap">
                       API Key
                       {llmQ.data?.config.fallbackApiKey ? (
                         <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
@@ -625,7 +622,7 @@ export function AdminPage() {
                       placeholder="sk-... (blank = keep current)"
                     />
                     {llmQ.data?.config.fallbackApiKey && (
-                      <div className="mt-1 text-[10px] font-mono text-slate-500">
+                      <div className="mt-1 text-[10px] font-mono text-slate-500 break-all">
                         Currently saved as <span className="text-slate-300">{llmQ.data.config.fallbackApiKey}</span>
                       </div>
                     )}
@@ -645,7 +642,7 @@ export function AdminPage() {
                     />
                   </label>
                 </div>
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3">
                   <NeonButton
                     type="button"
                     variant="amber"
@@ -656,7 +653,6 @@ export function AdminPage() {
                       !llmForm.fallbackModel
                     }
                     onClick={() => testLlmM.run('fallback')}
-                    title="Sends a test prompt to the saved fallback model (saves first if form is dirty)"
                   >
                     {testLlmM.isPending ? 'Testing…' : 'Test Fallback'}
                   </NeonButton>
@@ -710,7 +706,7 @@ export function AdminPage() {
               {testLlmM.data && (
                 <div
                   className={classNames(
-                    'sm:col-span-2 text-xs p-2 border font-mono',
+                    'sm:col-span-2 text-xs p-2 border font-mono break-words',
                     testLlmM.data.ok
                       ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-300'
                       : 'border-rose-500/40 bg-rose-500/5 text-rose-300',
@@ -733,7 +729,7 @@ export function AdminPage() {
                       <div className="text-rose-300 font-bold">
                         ✗ Test failed {testLlmM.data.httpStatus ? `(${testLlmM.data.httpStatus})` : ''}
                       </div>
-                      <div className="text-slate-300 mt-1">
+                      <div className="text-slate-300 mt-1 break-all">
                         {testLlmM.data.error}
                       </div>
                     </>
