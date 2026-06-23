@@ -8,6 +8,7 @@ import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
 import { Avatar } from '@/components/Avatar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { DeleteButton } from '@/components/DeleteButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   BodyModel,
