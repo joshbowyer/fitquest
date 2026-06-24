@@ -33,7 +33,18 @@
 
 import { prisma } from './prisma.js';
 
-const FEED_URL = 'https://feeds.feedburner.com/UsccbDailyReadings';
+// Canonical USCCB daily-readings RSS feed. The old feedburner
+// URL (`https://feeds.feedburner.com/UsccbDailyReadings`) and the
+// bible.usccb.org/rss/daily.xml path both 404 as of 2026-06-24
+// — USCCB migrated their Drupal site. The canonical new URL is
+// bible.usccb.org/readings.rss (301 redirects from the older
+// /bible/readings/rss/daily.xml path land here too).
+//
+// If this URL ever 404s again, fall back to:
+//   1. https://bible.usccb.org/bible/readings/rss/daily.xml (legacy)
+//   2. Wayback Machine per-day snapshots (handled in
+//      fetchReadingByWayback below — works regardless of RSS state)
+const FEED_URL = 'https://bible.usccb.org/readings.rss';
 const WAYBACK_PREFIX = 'https://web.archive.org/web/';
 
 // Date in YYYY-MM-DD form.
@@ -308,18 +319,32 @@ function mmddyy(date: string): string {
 
 async function fetchReadingByWayback(date: string): Promise<DailyReading | null> {
   const cfm = mmddyy(date);
+  // Wayback URL candidates, tried in order. USCCB has had multiple
+  // URL formats over the years and Wayback snapshots each version
+  // separately:
+  //   1. /MMDDYY-Day       (current 2026 format, no .cfm suffix)
+  //   2. /MMDDYY-Day.cfm   (2024-era format)
+  //   3. /MMDDYY-Vigil.cfm (some solemnities have a Vigil Mass)
+  //   4. /MMDDYY.cfm       (legacy main page — used to contain the
+  //                         readings inline; now a JS-rendered picker)
+  // We try the newest format first because that's where Wayback
+  // has the most recent snapshots (timestamp 2026-06-23 for
+  // today, vs 2025-11-13 for the legacy .cfm path).
   const usccbUrl = `https://bible.usccb.org/bible/readings/${cfm}.cfm`;
+  const dayNoCfm = `https://bible.usccb.org/bible/readings/${cfm}-Day`;
+  const dayCfm = `https://bible.usccb.org/bible/readings/${cfm}-Day.cfm`;
+  const vigilCfm = `https://bible.usccb.org/bible/readings/${cfm}-Vigil.cfm`;
+
   // Some solemnities (e.g. Nativity of St. John the Baptist on
   // 6/24) have two reading sets: a Vigil Mass and a Mass during
-  // the Day. The main /MMDDYY.cfm page just lists both options.
-  // We want the "during the day" readings, which live at
-  // /MMDDYY-Day.cfm. Try the Day variant first; if it doesn't
-  // exist, fall back to the main page.
-  const dayUrl = `https://bible.usccb.org/bible/readings/${cfm}-Day.cfm`;
-  const daySnapshot = await findWaybackSnapshot(dayUrl);
+  // the Day. We want the "during the day" readings, so prefer
+  // the Day variants.
+  const daySnapshot = await findWaybackSnapshot(dayNoCfm)
+    ?? await findWaybackSnapshot(dayCfm);
   let snapshotUrl: string | null = daySnapshot;
-  if (!daySnapshot) {
-    snapshotUrl = await findWaybackSnapshot(usccbUrl);
+  if (!snapshotUrl) {
+    snapshotUrl = await findWaybackSnapshot(vigilCfm)
+      ?? await findWaybackSnapshot(usccbUrl);
   }
   if (!snapshotUrl) {
     console.log(`[fetchReadingByWayback] ${date}: no wayback snapshot for ${usccbUrl}`);
@@ -445,7 +470,7 @@ function parseWaybackPage(html: string, date: string): DailyReading | null {
  * Save one parsed reading to the cache. Idempotent: skips when the
  * sourceHash is unchanged so re-fetches don't churn the DB.
  */
-async function saveReading(reading: DailyReading, source: 'usccb-rss' | 'usccb-wayback'): Promise<void> {
+async function saveReading(reading: DailyReading, source: 'usccb-rss' | 'usccb-wayback' | 'ewtn'): Promise<void> {
   // Source hash: lightweight summary of the actual content fields
   // (skipping date + liturgicalInfo because they vary for the
   // same reading across snapshots). Two snapshots of the same
@@ -529,6 +554,34 @@ export async function seedReading(date: string): Promise<DailyReading | null> {
     });
   }
 
+  // EWTN is the new primary source. Captcha-less, parseable JSON-LD
+  // payload, ships the readings text directly (USCCB's site now
+  // serves behind Cloudflare Obolus for non-browser clients).
+  // Translation: RSV-CE. Stamped as source='ewtn' so the UI can
+  // note the translation when it matters.
+  const { fetchEwtnReading } = await import('./ewtn.js');
+  const ewtn = await fetchEwtnReading(date);
+  if (ewtn) {
+    await saveReading({
+      date,
+      liturgicalInfo: ewtn.liturgicalInfo,
+      firstReading: ewtn.firstReading,
+      firstReadingRef: ewtn.firstReadingRef,
+      responsorialPsalm: ewtn.responsorialPsalm,
+      psalmRef: ewtn.psalmRef,
+      gospelAcclamation: ewtn.gospelAcclamation,
+      gospel: ewtn.gospel,
+      gospelRef: ewtn.gospelRef,
+    }, 'ewtn');
+    return toRow({
+      date,
+      ...ewtn,
+    });
+  }
+
+  // EWTN failed (network, parse, missing articleBody). Fall back
+  // to the legacy USCCB cascade: RSS → Wayback.
+  //
   // Try RSS first — covers ~10 most recent days. We always re-fetch
   // the RSS even when asking for a single date because (a) it's the
   // canonical source and (b) refreshUsccbCache fills all the dates
@@ -539,12 +592,23 @@ export async function seedReading(date: string): Promise<DailyReading | null> {
   } catch {
     // Network error — fall through to Wayback.
   }
+  let rssHadReadableText = false;
   if (xml) {
     const items = parseRss(xml);
     let found = null;
     for (const it of items) {
       try {
         const parsed = parseDescription(it.description);
+        // USCCB redesigned their site in 2026 — the RSS feed's
+        // <description> now contains only navigation links to the
+        // per-day HTML pages (which themselves are JS-rendered and
+        // don't ship reading text). Detect that case: if the parsed
+        // firstReading AND gospel are both empty, skip saving +
+        // continue to Wayback. We don't save an empty row because
+        // that would poison the cache and make the dashboard think
+        // "no reading for today" is the permanent answer.
+        if (!parsed.firstReading.trim() && !parsed.gospel.trim()) continue;
+        rssHadReadableText = true;
         await saveReading({
           date: it.date,
           liturgicalInfo: it.title,
@@ -558,15 +622,26 @@ export async function seedReading(date: string): Promise<DailyReading | null> {
     if (found) return toRow(found);
   }
 
-  // RSS didn't have it (date is older than ~10 days). Wayback
-  // fallback. This is slower (~1s) but covers the entire historical
-  // archive.
+  // RSS didn't have a readable entry for this date. Two cases:
+  //   (a) Older date (~10+ days back) where RSS doesn't cover it
+  //   (b) Recent date where RSS exists but the description has no
+  //       reading text (USCCB's 2026 redesign; navigation-only RSS)
+  // Both fall through to Wayback.
   const wb = await fetchReadingByWayback(date);
   if (wb) {
     await saveReading(wb, 'usccb-wayback');
     return toRow(wb);
   }
 
+  // Surface a structured warning so the operator can tell whether
+  // the failure is "USCCB site changed shape" (rssHadReadableText
+  // false + no wayback) vs "date genuinely unavailable" (rss had
+  // text for other dates but not this one). Logged once per
+  // request; safe to leave on because the spiritual director card
+  // surfaces a clear "feed unavailable" UI in this case.
+  if (xml && !rssHadReadableText) {
+    console.warn(`[usccb] RSS returned no readable text for ${date} (USCCB redesign path)`);
+  }
   return null;
 }
 

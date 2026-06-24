@@ -157,8 +157,26 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
   if (!r) {
     return (
       <Panel title="Spiritual director" variant="violet">
-        <div className="text-sm text-slate-400 font-mono py-1">
-          No reading available for today. The USCCB feed may be stale or the date is outside the cached window.
+        <div className="space-y-2 py-1">
+          <div className="text-sm text-slate-300 font-mono">
+            No USCCB reading available right now.
+          </div>
+          <div className="text-[11px] font-mono text-ink-400 leading-relaxed">
+            The USCCB redesigned their site in mid-2026 and stopped
+            shipping reading text in their RSS feed — the per-day
+            pages are now JavaScript-rendered and Wayback snapshots
+            don't always have the readings either. Our cache falls
+            back to the legacy <code>.cfm</code> snapshots when
+            possible. If this persists past a day, the readings
+            are genuinely unreachable from a server-side fetch.
+          </div>
+          <button
+            type="button"
+            onClick={() => qc.invalidateQueries({ queryKey: ['spiritual', 'director'] })}
+            className="text-[10px] font-mono text-violet-300 hover:underline"
+          >
+            ↻ Re-check
+          </button>
         </div>
       </Panel>
     );
@@ -187,6 +205,7 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
         <div>
           <div className="text-[10px] font-mono uppercase tracking-widest text-neon-violet/70 mb-1">
             {r.liturgicalInfo} · {r.gospelRef}
+            <span className="text-[10px] font-mono text-ink-500 ml-2">RSV-CE · EWTN</span>
           </div>
         </div>
         {r.reflection && (
