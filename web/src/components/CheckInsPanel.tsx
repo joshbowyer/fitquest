@@ -17,6 +17,7 @@ import {
   type CheckInsDueResponse,
   type DueMetricDto,
 } from '@/lib/checkIns';
+import { convertForStorage, displayUnit } from '@/lib/units';
 
 /**
  * Dashboard check-in panel. Shows up to 3 cadence cards (AM/PM/WEEKLY)
@@ -250,10 +251,19 @@ export function QuickLogModal({
 
   function submit(v: number) {
     setErr(null);
+    // Convert from the user's display unit back to the storage
+    // unit. Without this, entering 135.4 in imperial mode
+    // (the label says 'lb') would store 135.4 kg, then display
+    // it later as 298.5 lb — a 2.205× drift. Same shape for
+    // cm/in and ml/fl oz.
+    const system = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
+    const displayU = displayUnit(activeMeta.unit || '', system);
+    const { value: storedValue, unit: storedUnit } =
+      convertForStorage(v, displayU, system);
     logM.run({
       metric: activeItem.metric,
-      value: v,
-      unit: activeMeta.unit || undefined,
+      value: storedValue,
+      unit: storedUnit || undefined,
       notes: notes.trim() || undefined,
     });
   }
@@ -320,8 +330,10 @@ export function QuickLogModal({
         </div>
         {unitLabel && (
           <span className="text-ink-400 text-sm font-mono pb-1.5">
-            {user?.units === 'IMPERIAL' && unitLabel === 'kg' ? 'lb' :
-             user?.units === 'IMPERIAL' && unitLabel === 'cm' ? 'in' : unitLabel}
+            {displayUnit(
+              unitLabel,
+              user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC',
+            )}
           </span>
         )}
         <button
