@@ -51,3 +51,12 @@ export async function api<T = unknown>(path: string, init: ApiInit = {}): Promis
   }
   return data as T;
 }
+
+/**
+ * POST a JSON body. Shorthand for `api(path, { method: 'POST', body })`
+ * since "POST with JSON" is the single most common API call shape and
+ * writing `method: 'POST', body: {}` everywhere clutters the call site.
+ */
+export function postJson<T = unknown>(path: string, body: unknown): Promise<T> {
+  return api<T>(path, { method: 'POST', body });
+}

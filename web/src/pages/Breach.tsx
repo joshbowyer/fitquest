@@ -122,10 +122,6 @@ export function BreachPage() {
 
   const claimDelayed = useDelayedMutation(claim);
 
-  // Debug log so we can verify the page is actually mounting when
-  // navigated to from the constellation map or sidebar.
-  console.log('[BreachPage] render', { isLoading, isError, hasData: !!data, status: data?.progress?.status, hasBoss: !!data?.boss });
-
   if (isLoading) {
     return (
       <Layout>
