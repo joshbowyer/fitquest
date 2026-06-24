@@ -15,6 +15,7 @@ import { ProfilePage } from './pages/Profile';
 import { AdminPage } from './pages/Admin';
 import { QuestPage } from './pages/Quest';
 import { QuestWorldPage } from './pages/QuestWorld';
+import { BreachPage } from './pages/Breach';
 import { SpiritualPage } from './pages/Spiritual';
 import { AchievementsPage } from './pages/Achievements';
 import { HomeBasePage } from './components/HomeBaseCard';
@@ -66,6 +67,7 @@ export default function App() {
       <Route path="/quest" element={<RequireAuth><QuestPage /></RequireAuth>} />
       <Route path="/quest/:worldId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
       <Route path="/quest/:worldId/:levelId" element={<RequireAuth><QuestWorldPage /></RequireAuth>} />
+      <Route path="/breach" element={<RequireAuth><BreachPage /></RequireAuth>} />
       <Route path="/status" element={<RequireAuth><StatusPage /></RequireAuth>} />
       <Route path="/workouts" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />
       <Route path="/activities" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />

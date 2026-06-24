@@ -451,6 +451,53 @@ export async function workoutRoutes(app: FastifyInstance) {
       }
     }
 
+    // ============================================================
+    // Breach damage — apply inline with workout commit so the UI
+    // updates in one round trip. Lazy-unlocks at level 10 (the
+    // function is a no-op below that).
+    // ============================================================
+    let breachDamage: {
+      dealt: number;
+      matchType: string;
+      bossHpAfter: number;
+      killed: boolean;
+      pendingReward: any;
+      unlocked: boolean;
+    } | null = null;
+    try {
+      const breachLib = await import('../lib/breach.js');
+      const userBefore = await prisma.user.findUnique({
+        where: { id: me.id },
+        select: { level: true },
+      });
+      const beforeLevel = userBefore?.level ?? 1;
+      const unlockResult = await breachLib.unlockBreachIfReady(me.id, result.level);
+      await breachLib.tickCooldown(me.id);
+      const damageResult = await breachLib.applyWorkoutDamage(me.id, result.workout.id);
+      if (damageResult) {
+        let pendingReward: any = null;
+        if (damageResult.killed) {
+          const progress = await breachLib.getOrCreateProgress(me.id);
+          const boss = progress.currentBossId
+            ? await prisma.breachBoss.findUnique({ where: { id: progress.currentBossId } })
+            : null;
+          if (boss) pendingReward = breachLib.rewardForKill(boss, result.level);
+        }
+        breachDamage = {
+          dealt: damageResult.dealt,
+          matchType: damageResult.matchType,
+          bossHpAfter: damageResult.bossHpAfter,
+          killed: damageResult.killed,
+          pendingReward,
+          unlocked: !!(unlockResult?.unlockedAt && unlockResult.unlockedAt.getTime() >= Date.now() - 1000) || beforeLevel < 10 && result.level >= 10,
+        };
+      }
+    } catch (err) {
+      // Breach is best-effort. A failed damage calc shouldn't break
+      // the workout commit — log + continue without breachDamage.
+      console.error('[breach] damage hook failed', err);
+    }
+
     return reply.send({
       workout: result.workout,
       rewards: {
@@ -478,6 +525,10 @@ export async function workoutRoutes(app: FastifyInstance) {
         contribution: raidContribution,
       },
       routine: routineProgress,
+      // Breach status — null when LOCKED or no progress row yet.
+      // `unlocked: true` triggers the level-10 cutscene on the
+      // client.
+      breach: breachDamage,
     });
   });
 

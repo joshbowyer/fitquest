@@ -45,6 +45,17 @@ export function QuestPage() {
   });
   const avatar = avatarData?.avatar ?? null;
 
+  // Breach state for the constellation black hole overlay.
+  // Only fetched when the user is at or near the unlock level —
+  // saves a round trip for early-game users.
+  const { data: breach } = useQuery({
+    queryKey: ['breach'],
+    queryFn: () => api<{ progress: { status: string; bossHp: number; bossMaxHp: number }; boss: { name: string } | null }>('/breach'),
+    enabled: !!user && user.level >= 8,
+    staleTime: 60_000,
+  });
+  const breachUnlocked = breach?.progress.status !== 'LOCKED' && breach?.boss != null;
+
   const portals = worlds ?? [];
   const archetype = user ? (getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE') : 'SPRITE';
   const sizeLabel = user ? getFrameSize(user.wristCm, user.ankleCm) : 'MEDIUM';
@@ -84,6 +95,14 @@ export function QuestPage() {
               shield={homeBase?.shield}
               recentEvents={homeBase?.recentEvents}
               onSelectHomeBase={() => setHomeBaseOpen(true)}
+              breach={breachUnlocked ? {
+                unlocked: true,
+                bossName: breach!.boss!.name,
+                bossHp: breach!.progress.bossHp,
+                bossMaxHp: breach!.progress.bossMaxHp,
+                status: breach!.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
+              } : null}
+              onSelectBreach={() => navigate('/breach')}
             />
           </Panel>
 

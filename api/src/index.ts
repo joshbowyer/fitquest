@@ -38,6 +38,7 @@ import { metricInsightRoutes } from './routes/metricInsights.js';
 import { importRoutes } from './routes/import.js';
 import { examenRoutes } from './routes/examen.js';
 import { homeBaseRoutes } from './routes/homeBase.js';
+import { breachRoutes } from './routes/breach.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
 import { foodRoutes, savedFoodRoutes, foodYouImportRoutes } from './routes/foods.js';
@@ -104,6 +105,7 @@ async function build() {
   await app.register(plateauRoutes, { prefix: '/plateaus' });
   await app.register(examenRoutes, { prefix: '/examen' });
   await app.register(homeBaseRoutes, { prefix: '/home-base' });
+  await app.register(breachRoutes, { prefix: '/breach' });
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');

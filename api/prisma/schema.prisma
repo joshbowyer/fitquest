@@ -210,176 +210,185 @@ enum MemberRole {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  username     String   @unique
-  passwordHash String
-  class        ClassName?
-  level        Int      @default(1)
-  xp           Int      @default(0)
-  gold         Int      @default(0)
+  id                    String                @id @default(cuid())
+  email                 String                @unique
+  username              String                @unique
+  passwordHash          String
+  class                 ClassName?
+  level                 Int                   @default(1)
+  xp                    Int                   @default(0)
+  gold                  Int                   @default(0)
   // Soulstones: rare drop from raids/world bosses, used to bypass the
   // 9-day class-change lock. Capped softly via the boss/raid reward logic.
-  soulstones   Int      @default(0)
-  units        UnitSystem @default(METRIC)
+  soulstones            Int                   @default(0)
+  units                 UnitSystem            @default(METRIC)
   // Static frame inputs (rarely change). Used by genetic-max formulas.
-  heightCm        Float?
-  wristCm         Float?
-  ankleCm         Float?
-  forearmLengthCm Float?
-  neckCircCm      Float?
+  heightCm              Float?
+  wristCm               Float?
+  ankleCm               Float?
+  forearmLengthCm       Float?
+  neckCircCm            Float?
   // Dynamic body metrics (change over time). Used by formulas + tracked.
-  weightKg     Float?
-  bodyFatPct   Float?
-  birthDate    DateTime?
+  weightKg              Float?
+  bodyFatPct            Float?
+  birthDate             DateTime?
   // Cached PRs (kg or seconds depending on exercise)
-  benchPr      Float?
-  squatPr      Float?
-  deadliftPr   Float?
-  ohpPr        Float?
-  pullupPr     Int?
+  benchPr               Float?
+  squatPr               Float?
+  deadliftPr            Float?
+  ohpPr                 Float?
+  pullupPr              Int?
   // Relations
-  sessions        Session[]
-  measurements    Measurement[]
-  geneticMaxes     GeneticMax[]
-  workouts         Workout[]
-  prs              Pr[]
-  partyMember      PartyMember?
-  raidContribs     RaidContribution[]
-  achievements     UserAchievement[]
-  skills           UserSkill[]
-  homeBase         HomeBase?
-  penanceTemplates PenanceTemplate[]
-  penanceEvents    PenanceEvent[]
-  avatar           Avatar?
-  classChangedAt   DateTime?
+  sessions              Session[]
+  measurements          Measurement[]
+  geneticMaxes          GeneticMax[]
+  workouts              Workout[]
+  prs                   Pr[]
+  partyMember           PartyMember?
+  raidContribs          RaidContribution[]
+  achievements          UserAchievement[]
+  skills                UserSkill[]
+  homeBase              HomeBase?
+  penanceTemplates      PenanceTemplate[]
+  penanceEvents         PenanceEvent[]
+  // Breach boss progress. One row per user; lazily created on
+  // first /breach GET after level 10 OR first workout-commit
+  // while unlocked (whichever happens first). Defined as ? here
+  // so existing users without a row still load cleanly.
+  userBreachProgress    UserBreachProgress?
+  /// Per-workout Breach damage audit trail. Looked up by user
+  /// (newest first) for the /breach damage feed. Cascades with
+  /// the user row so account deletion stays clean.
+  breachDamageEvents    BreachDamageEvent[]
+  avatar                Avatar?
+  classChangedAt        DateTime?
   // Admin role. First user to register is bootstrapped to admin.
   // Future: 2FA / TOTP secret + recovery codes live here too.
-  isAdmin          Boolean  @default(false)
-  twoFactorSecret  String?
-  twoFactorEnabled Boolean  @default(false)
+  isAdmin               Boolean               @default(false)
+  twoFactorSecret       String?
+  twoFactorEnabled      Boolean               @default(false)
   // TOTP recovery codes (one-time use, hashed at rest).
-  twoFactorBackupCodes String?
-  worldProgress    UserWorldProgress[]
-  painLogs         PainLog[]
-  routine          Routine?
-  worldBosses      WorldBoss[]
-  sentInvites      PartyInvite[] @relation("Inviter")
-  receivedInvites  PartyInvite[] @relation("Invitee")
-  prayerLogs       PrayerLog[]
-  habits           Habit[]
-  habitLogs        HabitLog[]
-  supplements      SupplementLog[]
-  routineDays      RoutineDay[]
-  dailies          Daily[]
-  dailyLogs        DailyLog[]
-  inventoryItems   InventoryItem[]
-  morningReports   MorningReport[]
-  spiritualReflections SpiritualReflection[]
-   activityInsights    ActivityInsight[]
-   metricInsights      MetricInsight[]
-   plateauPauses      PlateauPause[]
-   plateauSnapshots   PlateauSnapshot[]
-   examenResponses    ExamenResponse[]
-  trackedItems     UserTrackedItem[]
-  dailyTracked     DailyTrackedItem[]
-  substanceLogs    SubstanceLog[]
-  mealEntries      MealEntry[]
-  savedFoods       SavedFood[]
-  correlationSnapshots CorrelationSnapshot[]
-  teamWorkoutsLed      TeamWorkout[]      @relation("TeamWorkoutLeader")
-  teamParticipations   TeamParticipant[]
-  trustedDevices       TrustedDevice[]
-  recoveryCodes        RecoveryCode[]
+  twoFactorBackupCodes  String?
+  worldProgress         UserWorldProgress[]
+  painLogs              PainLog[]
+  routine               Routine?
+  worldBosses           WorldBoss[]
+  sentInvites           PartyInvite[]         @relation("Inviter")
+  receivedInvites       PartyInvite[]         @relation("Invitee")
+  prayerLogs            PrayerLog[]
+  habits                Habit[]
+  habitLogs             HabitLog[]
+  supplements           SupplementLog[]
+  routineDays           RoutineDay[]
+  dailies               Daily[]
+  dailyLogs             DailyLog[]
+  inventoryItems        InventoryItem[]
+  morningReports        MorningReport[]
+  spiritualReflections  SpiritualReflection[]
+  activityInsights      ActivityInsight[]
+  metricInsights        MetricInsight[]
+  plateauPauses         PlateauPause[]
+  plateauSnapshots      PlateauSnapshot[]
+  examenResponses       ExamenResponse[]
+  trackedItems          UserTrackedItem[]
+  dailyTracked          DailyTrackedItem[]
+  substanceLogs         SubstanceLog[]
+  mealEntries           MealEntry[]
+  savedFoods            SavedFood[]
+  correlationSnapshots  CorrelationSnapshot[]
+  teamWorkoutsLed       TeamWorkout[]         @relation("TeamWorkoutLeader")
+  teamParticipations    TeamParticipant[]
+  trustedDevices        TrustedDevice[]
+  recoveryCodes         RecoveryCode[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
-  spiritualDailyPrayers PrayerType[] @default([ROSARY, SCRIPTURE])
+  spiritualDailyPrayers PrayerType[]          @default([ROSARY, SCRIPTURE])
   // Creatine adds intracellular water weight (~1-2 kg). When true, the
   // user wants it accounted for in lean-mass display so a "real" LBM
   // number doesn't include the water. Stored raw so we can compute
   // both numbers downstream.
-  creatine     Boolean        @default(false)
+  creatine              Boolean               @default(false)
   // IANA timezone name (e.g. "America/New_York"). Used to render
   // absolute timestamps in the user's local time. Defaults to UTC.
-  timezone     String?
-  spiritualSubclass SpiritualSubclass?
-  spiritualXp       Int           @default(0)
-  ordained          Boolean        @default(false)
-  ordainedAt        DateTime?
-  sex              Sex?
+  timezone              String?
+  spiritualSubclass     SpiritualSubclass?
+  spiritualXp           Int                   @default(0)
+  ordained              Boolean               @default(false)
+  ordainedAt            DateTime?
+  sex                   Sex?
   /// Goal for daily calorie/macro targets. Drives the conservative
   /// ±250 cal adjustment from the user's calorie baseline, and
   /// shifts the protein target up (cut/maint) or down (bulk)
   /// per the user's preference for the high end of the range.
   /// Default MAINTAIN. User can override individual targets in
   /// /settings to fine-tune.
-  goal             CalorieGoal   @default(MAINTAIN)
+  goal                  CalorieGoal           @default(MAINTAIN)
   /// Casual/Hardcore difficulty toggle. Casual = current no-consequences
   /// behavior (streaks can be broken freely, no heart system). Hardcore =
   /// full penalty ladder (heart system, streak-break on miss, reduced XP
   /// when hearts are low). Default Casual so existing users aren't
   /// surprised by a difficulty change.
-  mode             UserMode      @default(CASUAL)
+  mode                  UserMode              @default(CASUAL)
   /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
   /// missed planned workout in the routine, regen 1 per 8h. Always 5
   /// in Casual mode (the value is preserved but unused).
-  hearts           Int           @default(5)
+  hearts                Int                   @default(5)
   /// Timestamp of last heart regeneration tick. Used to compute
   /// accrued regeneration since last read; the server applies the
   /// accrued delta on every /users/me read so the UI stays honest
   /// about regen even if the user is offline for days.
-  heartsLastRegenAt DateTime?   
+  heartsLastRegenAt     DateTime?
   /// User-set baseline (TDEE-ish). The actual calorie target is
   /// this + goal offset (cut -250, maintain 0, bulk +250). Default
   /// 2200 is a reasonable placeholder; the user should set this to
   /// their actual maintenance once they have data.
-  calorieBaseline  Int           @default(2200)
+  calorieBaseline       Int                   @default(2200)
   /// What the baseline number represents. Affects only the UI label
   /// ("Maintenance" vs "BMR" vs "BMR + NEAT"). Math is the same.
-  calorieSource   CalorieSource @default(BASELINE)
+  calorieSource         CalorieSource         @default(BASELINE)
   /// USDA FoodData Central API key. Free; sign up at
   /// https://fdc.nal.usda.gov/api-key-signup.html. Required for the
   /// upcoming food tracker; the LLM will use this when looking up
   /// foods that aren't in OpenFoodFacts. Private to the user.
-  usdaApiKey      String?
+  usdaApiKey            String?
   /// Per-user sidebar order. JSON array of route paths ('/dashboard',
   /// '/quest', etc.) in the user's preferred sequence. Replaces the
   /// localStorage-only order so mobile + laptop stay in sync.
   /// Persists across devices, login sessions, and browser switches.
   /// Null = use the canonical default order from the frontend.
-  navOrder        Json?
+  navOrder              Json?
   /// TOTP secret, base32-encoded. Null when 2FA is not configured.
   /// Setup flow generates a fresh secret + recovery codes; user
   /// must verify one code before the secret is committed (and
   /// totpEnabled flips to true).
-  totpSecret      String?
+  totpSecret            String?
   /// Whether the user must complete a TOTP code at login. False
   /// during the grace window after first registration so the user
   /// isn't locked out if the authenticator app setup fails.
-  totpEnabled     Boolean  @default(false)
+  totpEnabled           Boolean               @default(false)
   /// Counter for failed login attempts. Reset on successful login.
   /// Used by the brute-force protection in the auth route.
-  failedLogins    Int      @default(0)
+  failedLogins          Int                   @default(0)
   /// When the account was last locked out due to too many failed
   /// attempts. Null = not locked. Resets on successful login.
-  lockedUntil     DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  lockedUntil           DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   @@index([email])
   @@index([username])
 }
 
 model Measurement {
-  id         String     @id @default(cuid())
+  id         String            @id @default(cuid())
   userId     String
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   metric     MetricType
   value      Float
   unit       String
   notes      String?
-  recordedAt DateTime   @default(now())
-  createdAt  DateTime   @default(now())
+  recordedAt DateTime          @default(now())
+  createdAt  DateTime          @default(now())
   /// Method used to take body-fat or weight readings. DEXA/BOD_POD
   /// are the gold standard; calipers/BIA are noisy; VISUAL/MANUAL
   /// are estimates. Morning report's body-comp insight weights by
@@ -405,21 +414,21 @@ model GeneticMax {
 }
 
 model Workout {
-  id          String      @id @default(cuid())
-  userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        WorkoutType
-  name        String?
-  duration    Int?
-  notes       String?
-  performedAt DateTime    @default(now())
-  createdAt   DateTime    @default(now())
-  exercises   Exercise[]
+  id                 String              @id @default(cuid())
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type               WorkoutType
+  name               String?
+  duration           Int?
+  notes              String?
+  performedAt        DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  exercises          Exercise[]
   /// Per-second trackpoint stream (lat/lng/ele/timestamp + HR/cadence/power/
   /// speed/distance). Populated by the FIT importer from RecordMesg. Kept as
   /// JSONB rather than a separate table since we don't query into individual
   /// points and most workouts are short. Empty array when no GPS / no FIT.
-  trackJson   Json        @default("[]")
+  trackJson          Json                @default("[]")
   /// Optional cardio block for non-set activities (hike / run / cycle /
   /// row / swim). Lets the user log a single distance + duration + pace
   /// without a full exercise breakdown. Stored as JSONB so we can
@@ -432,7 +441,7 @@ model Workout {
   ///   'WALK_CASUAL'|'WALK_BRISK'|'JOG'|'RUN'|'SPRINT'|'CRUISE'|'INTERVALS',
   ///   elevationGainM?: number, avgHr?: number, maxHr?: number,
   ///   avgPaceSecPerKm?: number, source?: 'MANUAL'|'GPS' }
-  cardio      Json?
+  cardio             Json?
   /// Implausible set values flagged by the per-exercise plausibility
   /// detector (Bench 500kg, Squat 1000 reps, blanket > 500kg,
   /// etc.). Stored as JSONB so the morning report aggregator can
@@ -443,24 +452,30 @@ model Workout {
   /// Shape: ValidityFlag[] =
   /// {exercise, setIndex, field: 'weight'|'reps', value, unit,
   ///  reason, severity: 'flag'|'block'}.
-  validityFlags Json?
+  validityFlags      Json?
+  /// Breach damage events from this workout (one row per matched
+  /// workout → one BreachDamageEvent, see UserBreachProgress docs).
+  /// We don't define a back-relation on BreachDamageEvent because
+  /// we look them up by user, not by workout — keeps the model
+  /// surface small.
+  breachDamageEvents BreachDamageEvent[]
 
   @@index([userId, performedAt])
 }
 
 model Exercise {
-  id        String   @id @default(cuid())
-  workoutId String
-  workout   Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade)
-  name      String
-  order     Int      @default(0)
-  notes     String?
+  id            String     @id @default(cuid())
+  workoutId     String
+  workout       Workout    @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  name          String
+  order         Int        @default(0)
+  notes         String?
   // BodyPart IDs that this exercise primarily works.
   // Populated from a seed table by name lookup at insertion time
   // so users see the right muscles on the body without having to
   // tag exercises manually.
   musclesWorked BodyPart[] @default([])
-  sets      Set[]
+  sets          Set[]
 }
 
 /// Why a set was not performed. Logged on the Set itself rather than
@@ -477,19 +492,19 @@ enum SkipReason {
 }
 
 model Set {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   exerciseId String
-  exercise   Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  exercise   Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
   reps       Int
   weight     Float?
   duration   Int?
   rpe        Float?
-  completed  Boolean  @default(true)
-  order      Int      @default(0)
+  completed  Boolean     @default(true)
+  order      Int         @default(0)
   // Set was not performed. If true, the workout's PR detection and
   // volume math ignore this row. The reason flows into the Status
   // avatar's "Condition" badge and the morning report.
-  skipped    Boolean  @default(false)
+  skipped    Boolean     @default(false)
   skipReason SkipReason?
 }
 
@@ -521,17 +536,17 @@ model Skill {
 }
 
 model Avatar {
-  id          String     @id @default(cuid())
-  userId      String     @unique
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  hairStyle   HairStyle  @default(SHORT)
-  hairColor   String     @default("#56e88e")
-  skinTone    String     @default("#d0a878")
-  shirtColor  String     @default("#14d6e8")
-  pantsColor  String     @default("#424553")
-  accentColor String     @default("#f55cc4")
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hairStyle   HairStyle @default(SHORT)
+  hairColor   String    @default("#56e88e")
+  skinTone    String    @default("#d0a878")
+  shirtColor  String    @default("#14d6e8")
+  pantsColor  String    @default("#424553")
+  accentColor String    @default("#f55cc4")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model UserSkill {
@@ -567,18 +582,18 @@ enum ShieldTier {
 /// shieldLastDecay tracks the last time we ran the nightly decay
 /// check (for skipping work when nothing changed).
 model HomeBase {
-  id            String      @id @default(cuid())
-  userId        String      @unique
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  userId          String     @unique
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// 0-100. Starts at 100 (Fortified). Drops on missed-dailies /
   /// substance over-use, recovers on logged workouts + good habits.
-  shield        Int         @default(100)
-  tier          ShieldTier  @default(FORTIFIED)
+  shield          Int        @default(100)
+  tier            ShieldTier @default(FORTIFIED)
   /// Last time the nightly decay ran. Lets the cron skip
   /// no-op iterations (all values clamped, no events fired).
   shieldLastDecay DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 }
 
 /// Penance templates — pre-built + user-customizable triggers that
@@ -635,9 +650,9 @@ model PenanceTemplate {
 ///   'auto_decay'         — nightly decay sweep
 ///   'manual'             — admin override
 model PenanceEvent {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   penanceKey  String
   label       String
   /// The actual delta applied (signed). Negative = damage.
@@ -650,22 +665,202 @@ model PenanceEvent {
   /// 'daily_missed' | 'daily_completed' | 'nutrition_target' |
   /// 'auto_decay' | 'manual'.
   source      String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime   @default(now())
 
   @@index([userId, createdAt])
   @@index([userId, source])
 }
 
+// ============================================================
+// The Breach — level-10 unlock + boss combat
+// ============================================================
+//
+// At level 10 the Nexus reveals a sealed leak: a black hole
+// in the constellation that the player can enter. Each user
+// always has exactly one ACTIVE breach boss at any time. On
+// kill the server rotates in a fresh boss weighted by class
+// affinity + recent kills (no repeats within 10).
+//
+// Combat: each workout commit deals damage to the active boss
+// based on whether the workout's exercises match the boss's
+// `preferredTags`. Match → deal damage via the existing
+// raidDamage pipeline. Mismatch → heal the boss (encourages
+// the user to focus on the boss's weak points).
+//
+// Daily damage cap: 1.5× boss.maxHp — bounds the "I just did a
+// 5-hour lifting session, that should solo the boss" abuse.
+
+enum BreachTier {
+  MINOR // 1-3 difficulty, early Breach bosses
+  ELITE // 4-6 difficulty, mid Breach
+  LEGENDARY // 7-9 difficulty, post-class bosses
+  APEX // 10+, end-game content
+}
+
+/// Difficulty rating for Breach bosses. Separate from tier —
+/// tier is the drop-table bucket (what you get for killing it)
+/// while difficulty is how hard it is to wear down.
+enum BreachDifficulty {
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
+}
+
+/// Class affinity tag. Matches the User.class enum so the
+/// rotation algorithm can weight new bosses toward the user's
+/// current class (more variety over time, but always feeling
+/// relevant).
+enum BreachClassAffinity {
+  JUGGERNAUT
+  BERSERKER
+  PHANTOM
+  SCOUT
+  TRACER
+  ORACLE
+  ANY
+}
+
+/// Status of the user's Breach progress.
+enum BreachProgressStatus {
+  LOCKED // not yet at level 10
+  ACTIVE // boss is alive, fighting in progress
+  VICTORY // boss just died, drops pending + rotating next
+  COOLDOWN // user died; 24h before re-attempting
+}
+
+/// The Breach boss pool. One row per boss. Seeded once on first
+/// DB boot (50+ bosses). User-progress references current boss
+/// via UserBreachProgress.currentBossId.
+model BreachBoss {
+  id                 String               @id @default(cuid())
+  name               String
+  lore               String?
+  /// Difficulty 1-5 stars. Determines starting HP and the daily
+  /// damage cap (capped at 1.5× maxHp regardless).
+  difficulty         BreachDifficulty
+  /// Tier — drives drop table (MINOR = common loot, APEX = epic+).
+  tier               BreachTier
+  /// Starting HP at full health. Scaled by difficulty:
+  ///   1-star: 500 HP, 2-star: 800, 3-star: 1200,
+  ///   4-star: 1800, 5-star: 2500.
+  maxHp              Int
+  /// Current HP. Defaults to maxHp. Decremented on successful
+  /// workouts, incremented on mismatched ones (capped at maxHp).
+  hp                 Int
+  /// Class affinity. ANY = no preference (random in rotation).
+  classAffinity      BreachClassAffinity  @default(ANY)
+  /// Body-part tags this boss is "weak to" — workouts matching
+  /// these (by exercise name OR workout type) deal full damage.
+  /// JSON array of strings like ["chest", "triceps", "heavy_compound"].
+  /// Workout classification happens in lib/breachDamage.ts — the
+  /// boss just stores the target tags.
+  preferredTags      Json
+  /// Bonus tags that ALWAYS count as weak (rare categories that
+  /// make the boss more interesting to fight). E.g. "marathon"
+  /// or "tabata" or "nordic_curl".
+  bonusTags          Json                 @default("[]")
+  /// Short flavor text surfaced when the boss appears. Two
+  /// sentences max — sets the tone for the encounter.
+  intro              String?
+  /// Visual: single emoji glyph until sprite overhaul lands.
+  /// Slot for the sprite-overhaul commit to fill.
+  spriteEmoji        String               @default("◉")
+  spriteColor        String               @default("#dc2626")
+  createdAt          DateTime             @default(now())
+  UserBreachProgress UserBreachProgress[]
+  BreachDamageEvent  BreachDamageEvent[]
+
+  @@index([tier, difficulty])
+}
+
+/// Per-user Breach state. One row per user. Created lazily on
+/// first /breach GET after level 10 (or on first damage event).
+///
+/// Lifecycle:
+///   LOCKED → ACTIVE (level 10 unlock)
+///   ACTIVE → VICTORY (boss hp <= 0)
+///   VICTORY → ACTIVE (next boss rotated in)
+///   ACTIVE → COOLDOWN (user died; 24h before re-attempting)
+///   COOLDOWN → ACTIVE (timer elapsed; same boss with +25% HP)
+model UserBreachProgress {
+  id            String               @id @default(cuid())
+  userId        String               @unique
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Current active boss. NULL when LOCKED.
+  currentBossId String?
+  currentBoss   BreachBoss?          @relation(fields: [currentBossId], references: [id])
+  /// User's current HP against the boss. 0 = victory, hp <= 0
+  /// (post-clamp) triggers rotation.
+  bossHp        Int                  @default(0)
+  /// Status. LOCKED until level 10 unlocks the Breach.
+  status        BreachProgressStatus @default(LOCKED)
+  /// Cumulative kills. Drives "no repeats within N" rotation.
+  kills         Int                  @default(0)
+  /// Cumulative deaths. Drives +25% HP re-encounter rule.
+  deaths        Int                  @default(0)
+  /// Last time the user died. NULL on first encounter.
+  lastDeathAt   DateTime?
+  /// Soulstones held. Earned per kill, spent on... nothing yet
+  /// (future: class-change bypass). Stored here so the Breach
+  /// can be the primary soulstone source.
+  soulstones    Int                  @default(0)
+  /// Damage dealt to the current boss in the current local day.
+  /// Reset on day rollover. Bounded by 1.5× boss.maxHp — anything
+  /// over that is rejected at the workout-commit handler.
+  damageToday   Int                  @default(0)
+  /// YYYY-MM-DD (user's tz) for the damageToday counter. Lets the
+  /// daily-cap check work correctly across midnight boundaries.
+  damageDayKey  String?
+  /// When the Breach was first unlocked (level 10 reached). NULL
+  /// until then. Drives the unlock cutscene.
+  unlockedAt    DateTime?
+  /// Last 10 boss IDs the user has fought, newest first. Used by
+  /// the rotation algorithm to avoid repeats. JSON array.
+  recentBossIds Json                 @default("[]")
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status])
+}
+
+/// Per-user damage event log. One row per (user, workout) that
+/// touched the Breach. Used for the "recent damage" feed in
+/// the Breach UI + audit trail for "why didn't this workout deal
+/// damage" debugging.
+model BreachDamageEvent {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bossId      String
+  boss        BreachBoss @relation(fields: [bossId], references: [id], onDelete: Cascade)
+  workoutId   String?
+  workout     Workout?   @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  /// Damage dealt. Negative = heal (mismatched workout).
+  damage      Int
+  /// Boss HP after the event. Lets the UI render a damage
+  /// timeline without re-deriving.
+  bossHpAfter Int
+  /// Whether the workout matched the boss's preferredTags.
+  /// 'matched' | 'mismatched' | 'partial'.
+  matchType   String
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, createdAt])
+  @@index([bossId, createdAt])
+}
+
 model Party {
-  id          String            @id @default(cuid())
-  name        String
-  createdAt   DateTime          @default(now())
-  members     PartyMember[]
-  raids       Raid[]
-  invites     PartyInvite[]
+  id           String            @id @default(cuid())
+  name         String
+  createdAt    DateTime          @default(now())
+  members      PartyMember[]
+  raids        Raid[]
+  invites      PartyInvite[]
   teamWorkouts TeamWorkout[]
-  camaraderie PartyCamaraderie?
-  buff        PartyBuff?
+  camaraderie  PartyCamaraderie?
+  buff         PartyBuff?
 }
 
 model PartyMember {
@@ -689,31 +884,31 @@ model PartyMember {
 // ============================================================
 
 enum TeamWorkoutStatus {
-  PENDING   // leader has invited members; nobody has joined yet
-  ACTIVE    // at least one member has joined; in progress
+  PENDING // leader has invited members; nobody has joined yet
+  ACTIVE // at least one member has joined; in progress
   COMPLETED // all members confirmed "done"
   ABANDONED // leader cancelled or 1h idle
 }
 
 enum TeamParticipantStatus {
-  INVITED    // invitee hasn't responded
-  ACCEPTED   // invitee accepted; will participate
-  DECLINED   // invitee declined
-  JOINED     // active session, hasn't yet committed a workout
-  CONFIRMED  // workout committed + tapped "I'm done"
-  NO_SHOW    // invited/accepted but never joined within 30 min
+  INVITED // invitee hasn't responded
+  ACCEPTED // invitee accepted; will participate
+  DECLINED // invitee declined
+  JOINED // active session, hasn't yet committed a workout
+  CONFIRMED // workout committed + tapped "I'm done"
+  NO_SHOW // invited/accepted but never joined within 30 min
 }
 
 model TeamWorkout {
-  id           String              @id @default(cuid())
-  partyId      String
-  party        Party               @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  id          String            @id @default(cuid())
+  partyId     String
+  party       Party             @relation(fields: [partyId], references: [id], onDelete: Cascade)
   /// User who hit "Start team workout". Implicit-accept.
-  leaderId     String
-  leader       User                @relation("TeamWorkoutLeader", fields: [leaderId], references: [id], onDelete: Cascade)
-  startedAt    DateTime            @default(now())
-  endedAt      DateTime?
-  status       TeamWorkoutStatus   @default(PENDING)
+  leaderId    String
+  leader      User              @relation("TeamWorkoutLeader", fields: [leaderId], references: [id], onDelete: Cascade)
+  startedAt   DateTime          @default(now())
+  endedAt     DateTime?
+  status      TeamWorkoutStatus @default(PENDING)
   /// Optional shared routine name (leader's choice; surfaced in
   /// the split-pane as the "session focus" tag).
   routineName String?
@@ -782,40 +977,40 @@ model PartyBuff {
 }
 
 model Raid {
-  id            String            @id @default(cuid())
+  id            String             @id @default(cuid())
   partyId       String
-  party         Party             @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  party         Party              @relation(fields: [partyId], references: [id], onDelete: Cascade)
   bossName      String
   bossHp        Int
   bossMaxHp     Int
-  status        RaidStatus        @default(ACTIVE)
-  startedAt     DateTime          @default(now())
+  status        RaidStatus         @default(ACTIVE)
+  startedAt     DateTime           @default(now())
   endedAt       DateTime?
   contributions RaidContribution[]
 }
 
 model RaidContribution {
-  id             String   @id @default(cuid())
-  raidId         String
-  raid           Raid     @relation(fields: [raidId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  damage         Int
-  source         String
-  contributedAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  raidId        String
+  raid          Raid     @relation(fields: [raidId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  damage        Int
+  source        String
+  contributedAt DateTime @default(now())
 
   @@index([raidId, userId])
 }
 
 model Achievement {
-  id              String            @id @default(cuid())
-  key             String            @unique
-  name            String
-  description     String
-  category        AchievementCategory
-  icon            String
-  criteria        Json
-  points          Int               @default(10)
+  id               String              @id @default(cuid())
+  key              String              @unique
+  name             String
+  description      String
+  category         AchievementCategory
+  icon             String
+  criteria         Json
+  points           Int                 @default(10)
   userAchievements UserAchievement[]
 }
 
@@ -877,18 +1072,18 @@ model PlateauSnapshot {
 /// optional notes overflow. Surfaced in the morning report's
 /// spiritual section ("4 of last 5 Sundays logged").
 model ExamenResponse {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Sunday-of-week in the user's local timezone (YYYY-MM-DD).
   /// One response per user per week (latest wins via UPSERT).
-  weekStart     String
-  consoled      String
-  desolated     String
-  godsPresence  String
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  weekStart    String
+  consoled     String
+  desolated    String
+  godsPresence String
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, weekStart])
   @@index([userId, createdAt])
@@ -923,7 +1118,7 @@ model UserWorldProgress {
   id          String    @id @default(cuid())
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  levelId     String    // static key, e.g. "spire-1"
+  levelId     String // static key, e.g. "spire-1"
   completed   Boolean   @default(false)
   attempts    Int       @default(0)
   bestScore   Int       @default(0)
@@ -991,7 +1186,7 @@ model PainLog {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   bodyPart  BodyPart
-  intensity Int      // 0-10
+  intensity Int // 0-10
   notes     String?
   loggedAt  DateTime @default(now())
 
@@ -1004,43 +1199,43 @@ model PainLog {
 // GLUTE_L/R, ADDUCTOR_L/R, ABDUCTOR_L/R, ROTATOR_CUFF_L/R
 
 model Routine {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Target workouts per week (1-14). Default 3.
-  weeklyGoal      Int      @default(3)
+  weeklyGoal        Int       @default(3)
   // Consecutive weeks where the user met their weekly goal.
-  currentStreak   Int      @default(0)
-  longestStreak   Int      @default(0)
+  currentStreak     Int       @default(0)
+  longestStreak     Int       @default(0)
   // ISO date (YYYY-MM-DD) of the Monday of the last week that was completed.
   // Used to detect when the user crosses a week boundary.
   lastCompletedWeek String?
   // When the streak was last touched (set / incremented / reset).
-  streakUpdatedAt DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  streakUpdatedAt   DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 enum WorldBossStatus {
-  LOCKED     // world not yet cleared
-  ACTIVE     // unlocked, taking damage
-  DEFEATED   // hp <= 0
+  LOCKED // world not yet cleared
+  ACTIVE // unlocked, taking damage
+  DEFEATED // hp <= 0
 }
 
 model WorldBoss {
-  id            String           @id @default(cuid())
-  userId        String
-  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  worldId       String           // 'spire', 'glade', etc.
-  bossName      String
-  bossGlyph     String           // single character icon
-  bossHp        Int              // current HP (decreases as damaged)
-  bossMaxHp     Int              // total HP
-  status        WorldBossStatus  @default(LOCKED)
-  unlockedAt    DateTime?
-  defeatedAt    DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id         String          @id @default(cuid())
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  worldId    String // 'spire', 'glade', etc.
+  bossName   String
+  bossGlyph  String // single character icon
+  bossHp     Int // current HP (decreases as damaged)
+  bossMaxHp  Int // total HP
+  status     WorldBossStatus @default(LOCKED)
+  unlockedAt DateTime?
+  defeatedAt DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@unique([userId, worldId])
   @@index([userId])
@@ -1054,30 +1249,30 @@ enum PartyInviteStatus {
 }
 
 model PartyInvite {
-  id              String             @id @default(cuid())
+  id              String            @id @default(cuid())
   partyId         String
-  party           Party              @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  party           Party             @relation(fields: [partyId], references: [id], onDelete: Cascade)
   inviterId       String
-  inviter         User               @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviter         User              @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
   // Resolved to a user at create time. If null, the invite was sent
   // to a username that doesn't exist (yet).
   inviteeId       String?
-  invitee         User?              @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
-  inviteeUsername String             // captured at send time for display
-  status          PartyInviteStatus  @default(PENDING)
-  message         String?            // optional message from inviter
-  createdAt       DateTime           @default(now())
+  invitee         User?             @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  inviteeUsername String // captured at send time for display
+  status          PartyInviteStatus @default(PENDING)
+  message         String? // optional message from inviter
+  createdAt       DateTime          @default(now())
   respondedAt     DateTime?
-  expiresAt       DateTime           // 7 days from creation
+  expiresAt       DateTime // 7 days from creation
 
   @@index([inviteeId, status])
   @@index([partyId])
 }
 
 enum SpiritualSubclass {
-  CATECHUMEN   // Stage 1: novice preparing
-  CRUSADER      // Stage 2: vowed fighter
-  TEMPLAR       // Stage 3: elite religious order
+  CATECHUMEN // Stage 1: novice preparing
+  CRUSADER // Stage 2: vowed fighter
+  TEMPLAR // Stage 3: elite religious order
 }
 
 enum PrayerType {
@@ -1091,21 +1286,21 @@ enum PrayerType {
 }
 
 model PrayerLog {
-  id         String      @id @default(cuid())
-  userId     String
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Built-in prayer type. Null when logging a user-defined custom
   /// spiritual practice (use `dailyId` instead).
-  type       PrayerType?
+  type        PrayerType?
   /// When `type` is null, this points at the user-defined practice
   /// (USER + SPIRITUAL daily) the user logged.
-  dailyId    String?
-  daily      Daily?      @relation(fields: [dailyId], references: [id], onDelete: SetNull)
-  durationMin Int        @default(15)
-  notes      String?
-  xpAwarded  Int         @default(0)
-  goldAwarded Int        @default(0)
-  loggedAt   DateTime    @default(now())
+  dailyId     String?
+  daily       Daily?      @relation(fields: [dailyId], references: [id], onDelete: SetNull)
+  durationMin Int         @default(15)
+  notes       String?
+  xpAwarded   Int         @default(0)
+  goldAwarded Int         @default(0)
+  loggedAt    DateTime    @default(now())
 
   @@index([userId, loggedAt])
 }
@@ -1148,21 +1343,21 @@ model RoutineDay {
 // ============================================================
 
 enum DailyCategory {
-  USER        // generic user-defined daily
-  WORKOUT     // derived from RoutineDay (read-only here)
-  SPIRITUAL   // derived from User.spiritualDailyPrayers
-  SLEEP       // optional sleep-related dailies (auto-derived)
+  USER // generic user-defined daily
+  WORKOUT // derived from RoutineDay (read-only here)
+  SPIRITUAL // derived from User.spiritualDailyPrayers
+  SLEEP // optional sleep-related dailies (auto-derived)
 }
 
 model Daily {
-  id          String        @id @default(cuid())
-  userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  category    DailyCategory @default(USER)
+  id         String        @id @default(cuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  category   DailyCategory @default(USER)
   // Days this daily is due on (0-6 Sun-Sat). If empty array, due every day.
   // Built-in dailies (WORKOUT/SPIRITUAL/SLEEP) auto-populate this.
-  days        DayOfWeek[]
+  days       DayOfWeek[]
   // Master switch for "show on /today". When false, the daily is
   // archived from the user's daily checklist (still loggable, just
   // not auto-due). This is the user-defined analog of toggling a
@@ -1170,35 +1365,35 @@ model Daily {
   // Defaults true so newly-created custom practices appear on
   // /today immediately (matching the previous implicit behavior
   // where any non-archived SPIRITUAL row showed up).
-  isDaily     Boolean       @default(true)
-  notes       String?
+  isDaily    Boolean       @default(true)
+  notes      String?
   // Reward on completion (gold/xp). 0 = no reward. Default 5/2.
-  goldReward  Int           @default(5)
-  xpReward    Int           @default(2)
+  goldReward Int           @default(5)
+  xpReward   Int           @default(2)
   // Ordering for display
-  sortOrder   Int           @default(0)
-  archived    Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  sortOrder  Int           @default(0)
+  archived   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
 
-  logs        DailyLog[]
+  logs       DailyLog[]
   prayerLogs PrayerLog[]
 
   @@index([userId, archived])
 }
 
 model DailyLog {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dailyId     String
-  daily       Daily    @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyId   String
+  daily     Daily    @relation(fields: [dailyId], references: [id], onDelete: Cascade)
   // Stored so built-in dailies (which aren't real Daily rows) can
   // still be logged. Format e.g. "WORKOUT:MON".
-  dailyKey    String
-  goldDelta   Int      @default(0)
-  xpDelta     Int      @default(0)
-  loggedAt    DateTime @default(now())
+  dailyKey  String
+  goldDelta Int      @default(0)
+  xpDelta   Int      @default(0)
+  loggedAt  DateTime @default(now())
 
   @@index([userId, dailyKey, loggedAt])
   @@index([userId, loggedAt])
@@ -1213,15 +1408,15 @@ model DailyLog {
 // ============================================================
 
 model SupplementLog {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id      String   @id @default(cuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Free-form name (e.g. "Creatine", "Vitamin D3", "Fish Oil").
   // Matched case-insensitively for the "creatine active" check.
-  name      String
+  name    String
   // Optional dose (mg). For creatine the common dose is 5000.
-  doseMg    Int?
-  takenAt   DateTime @default(now())
+  doseMg  Int?
+  takenAt DateTime @default(now())
 
   @@index([userId, name, takenAt])
 }
@@ -1235,47 +1430,47 @@ model SupplementLog {
 // ============================================================
 
 enum HabitDirection {
-  POSITIVE  // checking gives reward
-  NEGATIVE  // checking takes a penalty
+  POSITIVE // checking gives reward
+  NEGATIVE // checking takes a penalty
 }
 
 model Habit {
-  id          String         @id @default(cuid())
-  userId      String
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  notes       String?
-  direction   HabitDirection
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  notes      String?
+  direction  HabitDirection
   // Reward/penalty applied per check. Kept simple: gold + xp only.
   // For POSITIVE habits this is what you GAIN; for NEGATIVE it's
   // what you LOSE (the system applies the opposite sign).
-  goldReward  Int            @default(5)
-  xpReward    Int            @default(2)
+  goldReward Int            @default(5)
+  xpReward   Int            @default(2)
   // Display icon (single char/glyph). Defaults are picked by the
   // UI based on direction.
-  icon        String?
-  archived    Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  icon       String?
+  archived   Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
-  logs        HabitLog[]
+  logs HabitLog[]
 
   @@index([userId, archived])
 }
 
 model HabitLog {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  habitId     String
-  habit       Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
   // +1 for POSITIVE check (reward), -1 for NEGATIVE check (penalty).
   // Direction is on Habit; we keep the log signed so we can sum
   // today's contributions cleanly.
-  delta       Int
-  goldDelta   Int      @default(0)
-  xpDelta     Int      @default(0)
-  loggedAt    DateTime @default(now())
+  delta     Int
+  goldDelta Int      @default(0)
+  xpDelta   Int      @default(0)
+  loggedAt  DateTime @default(now())
 
   @@index([userId, loggedAt])
   @@index([habitId, loggedAt])
@@ -1287,14 +1482,14 @@ model HabitLog {
 
 // 8 equip slots covering the standard RPG layout.
 enum EquipSlot {
-  HEAD   // helmet, hood, hat
-  BODY   // armor / shirt
-  HANDS  // gloves
-  FEET   // boots
-  MAIN   // main-hand weapon
-  OFF    // off-hand shield
-  NECK   // amulet
-  RING   // ring / trinket
+  HEAD // helmet, hood, hat
+  BODY // armor / shirt
+  HANDS // gloves
+  FEET // boots
+  MAIN // main-hand weapon
+  OFF // off-hand shield
+  NECK // amulet
+  RING // ring / trinket
 }
 
 enum ItemRarity {
@@ -1348,7 +1543,7 @@ model ItemDef {
   setId            String?
   createdAt        DateTime   @default(now())
 
-  ownedBy          InventoryItem[]
+  ownedBy InventoryItem[]
 
   @@index([slot])
   @@index([rarity])
@@ -1358,16 +1553,16 @@ model ItemDef {
 // A user's copy of an ItemDef. One InventoryItem per owned instance;
 // equipping is just setting `equippedSlot` (mutually exclusive per slot).
 model InventoryItem {
-  id          String     @id @default(cuid())
-  userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  itemDefId   String
-  itemDef     ItemDef    @relation(fields: [itemDefId], references: [id])
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemDefId    String
+  itemDef      ItemDef    @relation(fields: [itemDefId], references: [id])
   equippedSlot EquipSlot?
-  acquiredAt  DateTime   @default(now())
-  source      ItemSource @default(MONSTER_DROP)
+  acquiredAt   DateTime   @default(now())
+  source       ItemSource @default(MONSTER_DROP)
   /// Free-form notes (e.g. "Dropped by Procrastinatrix 2026-06-20").
-  notes       String?
+  notes        String?
 
   @@unique([userId, itemDefId, acquiredAt])
   @@index([userId])
@@ -1384,19 +1579,19 @@ model InventoryItem {
 /// blank, set secondary). callLlm() in api/src/lib/llm.ts handles
 /// the fallback chain transparently.
 model LlmConfig {
-  id                String   @id @default(cuid())
+  id               String   @id @default(cuid())
   // ---- Primary ----
-  provider          String   @default("OPENAI")  // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
-  apiKey            String?
-  baseUrl           String?
-  model             String   @default("gpt-4o-mini")
-  enabled           Boolean  @default(false)
+  provider         String   @default("OPENAI") // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
+  apiKey           String?
+  baseUrl          String?
+  model            String   @default("gpt-4o-mini")
+  enabled          Boolean  @default(false)
   // ---- Secondary / fallback ----
-  fallbackEnabled   Boolean  @default(false)
-  fallbackProvider  String?  // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
-  fallbackApiKey    String?
-  fallbackBaseUrl   String?
-  fallbackModel     String?
+  fallbackEnabled  Boolean  @default(false)
+  fallbackProvider String? // "OPENAI" | "ANTHROPIC" | "OLLAMA" | "MINIMAX"
+  fallbackApiKey   String?
+  fallbackBaseUrl  String?
+  fallbackModel    String?
   // ---- Per-task overrides ----
   // Each entry replaces the primary for one task. Use case: route
   // food Ask-AI to a JSON-reliable local model (gemma3:12b) while
@@ -1405,11 +1600,11 @@ model LlmConfig {
   // primary + fallback chain. The apiKey/baseUrl are optional per
   // task — if absent, we reuse the primary's. This keeps a local-
   // only Ollama setup clean (one key, one baseUrl, many models).
-  taskOverrides     Json?    // { food?, foodSaved?, morningReport?, spiritualDirector? }
+  taskOverrides    Json? // { food?, foodSaved?, morningReport?, spiritualDirector? }
   // ---- Shared ----
-  systemPrompt      String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  systemPrompt     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 /// LLM-generated morning report. One row per (user, date) — the
@@ -1419,43 +1614,43 @@ model LlmConfig {
 /// (sleep, training, recovery, etc.) show their own insight
 /// sentence from this same row.
 model MorningReport {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// YYYY-MM-DD in the user's timezone. Combined with userId for
   /// uniqueness so re-generating on the same day overwrites.
-  date      String
+  date                 String
   /// Cross-domain advice (2-3 sentences) shown in the top dashboard
   /// card. Written for the user, not clinical.
-  general   String?
+  general              String?
   /// Per-metric insights. Each ≤ 2 sentences. Empty string if no
   /// notable signal (the metric was steady / untracked).
-  sleep     String?
-  training  String?
-  recovery  String?
-  nutrition String?
-  spiritual String?
+  sleep                String?
+  training             String?
+  recovery             String?
+  nutrition            String?
+  spiritual            String?
   /// JSON array of risk-flag strings surfaced as amber toasts.
   /// E.g. "HRV below 30d baseline 3 of last 5 days".
-  riskFlags String?
+  riskFlags            String?
   /// Hardcore-mode penalty ledger. JSON array of
   /// {label, severity: 'warn'|'scold', note}. Empty string when the
   /// user is in Casual mode OR has nothing to flag. Surfaced as a
   /// dedicated "Penalties" section on the dashboard card.
-  penalties String?
+  penalties            String?
   /// Plateau detector output. JSON array of
   /// {kind, exercise?, since, note} (e.g. NO_PR_RECENT,
   /// ONE_RM_REGRESSION, VOLUME_REGRESSION, WEIGHT_FLATLINE).
   /// Empty array when nothing's stale. Surfaced as a "Stale" section.
-  plateaus String?
+  plateaus             String?
   /// Deterministic macro/timing nudges (caffeine pre-workout, alcohol
   /// vs HRV, creatine consistency, hydration, sleep-overlap). JSON
   /// array of {label, severity: 'warn'|'tip', note}. Surfaced as
   /// "Macro nudges" section.
-  nudges String?
+  nudges               String?
   /// Mirror of nudges but for positive callouts (creatine on schedule,
   /// caffeine-free evenings, etc.). Same shape. "Good calls" section.
-  positiveNudges String?
+  positiveNudges       String?
   /// Implausible set values from workouts in the last 24h that the
   /// per-exercise plausibility detector flagged (Bench 500kg, Squat
   /// 1000 reps, etc.). JSON array of
@@ -1465,12 +1660,12 @@ model MorningReport {
   impossibleValueFlags String?
   /// Model that generated the report (for audit + forcing regen
   /// when the LLM provider changes).
-  model     String?
+  model                String?
   /// Latency in ms (for performance monitoring + a "this took 4s"
   /// breadcrumb in dev).
-  latencyMs Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  latencyMs            Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])
@@ -1519,26 +1714,26 @@ model UsccbDailyReading {
 /// as MorningReport (keyed on user + date) so it integrates with
 /// the existing cache pattern.
 model SpiritualReflection {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// YYYY-MM-DD in the user's timezone.
-  date      String
+  date             String
   /// The Gospel that was the source for the reflection (cached
   /// here too so the UI can show the passage alongside the
   /// reflection without re-querying the readings table).
-  gospelRef String?
-  gospelText String?
-  liturgicalInfo String?
+  gospelRef        String?
+  gospelText       String?
+  liturgicalInfo   String?
   /// 2-3 sentence reflection from the LLM spiritual director.
-  reflection String
+  reflection       String
   /// Optional: name of a patron saint the LLM suggests for the
   /// day (e.g. by name-day or by current struggle). Empty if none.
   patronSuggestion String?
-  model     String?
-  latencyMs Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  model            String?
+  latencyMs        Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([userId, date])
   @@index([userId, date])
@@ -1618,11 +1813,11 @@ model UserTrackedItem {
 /// Tapping the chip inserts/upserts; tapping again deletes (uncheck).
 /// Resets naturally each calendar day because the date key changes.
 model DailyTrackedItem {
-  id        String           @id @default(cuid())
+  id        String          @id @default(cuid())
   userId    String
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   itemId    String
-  item      UserTrackedItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item      UserTrackedItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   /// YYYY-MM-DD in the user's timezone.
   date      String
   /// Snapshot of the dose at the time of check-off (so historical
@@ -1630,7 +1825,7 @@ model DailyTrackedItem {
   /// changes the defaultDose to 5000 IU).
   dose      Float
   doseUnit  TrackedItemUnit
-  createdAt DateTime         @default(now())
+  createdAt DateTime        @default(now())
 
   @@unique([userId, itemId, date])
   @@index([userId, date])
@@ -1643,25 +1838,25 @@ model DailyTrackedItem {
 /// (cigarette, vape, zyn, hookah, etc.) which has different recovery
 /// impact than a generic "nicotine" entry.
 model SubstanceLog {
-  id        String            @id @default(cuid())
-  userId    String
-  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category  SubstanceCategory
+  id       String            @id @default(cuid())
+  userId   String
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category SubstanceCategory
   /// Specific delivery form. Free-form string keyed by category:
   ///   NICOTINE:  cigarette, vape, zyn, hookah, cigar, chew
   ///   CAFFEINE:  coffee, tea, energy_drink, pre_workout, soda
   ///   ALCOHOL:   beer, wine, spirits, seltzer, cider
   ///   ELECTROLYTE: lmnt, salt_capsule, liquid_iv, coconut_water
-  form      String
+  form     String
   /// Optional quantity (drinks, mg, pouches, scoops). Free-form
   /// unit so the UI can pick the right input per form.
-  amount    Float?
-  unit      String?
+  amount   Float?
+  unit     String?
   /// Free-form context. "pre-workout 1h before lift", "with dinner",
   /// "social, 3 over the evening" — fuels the morning report's
   /// correlation engine.
-  context   String?
-  loggedAt  DateTime          @default(now())
+  context  String?
+  loggedAt DateTime          @default(now())
 
   @@index([userId, loggedAt])
   @@index([userId, category, loggedAt])
@@ -1682,39 +1877,39 @@ enum FoodSource {
 }
 
 model FoodItem {
-  id            String      @id @default(cuid())
-  source        FoodSource
-  sourceId      String
-  name          String
-  brand         String?
-  imageUrl      String?
-  servingSizeG  Float?
-  calories      Float
-  proteinG      Float
-  carbG         Float
-  fatG          Float
-  fiberG        Float?
-  sugarG        Float?
-  sodiumMg      Float?
-  sourceUrl     String?
-  fetchedAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  mealEntries   MealEntry[]
+  id           String      @id @default(cuid())
+  source       FoodSource
+  sourceId     String
+  name         String
+  brand        String?
+  imageUrl     String?
+  servingSizeG Float?
+  calories     Float
+  proteinG     Float
+  carbG        Float
+  fatG         Float
+  fiberG       Float?
+  sugarG       Float?
+  sodiumMg     Float?
+  sourceUrl    String?
+  fetchedAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  mealEntries  MealEntry[]
 
   @@unique([source, sourceId])
   @@index([name])
 }
 
 model MealEntry {
-  id        String     @id @default(cuid())
-  userId    String
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  foodId    String
-  food      FoodItem   @relation(fields: [foodId], references: [id], onDelete: Cascade)
-  meal      MealType
-  servings  Float
-  note      String?
-  loggedAt  DateTime   @default(now())
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodId   String
+  food     FoodItem @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  meal     MealType
+  servings Float
+  note     String?
+  loggedAt DateTime @default(now())
 
   @@index([userId, loggedAt])
   @@index([userId, meal, loggedAt])
@@ -1728,30 +1923,30 @@ model MealEntry {
 /// macros into a FoodItem (source = MANUAL) on the fly and link
 /// the MealEntry to it — the MealEntry path stays the same.
 model SavedFood {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name          String
-  brand         String?
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  brand        String?
   /// Per-serving macros. Servings in the UI = 1 by default; the
   /// meal entry stores servings * these numbers.
-  servingSizeG  Float?
-  calories      Float
-  proteinG      Float
-  carbG         Float
-  fatG          Float
-  fiberG        Float?
-  sugarG        Float?
-  sodiumMg      Float?
+  servingSizeG Float?
+  calories     Float
+  proteinG     Float
+  carbG        Float
+  fatG         Float
+  fiberG       Float?
+  sugarG       Float?
+  sodiumMg     Float?
   /// Free-form note ("whey + banana + oat milk", "Lentils, 1 cup dry")
-  recipe        String?
+  recipe       String?
   /// For sorting the "recent" list. Decremented on each quick-log
   /// so the user's most-eaten items bubble to the top without
   /// needing a separate join table.
-  useCount      Int      @default(0)
-  lastUsedAt    DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  useCount     Int      @default(0)
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, name])
   @@index([userId, lastUsedAt])
@@ -1768,16 +1963,16 @@ model SavedFood {
 model GeoCache {
   /// Key = `${round3(lat)}_${round3(lng)}` — collision is fine,
   /// two points 110m apart often have the same place name.
-  key       String   @id
-  lat       Float
-  lng       Float
+  key         String   @id
+  lat         Float
+  lng         Float
   /// Short label ("Kennesaw"). Used for activity titles like
   /// "Kennesaw Running".
-  shortName String
+  shortName   String
   /// Long display name ("Kennesaw, Cobb County, Georgia, US").
   displayName String
-  zoom      Int      @default(10)
-  fetchedAt DateTime @default(now())
+  zoom        Int      @default(10)
+  fetchedAt   DateTime @default(now())
 }
 
 // ============================================================
@@ -1830,25 +2025,25 @@ model CorrelationSnapshot {
 // ============================================================
 
 model TrustedDevice {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// sha256(opaque-token). 32 hex chars.
-  tokenHash   String   @unique
+  tokenHash  String   @unique
   /// User-supplied label like "MacBook Pro" or "iPhone 15". Falls
   /// back to the User-Agent prefix if the client doesn't supply one.
-  label       String
+  label      String
   /// Last User-Agent that used this token. Surfaces in the
   /// trusted-devices list so the user can recognize which row
   /// to revoke if something looks off.
-  userAgent   String?
+  userAgent  String?
   /// Last IP. Same purpose as userAgent — surfaces in the list.
-  lastIp      String?
+  lastIp     String?
   /// Last time this token was used to skip TOTP. Used to prune
   /// stale rows (e.g. > 90 days since last use → drop).
-  lastUsedAt  DateTime @default(now())
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 
   @@index([userId, expiresAt])
 }
@@ -1861,16 +2056,16 @@ model TrustedDevice {
 // ============================================================
 
 model RecoveryCode {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// sha256(normalized code). The row is deleted on use, so a
   /// given hash only exists once in the table.
-  codeHash   String
+  codeHash  String
   /// null = unused. Set when the user burns this code in place
   /// of a TOTP code at login.
-  usedAt     DateTime?
-  createdAt  DateTime @default(now())
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 
   @@unique([userId, codeHash])
   @@index([userId])
@@ -1885,23 +2080,23 @@ model RecoveryCode {
 /// `factors` is a JSON array of {label, signal, weight, note} so
 /// the UI can render structured chips alongside the prose summary.
 model MetricInsight {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  metric       MetricType
+  id            String     @id @default(cuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric        MetricType
   /// 2-3 sentence summary, written for the user.
-  summary      String
+  summary       String
   /// JSON array of {label, signal, weight, note} factors. Max 6.
-  factors      String
+  factors       String
   /// Model that generated the insight (audit + force-regen on
   /// model swap).
-  model        String?
+  model         String?
   /// Latency in ms (informational).
-  latencyMs    Int?
+  latencyMs     Int?
   /// Schema/prompt version. Bump to invalidate cached insights.
-  promptVersion Int    @default(1)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  promptVersion Int        @default(1)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@unique([userId, metric])
   @@index([userId])
@@ -1923,34 +2118,34 @@ model MetricInsight {
 /// the UI can render structured chips. `promptVersion` lets us
 /// invalidate cache if the prompt changes in a way that matters.
 model ActivityInsight {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workoutId    String   @unique
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutId     String   @unique
   /// 2-4 sentence overall summary of how this session landed.
-  summary      String
+  summary       String
   /// Training quality score 1-10. Computed from RPE + volume vs
   /// recent baseline + HRV/sleep context.
-  qualityScore Int
+  qualityScore  Int
   /// light | normal | rest. Drives the "next session should be…"
   /// recommendation.
-  recoveryLoad String
+  recoveryLoad  String
   /// low | medium | high. Reflects how much context was available
   /// to score this — no HRV data = low; HRV + sleep + RPE + 14d
   /// baseline = high.
-  confidence   String
+  confidence    String
   /// JSON: [{label, signal: 'positive'|'negative'|'neutral', weight: 0..1, note}]
   /// Renders as a "key factors" list in the UI. Max 6 entries.
-  factors      String
+  factors       String
   /// LLM model identifier (for audit + regen-when-model-changes).
-  model        String?
+  model         String?
   /// Latency in ms.
-  latencyMs    Int?
+  latencyMs     Int?
   /// Schema/prompt version. Bump when the prompt changes in a way
   /// that should invalidate existing cached insights.
-  promptVersion Int    @default(1)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  promptVersion Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([userId])
 }
