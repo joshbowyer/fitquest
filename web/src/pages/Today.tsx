@@ -359,11 +359,15 @@ function WallModeShell({
   // foreground so a backgrounded phone picks up the correct time
   // the moment it wakes.
   const now = useLiveClock(1_000);
-  const time = now.toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  // Build the time + AM/PM separately so the AM/PM sits in its
+  // own fixed-width slot. With toLocaleTimeString, AM/PM rides
+  // along after the seconds — its x-position shifts whenever a
+  // wider digit (4/5) replaces a narrower one (1/7), even with
+  // tabular-nums. Splitting gives a rock-steady column.
+  const hh = String(((now.getHours() + 11) % 12) + 1).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  const ampm = now.getHours() < 12 ? 'AM' : 'PM';
   const date = now.toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
@@ -474,13 +478,16 @@ function WallModeShell({
           <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-2 text-neon-cyan opacity-80">
             FitQuest · Wall
           </div>
-          {/* whitespace-nowrap keeps AM/PM on the same line even
-              when wider digits (4, 5) push the time string past
-              the column's normal width. shrink-0 on the parent
-              prevents flex from squeezing it; the right column
-              picks up the slack via flex-1. */}
-          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 tabular-nums mb-2 whitespace-nowrap">
-            {time}
+          {/* HH:MM:SS in a fixed-width tabular block, AM/PM in its
+              own fixed-width inline-block so the suffix doesn't
+              jitter as the seconds tick from 09 → 14 → 17. */}
+          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 mb-2 whitespace-nowrap flex items-baseline">
+            <span className="tabular-nums">
+              {hh}:{mm}:{ss}
+            </span>
+            <span className="ml-2 inline-block w-10 text-2xl landscape:text-3xl text-amber-300/90 tabular-nums">
+              {ampm}
+            </span>
           </div>
           <div className="font-display text-2xl landscape:text-3xl text-ink-100 leading-tight">
             {date}
