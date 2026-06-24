@@ -91,6 +91,13 @@ function seededStars(count: number, seed: number): Array<{ x: number; y: number;
 const NEXUS_CX = 620;
 const NEXUS_CY = 300;
 const NEXUS_R = 180;
+// Breach node sits to the right of the Nexus, outside the
+// hexagonal portal arrangement. The thin pulsing line from
+// Nexus → Breach only renders when the user is unlocked
+// (level 10+). Distance from Nexus ~300 — clearly separate
+// but visually connected.
+const BREACH_X = 920;
+const BREACH_Y = 300;
 
 const HEXAGON_SLOTS = [
   { id: 'JUGGERNAUT', angle: -90, label: 'The Spire',     color: 'red'        as WorldColor, energy: 'POWER'      },
@@ -311,56 +318,80 @@ export function ConstellationMap({
         {/* Portal nodes — pentagon. Hover scales the disc 1.18x,
             bumps the glow opacity, and shows a label tooltip with
             the class + theme + completion count. */}
-        {/* Breach overlay — black hole at the Nexus center. Only
-            renders when the user has unlocked the Breach (level
-            10+). Sits on top of the Nexus hub as a swirling event
-            horizon. Click routes to /breach. */}
+        {/* Breach — separate node to the right of the Nexus. Only
+            renders when the user has unlocked it (level 10+). A
+            thin pulsing line connects the Nexus to the Breach —
+            a "leak" in the constellation fabric. Click routes to
+            /breach. Position (920, 300) keeps it clearly outside
+            the hexagonal portal arrangement so the Nexus stays
+            visible as the central hub. */}
         {breach?.unlocked && (
-          <g
-            onClick={onSelectBreach}
-            onMouseEnter={() => setHoveredSlot('__breach__')}
-            onMouseLeave={() => setHoveredSlot(null)}
-            style={{
-              cursor: onSelectBreach ? 'pointer' : 'default',
-              transform: `translate(${NEXUS_CX}px, ${NEXUS_CY}px) scale(${hoveredSlot === '__breach__' ? 1.18 : 1})`,
-              transformOrigin: '0 0',
-              transition: 'transform 200ms ease-out',
-            }}
-          >
-            {/* Outer accretion disk — slow counter-rotating dashed ellipses */}
-            <ellipse cx="0" cy="0" rx="56" ry="20" fill="none" stroke="#7dd3fc" strokeWidth="1" strokeOpacity="0.5" strokeDasharray="3 5">
-              <animateTransform attributeName="transform" type="rotate" from="0" to="-360" dur="22s" repeatCount="indefinite" />
-            </ellipse>
-            <ellipse cx="0" cy="0" rx="48" ry="16" fill="none" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.7" strokeDasharray="2 4">
-              <animateTransform attributeName="transform" type="rotate" from="360" to="0" dur="14s" repeatCount="indefinite" />
-            </ellipse>
-            {/* Event horizon — pure black core */}
-            <circle cx="0" cy="0" r={hoveredSlot === '__breach__' ? 24 : 22} fill="#000000" style={{ transition: 'r 200ms' }} />
-            {/* Photon ring */}
-            <circle cx="0" cy="0" r="22" fill="none" stroke={hoveredSlot === '__breach__' ? '#a3e635' : '#7dd3fc'} strokeWidth="1" strokeOpacity="0.9" style={{ transition: 'stroke 200ms' }} />
-            {/* BREACH label */}
-            <text x="0" y="3" textAnchor="middle" fill="#fafafd" fontSize="8" fontFamily="monospace" letterSpacing="2.5" style={{ pointerEvents: 'none' }}>
-              BREACH
-            </text>
-            {/* HP% subline */}
-            {breach.bossHp != null && breach.bossMaxHp != null && breach.bossMaxHp > 0 && (
-              <text x="0" y="38" textAnchor="middle" fill="#94a3b8" fontSize="7" fontFamily="monospace" letterSpacing="1" style={{ pointerEvents: 'none' }}>
-                {Math.round((breach.bossHp / breach.bossMaxHp) * 100)}%
+          <>
+            {/* Connecting line: Nexus → Breach. Faint dashed cyan
+                with animated dashoffset to feel like data being
+                siphoned from the Nexus into the void. */}
+            <line
+              x1={NEXUS_CX + 36}
+              y1={NEXUS_CY}
+              x2={BREACH_X - 30}
+              y2={BREACH_Y}
+              stroke="#7dd3fc"
+              strokeOpacity={hoveredSlot === '__breach__' ? 0.7 : 0.35}
+              strokeWidth={hoveredSlot === '__breach__' ? 1.2 : 0.8}
+              strokeDasharray="4 6"
+              style={{ transition: 'stroke-opacity 200ms, stroke-width 200ms' }}
+            >
+              <animate attributeName="stroke-dashoffset" from="0" to="-20" dur="2s" repeatCount="indefinite" />
+            </line>
+            <g
+              onClick={onSelectBreach}
+              onMouseEnter={() => setHoveredSlot('__breach__')}
+              onMouseLeave={() => setHoveredSlot(null)}
+              style={{
+                cursor: onSelectBreach ? 'pointer' : 'default',
+                transform: `translate(${BREACH_X}px, ${BREACH_Y}px) scale(${hoveredSlot === '__breach__' ? 1.18 : 1})`,
+                transformOrigin: '0 0',
+                transition: 'transform 200ms ease-out',
+              }}
+            >
+              {/* Faint outer halo so the black hole has a gravitational
+                  pull visible against the nebula. */}
+              <circle cx="0" cy="0" r="42" fill="url(#nexus-grad)" opacity={hoveredSlot === '__breach__' ? 0.7 : 0.45} style={{ transition: 'opacity 200ms' }} />
+              {/* Outer accretion disk — counter-rotating dashed ellipses */}
+              <ellipse cx="0" cy="0" rx="36" ry="13" fill="none" stroke="#7dd3fc" strokeWidth="1" strokeOpacity="0.5" strokeDasharray="3 5">
+                <animateTransform attributeName="transform" type="rotate" from="0" to="-360" dur="22s" repeatCount="indefinite" />
+              </ellipse>
+              <ellipse cx="0" cy="0" rx="30" ry="10" fill="none" stroke="#fbbf24" strokeWidth="1" strokeOpacity="0.7" strokeDasharray="2 4">
+                <animateTransform attributeName="transform" type="rotate" from="360" to="0" dur="14s" repeatCount="indefinite" />
+              </ellipse>
+              {/* Event horizon — pure black core */}
+              <circle cx="0" cy="0" r={hoveredSlot === '__breach__' ? 17 : 15} fill="#000000" style={{ transition: 'r 200ms' }} />
+              {/* Photon ring */}
+              <circle cx="0" cy="0" r="15" fill="none" stroke={hoveredSlot === '__breach__' ? '#a3e635' : '#7dd3fc'} strokeWidth="1" strokeOpacity="0.9" style={{ transition: 'stroke 200ms' }} />
+              {/* BREACH label */}
+              <text x="0" y="2" textAnchor="middle" fill="#fafafd" fontSize="6.5" fontFamily="monospace" letterSpacing="2" style={{ pointerEvents: 'none' }}>
+                BREACH
               </text>
-            )}
-            {/* Tooltip on hover */}
-            {hoveredSlot === '__breach__' && (
-              <g transform="translate(-90, -100)" style={{ pointerEvents: 'none' }}>
-                <rect width="180" height="34" rx="3" fill="#0e0f1a" stroke="#7dd3fc" strokeOpacity="0.6" strokeWidth="0.5" />
-                <text x="90" y="14" textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#fafafd">
-                  {breach.status === 'VICTORY' ? 'CLAIM YOUR VICTORY' : breach.bossName?.toUpperCase() ?? 'THE BREACH'}
+              {/* HP% subline */}
+              {breach.bossHp != null && breach.bossMaxHp != null && breach.bossMaxHp > 0 && (
+                <text x="0" y="28" textAnchor="middle" fill="#94a3b8" fontSize="6" fontFamily="monospace" letterSpacing="1" style={{ pointerEvents: 'none' }}>
+                  {Math.round((breach.bossHp / breach.bossMaxHp) * 100)}%
                 </text>
-                <text x="90" y="26" textAnchor="middle" fontSize="7" fontFamily="monospace" letterSpacing="1" fill="#a8a8b8">
-                  TAP TO ENTER
-                </text>
-              </g>
-            )}
-          </g>
+              )}
+              {/* Tooltip on hover */}
+              {hoveredSlot === '__breach__' && (
+                <g transform="translate(-90, -88)" style={{ pointerEvents: 'none' }}>
+                  <rect width="180" height="34" rx="3" fill="#0e0f1a" stroke="#7dd3fc" strokeOpacity="0.6" strokeWidth="0.5" />
+                  <text x="90" y="14" textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#fafafd">
+                    {breach.status === 'VICTORY' ? 'CLAIM YOUR VICTORY' : breach.bossName?.toUpperCase() ?? 'THE BREACH'}
+                  </text>
+                  <text x="90" y="26" textAnchor="middle" fontSize="7" fontFamily="monospace" letterSpacing="1" fill="#a8a8b8">
+                    TAP TO ENTER
+                  </text>
+                </g>
+              )}
+            </g>
+          </>
         )}
         {HEXAGON_SLOTS.map((slot) => {
           const pos = polar(NEXUS_CX, NEXUS_CY, NEXUS_R, slot.angle);
