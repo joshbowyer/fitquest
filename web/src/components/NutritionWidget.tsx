@@ -56,7 +56,10 @@ export function NutritionWidget() {
   const waterQ = useQuery({
     queryKey: ['nutrition', 'water', 'today'],
     queryFn: () => api<{ items: Array<{ metric: MetricType; value: number; recordedAt: string }> }>(
-      '/measurements?limit=200',
+      // Filter by metric=WATER_ML — the user has 3000+ measurements
+      // across all metrics, so an unfiltered limit=200 query pushes
+      // WATER_ML rows out of the page (they're older entries).
+      '/measurements?metric=WATER_ML&limit=200',
     ),
     refetchInterval: 60_000,
   });

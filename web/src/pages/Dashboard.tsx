@@ -177,8 +177,10 @@ export function DashboardPage() {
         }
       />
 
-      {/* Top hero: level + raid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4 md:mb-6">
+      {/* Top hero: character + raid + hearts. All same row, same
+          height. HeartsCard returns null in Casual mode so the
+          right-hand slot just collapses to whatever's there. */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4 md:mb-6">
         <Panel variant="cyan" className="lg:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -258,6 +260,8 @@ export function DashboardPage() {
             </div>
           )}
         </Panel>
+
+        <HeartsCard />
       </div>
 
       {/* Morning briefing (LLM-generated, per-user per-day).
@@ -296,28 +300,38 @@ export function DashboardPage() {
       <div className="mb-4 md:mb-6">
         <CheckInsPanel />
       </div>
+
+      {/* Routine + Recovery + Frame — three side-by-side panels.
+          Replaces the old "HeartsCard + RoutinePanel + How streaks work"
+          row; HeartsCard now lives in the top hero, and "How streaks
+          work" moves below as a full-width explainer. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
-        <div className="lg:col-span-1 space-y-3">
-          <HeartsCard />
-          <RoutinePanel />
-        </div>
-        <div className="lg:col-span-2 text-[10px] font-mono text-ink-400 leading-relaxed self-center">
-          <div className="border border-ink-700/30 p-3">
-            <div className="text-ink-300 text-[11px] mb-1 font-display tracking-widest uppercase">
-              How streaks work
-            </div>
-            <p className="mb-2">
+        <RoutinePanel />
+        <RecoveryPanel />
+        <FramePanel />
+      </div>
+
+      {/* How streaks work — full-width explainer below the
+          routine/recovery/frame row. Three columns on desktop so
+          each clause gets its own column instead of stacking. */}
+      <div className="mb-4 md:mb-6 text-[10px] font-mono text-ink-400 leading-relaxed">
+        <div className="border border-ink-700/30 p-4">
+          <div className="text-ink-300 text-[11px] mb-2 font-display tracking-widest uppercase">
+            How streaks work
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
+            <p>
               Pick a weekly workout target (1–7). Each week you hit
               your target, your streak extends and you earn a bonus
               applied to XP, gold, and raid damage.
             </p>
-            <p className="mb-2">
+            <p>
               <span className="text-neon-lime">No penalty for missing a week.</span>{' '}
               If you skip, the streak resets but you keep your
               longest streak badge. Come back whenever — there are
               no dailies to maintain.
             </p>
-            <p>
+            <p className="text-ink-400">
               Bonus scales linearly: streak 1 = ×1.05, streak 5 =
               ×1.25, streak 10+ = ×1.50 (cap).
             </p>
@@ -325,16 +339,11 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Recovery + Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 md:gap-6 mb-4 md:mb-6">
-        <RecoveryPanel />
+      {/* Insights — full width. Was previously 1/3 Recovery + 2/3 Insights;
+          Recovery now lives in the row above, so Insights gets the
+          full canvas. */}
+      <div className="mb-4 md:mb-6">
         <InsightsPanel />
-      </div>
-
-      {/* Frame + Recovery (or body comp) — Frame shows wrist/ankle/height
-          classification that drives all genetic-max formulas */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        <FramePanel />
       </div>
 
       {/* Stat sheet by category */}

@@ -121,6 +121,29 @@ export function Layout({ children }: Props) {
                 <span className="text-ink-300 text-[10px] uppercase tracking-widest">GOLD</span>
                 <span className="neon-text-amber text-lg font-bold">{user.gold}</span>
               </div>
+              {/* Hearts (Hardcore mode only). Hidden in Casual so the
+                  top bar stays clean for default-mode users. */}
+              {user.mode === 'HARDCORE' && (
+                <div
+                  className="flex items-center gap-1"
+                  title={`${user.hearts ?? 5} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+                >
+                  <span className="text-neon-magenta text-base leading-none select-none">
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <span
+                        key={i}
+                        className={i < (user.hearts ?? 5) ? '' : 'opacity-25 grayscale'}
+                        aria-label={i < (user.hearts ?? 5) ? 'heart filled' : 'heart empty'}
+                      >
+                        ♥
+                      </span>
+                    ))}
+                  </span>
+                  <span className="text-[10px] font-mono text-neon-magenta tabular-nums">
+                    ×{(user.heartMultiplier ?? 1).toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] uppercase tracking-widest ${colorClass}`}>
                   {user.classDisplay ?? cls?.label ?? 'No class'}
