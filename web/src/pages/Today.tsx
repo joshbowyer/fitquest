@@ -286,12 +286,12 @@ export function TodayPage() {
   );
 
   // Wall mode: render the body WITHOUT the app's chrome (header,
-  // sidebar, bottom-nav all hidden). Big X/Y completion banner up
-  // top, a tiny ✕ Exit pill in the corner. Same data, same tick
-  // handlers. Activate via ?wall=1; exit via ✕ or Escape.
+  // sidebar, bottom-nav all hidden). Wall-clock + checklist, single
+  // row in landscape. Same data, same tick handlers. Activate via
+  // ?wall=1; exit via ✕ or Escape.
   if (wallMode) {
     return (
-      <WallModeShell counts={counts} onExit={exitWallMode}>
+      <WallModeShell onExit={exitWallMode}>
         {body}
       </WallModeShell>
     );
@@ -347,7 +347,6 @@ export function TodayPage() {
  *   the app isn't affected.
  */
 function WallModeShell({
-  counts,
   onExit,
   children,
 }: {
@@ -355,7 +354,27 @@ function WallModeShell({
   onExit: () => void;
   children: React.ReactNode;
 }) {
-  const allDone = counts.total > 0 && counts.completed === counts.total;
+  // Wall-clock display. Updates every minute — second-precision
+  // isn't useful for a "glance from across the room" display
+  // and a 1Hz setInterval would just waste battery on a propped
+  // phone. The time string is recomputed from `now` so we don't
+  // drift if the tab is backgrounded for a while.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const id = setInterval(tick, 60_000);
+    tick();
+    return () => clearInterval(id);
+  }, []);
+  const time = now.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const date = now.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 
   // Track viewport aspect ratio so we can hint rotation when the
   // API lock isn't available. We update on resize/orientationchange.
@@ -438,8 +457,7 @@ function WallModeShell({
           </div>
           <div className="text-xs font-mono text-ink-300 mt-3 max-w-sm">
             Wall mode is designed for landscape. Turn your device
-            sideways so the checklist fits beside the completion
-            counter.
+            sideways so the checklist fits beside the date + time.
           </div>
           <button
             type="button"
@@ -451,31 +469,22 @@ function WallModeShell({
         </div>
       )}
 
-      {/* Landscape layout: single row at the top with the big
-          X/Y counter on the left and the body (tiles + checklist +
-          habits) on the right. The pre-landscape design stacked
-          the banner above everything which wasted a lot of vertical
-          space when the phone is rotated. min-h-screen ensures the
-          row always fills the visible viewport so tiles can
-          spread out on a landscape tablet without looking lonely. */}
+      {/* Landscape layout: a single horizontal row. The left column
+          holds the wall-clock display (date + time, and future
+          glanceable info like weather / quote-of-the-day). The right
+          column holds the checklist + quick actions so the user can
+          tick boxes without leaving the display. The X/Y counter is
+          gone — the checkboxes themselves show progress. */}
       <div className="max-w-6xl mx-auto min-h-[calc(100vh-2rem)] flex flex-col landscape:flex-row landscape:gap-6 gap-4">
-        <div
-          className={classNames(
-            'shrink-0 flex landscape:flex-col landscape:items-start landscape:justify-center landscape:w-72 landscape:border-r landscape:pr-6',
-            'text-center pt-2 pb-4 landscape:py-0 landscape:pt-0 border-b landscape:border-b-0',
-            allDone
-              ? 'border-neon-lime/40 text-neon-lime'
-              : 'border-neon-cyan/30 text-neon-cyan',
-          )}
-        >
-          <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-1 landscape:mb-2 opacity-70">
-            Wall mode · today
+        <div className="shrink-0 flex flex-col items-start justify-center landscape:w-80 landscape:border-r landscape:pr-6 text-left py-2 landscape:py-0">
+          <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-2 text-neon-cyan opacity-80">
+            FitQuest · Wall
           </div>
-          <div className="font-display text-6xl landscape:text-7xl tracking-tighter leading-none">
-            {counts.completed}<span className="opacity-30">/{counts.total}</span>
+          <div className="font-display text-7xl landscape:text-8xl tracking-tighter leading-none text-slate-100 tabular-nums">
+            {time}
           </div>
-          <div className="text-[11px] font-mono mt-2 opacity-70">
-            {allDone ? '✓ all dailies done' : 'tap to tick'}
+          <div className="text-sm font-mono mt-3 text-ink-300">
+            {date}
           </div>
         </div>
         <div className="flex-1 min-w-0 min-h-0">
