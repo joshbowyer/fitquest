@@ -224,40 +224,72 @@ export function ConstellationMap({
           );
         })}
 
-        {/* Nexus node — the neutral hub at center. Clickable when a NEUTRAL world exists. */}
+        {/* Nexus node — the neutral hub at center. Clickable when
+            a NEUTRAL world exists. Hover speeds up the ring spin,
+            brightens the halo, scales the core, and surfaces a
+            tooltip with the world name + completion count (or a
+            "coming soon" hint when no NEUTRAL world exists yet). */}
         <g
           onClick={nexusWorld && onSelectNexus ? () => onSelectNexus(nexusWorld.id) : undefined}
-          style={{ cursor: nexusWorld && onSelectNexus ? 'pointer' : 'default' }}
+          onMouseEnter={() => setHoveredSlot('__nexus__')}
+          onMouseLeave={() => setHoveredSlot(null)}
+          style={{
+            cursor: nexusWorld && onSelectNexus ? 'pointer' : 'default',
+            transform: `translate(${NEXUS_CX}px, ${NEXUS_CY}px) scale(${hoveredSlot === '__nexus__' ? 1.12 : 1})`,
+            transformOrigin: '0 0',
+            transition: 'transform 200ms ease-out',
+          }}
         >
-          {/* Soft halo */}
-          <circle cx={NEXUS_CX} cy={NEXUS_CY} r="68" fill="url(#nexus-grad)">
-            <animate attributeName="r" values="64;72;64" dur="4s" repeatCount="indefinite" />
+          {/* Soft halo — expands on hover */}
+          <circle cx="0" cy="0" r={hoveredSlot === '__nexus__' ? 84 : 68} fill="url(#nexus-grad)" opacity={hoveredSlot === '__nexus__' ? 0.95 : 0.7} style={{ transition: 'r 200ms, opacity 200ms' }}>
+            <animate attributeName="r" values={hoveredSlot === '__nexus__' ? '76;92;76' : '64;72;64'} dur={hoveredSlot === '__nexus__' ? '2s' : '4s'} repeatCount="indefinite" />
           </circle>
-          {/* Rotating rainbow ring */}
-          <circle cx={NEXUS_CX} cy={NEXUS_CY} r="36" fill="none" stroke="url(#nexus-ring)" strokeWidth="2" filter="url(#constellation-glow)">
+          {/* Rotating rainbow ring — speeds up on hover (20s → 5s) */}
+          <circle cx="0" cy="0" r="36" fill="none" stroke="url(#nexus-ring)" strokeWidth={hoveredSlot === '__nexus__' ? 3 : 2} filter="url(#constellation-glow)" style={{ transition: 'stroke-width 200ms' }}>
             <animateTransform
               attributeName="transform"
               type="rotate"
-              from={`0 ${NEXUS_CX} ${NEXUS_CY}`}
-              to={`360 ${NEXUS_CX} ${NEXUS_CY}`}
-              dur="20s"
+              from="0 0 0"
+              to="360 0 0"
+              dur={hoveredSlot === '__nexus__' ? '5s' : '20s'}
               repeatCount="indefinite"
             />
           </circle>
-          {/* Inner core */}
-          <circle cx={NEXUS_CX} cy={NEXUS_CY} r="22" fill="#0e0f1a" stroke="#fafafd" strokeOpacity="0.6" strokeWidth="0.5" />
-          <text x={NEXUS_CX} y={NEXUS_CY + 4} textAnchor="middle" fill="#fafafd" fontSize="10" fontFamily="monospace" letterSpacing="2">
+          {/* Inner core — scales + brightens on hover */}
+          <circle cx="0" cy="0" r="22" fill="#0e0f1a" stroke="#fafafd" strokeOpacity={hoveredSlot === '__nexus__' ? 1 : 0.6} strokeWidth={hoveredSlot === '__nexus__' ? 1.5 : 0.5} style={{ transition: 'stroke-opacity 200ms, stroke-width 200ms' }} />
+          <text x="0" y="4" textAnchor="middle" fill="#fafafd" fontSize="10" fontFamily="monospace" letterSpacing="2">
             NEXUS
           </text>
           {/* World name + hint when available */}
           {nexusWorld ? (
-            <text x={NEXUS_CX} y={NEXUS_CY + 70} textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#cbd5e1" opacity="0.85">
+            <text x="0" y="70" textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#cbd5e1" opacity={hoveredSlot === '__nexus__' ? 1 : 0.85} style={{ transition: 'opacity 200ms' }}>
               {nexusWorld.name.toUpperCase()}
             </text>
           ) : (
-            <text x={NEXUS_CX} y={NEXUS_CY + 70} textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#585868" opacity="0.6">
+            <text x="0" y="70" textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#585868" opacity="0.6">
               hub
             </text>
+          )}
+          {/* Hover tooltip — only when a world exists (no "tap
+              to enter" for placeholder hubs) */}
+          {hoveredSlot === '__nexus__' && nexusWorld && (
+            <g transform="translate(-90, -100)">
+              <rect
+                width="180"
+                height="34"
+                rx="3"
+                fill="#0e0f1a"
+                stroke="#f55cc4"
+                strokeOpacity="0.6"
+                strokeWidth="0.5"
+              />
+              <text x="90" y="14" textAnchor="middle" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill="#fafafd">
+                {nexusWorld.name.toUpperCase()}
+              </text>
+              <text x="90" y="26" textAnchor="middle" fontSize="7" fontFamily="monospace" letterSpacing="1" fill="#a8a8b8">
+                TAP TO ENTER
+              </text>
+            </g>
           )}
         </g>
 
