@@ -15,10 +15,34 @@ import {
   MEAL_TYPE_ORDER,
 } from '@/lib/types';
 
+// crypto.randomUUID() is gated to secure contexts (HTTPS +
+// localhost). LAN access via http://10.0.0.59:5173 is NOT
+// considered secure, so fall back to crypto.getRandomValues
+// with the RFC 4122 v4 bit layout. Same wire shape as a UUID,
+// so server-side (source, sourceId) uniqueness still works.
+function randomUuid(): string {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (c?.randomUUID) return c.randomUUID();
+  if (c?.getRandomValues) {
+    const b = c.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 type AskAiResult = {
-  query: string;
+  name: string;
   reason: string;
-  items: FoodMatch[];
+  calories: number;
+  proteinG: number;
+  carbG: number;
+  fatG: number;
+  fiberG?: number;
+  sugarG?: number;
+  sodiumMg?: number;
 };
 
 // User's own saved food (recipe). Mirrors api/prisma/schema.prisma
@@ -54,9 +78,13 @@ export function FoodPanel() {
   // ---- Ask AI modal ----
   const [askOpen, setAskOpen] = useState(false);
   const [askResults, setAskResults] = useState<AskAiResult | null>(null);
+  // Single-entry ask AI: same endpoint + parser as
+  // TodayActions.FoodAskAiMode. /foods/ask-ai-multi returns
+  // consolidated macros for the whole description. No
+  // OFF/USDA search — the LLM does the macro estimate directly.
   const askM = useDelayedMutation<AskAiResult, string>({
     mutationFn: async (description) =>
-      api('/foods/ask-ai', { method: 'POST', body: { description } }),
+      api('/foods/ask-ai-multi', { method: 'POST', body: { description } }),
     onSuccess: (r) => setAskResults(r),
   }, 1500);
 
@@ -312,13 +340,11 @@ export function FoodPanel() {
           onSubmit={(description) => {
             askM.run(description);
           }}
-          onPick={(food) => {
-            // Hand the food to the LogMeal modal and close this
-            // one in the same tick so the user never has to click
-            // a separate "log" button.
-            setLogFood(food);
+          onLogged={() => {
             setAskOpen(false);
             setAskResults(null);
+            qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+            qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
           }}
         />
       )}
@@ -502,7 +528,7 @@ function AskAiModal({
   error,
   onClose,
   onSubmit,
-  onPick,
+  onLogged,
 }: {
   loading: boolean;
   result: AskAiResult | null;
@@ -510,14 +536,63 @@ function AskAiModal({
   onClose: () => void;
   onSubmit: (description: string) => void;
   /**
-   * Called when the user picks one of the LLM-returned results.
-   * The parent should open the LogMealModal with this food and
-   * close the AskAi modal in the same tick.
+   * Called after the user confirms the LLM's estimate and the
+   * meal is logged. The parent closes the modal and invalidates
+   * meal queries.
    */
-  onPick: (food: FoodMatch) => void;
+  onLogged: () => void;
 }) {
+  const qc = useQueryClient();
   const [draft, setDraft] = useState('');
   const valid = draft.trim().length >= 3;
+
+  // Inline meal selector — defaults to the time-of-day bucket
+  // (BREAKFAST < 10, LUNCH < 14, DINNER < 21, else SNACK). Same
+  // defaulting policy as LogMealModal so the experience is
+  // consistent.
+  const hour = new Date().getHours();
+  const defaultMeal: MealType =
+    hour < 10 ? 'BREAKFAST' : hour < 14 ? 'LUNCH' : hour < 21 ? 'DINNER' : 'SNACK';
+  const [meal, setMeal] = useState<MealType>(defaultMeal);
+  const [logError, setLogError] = useState<string | null>(null);
+
+  const logM = useDelayedMutation({
+    mutationFn: async () => {
+      if (!result) return null;
+      return api('/meals', {
+        method: 'POST',
+        body: {
+          meal,
+          servings: 1,
+          source: 'MANUAL',
+          // Fresh UUID so the same description logged twice
+          // creates two distinct FoodItem rows.
+          sourceId: `askai-${randomUuid()}`,
+          name: result.name,
+          brand: null,
+          servingSizeG: null,
+          calories: result.calories,
+          proteinG: result.proteinG,
+          carbG: result.carbG,
+          fatG: result.fatG,
+          fiberG: result.fiberG ?? null,
+          sugarG: result.sugarG ?? null,
+          sodiumMg: result.sodiumMg ?? null,
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+      qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
+      qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
+      onLogged();
+    },
+  });
+
+  function reset() {
+    onSubmit(draft.trim());
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
@@ -533,107 +608,152 @@ function AskAiModal({
           </div>
           <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
         </div>
-        <div className="text-[10px] font-mono text-ink-400 mb-3">
-          Describe what you ate. The LLM extracts a 2-4 keyword
-          search query and finds the closest match in OpenFoodFacts
-          (or USDA if you have a key). Cooking method and qualifiers
-          are stripped; brand names are kept.
-        </div>
-        <textarea
-          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
-          rows={3}
-          autoFocus
-          placeholder="e.g. Annie's mac and cheese  ·  6 large strawberries  ·  fried boneless chicken breast about the size of my hand"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && valid) {
-              onSubmit(draft.trim());
-            }
-          }}
-        />
-        {error && (
-          <div className="mt-2 text-xs text-rose-400 font-mono">{error}</div>
-        )}
-        {result && (
-          <div className="mt-2 text-xs font-mono">
-            <div className="text-violet-300">
-              <b>{result.query}</b>
+
+        {!result ? (
+          <>
+            <div className="text-[10px] font-mono text-ink-400 mb-3">
+              Describe what you ate in one line. The LLM estimates
+              total calories + macros for the whole meal so you can
+              log it directly without finding each ingredient in
+              OFF/USDA.
             </div>
-            <div className="text-ink-400">{result.reason}</div>
-          </div>
-        )}
-        {/*
-          Results INSIDE the modal so the user can pick without
-          closing first. Each row is a button that hands the
-          food back to the parent (which opens the LogMeal modal
-          and closes this one). The list is scroll-isolated so a
-          long description textarea doesn't push the buttons out
-          of view.
-        */}
-        {result && result.items.length > 0 && (
-          <div className="mt-3 flex-1 min-h-0 flex flex-col">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500 mb-1.5">
-              {result.items.length} result{result.items.length === 1 ? '' : 's'} — click to log
+            <textarea
+              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              rows={3}
+              autoFocus
+              placeholder="e.g. 1 cup kefir, 1 cup almond milk, 1 scoop ON Gold Standard whey vanilla, 6 strawberries, 1 scoop creatine"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && valid) {
+                  onSubmit(draft.trim());
+                }
+              }}
+            />
+            {error && (
+              <div className="mt-2 text-xs text-rose-400 font-mono">{error}</div>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <NeonButton variant="cyan" onClick={onClose}>
+                Close
+              </NeonButton>
+              <NeonButton
+                variant="violet"
+                disabled={!valid || loading}
+                loading={loading}
+                loadingText="Estimating…"
+                onClick={() => valid && onSubmit(draft.trim())}
+              >
+                Estimate
+              </NeonButton>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto border border-ink-500/20">
-              {result.items.slice(0, 8).map((it) => (
-                <button
-                  key={`${it.source}:${it.sourceId}`}
-                  type="button"
-                  onClick={() => onPick(it)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] font-mono hover:bg-neon-violet/10 border-b border-ink-500/10 last:border-b-0"
-                >
-                  {it.imageUrl ? (
-                    <img
-                      src={it.imageUrl}
-                      alt=""
-                      className="w-6 h-6 object-cover rounded border border-ink-500/30 shrink-0"
-                      loading="lazy"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
-                  ) : (
-                    <div className="w-6 h-6 bg-slate-800/60 rounded border border-ink-500/30 shrink-0 flex items-center justify-center text-[8px] text-ink-500">
-                      {it.source === 'OPENFOODFACTS' ? 'OFF' : 'USDA'}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-slate-100 truncate">{it.name}</div>
-                    <div className="text-[10px] text-ink-400 truncate">
-                      {it.brand && <span className="text-ink-300">{it.brand} · </span>}
-                      {it.calories.toFixed(0)} cal · {it.proteinG.toFixed(1)}p ·{' '}
-                      {it.carbG.toFixed(1)}c · {it.fatG.toFixed(1)}f
-                      <span className="text-ink-500"> per 100g</span>
-                    </div>
+          </>
+        ) : (
+          <>
+            <div className="text-[10px] font-mono text-ink-400 mb-2">
+              Review the estimate, then log. The same description can
+              be logged again with a fresh ID.
+            </div>
+            <div className="border border-neon-violet/40 rounded p-3 space-y-2 bg-neon-violet/5">
+              <div className="text-sm font-display tracking-wider text-slate-100">
+                {result.name}
+              </div>
+              {result.reason && (
+                <div className="text-[10px] font-mono text-ink-300 italic leading-snug">
+                  {result.reason}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-[11px] font-mono">
+                <div className="flex justify-between">
+                  <span className="text-ink-400">Calories</span>
+                  <span className="text-slate-100">{result.calories} kcal</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-400">Protein</span>
+                  <span className="text-slate-100">{result.proteinG} g</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-400">Carbs</span>
+                  <span className="text-slate-100">{result.carbG} g</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-ink-400">Fat</span>
+                  <span className="text-slate-100">{result.fatG} g</span>
+                </div>
+                {result.fiberG != null && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-400">Fiber</span>
+                    <span className="text-slate-100">{result.fiberG} g</span>
                   </div>
-                  <span className="text-[10px] text-neon-violet shrink-0">→ log</span>
+                )}
+                {result.sugarG != null && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-400">Sugar</span>
+                    <span className="text-slate-100">{result.sugarG} g</span>
+                  </div>
+                )}
+                {result.sodiumMg != null && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-400">Sodium</span>
+                    <span className="text-slate-100">{result.sodiumMg} mg</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+                Meal:
+              </span>
+              {(['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMeal(m)}
+                  className={classNames(
+                    'px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest border rounded',
+                    meal === m
+                      ? 'border-neon-violet/60 text-neon-violet bg-neon-violet/10'
+                      : 'border-ink-700/40 text-ink-300 hover:border-neon-violet/40',
+                  )}
+                >
+                  {m.toLowerCase()}
                 </button>
               ))}
             </div>
-          </div>
+
+            {logError && (
+              <div className="mt-2 text-xs text-rose-400 font-mono">{logError}</div>
+            )}
+            {logM.error && !logError && (
+              <div className="mt-2 text-xs text-rose-400 font-mono">
+                {logM.error instanceof Error ? logM.error.message : 'Log failed'}
+              </div>
+            )}
+
+            <div className="flex justify-between gap-2 mt-4">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={loading}
+                className="px-3 py-1.5 text-[10px] font-display tracking-widest uppercase border border-ink-700/40 text-ink-300 hover:border-neon-violet/40 rounded"
+              >
+                ← Re-estimate
+              </button>
+              <NeonButton
+                variant="violet"
+                onClick={() => {
+                  setLogError(null);
+                  logM.run();
+                }}
+                loading={logM.isPending}
+                disabled={loading}
+              >
+                Log meal
+              </NeonButton>
+            </div>
+          </>
         )}
-        {result && result.items.length === 0 && (
-          <div className="mt-3 p-3 text-[11px] font-mono text-ink-400 border border-ink-500/20 bg-bg-900/40">
-            No matches in OpenFoodFacts. Try a different phrasing or
-            use the regular search bar above.
-          </div>
-        )}
-        <div className="flex justify-end gap-2 mt-4">
-          <NeonButton variant="cyan" onClick={onClose}>
-            Close
-          </NeonButton>
-          <NeonButton
-            variant="violet"
-            disabled={!valid || loading}
-            loading={loading}
-            loadingText="Asking…"
-            onClick={() => valid && onSubmit(draft.trim())}
-          >
-            Ask
-          </NeonButton>
-        </div>
       </div>
     </div>,
     document.body
