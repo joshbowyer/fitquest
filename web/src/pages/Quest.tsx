@@ -5,8 +5,11 @@ import { api } from '@/lib/api';
 import { useAuth, type UserAvatar } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
+import { Modal } from '@/components/Modal';
 import { Avatar } from '@/components/Avatar';
 import { ConstellationMap } from '@/components/ConstellationMap';
+import { HomeBasePage } from '@/components/HomeBaseCard';
+import type { HomeBase as HomeBaseData } from '@/lib/types';
 import {
   type World,
   type WorldColor,
@@ -19,10 +22,21 @@ import { classNames } from '@/lib/format';
 export function QuestPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Home-base modal state. Opens when the user clicks the home-base
+  // panel on the right OR the home-base node on the constellation
+  // map. Closes on backdrop click or Escape.
+  const [homeBaseOpen, setHomeBaseOpen] = useState(false);
 
   const { data: worlds, isLoading } = useQuery({
     queryKey: ['quest-worlds'],
     queryFn: () => api<World[]>('/quest/worlds'),
+  });
+
+  // Real home-base state for the constellation map's tooltip +
+  // shield ring color. Same query the dashboard uses.
+  const { data: homeBase } = useQuery({
+    queryKey: ['home-base'],
+    queryFn: () => api<HomeBaseData>('/home-base'),
   });
 
   const { data: avatarData } = useQuery({
@@ -66,38 +80,94 @@ export function QuestPage() {
               classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               onSelect={(id) => navigate(`/quest/${id}`)}
               onSelectNexus={(id) => navigate(`/quest/${id}`)}
+              shieldTier={homeBase?.tier}
+              shield={homeBase?.shield}
+              recentEvents={homeBase?.recentEvents}
+              onSelectHomeBase={() => setHomeBaseOpen(true)}
             />
           </Panel>
 
           <div className="space-y-4">
-            <Panel title="HOME BASE" variant="amber">
-              <div className="flex items-center gap-3">
-                <div className="w-20 shrink-0">
-                  {avatar && (
-                    <Avatar
-                      archetype={archetype}
-                      bodyFatPct={bf}
-                      hairStyle={avatar.hairStyle}
-                      hairColor={avatar.hairColor}
-                      skinTone={avatar.skinTone}
-                      shirtColor={avatar.shirtColor}
-                      pantsColor={avatar.pantsColor}
-                      accentColor={avatar.accentColor}
-                      classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
-                      size={80}
-                      sprites
-                    />
-                  )}
-                </div>
-                <div className="text-xs font-mono leading-relaxed">
-                  <div className="text-ink-50 font-display tracking-widest">{user.username}</div>
-                  <div className="text-ink-300">Lvl {user.level} {user.class ? `· ${user.class}` : ''}</div>
-                  <div className="text-ink-400 text-[10px] mt-1">
-                    {frameSizeLabel} · {archetype}
+            {/* HOME BASE — clickable card. Avatar preview + a thin
+                shield bar showing the current tier. Click anywhere
+                on the card to open the full home-base modal (shield
+                value + event feed + penance toggle list). Wrapped in
+                a button so the whole panel is clickable. */}
+            <button
+              type="button"
+              onClick={() => setHomeBaseOpen(true)}
+              className="block w-full text-left cursor-pointer hover:border-amber-500/50 transition-colors rounded"
+            >
+              <Panel
+                title="HOME BASE"
+                variant="amber"
+                action={
+                  homeBase ? (
+                    <span
+                      className="text-[10px] font-mono uppercase tracking-widest"
+                      style={{ color: homeBase.tierColor }}
+                    >
+                      {homeBase.tierLabel} · {homeBase.shield}/100
+                    </span>
+                  ) : null
+                }
+              >
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-20 shrink-0">
+                    {avatar && (
+                      <Avatar
+                        archetype={archetype}
+                        bodyFatPct={bf}
+                        hairStyle={avatar.hairStyle}
+                        hairColor={avatar.hairColor}
+                        skinTone={avatar.skinTone}
+                        shirtColor={avatar.shirtColor}
+                        pantsColor={avatar.pantsColor}
+                        accentColor={avatar.accentColor}
+                        classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
+                        size={80}
+                        sprites
+                      />
+                    )}
+                  </div>
+                  <div className="text-xs font-mono leading-relaxed flex-1 min-w-0">
+                    <div className="text-ink-50 font-display tracking-widest">{user.username}</div>
+                    <div className="text-ink-300">Lvl {user.level} {user.class ? `· ${user.class}` : ''}</div>
+                    <div className="text-ink-400 text-[10px] mt-1">
+                      {frameSizeLabel} · {archetype}
+                    </div>
                   </div>
                 </div>
+                {/* Compact shield bar — mirrors the dashboard widget
+                    so the user sees the tier color + value inline. */}
+                {homeBase && (
+                  <div>
+                    <div className="relative h-1.5 rounded bg-bg-900 border border-ink-700/30 overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 left-0 transition-all"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, homeBase.shield))}%`,
+                          backgroundColor: homeBase.tierColor,
+                        }}
+                      />
+                    </div>
+                    {homeBase.recentEvents[0] && (
+                      <div className="text-[10px] font-mono text-ink-400 mt-1.5 truncate">
+                        Last: {homeBase.recentEvents[0].label}{' '}
+                        <span style={{ color: homeBase.recentEvents[0].shieldDelta < 0 ? '#fca5a5' : '#86efac' }}>
+                          {homeBase.recentEvents[0].shieldDelta > 0 ? '+' : ''}{homeBase.recentEvents[0].shieldDelta}
+                        </span>
+                      </div>
+                    )}
+                    <div className="text-[10px] font-mono text-amber-300 mt-1.5 tracking-widest uppercase opacity-70">
+                      Tap for shield details →
+                    </div>
+                  </div>
+                )}
               </div>
-            </Panel>
+              </Panel>
+            </button>
 
             <Panel title="WORLDS" variant="cyan">
               <div className="space-y-2">
@@ -138,11 +208,20 @@ export function QuestPage() {
                 })}
               </div>
             </Panel>
+            </div>
           </div>
-        </div>
+        )}
+
+      {/* Home-base modal — full shield view + event feed + penance
+          toggle list. Opens from clicking the home-base panel on
+          the right OR the home-base node on the constellation map. */}
+      {homeBaseOpen && (
+        <Modal open onClose={() => setHomeBaseOpen(false)} title="Home base" width="max-w-3xl">
+          <HomeBasePage />
+        </Modal>
       )}
-    </Layout>
-  );
+     </Layout>
+   );
 }
 
 function primaryColorForClass(c: string): WorldColor {

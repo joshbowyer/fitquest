@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { FrameArchetype } from '@/lib/frame';
 import type { UserAvatar } from '@/lib/auth';
 import type { World } from '@/lib/quest';
 import { WORLD_COLOR_HEX, type WorldColor } from '@/lib/quest';
 import { CLASS_META, type ClassName } from '@/lib/types';
+import type { ShieldTier, PenanceEvent } from '@/lib/types';
 import { Avatar } from './Avatar';
 
 /**
@@ -27,6 +28,17 @@ type Props = {
   onSelect: (worldId: string) => void;
   /** Called when the user clicks the Nexus center node (only if a NEUTRAL world exists). */
   onSelectNexus?: (worldId: string) => void;
+  /** Real shield tier from the home-base engine. When provided, the
+   *  home-base ring color + label reflect the user's actual state
+   *  (not the level-based placeholder). */
+  shieldTier?: ShieldTier;
+  /** Shield value 0-100. Displayed in the home-base tooltip on hover. */
+  shield?: number;
+  /** Recent penance events. Used to show "last fired: X" in the
+   *  home-base tooltip. */
+  recentEvents?: PenanceEvent[];
+  /** Click on home base opens the full home-base modal. */
+  onSelectHomeBase?: () => void;
 };
 
 // Portal iconography per class. Falls back to the world's `icon` glyph
@@ -90,8 +102,14 @@ export function ConstellationMap({
   classStripe,
   onSelect,
   onSelectNexus,
+  shieldTier: shieldTierProp,
+  shield,
+  recentEvents,
+  onSelectHomeBase,
 }: Props) {
   const stars = useMemo(() => seededStars(110, 7919), []);
+  const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+  const [hoveredHomeBase, setHoveredHomeBase] = useState(false);
 
   // Match each pentagon slot to a world by class affiliation.
   // Slots without a matching world render as a dim "unmapped" node.
@@ -110,15 +128,17 @@ export function ConstellationMap({
     [worlds],
   );
 
-  // Shield tier — placeholder until shield+penance lands. Show the
-  // ring color based on a tier derived from playerLevel (so it's
-  // visibly alive without lying about real shield state).
-  const shieldTier = playerLevel >= 25 ? 'fortified' : playerLevel >= 10 ? 'stable' : 'compromised';
+  // Shield tier. When the parent passes the real tier (from
+  // /home-base), use it. Otherwise fall back to a level-based
+  // placeholder so the ring still has a color before the home-base
+  // endpoint resolves.
+  const shieldTier = shieldTierProp
+    ?? (playerLevel >= 25 ? 'FORTIFIED' : playerLevel >= 10 ? 'STABLE' : 'COMPROMISED');
   const shieldColor =
-    shieldTier === 'fortified'  ? '#9bff5c' :
-    shieldTier === 'stable'     ? '#14d6e8' :
-    shieldTier === 'compromised' ? '#ffc34d' :
-    '#dc2626';
+    shieldTier === 'FORTIFIED'   ? '#9bff5c' :
+    shieldTier === 'STABLE'      ? '#14d6e8' :
+    shieldTier === 'COMPROMISED' ? '#ffc34d' :
+                                   '#dc2626';
 
   const ringHex = classStripe ?? accentColor ?? '#14d6e8';
 
@@ -167,12 +187,17 @@ export function ConstellationMap({
         {/* Subtle vertical divider between home base and constellation */}
         <line x1="360" y1="60" x2="360" y2="540" stroke={ringHex} strokeOpacity="0.08" strokeWidth="1" strokeDasharray="2 4" />
 
-        {/* Pulsating lines: Nexus → each portal slot */}
+        {/* Pulsating lines: Nexus → each portal slot. When a portal
+            is hovered, its line brightens while the rest dim. */}
         {HEXAGON_SLOTS.map((slot, i) => {
           const pos = polar(NEXUS_CX, NEXUS_CY, NEXUS_R, slot.angle);
           const world = worldByClass.get(slot.id);
           const color = WORLD_COLOR_HEX[slot.color];
           const delay = i * 0.6;
+          const isHovered = hoveredSlot === slot.id;
+          const isOtherHovered = hoveredSlot !== null && hoveredSlot !== slot.id;
+          const baseOpacity = world ? 0.5 : 0.18;
+          const opacity = isHovered ? 0.95 : isOtherHovered ? 0.08 : baseOpacity;
           return (
             <line
               key={`line-${slot.id}`}
@@ -181,11 +206,12 @@ export function ConstellationMap({
               x2={pos.x}
               y2={pos.y}
               stroke={world ? color : '#5c5f70'}
-              strokeWidth={world ? 1.5 : 0.8}
-              strokeOpacity={world ? 0.5 : 0.18}
+              strokeWidth={isHovered ? 2.5 : world ? 1.5 : 0.8}
+              strokeOpacity={opacity}
               filter="url(#constellation-glow)"
+              style={{ transition: 'stroke-opacity 200ms, stroke-width 200ms' }}
             >
-              {world && (
+              {world && !isOtherHovered && (
                 <animate
                   attributeName="stroke-opacity"
                   values="0.2;0.85;0.2"
@@ -235,7 +261,9 @@ export function ConstellationMap({
           )}
         </g>
 
-        {/* Portal nodes — pentagon */}
+        {/* Portal nodes — pentagon. Hover scales the disc 1.18x,
+            bumps the glow opacity, and shows a label tooltip with
+            the class + theme + completion count. */}
         {HEXAGON_SLOTS.map((slot) => {
           const pos = polar(NEXUS_CX, NEXUS_CY, NEXUS_R, slot.angle);
           const world = worldByClass.get(slot.id);
@@ -243,23 +271,32 @@ export function ConstellationMap({
           const classMeta = CLASS_META[slot.id as ClassName];
           const icon = classMeta ? CLASS_PORTAL_ICON[slot.id as ClassName] : '◆';
           const hasWorld = !!world;
+          const isHovered = hoveredSlot === slot.id;
+          const scale = isHovered ? 1.18 : 1;
+          const completed = world ? world.levels.filter((l) => l.completed).length : 0;
+          const total = world ? world.levels.length : 0;
           return (
             <g
               key={slot.id}
-              transform={`translate(${pos.x}, ${pos.y})`}
+              transform={`translate(${pos.x}, ${pos.y}) scale(${scale})`}
               onClick={hasWorld ? () => onSelect(world!.id) : undefined}
-              style={{ cursor: hasWorld ? 'pointer' : 'not-allowed' }}
+              onMouseEnter={() => setHoveredSlot(slot.id)}
+              onMouseLeave={() => setHoveredSlot(null)}
+              style={{
+                cursor: hasWorld ? 'pointer' : 'not-allowed',
+                transition: 'transform 200ms ease-out',
+              }}
             >
-              {/* Outer glow ring */}
-              <circle r="34" fill={color} opacity={hasWorld ? 0.12 : 0.04}>
-                {hasWorld && (
+              {/* Outer glow ring — brightens on hover */}
+              <circle r="34" fill={color} opacity={isHovered ? 0.32 : hasWorld ? 0.12 : 0.04}>
+                {hasWorld && !isHovered && (
                   <animate attributeName="opacity" values="0.06;0.22;0.06" dur="2.8s" repeatCount="indefinite" />
                 )}
               </circle>
-              {/* Portal disc */}
-              <circle r="26" fill="#0e0f1a" stroke={color} strokeWidth={hasWorld ? 1.5 : 1} strokeOpacity={hasWorld ? 0.9 : 0.4} filter="url(#constellation-glow)" />
+              {/* Portal disc — scales with parent */}
+              <circle r="26" fill="#0e0f1a" stroke={color} strokeWidth={isHovered ? 2.5 : hasWorld ? 1.5 : 1} strokeOpacity={hasWorld ? 0.95 : 0.4} filter="url(#constellation-glow)" />
               {/* Class icon */}
-              <text textAnchor="middle" dominantBaseline="central" fontSize="20" fill={color} opacity={hasWorld ? 1 : 0.35}>
+              <text textAnchor="middle" dominantBaseline="central" fontSize={isHovered ? 24 : 20} fill={color} opacity={hasWorld ? 1 : 0.35}>
                 {icon}
               </text>
               {/* Label below */}
@@ -270,18 +307,57 @@ export function ConstellationMap({
               <text textAnchor="middle" y="60" fontSize="7" fontFamily="monospace" letterSpacing="1" fill="#a8a8b8" opacity={hasWorld ? 0.6 : 0.3}>
                 {slot.id}
               </text>
+              {/* Hover tooltip */}
+              {isHovered && hasWorld && (
+                <g transform="translate(0, -50)">
+                  <rect
+                    x="-90"
+                    y="-12"
+                    width="180"
+                    height="34"
+                    rx="3"
+                    fill="#0e0f1a"
+                    stroke={color}
+                    strokeOpacity="0.6"
+                    strokeWidth="0.5"
+                  />
+                  <text textAnchor="middle" y="0" fontSize="8" fontFamily="monospace" letterSpacing="1.5" fill="#fafafd" opacity="0.95">
+                    {world.theme.toUpperCase()} · {completed}/{total} CLEARED
+                  </text>
+                  <text textAnchor="middle" y="12" fontSize="7" fontFamily="monospace" letterSpacing="1" fill="#a8a8b8" opacity="0.7">
+                    TAP TO ENTER
+                  </text>
+                </g>
+              )}
             </g>
           );
         })}
 
-        {/* HOME BASE — left half */}
-        <g transform="translate(170, 300)">
-          {/* Outer shield ring (tier-colored) */}
-          <circle r="120" fill="none" stroke={shieldColor} strokeOpacity="0.4" strokeWidth="1.5" strokeDasharray="6 4" filter="url(#constellation-glow)">
-            <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="60s" repeatCount="indefinite" />
+        {/* HOME BASE — left half. Hover speeds up the shield ring
+            (60s → 8s rotation) + shows a tooltip with the actual
+            shield value + last-fired penance. Clicking opens the
+            full home-base modal (parent-provided onSelectHomeBase). */}
+        <g
+          transform="translate(170, 300)"
+          onMouseEnter={() => setHoveredHomeBase(true)}
+          onMouseLeave={() => setHoveredHomeBase(false)}
+          onClick={onSelectHomeBase}
+          style={{
+            cursor: onSelectHomeBase ? 'pointer' : 'default',
+            transition: 'transform 200ms ease-out',
+            transform: 'translate(170px, 300px) scale(' + (hoveredHomeBase ? 1.04 : 1) + ')',
+            transformOrigin: '170px 300px',
+          }}
+        >
+          {/* Outer shield ring (tier-colored). Spin duration speeds
+              up on hover (60s → 8s) for a "waking up" feel. */}
+          <circle r="120" fill="none" stroke={shieldColor} strokeOpacity={hoveredHomeBase ? 0.85 : 0.4} strokeWidth={hoveredHomeBase ? 2.5 : 1.5} strokeDasharray="6 4" filter="url(#constellation-glow)">
+            <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur={hoveredHomeBase ? '8s' : '60s'} repeatCount="indefinite" />
           </circle>
-          {/* Inner glow */}
-          <circle r="92" fill="#0e0f1a" stroke={ringHex} strokeOpacity="0.6" strokeWidth="1" />
+          {/* Inner glow — pulse stronger on hover */}
+          <circle r="92" fill="#0e0f1a" stroke={ringHex} strokeOpacity="0.6" strokeWidth="1">
+            <animate attributeName="r" values="92;96;92" dur={hoveredHomeBase ? '1.6s' : '4s'} repeatCount="indefinite" />
+          </circle>
           {/* Avatar inset */}
           <g transform="translate(-60, -60)">
             <Avatar
@@ -304,7 +380,32 @@ export function ConstellationMap({
           </text>
           <text textAnchor="middle" y="122" fontSize="7" fontFamily="monospace" letterSpacing="1.5" fill="#a8a8b8">
             SHIELD · {shieldTier.toUpperCase()}
+            {shield != null ? ` · ${shield}/100` : ''}
           </text>
+          {/* Hover tooltip — shield value + last event */}
+          {hoveredHomeBase && (shield != null || (recentEvents && recentEvents.length > 0)) && (
+            <g transform="translate(-130, -148)">
+              <rect
+                width="260"
+                height="46"
+                rx="3"
+                fill="#0e0f1a"
+                stroke={shieldColor}
+                strokeOpacity="0.6"
+                strokeWidth="0.5"
+              />
+              {shield != null && (
+                <text x="10" y="16" fontSize="9" fontFamily="monospace" letterSpacing="1.5" fill={shieldColor}>
+                  SHIELD {shield}/100 · {shieldTier}
+                </text>
+              )}
+              {recentEvents && recentEvents[0] && (
+                <text x="10" y="32" fontSize="8" fontFamily="monospace" fill="#a8a8b8">
+                  LAST: {recentEvents[0].label} {recentEvents[0].shieldDelta > 0 ? '+' : ''}{recentEvents[0].shieldDelta}
+                </text>
+              )}
+            </g>
+          )}
         </g>
       </svg>
 
