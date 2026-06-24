@@ -157,11 +157,28 @@ export function Layout({ children }: Props) {
 
           {/* Mobile-only: condensed status pill on the right. Logout
               moved into the menu overlay so the top bar stays
-              minimal. */}
+              minimal. Hearts appear here in Hardcore mode so the
+              consequence is unmissable on phones too. */}
           {user && (
             <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
               <span className="neon-text-cyan font-bold">L{user.level}</span>
               <span className="neon-text-amber">{user.gold}G</span>
+              {user.mode === 'HARDCORE' && (
+                <span
+                  className="text-neon-magenta leading-none select-none"
+                  title={`${user.hearts ?? 5} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+                >
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <span
+                      key={i}
+                      className={i < (user.hearts ?? 5) ? '' : 'opacity-25 grayscale'}
+                      aria-label={i < (user.hearts ?? 5) ? 'heart filled' : 'heart empty'}
+                    >
+                      ♥
+                    </span>
+                  ))}
+                </span>
+              )}
             </div>
           )}
         </div>

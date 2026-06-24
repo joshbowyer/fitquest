@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
@@ -57,6 +57,33 @@ const PRAYER_LABELS: Record<string, string> = {
 export function TodayPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // Wall mode = full-screen checklist view, no app chrome
+  // (header, sidebar, bottom-nav all hidden). Activate by adding
+  // ?wall=1 to the URL; exit by clicking the ✕ in the top-right
+  // or pressing Escape. The checklist data + actions are identical
+  // — wall mode just strips the surrounding app so the user can
+  // focus on ticking the boxes.
+  const wallMode = searchParams.get('wall') === '1';
+  useEffect(() => {
+    if (!wallMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        exitWallMode();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallMode]);
+  function exitWallMode() {
+    // Drop ?wall=1 but keep other query params intact.
+    const next = new URLSearchParams(searchParams);
+    next.delete('wall');
+    setSearchParams(next, { replace: true });
+  }
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Daily | null>(null);
 
@@ -86,26 +113,8 @@ export function TodayPage() {
   const { counts } = data ?? { counts: { total: 0, completed: 0, isWorkoutDay: false } };
   const isWorkoutDay = counts.isWorkoutDay;
 
-  return (
-    <Layout>
-      <PageHeader
-        title="// Today"
-        subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
-        action={
-          <div className="flex items-center gap-3">
-            <div className="font-mono text-sm">
-              <span className="text-ink-300 text-xs uppercase tracking-widest">Done: </span>
-              <span className={`text-xl ml-1 ${counts.completed === counts.total && counts.total > 0 ? 'neon-text-lime' : 'neon-text-cyan'}`}>
-                {counts.completed}/{counts.total}
-              </span>
-            </div>
-            <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
-              New Daily
-            </NeonButton>
-          </div>
-        }
-      />
-
+  const body = (
+    <>
       {/* Workout day banner */}
       {data && (
         <div className={classNames(
@@ -232,7 +241,93 @@ export function TodayPage() {
           }}
         />
       )}
+    </>
+  );
+
+  // Wall mode: render the body WITHOUT the app's chrome (header,
+  // sidebar, bottom-nav all hidden). Big X/Y completion banner up
+  // top, a tiny ✕ Exit pill in the corner. Same data, same tick
+  // handlers. Activate via ?wall=1; exit via ✕ or Escape.
+  if (wallMode) {
+    return (
+      <WallModeShell counts={counts} onExit={exitWallMode}>
+        {body}
+      </WallModeShell>
+    );
+  }
+
+  return (
+    <Layout>
+      <PageHeader
+        title="// Today"
+        subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
+        action={
+          <div className="flex items-center gap-3">
+            <div className="font-mono text-sm">
+              <span className="text-ink-300 text-xs uppercase tracking-widest">Done: </span>
+              <span className={`text-xl ml-1 ${counts.completed === counts.total && counts.total > 0 ? 'neon-text-lime' : 'neon-text-cyan'}`}>
+                {counts.completed}/{counts.total}
+              </span>
+            </div>
+            <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
+              New Daily
+            </NeonButton>
+          </div>
+        }
+      />
+      {body}
     </Layout>
+  );
+}
+
+/**
+ * Wall mode shell — full-screen, no Layout chrome. Big X/Y count
+ * banner up top, a small ✕ Exit pill in the top-right corner. The
+ * page body (checklist + actions) is passed in as children so the
+ * tick handlers + state stay in the parent component.
+ */
+function WallModeShell({
+  counts,
+  onExit,
+  children,
+}: {
+  counts: { total: number; completed: number };
+  onExit: () => void;
+  children: React.ReactNode;
+}) {
+  const allDone = counts.total > 0 && counts.completed === counts.total;
+  return (
+    <div className="min-h-screen bg-bg-900 text-slate-100 px-4 py-4 md:px-8 md:py-6 max-w-3xl mx-auto pb-24">
+      {/* Exit pill — top-right corner */}
+      <button
+        type="button"
+        onClick={onExit}
+        title="Exit wall mode (Esc)"
+        className="fixed top-3 right-3 z-50 inline-flex items-center justify-center w-9 h-9 border border-ink-700/60 text-ink-300 hover:border-neon-magenta hover:text-neon-magenta hover:bg-neon-magenta/10 rounded text-base leading-none"
+      >
+        ✕
+      </button>
+      {/* Completion banner */}
+      <div
+        className={classNames(
+          'text-center pt-2 pb-6 mb-6 border-b',
+          allDone
+            ? 'border-neon-lime/40 text-neon-lime'
+            : 'border-neon-cyan/30 text-neon-cyan',
+        )}
+      >
+        <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-1 opacity-70">
+          Wall mode · today
+        </div>
+        <div className="font-display text-7xl md:text-8xl tracking-tighter">
+          {counts.completed}<span className="opacity-30">/{counts.total}</span>
+        </div>
+        <div className="text-[11px] font-mono mt-2 opacity-70">
+          {allDone ? '✓ all dailies done' : 'tap to tick'}
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
 
