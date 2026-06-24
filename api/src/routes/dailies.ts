@@ -289,6 +289,14 @@ export async function dailyRoutes(app: FastifyInstance) {
 
     await checkAchievements(me.id);
 
+    // Home-base penance for completed prayers (SPIRITUAL:* built-ins).
+    // The "completed_prayer" penance fires +4 — small but steady
+    // recovery. Skipped automatically when the template is disabled.
+    if (dailyKey.startsWith('SPIRITUAL:')) {
+      const { firePenance } = await import('../lib/penance.js');
+      await firePenance(me.id, 'completed_prayer', 'daily_completed');
+    }
+
     return { log, goldDelta, xpDelta };
   });
 }

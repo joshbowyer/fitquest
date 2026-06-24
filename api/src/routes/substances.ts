@@ -105,6 +105,40 @@ export async function substanceRoutes(app: FastifyInstance) {
         loggedAt: body.loggedAt ? new Date(body.loggedAt) : new Date(),
       },
     });
+    // Fire home-base penances on every substance log:
+    //   - substance_checkin: +2 (honest reckoning, baseline)
+    //   - substance_free_day: +5 (only when no alcohol today)
+    //   - substance_overuse: -20 (only when HARDCORE caps exceeded)
+    // The overuse check pulls from the Hardcore cap helper in mode.ts
+    // so the threshold is consistent with the morning-report
+    // riskFlags. substance_free_day is best-effort — it skips when
+    // the user has logged alcohol within the last 24h.
+    const { firePenance, firePenances } = await import('../lib/penance.js');
+    const fires: Array<{
+      key: 'substance_checkin' | 'substance_free_day' | 'substance_overuse';
+      source: 'substance_log';
+    }> = [{ key: 'substance_checkin', source: 'substance_log' }];
+    if (body.category === 'ALCOHOL') {
+      // Check whether this log pushes them past the HARDCORE
+      // weekly cap (5 drinks) — same threshold the morning report
+      // uses. We skip the DB query when the user isn't in Hardcore.
+      if (me.mode === 'HARDCORE') {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sun
+        startOfWeek.setHours(0, 0, 0, 0);
+        const weekCount = await prisma.substanceLog.count({
+          where: {
+            userId: me.id,
+            category: 'ALCOHOL',
+            loggedAt: { gte: startOfWeek },
+          },
+        });
+        if (weekCount > 5) {
+          fires.push({ key: 'substance_overuse', source: 'substance_log' });
+        }
+      }
+    }
+    await firePenances(me.id, fires);
     return { log };
   });
 

@@ -37,6 +37,7 @@ import { activityInsightRoutes } from './routes/activityInsights.js';
 import { metricInsightRoutes } from './routes/metricInsights.js';
 import { importRoutes } from './routes/import.js';
 import { examenRoutes } from './routes/examen.js';
+import { homeBaseRoutes } from './routes/homeBase.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
 import { foodRoutes, savedFoodRoutes, foodYouImportRoutes } from './routes/foods.js';
@@ -102,6 +103,7 @@ async function build() {
   await app.register(metricInsightRoutes);
   await app.register(plateauRoutes, { prefix: '/plateaus' });
   await app.register(examenRoutes, { prefix: '/examen' });
+  await app.register(homeBaseRoutes, { prefix: '/home-base' });
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');
@@ -130,6 +132,10 @@ async function main() {
   await ensureAchievementsSeeded();
   await ensureSkillsSeeded();
   await seedItems();
+  // System-default penance templates live as constants in
+  // api/src/lib/penance.ts (PENANCE_DELTAS + PENANCE_LABELS +
+  // PENANCE_FLAVORS). No DB seed needed — the constants are
+  // always available.
 
   const app = await build();
   await app.listen({ port: config.port, host: config.host });

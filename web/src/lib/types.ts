@@ -624,6 +624,42 @@ export const STAT_LABEL: Record<string, string> = {
 
 export type FoodSource = 'OPENFOODFACTS' | 'USDA' | 'MANUAL';
 
+export type ShieldTier = 'FORTIFIED' | 'STABLE' | 'COMPROMISED' | 'BREECHED';
+
+export type PenanceEvent = {
+  id: string;
+  key: string;
+  label: string;
+  shieldDelta: number;
+  shieldAfter: number;
+  tierAfter: ShieldTier;
+  source: string;
+  createdAt: string;
+};
+
+export type HomeBase = {
+  shield: number;
+  tier: ShieldTier;
+  tierLabel: string;
+  tierColor: string;
+  recentEvents: PenanceEvent[];
+};
+
+export type PenanceTemplate = {
+  id: string;
+  key: string;
+  label: string;
+  flavor: string | null;
+  shieldDelta: number;
+  enabled: boolean;
+  isUserOverride: boolean;
+};
+
+export type PenanceList = {
+  items: PenanceTemplate[];
+  userOverrides: PenanceTemplate[];
+};
+
 export type MealType = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK';
 
 export type FoodMatch = {

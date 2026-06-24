@@ -334,6 +334,24 @@ export async function workoutRoutes(app: FastifyInstance) {
     // so the workout response can show a celebratory message.
     const routineProgress = await checkRoutineProgress(me.id);
 
+    // Home-base penances on workout commit. The two big repair
+    // events: MOBILITY workouts +6 and CARDIO ≥ 30min +8. Fire
+    // both when applicable. No-op when the templates are disabled
+    // or the user's shield is already clamped.
+    {
+      const penanceLib = await import('../lib/penance.js');
+      const fires: Array<{ key: 'logged_mobility' | 'logged_cardio_30'; source: 'workout_commit' }> = [];
+      if (body.type === 'MOBILITY') {
+        fires.push({ key: 'logged_mobility', source: 'workout_commit' });
+      }
+      if (body.type === 'CARDIO' && duration >= 30) {
+        fires.push({ key: 'logged_cardio_30', source: 'workout_commit' });
+      }
+      if (fires.length > 0) {
+        await penanceLib.firePenances(me.id, fires);
+      }
+    }
+
     // Raid damage: compute from workout, apply class multiplier, contribute
     // to the active raid for the user's party (if any). Even if no raid is
     // active, we still return the computed damage so the UI can show what

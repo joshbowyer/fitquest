@@ -248,6 +248,9 @@ model User {
   raidContribs     RaidContribution[]
   achievements     UserAchievement[]
   skills           UserSkill[]
+  homeBase         HomeBase?
+  penanceTemplates PenanceTemplate[]
+  penanceEvents    PenanceEvent[]
   avatar           Avatar?
   classChangedAt   DateTime?
   // Admin role. First user to register is bootstrapped to admin.
@@ -540,6 +543,117 @@ model UserSkill {
   unlockedAt DateTime @default(now())
 
   @@unique([userId, skillId])
+}
+
+/// Home-base shield tier. Drives the visible home-base widget
+/// and (eventually) the Breach boss combat damage multiplier —
+/// a Breeched shield means the boss hits ~2x harder.
+///
+///  FORTIFIED    90-100   no monsters can enter, full cosmetic skin
+///  STABLE       60-89    normal defense
+///  COMPROMISED  30-59    portal leaks possible (Phase 2)
+///  BREECHED     0-29     monsters trickle in + daily chip damage
+enum ShieldTier {
+  FORTIFIED
+  STABLE
+  COMPROMISED
+  BREECHED
+}
+
+/// Per-user home-base state. One row per user; the shield value
+/// is the core number (0-100). Tier is derived from shield but
+/// stored too so we can index/filter by tier without recomputing.
+///
+/// shieldLastDecay tracks the last time we ran the nightly decay
+/// check (for skipping work when nothing changed).
+model HomeBase {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 0-100. Starts at 100 (Fortified). Drops on missed-dailies /
+  /// substance over-use, recovers on logged workouts + good habits.
+  shield        Int         @default(100)
+  tier          ShieldTier  @default(FORTIFIED)
+  /// Last time the nightly decay ran. Lets the cron skip
+  /// no-op iterations (all values clamped, no events fired).
+  shieldLastDecay DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+/// Penance templates — pre-built + user-customizable triggers that
+/// adjust the home-base shield. Two scopes:
+///   - System-wide defaults (userId = null): seeded on first DB
+///     boot. Same for every user. Provides the baseline.
+///   - User-created (userId set): the user can write their own
+///     penance flavors + deltas if the defaults don't fit their
+///     practice (e.g. a Muslim user adding a "Logged Fajr prayer"
+///     penance with a +10 shield boost).
+///
+/// Shield delta range: -100 (catastrophic) to +50 (massive). Most
+/// sit in ±20. The shield is clamped 0-100 after each application.
+///
+/// `key` is a stable identifier so the system can refer to
+/// specific penances by name (e.g. "missed_workout" in the
+/// event-triggering code). Unique per scope: a user's penance
+/// with the same key as a system default shadows the default.
+model PenanceTemplate {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 'missed_workout' | 'substance_overuse' | 'logged_mobility' |
+  /// 'logged_cardio_30' | 'substance_checkin' | 'substance_free_day' |
+  /// 'hit_protein_target' | 'hit_water_target' | 'completed_prayer' |
+  /// 'missed_all_dailies' | 'custom'
+  key         String
+  /// One-line label surfaced in the home-base feed ("Skipped the
+  /// forge" / "Tended the hinges").
+  label       String
+  /// Flavor text the LLM can fold into the morning report's
+  /// narrative (≤ 200 chars).
+  flavor      String?
+  /// Signed integer. Positive repairs the shield; negative damages.
+  shieldDelta Int
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([userId, enabled])
+}
+
+/// Penance events — the audit trail of every shield adjustment.
+/// One row per fire so we can render the home-base feed and
+/// reconstruct the shield value at any past date. User-only
+/// (system penances just write rows for the affected user).
+///
+/// `source` describes what fired the penance:
+///   'workout_commit'     — workout POST endpoint
+///   'substance_log'      — substance POST endpoint
+///   'daily_missed'       — end-of-day cron, daily missed
+///   'daily_completed'    — daily completed
+///   'nutrition_target'   — hit daily nutrition goal
+///   'auto_decay'         — nightly decay sweep
+///   'manual'             — admin override
+model PenanceEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  penanceKey  String
+  label       String
+  /// The actual delta applied (signed). Negative = damage.
+  shieldDelta Int
+  /// shield value AFTER the delta was applied. Lets the UI render
+  /// "Shield 80 → 65 (-15)" without needing to sort + sum.
+  shieldAfter Int
+  tierAfter   ShieldTier
+  /// What fired the penance: 'workout_commit' | 'substance_log' |
+  /// 'daily_missed' | 'daily_completed' | 'nutrition_target' |
+  /// 'auto_decay' | 'manual'.
+  source      String
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, source])
 }
 
 model Party {
