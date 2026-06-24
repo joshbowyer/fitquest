@@ -33,15 +33,20 @@ export function Modal({
     >
       <div
         className={classNames(
-          'panel relative p-5 shadow-panel w-full',
+          // max-h keeps long lists inside the viewport instead of
+          // overflowing the screen edge. flex flex-col lets the
+          // children container scroll while the title stays pinned.
+          'panel relative p-5 shadow-panel w-full max-h-[calc(100vh-2rem)] flex flex-col',
           width,
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="font-display tracking-widest text-sm uppercase neon-text-magenta mb-3">
+        <h2 className="font-display tracking-widest text-sm uppercase neon-text-magenta mb-3 shrink-0">
           {title}
         </h2>
-        {children}
+        <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 -mr-2 pr-2">
+          {children}
+        </div>
       </div>
     </div>,
     document.body
