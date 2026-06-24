@@ -119,6 +119,8 @@ export function ConstellationMap({
   shield,
   recentEvents,
   onSelectHomeBase,
+  breach,
+  onSelectBreach,
 }: Props) {
   const stars = useMemo(() => seededStars(110, 7919), []);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
