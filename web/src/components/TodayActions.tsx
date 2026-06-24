@@ -347,16 +347,23 @@ function WaterTile() {
       <Modal open={open} onClose={() => setOpen(false)} title="Log water" width="max-w-sm">
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            {[250, 500, 750, 1000].map((ml) => (
-              <button
-                key={ml}
-                type="button"
-                disabled={logM.isPending}
-                onClick={() => logM.mutate(ml)}
-                className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-              >
-                +{ml} ml
-              </button>
+            {[250, 500, 750, 1000].map((ml) => {
+              // Pill labels show the user's preferred unit. POST
+              // payload always uses ml (storage unit).
+              const disp = convertForDisplay(ml, 'ml', system);
+              const val = disp.value >= 100 ? Math.round(disp.value) : disp.value.toFixed(0);
+              return (
+                <button
+                  key={ml}
+                  type="button"
+                  disabled={logM.isPending}
+                  onClick={() => logM.mutate(ml)}
+                  className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
+                >
+                  +{val} {disp.unit}
+                </button>
+              );
+            })}
             ))}
           </div>
           <div className="flex items-center gap-2">

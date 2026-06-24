@@ -2,12 +2,15 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   // Safelist dynamic color classes that are built via template literals
-  // (e.g. `text-neon-${m.color}`) so the JIT always generates them,
-  // including opacity modifiers (/5, /15, /60, /80).
+  // (e.g. `text-neon-${m.color}`) so the JIT always generates them.
+  // Includes the full set of opacity modifiers used throughout the
+  // app so dynamic-class usages like `border-neon-cyan/30` don't fall
+  // back to a default border (which can look "white" against the
+  // charcoal panel background).
   safelist: [
     {
       pattern:
-        /^(text|border|bg|neon-text)-neon-(red|orange|cyan|magenta|lime|amber|goldenrod|periwinkle|violet)(\/(5|15|60|80))?$/,
+        /^(text|border|bg|neon-text)-neon-(red|orange|cyan|magenta|lime|amber|goldenrod|periwinkle|violet)(\/(5|10|15|20|30|40|50|60|70|80|90))?$/,
     },
   ],
   theme: {

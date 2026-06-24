@@ -81,24 +81,84 @@ const FOOD_SEARCH_PROMPT = (description: string) => `User description: ${descrip
  * Per-100g macros are computed client-side from the per-serving
  * values returned by OFF/USDA.
  */
-const ASK_AI_MULTI_SYSTEM_PROMPT = `You are a food parser for a fitness tracking app. The user pastes a comma-separated description of one or more foods they ate, with quantities ("1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado").
+/**
+ * System prompt for the multi-item Ask AI flow. Takes a single
+ * comma-separated description (often free-form with odd units,
+ * typos, brand names, vague quantities) and asks the LLM to split
+ * it into individual items, each with a SHORT OFF/USDA-friendly
+ * search query. The server then runs each query through the
+ * standard search pipeline so the user gets back real match
+ * candidates with macros, not raw queries.
+ *
+ * Quantity parsing rules (the user uses ALL of these in practice):
+ *   "1 cup"             → quantity=1,  unit="cup"
+ *   "7 oz almond milk"  → quantity=7,  unit="oz"
+ *   "a handful of ..."  → quantity=1,  unit=null  (vague count)
+ *   "a dozen ..."       → quantity=12, unit=null  (word→number!)
+ *   "a scoop of ..."    → quantity=1,  unit="scoop" (~30g serving)
+ *   "a table spoon"     → quantity=1,  unit="tbsp"  (typo tolerant)
+ *   "1/2 cup"          → quantity=0.5, unit="cup"
+ *   "3 strawberries"    → quantity=3,  unit=null  (count, no unit)
+ *
+ * Brand-name rule: ALWAYS keep brand names in the searchQuery
+ * because OFF + USDA both index branded products. Strip
+ * qualifiers like "frozen", "fresh", "organic", "raw".
+ *
+ * Spell rule: Fix common typos (mik→milk, table spoon→tbsp) but
+ * preserve the user's intent. Don't drop letters.
+ *
+ * Per-100g macros are computed client-side from the per-serving
+ * values returned by OFF/USDA.
+ */
+const ASK_AI_MULTI_SYSTEM_PROMPT = `You are a food parser for a fitness tracking app. The user pastes a comma-separated description of one or more foods they ate, with quantities. Example inputs:
 
-Your job: split the description into individual items and produce a SHORT search query for each (OpenFoodFacts + USDA-friendly).
+  1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado
+  Made a smoothie of 7oz of almond mik, a handful of frozen strawberries, a dozen frozen raspberries, a table spoon of creatine, a table spoon of collagen peptides, and a scoop of gold standard whey protein.
+  3 eggs and a piece of toast with butter
 
-Rules:
-- Strip descriptors that don't change the food identity (cooking methods, qualifiers, sizing). Keep brand names if present.
-- Quantities are best-effort: "1 cup" → 1 + "cup", "6 strawberries" → 6 + null (count), "a pinch of salt" → 1 + "pinch", "some olive oil" → 1 + null.
-- If the description has no quantity, quantity=1, unit=null.
-- Output strict JSON only, no prose, no markdown fences.
+Your job: split into individual items and produce a SHORT search query for each (OpenFoodFacts + USDA-friendly).
+
+UNIT PARSING (be liberal with what the user means):
+  "1 cup" / "1c"        → quantity=1,   unit="cup"
+  "7 oz" / "7oz"        → quantity=7,   unit="oz"
+  "a handful" / "a few" → quantity=1,   unit=null     (vague count)
+  "a dozen" / "dozen"   → quantity=12,  unit=null     (WORD → number!)
+  "a scoop" / "scoop"   → quantity=1,   unit="scoop"  (~30g protein serving)
+  "1 tbsp" / "1 T"      → quantity=1,   unit="tbsp"   (also: table spoon / Tbs)
+  "1 tsp" / "1 t"       → quantity=1,   unit="tsp"
+  "1/2 cup"             → quantity=0.5, unit="cup"
+  "100 g" / "100g"      → quantity=100, unit="g"
+  "a pinch" / "dash"    → quantity=1,   unit="pinch"
+  "a piece" / "a slice" → quantity=1,   unit=null
+  "3 strawberries"      → quantity=3,   unit=null     (count, no unit)
+  (no quantity at all)  → quantity=1,   unit=null
+
+If the description is too vague to identify a food (e.g. "some stuff"), output quantity=1, unit=null, searchQuery="" and the server will skip it.
+
+SEARCH QUERY RULES:
+- 2-4 keywords. Less is more — OFF is a noisy database.
+- KEEP brand names. Branded products (e.g. "Gold Standard Whey") are way easier to find than generic terms.
+- Strip descriptors that don't change identity: cooking methods (frozen, fresh, raw, baked, grilled), qualifiers (organic, large, small, ripe), color (red, green).
+- Keep "frozen"/"fresh" ONLY when it changes the food identity (e.g. "frozen strawberries" vs "strawberries" — the former is usually the user's intent for a smoothie).
+- Keep brand prefixes exactly as written ("Optimum Nutrition Gold Standard Whey").
+- Fix typos in food words but preserve the spelling of brands.
+- If the food is a supplement/brand, the brand IS the food. Include the brand in searchQuery.
+
+DISPLAY NAME RULES:
+- Short, recognisable, as the user would say it. "almond milk" not "Milk, almond, fluid, unsweetened".
+- Include brand when relevant: "Gold Standard Whey Protein".
+- For vague counts, name the food plainly: "frozen strawberries", "frozen raspberries".
+
+Output strict JSON only, no prose, no markdown fences.
 
 Schema:
 {
   "items": [
     {
-      "name": "short display name the user can recognise (e.g. 'whole milk', 'strawberries', 'collagen peptides')",
-      "searchQuery": "2-4 keyword search string for OFF/USDA (e.g. 'milk', 'strawberries', 'collagen peptides powder')",
+      "name": "short display name",
+      "searchQuery": "2-4 keyword search string",
       "quantity": <number, default 1>,
-      "unit": <"cup" | "tbsp" | "tsp" | "oz" | "g" | "pinch" | null>,
+      "unit": <"cup" | "tbsp" | "tsp" | "oz" | "g" | "scoop" | "pinch" | null>,
       "reason": "very short explanation (1 sentence)"
     }
   ],
@@ -106,16 +166,17 @@ Schema:
 }
 
 Example (expected output):
-User description: 1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado
+User description: Made a smoothie of 7oz of almond mik, a handful of frozen strawberries, a dozen frozen raspberries, a table spoon of creatine, a table spoon of collagen peptides, and a scoop of gold standard whey protein.
 {
   "items": [
-    {"name":"whole milk","searchQuery":"milk","quantity":1,"unit":"cup","reason":"generic dairy"},
-    {"name":"plain kefir","searchQuery":"kefir","quantity":1,"unit":"cup","reason":"fermented dairy"},
-    {"name":"strawberries","searchQuery":"strawberries","quantity":6,"unit":null,"reason":"whole berries, count"},
-    {"name":"collagen peptides powder","searchQuery":"collagen peptides","quantity":1,"unit":null,"reason":"supplement powder"},
-    {"name":"avocado","searchQuery":"avocado","quantity":1,"unit":null,"reason":"whole fruit"}
+    {"name":"almond milk","searchQuery":"almond milk","quantity":7,"unit":"oz","reason":"non-dairy milk"},
+    {"name":"frozen strawberries","searchQuery":"strawberries frozen","quantity":1,"unit":null,"reason":"handful ≈ 1 unit, fruit is frozen for smoothie"},
+    {"name":"frozen raspberries","searchQuery":"raspberries frozen","quantity":12,"unit":null,"reason":"a dozen = 12 whole berries"},
+    {"name":"creatine","searchQuery":"creatine monohydrate powder","quantity":1,"unit":"tbsp","reason":"table spoon typo → tbsp; creatine is a powder supplement"},
+    {"name":"collagen peptides","searchQuery":"collagen peptides powder","quantity":1,"unit":"tbsp","reason":"table spoon typo → tbsp; collagen is a powder supplement"},
+    {"name":"Gold Standard Whey Protein","searchQuery":"Optimum Nutrition Gold Standard 100% Whey","quantity":1,"unit":"scoop","reason":"branded scoop ~30g"}
   ],
-  "reason":"Parsed 5 items: 2 dairy + 1 fruit + 1 supplement + 1 fruit."`;
+  "reason":"Parsed 6 items: 1 milk, 2 fruits, 2 supplements, 1 whey protein."`;
 
 export async function foodRoutes(app: FastifyInstance) {
   // GET /foods/search?q=...
@@ -394,28 +455,56 @@ export async function foodRoutes(app: FastifyInstance) {
     // search pipeline. We deliberately fire these in parallel so
     // a 5-item meal description doesn't take 5× the OFF round-trip
     // latency. Cache every hit so subsequent logs reuse the row.
+    //
+    // For each parsed item: try the LLM-generated searchQuery first.
+    // If that returns 0 hits, retry with a stripped fallback
+    // ("frozen raspberries" → "raspberries") so items like
+    // "frozen strawberries" or "creatine monohydrate" still get
+    // candidates even though OFF has weak coverage of those
+    // exact phrases. The user can switch the match in the modal.
     const itemsWithHits = await Promise.all(
       parsed.items.map(async (it) => {
-        const offHits: OffMatch[] = [];
-        try {
-          const raw = await offSearch(it.searchQuery, 5);
-          for (const p of raw) {
-            const m = normalizeOffProduct(p);
-            if (m) offHits.push(m);
-          }
-        } catch {
-          // OFF down, continue
-        }
+        let offHits: OffMatch[] = [];
         let usdaHits: UsdaMatch[] = [];
-        if (offHits.length < 3 && me.usdaApiKey) {
+        const queriesToTry: string[] = [it.searchQuery];
+        // Build a fallback by dropping common modifiers + the
+        // last word (often a brand suffix). E.g. "Optimum
+        // Nutrition Gold Standard Whey" → "Whey".
+        const stripped = it.searchQuery
+          .replace(/\b(frozen|fresh|organic|raw|baked|grilled|cooked|plain)\b/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (stripped && stripped !== it.searchQuery) queriesToTry.push(stripped);
+        const lastWord = it.searchQuery.split(/\s+/).filter(Boolean).pop();
+        if (lastWord && lastWord.length >= 4 && !queriesToTry.includes(lastWord)) {
+          queriesToTry.push(lastWord);
+        }
+        for (const q of queriesToTry) {
+          if (offHits.length >= 3) break;
           try {
-            const raw = await usdaSearch(it.searchQuery, me.usdaApiKey, 5);
-            for (const f of raw) {
-              const m = normalizeUsdaFood(f);
-              if (m) usdaHits.push(m);
+            const raw = await offSearch(q, 5);
+            for (const p of raw) {
+              const m = normalizeOffProduct(p);
+              if (m) offHits.push(m);
             }
           } catch {
-            // USDA down, continue
+            // OFF down, continue
+          }
+        }
+        // USDA fallback only if OFF came up short AND the user has
+        // a key configured.
+        if (offHits.length < 3 && me.usdaApiKey) {
+          for (const q of queriesToTry) {
+            if (usdaHits.length >= 3) break;
+            try {
+              const raw = await usdaSearch(q, me.usdaApiKey, 5);
+              for (const f of raw) {
+                const m = normalizeUsdaFood(f);
+                if (m) usdaHits.push(m);
+              }
+            } catch {
+              // USDA down, continue
+            }
           }
         }
         const hits = [...offHits, ...usdaHits].slice(0, 5);
