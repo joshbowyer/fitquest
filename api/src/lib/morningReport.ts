@@ -32,6 +32,22 @@ import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
 import { tickHearts, hardcoreSubstanceCapReason, HARDCORE_SUBSTANCE_CAPS } from './mode.js';
 import { setVolumeKg } from './exerciseVolume.js';
+import { detectPlateaus, type Plateau } from './plateau.js';
+import { buildMacroNudges, type MacroNudgesResult } from './macroNudges.js';
+import {
+  buildSleepOverlapReport,
+  summarizeForLlm,
+  type SleepOverlapReport,
+} from './sleepCorrelation.js';
+import {
+  buildBodyBatteryReport,
+  summarizeBbForLlm,
+  type BodyBatteryReport,
+} from './bodyBatteryCorrelation.js';
+import {
+  lowConfidenceBodyFatFlag,
+  type MeasurementSource,
+} from './measurementSource.js';
 
 type DateStr = string; // YYYY-MM-DD in user's timezone
 
@@ -190,6 +206,39 @@ async function substanceCountsDomain(
 }
 
 /**
+ * Recent body-fat readings with their measurement source. Used by
+ * the LLM to fold confidence into the recovery/coaching prose
+ * (e.g. "your latest 10.5% reading was from calipers — confidence
+ * ±2%, so don't read too much into it"). Also feeds the
+ * low-confidence flag in the UI.
+ */
+async function bodyFatSourcesDomain(
+  userId: string,
+  since7: Date,
+): Promise<
+  Array<{
+    recordedAt: string;
+    bodyFatPct: number;
+    source: MeasurementSource | null;
+  }>
+> {
+  const rows = await prisma.measurement.findMany({
+    where: {
+      userId,
+      metric: 'BODY_FAT_PCT',
+      recordedAt: { gte: since7 },
+    },
+    select: { value: true, recordedAt: true, source: true },
+    orderBy: { recordedAt: 'desc' },
+  });
+  return rows.map((r) => ({
+    recordedAt: r.recordedAt.toISOString(),
+    bodyFatPct: r.value,
+    source: r.source as MeasurementSource | null,
+  }));
+}
+
+/**
  * Routine streak state — for the "missed-week reset" penalty and
  * the streak label on the dashboard. We don't write here; this
  * is read-only.
@@ -276,6 +325,20 @@ export type ReportPayload = {
   hearts: number;
   streak: Awaited<ReturnType<typeof streakDomain>>;
   substanceCounts: Awaited<ReturnType<typeof substanceCountsDomain>>;
+  // Anti-staleness + correlation payloads. These are surfaced
+  // deterministically to the UI (UI doesn't ask the LLM to invent
+  // plateau warnings or sleep correlations — the engines decide).
+  // The LLM does see summarized versions in the SYSTEM_PROMPT so
+  // it can fold numbers into the prose sections naturally.
+  plateaus: Plateau[];
+  nudges: MacroNudgesResult;
+  sleepOverlap: SleepOverlapReport;
+  bodyBattery: BodyBatteryReport;
+  bodyFatSources: Array<{
+    recordedAt: string;
+    bodyFatPct: number;
+    source: MeasurementSource | null;
+  }>;
 };
 
 function todayInTz(timezone: string | null): DateStr {
@@ -311,21 +374,32 @@ export async function gatherReportData(
     },
   });
   const recovery = await computeRecovery(userId);
+  const tz = opts.timezone ?? me?.timezone ?? 'UTC';
 
-  const [sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual, substanceCounts, streak] =
-    await Promise.all([
-      metricDomain(userId, 'SLEEP_HOURS', since7, since14),
-      metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
-      metricDomain(userId, 'HRV', since7, since14),
-      metricDomain(userId, 'WEIGHT', since7, since14),
-      metricDomain(userId, 'BODY_FAT_PCT', since7, since14),
-      workoutsDomain(userId, since7, since14),
-      habitsDomain(userId, since7, since14),
-      supplementsDomain(userId, since7),
-      spiritualDomain(userId, since7),
-      substanceCountsDomain(userId, since1d, since7),
-      streakDomain(userId),
-    ]);
+  // Run the deterministic engines in parallel. None of these touch
+  // each other so we save wall time vs. serial calls. The LLM call
+  // below waits for all of them.
+  const [
+    sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual,
+    substanceCounts, streak, plateaus, nudges, sleepOverlap, bodyBattery, bodyFatSources,
+  ] = await Promise.all([
+    metricDomain(userId, 'SLEEP_HOURS', since7, since14),
+    metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
+    metricDomain(userId, 'HRV', since7, since14),
+    metricDomain(userId, 'WEIGHT', since7, since14),
+    metricDomain(userId, 'BODY_FAT_PCT', since7, since14),
+    workoutsDomain(userId, since7, since14),
+    habitsDomain(userId, since7, since14),
+    supplementsDomain(userId, since7),
+    spiritualDomain(userId, since7),
+    substanceCountsDomain(userId, since1d, since7),
+    streakDomain(userId),
+    detectPlateaus(userId, now),
+    buildMacroNudges(userId, now, tz),
+    buildSleepOverlapReport(userId, tz, 14, now),
+    buildBodyBatteryReport(userId, tz, 14, now),
+    bodyFatSourcesDomain(userId, since7),
+  ]);
 
   return {
     generatedAt: now.toISOString(),
@@ -352,6 +426,11 @@ export async function gatherReportData(
     hearts: me ? await tickHearts(me.id) : 5,
     streak,
     substanceCounts,
+    plateaus,
+    nudges,
+    sleepOverlap,
+    bodyBattery,
+    bodyFatSources,
   };
 }
 
@@ -361,11 +440,18 @@ const SYSTEM_PROMPT = `You are the user's quiet, sharp fitness coach in a self-h
 
 Your job: read the structured data the user logged in the last 7 days (versus the prior 7) and produce a short morning briefing. Tone: direct, concrete, not clinical. Never use em-dashes. Never start with "Great" or "Looks like". If a metric was steady, say so briefly or stay silent — do not invent patterns.
 
+The payload also includes deterministic engines that already produced their own arrays:
+- plateaus: anti-staleness warnings (NO_PR_RECENT, ONE_RM_REGRESSION, VOLUME_REGRESSION, WEIGHT_FLATLINE, METRIC_FLATLINE). Surfaced in UI directly; do not duplicate them in your prose.
+- nudges: positive observations + warnings (caffeine pre-workout, late caffeine, creatine gap, hydration, substance-sleep overlap). Surfaced in UI directly.
+- sleepOverlap: substances taken within 8h before sleep onset, by category. Surfaced in UI; you may fold one concrete stat into the recovery section.
+- bodyBattery: body battery vs sleep onset/quality/duration/substances. Surfaced in UI; you may fold one concrete stat into the recovery section.
+- bodyFatSources: latest body-fat readings with their measurement method (DEXA / BodPod / calipers / BIA / visual / MANUAL). Mention confidence only if it's relevant.
+
 Hard rules:
 - Each section ≤ 2 sentences, ≤ 220 characters.
 - If a domain has no data (coverageDays: 0), the field MUST be an empty string. Do not fabricate.
 - If a domain is steady (delta < 5%), the field should be empty or one short acknowledgment.
-- Risk flags: only call out things that are actually present in the data. Empty array if all clear.
+- Risk flags: only call out things that are actually present in the data. Empty array if all clear. Don't repeat plateaus or nudges here — they're surfaced in their own UI rows.
 - Never use the user's real name; refer to them as "you".
 - Never recommend specific supplements or medical interventions.
 - Mention concrete numbers from the data when relevant ("HRV averaged 52ms, down 6 from prior 7d").
@@ -418,6 +504,25 @@ function clamp(s: string | null | undefined, max: number): string {
   const slice = t.slice(0, max);
   const lastDot = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('? '), slice.lastIndexOf('! '));
   return (lastDot > 40 ? slice.slice(0, lastDot + 1) : slice) + '…';
+}
+
+/**
+ * Parse a JSON column into a typed array. Items that don't pass
+ * the type predicate are dropped (corrupt-row safety). Empty on
+ * any error so the dashboard never crashes on bad JSON.
+ */
+function parseJsonArray<T>(
+  raw: string | null | undefined,
+  predicate: (x: any) => T | null,
+): T[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(predicate).filter((x): x is T => x !== null);
+  } catch {
+    return [];
+  }
 }
 
 const EMPTY_FALLBACK = {
@@ -526,6 +631,16 @@ export type MorningReportResult = {
    *  when there are no active penalties. Built deterministically
    *  from the gather payload — never from LLM output. */
   penalties: Penalty[];
+  /** Anti-staleness warnings from the plateau detector. Empty when
+   *  the user has no recent activity regression. Surfaced in its
+   *  own UI row. */
+  plateaus: Plateau[];
+  /** Macro/timing warnings from buildMacroNudges. Empty when none
+   *  triggered. Surfaced in its own UI row. */
+  nudges: import('./macroNudges.js').Nudge[];
+  /** Positive observations ("hit your water target 6/7 days").
+   *  Surfaced alongside nudges. */
+  positiveNudges: import('./macroNudges.js').Nudge[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;
@@ -545,6 +660,9 @@ function rowToResult(
     spiritual: string | null;
     riskFlags: string | null;
     penalties: string | null;
+    plateaus: string | null;
+    nudges: string | null;
+    positiveNudges: string | null;
     model: string | null;
     latencyMs: number | null;
     createdAt: Date;
@@ -571,6 +689,27 @@ function rowToResult(
       }
     }
   } catch {}
+  // Parse plateaus + nudges from their JSON columns. Defensive
+  // fall-back to empty arrays so a corrupt row never breaks the
+  // dashboard.
+  const plateaus: Plateau[] = parseJsonArray<Plateau>(row.plateaus, (p) =>
+    p && typeof p.kind === 'string' && typeof p.label === 'string' &&
+    (p.severity === 'warn' || p.severity === 'scold') && typeof p.note === 'string'
+      ? p
+      : null,
+  );
+  const nudges = parseJsonArray<import('./macroNudges.js').Nudge>(row.nudges, (n) =>
+    n && typeof n.kind === 'string' && typeof n.label === 'string' &&
+    (n.severity === 'positive' || n.severity === 'warn') && typeof n.note === 'string'
+      ? n
+      : null,
+  );
+  const positiveNudges = parseJsonArray<import('./macroNudges.js').Nudge>(row.positiveNudges, (n) =>
+    n && typeof n.kind === 'string' && typeof n.label === 'string' &&
+    (n.severity === 'positive' || n.severity === 'warn') && typeof n.note === 'string'
+      ? n
+      : null,
+  );
   return {
     id: row.id,
     userId: row.userId,
@@ -583,6 +722,9 @@ function rowToResult(
     spiritual: row.spiritual ?? '',
     riskFlags: flags,
     penalties,
+    plateaus,
+    nudges,
+    positiveNudges,
     model: row.model,
     latencyMs: row.latencyMs,
     createdAt: row.createdAt.toISOString(),
@@ -667,8 +809,16 @@ export async function getOrGenerateToday(
   }
 
   const payload = await gatherReportData(userId, { timezone: user?.timezone });
+  // Surface the sleep-substance overlap + body battery correlation
+  // summaries to the LLM so it can fold concrete numbers into the
+  // recovery/coaching prose. The raw reports are already in the
+  // payload (and persisted indirectly via plateaus + nudges), but
+  // a short summary string is easier for smaller models to read.
+  const sleepOverlapSummary = summarizeForLlm(payload.sleepOverlap);
+  const bodyBatterySummary = summarizeBbForLlm(payload.bodyBattery);
+  const lowConfFlag = lowConfidenceBodyFatFlag(payload.bodyFatSources as any);
   const dataJson = JSON.stringify(payload, null, 2);
-  const userPrompt = `Today's date: ${date}\nUser profile: ${JSON.stringify(payload.user)}\n\nLast 7 days vs prior 7 days:\n\n${dataJson}\n\nWrite the morning briefing. Output strict JSON only.`;
+  const userPrompt = `Today's date: ${date}\nUser profile: ${JSON.stringify(payload.user)}\n\nLast 7 days vs prior 7 days:\n\n${dataJson}\n\nSleep-substance overlap summary:\n${sleepOverlapSummary}\n\nBody battery correlation summary:\n${bodyBatterySummary}\n\n${lowConfFlag ? 'Note: latest body-fat readings came from low-confidence sources (visual or BIA).' : ''}\n\nWrite the morning briefing. Output strict JSON only.`;
 
   const result = await callLlm(config, {
     system: SYSTEM_PROMPT,
@@ -715,6 +865,12 @@ export async function getOrGenerateToday(
       ...fields,
       riskFlags: JSON.stringify(flags),
       penalties: JSON.stringify(penalties),
+      // Anti-staleness plateaus + macro nudges are surfaced in
+      // their own UI rows; persist them so the dashboard renders
+      // them on first paint without re-running the engines.
+      plateaus: JSON.stringify(payload.plateaus),
+      nudges: JSON.stringify(payload.nudges.warnings),
+      positiveNudges: JSON.stringify(payload.nudges.positive),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
     },
@@ -722,6 +878,9 @@ export async function getOrGenerateToday(
       ...fields,
       riskFlags: JSON.stringify(flags),
       penalties: JSON.stringify(penalties),
+      plateaus: JSON.stringify(payload.plateaus),
+      nudges: JSON.stringify(payload.nudges.warnings),
+      positiveNudges: JSON.stringify(payload.nudges.positive),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
       updatedAt: new Date(),

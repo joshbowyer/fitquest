@@ -15,6 +15,10 @@
 
 import { MeasurementSource } from '@prisma/client';
 
+// Re-export so consumers can `import { MeasurementSource } from
+// './measurementSource.js'` rather than reaching into @prisma/client.
+export { MeasurementSource };
+
 /**
  * Confidence per source. Lab-grade methods top the list, visual
  * estimates / unknown sit at the bottom. UNKNOWN is intentionally
@@ -28,6 +32,7 @@ export const SOURCE_CONFIDENCE: Record<MeasurementSource, number> = {
   CALIPERS: 0.80,
   BIA: 0.70,
   VISUAL: 0.55,
+  MANUAL: 0.60,
   UNKNOWN: 0.60,
 };
 
@@ -39,6 +44,7 @@ export const SOURCE_LABELS: Record<MeasurementSource, string> = {
   CALIPERS: 'Calipers',
   BIA: 'BIA',
   VISUAL: 'Visual',
+  MANUAL: 'Manual',
   UNKNOWN: 'Unknown',
 };
 
@@ -50,6 +56,7 @@ export const SOURCE_SHORT: Record<MeasurementSource, string> = {
   CALIPERS: 'Cal',
   BIA: 'BIA',
   VISUAL: 'Eye',
+  MANUAL: 'Log',
   UNKNOWN: '?',
 };
 
@@ -61,6 +68,7 @@ export const SOURCE_TONE: Record<MeasurementSource, 'cyan' | 'lime' | 'amber' | 
   CALIPERS: 'lime',
   BIA: 'amber',
   VISUAL: 'magenta',
+  MANUAL: 'amber',
   UNKNOWN: 'amber',
 };
 

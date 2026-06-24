@@ -50,6 +50,25 @@ function makePayload(overrides: Partial<{
       alcoholLast7d: overrides.alcoholLast7d ?? 0,
       caffeineAllLast7d: 0,
     },
+    // Engines wired into the gather payload. Defaults to empty so
+    // existing penalty tests don't have to care about them — they
+    // only assert on `buildPenalties` output.
+    plateaus: [],
+    nudges: { warnings: [], positive: [] },
+    sleepOverlap: {
+      windowDays: 7,
+      nightsTotal: 0,
+      lastNight: [],
+      categories: [],
+      supplements: [],
+    },
+    bodyBattery: {
+      windowDays: 7,
+      morningsTotal: 0,
+      lastMorning: null,
+      overlaps: [],
+    },
+    bodyFatSources: [],
   };
 }
 

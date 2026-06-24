@@ -10,6 +10,7 @@ import { computeRaidDamage } from '../lib/raidDamage.js';
 import { checkRoutineProgress } from './routine.js';
 import { tickHearts, heartMultiplier } from '../lib/mode.js';
 import { setVolumeKg } from '../lib/exerciseVolume.js';
+import { checkSetPlausibility } from '../lib/exerciseLimits.js';
 
 /**
  * Per-exercise absolute caps for "this value is almost certainly
@@ -31,37 +32,59 @@ type ValidityFlag = {
   setIndex: number;
   field: 'weight' | 'reps';
   value: number;
-  reason: 'possible_typo' | 'unusually_high';
+  reason: 'possible_typo' | 'unusually_high' | string;
+  severity?: 'flag' | 'block';
 };
 
 function flagSuspectSets(
   exercises: Array<{ name: string; sets: Array<{ weight?: number | null; reps: number }> }>,
   units: 'METRIC' | 'IMPERIAL',
+  userWeightKg: number = 0,
 ): ValidityFlag[] {
-  const cap = units === 'IMPERIAL' ? SUSPECT_WEIGHT_KG * 2.20462 : SUSPECT_WEIGHT_KG;
   const flags: ValidityFlag[] = [];
+  // Imperial users entered in lb but the body-fat / weight math
+  // runs in kg. We assume the client converted before sending
+  // (CreateWorkoutSchema's `units` field tells the client to), but
+  // the per-exercise limits are still in kg — flag if the absolute
+  // weight is wildly out of the metric envelope even for an
+  // imperial entry (extra safety net against a missed conversion).
+  const absoluteCapKg = units === 'IMPERIAL' ? SUSPECT_WEIGHT_KG * 2.20462 : SUSPECT_WEIGHT_KG;
   for (const ex of exercises) {
     ex.sets.forEach((s, idx) => {
-      if ((s.weight ?? 0) > cap) {
-        // Past 1.5× the cap (i.e. > 750kg / ~1650lb) it's almost
-        // certainly a typo: world-record deadlift is ~500kg, so
-        // anything north of 750kg isn't a real lift, it's "I typed
-        // 1350 instead of 135".
+      const weightKg = s.weight ?? 0;
+      const reps = s.reps;
+      // Per-exercise plausibility (the new primary check).
+      const verdict = checkSetPlausibility(ex.name, weightKg, reps, userWeightKg);
+      if (verdict.severity) {
         flags.push({
           exercise: ex.name,
           setIndex: idx,
           field: 'weight',
-          value: s.weight!,
-          reason: s.weight! > cap * 1.5 ? 'possible_typo' : 'unusually_high',
+          value: weightKg,
+          reason: verdict.reason ?? 'implausible',
+          severity: verdict.severity,
         });
       }
-      if (s.reps > SUSPECT_REPS) {
+      // Old blanket cap (kept as a final safety net — anything above
+      // ~750kg / 1650lb is essentially guaranteed to be a typo).
+      if (weightKg > absoluteCapKg) {
+        flags.push({
+          exercise: ex.name,
+          setIndex: idx,
+          field: 'weight',
+          value: weightKg,
+          reason: weightKg > absoluteCapKg * 1.5 ? 'possible_typo' : 'unusually_high',
+          severity: weightKg > absoluteCapKg * 1.5 ? 'block' : 'flag',
+        });
+      }
+      if (reps > SUSPECT_REPS) {
         flags.push({
           exercise: ex.name,
           setIndex: idx,
           field: 'reps',
-          value: s.reps,
+          value: reps,
           reason: 'possible_typo',
+          severity: 'block',
         });
       }
     });
@@ -173,7 +196,11 @@ export async function workoutRoutes(app: FastifyInstance) {
     // Check for suspect values BEFORE inserting. Stored as-is (the
     // user might be a powerlifter with a 350kg deadlift) but returned
     // in the response so the client can show a confirm / correction UI.
-    const validityFlags = flagSuspectSets(body.exercises, me.units);
+    // Pass the user's current weight through to per-exercise
+    // plausibility so bodyweight exercises (plank, nordic curl)
+    // get flagged against the user's actual mass, not a generic
+    // 80kg fallback.
+    const validityFlags = flagSuspectSets(body.exercises, me.units, me.weightKg ?? 0);
 
     // Bodyweight-aware volume: pushups at weight=0 count as
     // 0.64 × bodyweight × reps, not bodyweight × reps. Pulls the

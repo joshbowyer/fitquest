@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { classNames } from '@/lib/format';
-import type { MorningReport, Penalty } from '@/lib/types';
+import type { MorningReport, Penalty, Nudge, Plateau } from '@/lib/types';
 
 type Props = {
   /** When true, the per-metric insights are also rendered in their
@@ -56,10 +56,16 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
   if (!r) return null;
 
   // Hide the whole card if everything is empty (no data logged yet,
-  // or LLM not configured). Penalties count as content so the user
-  // always sees an active Hardcore-mode ledger.
-  const hasContent = r.general || r.sleep || r.training || r.recovery || r.nutrition || r.spiritual;
-  if (!hasContent && r.riskFlags.length === 0 && (r.penalties?.length ?? 0) === 0) {
+  // or LLM not configured). Penalties + plateaus + nudges count as
+  // content so the user always sees the deterministic engines'
+  // output even if the LLM prose is empty.
+  const hasContent =
+    r.general || r.sleep || r.training || r.recovery || r.nutrition || r.spiritual;
+  const hasDeterministic =
+    (r.penalties?.length ?? 0) > 0 ||
+    (r.plateaus?.length ?? 0) > 0 ||
+    (r.nudges?.length ?? 0) > 0;
+  if (!hasContent && r.riskFlags.length === 0 && !hasDeterministic) {
     return (
       <Panel title="Morning briefing" variant="cyan">
         <div className="text-sm text-slate-400 font-mono py-1">
@@ -126,6 +132,50 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
             <div key={i} className="text-xs text-amber-200 leading-snug">
               • {flag}
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Macro/timing nudges. Warnings first, positive observations
+          below in a separate sub-section so the user sees both
+          "watch this" and "good calls" at a glance. */}
+      {(r.nudges?.length ?? 0) > 0 && (
+        <div className="mt-3 border-t border-amber-500/20 pt-2 space-y-1.5">
+          <div className="text-[10px] font-display tracking-widest uppercase text-amber-300">
+            ⚠ Macro nudges
+          </div>
+          {r.nudges.map((n, i) => (
+            <NudgeRow key={`w${i}`} nudge={n} />
+          ))}
+        </div>
+      )}
+      {(r.positiveNudges?.length ?? 0) > 0 && (
+        <div className="mt-3 border-t border-lime-500/20 pt-2 space-y-1.5">
+          <div className="text-[10px] font-display tracking-widest uppercase text-lime-300">
+            ✓ Good calls
+          </div>
+          {r.positiveNudges.map((n, i) => (
+            <NudgeRow key={`p${i}`} nudge={n} />
+          ))}
+        </div>
+      )}
+
+      {/* Anti-staleness plateaus. Detected by the plateau engine
+          (NO_PR_RECENT, ONE_RM_REGRESSION, VOLUME_REGRESSION,
+          WEIGHT_FLATLINE, METRIC_FLATLINE). Surfaced only when the
+          user has a real signal — empty array renders nothing. */}
+      {(r.plateaus?.length ?? 0) > 0 && (
+        <div className="mt-3 border-t border-violet-500/20 pt-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-display tracking-widest uppercase text-violet-300">
+              ⚠ Stale
+            </div>
+            <span className="text-[10px] font-mono text-violet-400">
+              {r.plateaus.length} flag{r.plateaus.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          {r.plateaus.map((p, i) => (
+            <PlateauRow key={`p${i}`} plateau={p} />
           ))}
         </div>
       )}
@@ -212,6 +262,62 @@ function PenaltyRow({ penalty }: { penalty: Penalty }) {
         {isScold ? '⚡' : '⚠'} {penalty.label}
       </span>
       <span className="text-ink-200 flex-1">{penalty.note}</span>
+    </div>
+  );
+}
+
+/**
+ * One row in the Macro-nudges / Good-calls ledger. Same shape as
+ * PenaltyRow but tuned for macro/timing rules — cyan-tinted chip,
+ * positive observations use a lime ✦ prefix instead of ⚠.
+ */
+function NudgeRow({ nudge }: { nudge: Nudge }) {
+  const isPositive = nudge.severity === 'positive';
+  const tone = isPositive ? 'lime' : 'amber';
+  return (
+    <div
+      className={classNames(
+        'flex items-baseline gap-2 p-2 border text-xs leading-snug',
+        `border-neon-${tone}/30 bg-neon-${tone}/5`,
+      )}
+    >
+      <span
+        className={classNames(
+          'shrink-0 text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5',
+          `neon-text-${tone} border border-neon-${tone}/50 bg-bg-900/40`,
+        )}
+      >
+        {isPositive ? '✦' : '⚠'} {nudge.label}
+      </span>
+      <span className="text-ink-200 flex-1">{nudge.note}</span>
+    </div>
+  );
+}
+
+/**
+ * One row in the Stale (plateau) ledger. Scolds (magenta) take
+ * visual priority over warnings (amber). Tells the user what
+ * regressed and — implicitly via the note — what to do about it.
+ */
+function PlateauRow({ plateau }: { plateau: Plateau }) {
+  const isScold = plateau.severity === 'scold';
+  const tone = isScold ? 'magenta' : 'amber';
+  return (
+    <div
+      className={classNames(
+        'flex items-baseline gap-2 p-2 border text-xs leading-snug',
+        `border-neon-${tone}/30 bg-neon-${tone}/5`,
+      )}
+    >
+      <span
+        className={classNames(
+          'shrink-0 text-[10px] font-display tracking-widest uppercase px-1.5 py-0.5',
+          `neon-text-${tone} border border-neon-${tone}/50 bg-bg-900/40`,
+        )}
+      >
+        {isScold ? '⚡' : '⚠'} {plateau.label}
+      </span>
+      <span className="text-ink-200 flex-1">{plateau.note}</span>
     </div>
   );
 }

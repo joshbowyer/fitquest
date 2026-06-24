@@ -13,6 +13,7 @@ import { api, ApiError } from '@/lib/api';
 import { classNames, formatRelative, formatSeconds, formatMetricWithUnit, formatAbsolute } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { setVolumeKg } from '@/lib/exerciseVolume';
+import { checkSetPlausibility } from '@/lib/exerciseLimits';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
 type SetEntry = {
@@ -380,6 +381,16 @@ export function ActivityDetailPage() {
                           ? convertForDisplay(s.weight, 'kg', system)
                           : null;
                         const setVol = setVolumeKg(s, ex.name, userWeightKg);
+                        // Per-exercise plausibility verdict. Same
+                        // rules the server's flagSuspectSets uses
+                        // — if the chip lights up here, the row was
+                        // also flagged at commit time. For
+                        // historical workouts that pre-date the
+                        // server fix, this surfaces the issue
+                        // after the fact (no need to re-commit).
+                        const verdict = s.weight != null
+                          ? checkSetPlausibility(ex.name, s.weight, s.reps, userWeightKg)
+                          : { severity: null, reason: null, oneRmKg: null };
                         // Bar width as % of this exercise's heaviest set
                         const barPct = exMaxWeight > 0 && s.weight
                           ? Math.round((s.weight / exMaxWeight) * 100)
@@ -392,9 +403,11 @@ export function ActivityDetailPage() {
                               s.completed
                                 ? 'border-neon-lime/30 bg-neon-lime/5'
                                 : 'border-ink-700/40',
+                              verdict.severity === 'block' && 'border-neon-magenta/60',
+                              verdict.severity === 'flag' && 'border-neon-amber/60',
                             )}
                           >
-                            <div className="grid grid-cols-[24px_1fr_1fr_1fr_1fr] gap-2 items-center text-[11px] font-mono px-2 py-1">
+                            <div className="grid grid-cols-[24px_1fr_1fr_1fr_1fr_auto] gap-2 items-center text-[11px] font-mono px-2 py-1">
                               <span className="text-ink-400">{idx + 1}</span>
                               <span className={classNames('text-ink-100', !s.completed && 'text-ink-500 line-through')}>
                                 {s.reps} reps
@@ -411,6 +424,19 @@ export function ActivityDetailPage() {
                                 <span className="text-neon-amber">RPE {s.rpe}</span>
                               ) : (
                                 <span className="text-ink-600">—</span>
+                              )}
+                              {verdict.severity && (
+                                <span
+                                  title={verdict.reason ?? ''}
+                                  className={classNames(
+                                    'shrink-0 inline-flex items-center justify-center w-5 h-5 border text-[10px] font-bold leading-none rounded',
+                                    verdict.severity === 'block'
+                                      ? 'border-neon-magenta text-neon-magenta bg-neon-magenta/10'
+                                      : 'border-neon-amber text-neon-amber bg-neon-amber/10',
+                                  )}
+                                >
+                                  !
+                                </span>
                               )}
                             </div>
                             {/* Volume bar */}

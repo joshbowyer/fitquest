@@ -320,6 +320,23 @@ export type Penalty = {
   note: string;
 };
 
+export type Plateau = {
+  /** Stable identifier for grouping + analytics. */
+  kind: string;
+  label: string;
+  severity: 'warn' | 'scold';
+  note: string;
+  context?: Record<string, number | string>;
+};
+
+export type Nudge = {
+  kind: string;
+  label: string;
+  severity: 'positive' | 'warn';
+  note: string;
+  context?: Record<string, number | string>;
+};
+
 export type MorningReport = {
   id: string;
   userId: string;
@@ -335,6 +352,18 @@ export type MorningReport = {
   /// when no penalties are active. Surfaced as a dedicated
   /// "Penalties" section in MorningReportCard.
   penalties: Penalty[];
+  /// Anti-staleness warnings from the plateau detector
+  /// (NO_PR_RECENT, ONE_RM_REGRESSION, VOLUME_REGRESSION,
+  /// WEIGHT_FLATLINE, METRIC_FLATLINE). Surfaced as "Stale"
+  /// section in MorningReportCard.
+  plateaus: Plateau[];
+  /// Macro/timing warnings from buildMacroNudges (caffeine late,
+  /// cluster, pre-workout window, hydration, substance-sleep).
+  /// Surfaced as "Watch" section.
+  nudges: Nudge[];
+  /// Positive observations ("hit water 6/7 days", "creatine
+  /// streak 30d"). Surfaced as "Good calls" section.
+  positiveNudges: Nudge[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;
