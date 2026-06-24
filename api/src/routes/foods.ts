@@ -67,6 +67,56 @@ User description: a banana
 
 const FOOD_SEARCH_PROMPT = (description: string) => `User description: ${description}\n\nRespond with strict JSON only: {"query":"...","reason":"..."}.`;
 
+/**
+ * System prompt for the multi-item Ask AI flow. Takes a single
+ * comma-separated description ("1 cup milk, 1 cup kefir, 6
+ * strawberries, collagen peptides") and asks the LLM to split it
+ * into individual items, each with a short OFF/USDA-friendly
+ * search query. The server then runs each query through the
+ * standard search pipeline so the user gets back real match
+ * candidates with macros, not raw queries.
+ *
+ * Quantity/unit is best-effort: the LLM parses "1 cup" → {1, "cup"},
+ * "6 strawberries" → {6, null}, "a pinch of salt" → {1, "pinch"}.
+ * Per-100g macros are computed client-side from the per-serving
+ * values returned by OFF/USDA.
+ */
+const ASK_AI_MULTI_SYSTEM_PROMPT = `You are a food parser for a fitness tracking app. The user pastes a comma-separated description of one or more foods they ate, with quantities ("1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado").
+
+Your job: split the description into individual items and produce a SHORT search query for each (OpenFoodFacts + USDA-friendly).
+
+Rules:
+- Strip descriptors that don't change the food identity (cooking methods, qualifiers, sizing). Keep brand names if present.
+- Quantities are best-effort: "1 cup" → 1 + "cup", "6 strawberries" → 6 + null (count), "a pinch of salt" → 1 + "pinch", "some olive oil" → 1 + null.
+- If the description has no quantity, quantity=1, unit=null.
+- Output strict JSON only, no prose, no markdown fences.
+
+Schema:
+{
+  "items": [
+    {
+      "name": "short display name the user can recognise (e.g. 'whole milk', 'strawberries', 'collagen peptides')",
+      "searchQuery": "2-4 keyword search string for OFF/USDA (e.g. 'milk', 'strawberries', 'collagen peptides powder')",
+      "quantity": <number, default 1>,
+      "unit": <"cup" | "tbsp" | "tsp" | "oz" | "g" | "pinch" | null>,
+      "reason": "very short explanation (1 sentence)"
+    }
+  ],
+  "reason": "overall explanation (1 sentence)"
+}
+
+Example (expected output):
+User description: 1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado
+{
+  "items": [
+    {"name":"whole milk","searchQuery":"milk","quantity":1,"unit":"cup","reason":"generic dairy"},
+    {"name":"plain kefir","searchQuery":"kefir","quantity":1,"unit":"cup","reason":"fermented dairy"},
+    {"name":"strawberries","searchQuery":"strawberries","quantity":6,"unit":null,"reason":"whole berries, count"},
+    {"name":"collagen peptides powder","searchQuery":"collagen peptides","quantity":1,"unit":null,"reason":"supplement powder"},
+    {"name":"avocado","searchQuery":"avocado","quantity":1,"unit":null,"reason":"whole fruit"}
+  ],
+  "reason":"Parsed 5 items: 2 dairy + 1 fruit + 1 supplement + 1 fruit."`;
+
 export async function foodRoutes(app: FastifyInstance) {
   // GET /foods/search?q=...
   // Try OFF first. If OFF returns < 3 hits AND the user has a
@@ -298,6 +348,142 @@ export async function foodRoutes(app: FastifyInstance) {
       items: allHits,
     };
   });
+
+  // POST /foods/ask-ai-multi
+  // Multi-item Ask AI: user pastes "1 cup milk, 1 cup kefir, 6
+  // strawberries, collagen peptides, 1 avocado" and the server
+  // parses it into individual items, runs each through the OFF/USDA
+  // search pipeline, and returns per-item match candidates with
+  // macros. The UI then lets the user pick a match (or override),
+  // set servings, and POST each to /meals in one batch.
+  //
+  // Difference from /foods/ask-ai: ask-ai returns a single search
+  // query + hits for a single food. ask-ai-multi returns N parsed
+  // items + per-item match candidates for a meal description.
+  const AskAiMultiSchema = z.object({
+    description: z.string().min(3).max(2000),
+  });
+  app.post('/ask-ai-multi', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = AskAiMultiSchema.parse(req.body);
+    const config = await getActiveLlmConfig();
+    if (!config) {
+      return reply.code(422).send({
+        error: 'LLM not configured. Add an LLM provider in /admin to use Ask AI.',
+      });
+    }
+    const result = await callLlm(config, {
+      system: ASK_AI_MULTI_SYSTEM_PROMPT,
+      prompt: body.description,
+      maxTokens: 1500,
+      temperature: 0.2,
+      timeoutMs: 45_000,
+      jsonMode: true,
+    }, 'food');
+    if (!result.ok) {
+      return reply.code(502).send({ error: result.error ?? 'LLM failed' });
+    }
+    const parsed = extractAskAiMultiResult(result.text);
+    if (!parsed || parsed.items.length === 0) {
+      return reply.code(422).send({
+        error: "Couldn't parse any items from that description. Try a comma-separated list like '1 cup milk, 1 avocado, 6 strawberries'.",
+      });
+    }
+
+    // For each parsed item, run the same OFF → USDA fallback
+    // search pipeline. We deliberately fire these in parallel so
+    // a 5-item meal description doesn't take 5× the OFF round-trip
+    // latency. Cache every hit so subsequent logs reuse the row.
+    const itemsWithHits = await Promise.all(
+      parsed.items.map(async (it) => {
+        const offHits: OffMatch[] = [];
+        try {
+          const raw = await offSearch(it.searchQuery, 5);
+          for (const p of raw) {
+            const m = normalizeOffProduct(p);
+            if (m) offHits.push(m);
+          }
+        } catch {
+          // OFF down, continue
+        }
+        let usdaHits: UsdaMatch[] = [];
+        if (offHits.length < 3 && me.usdaApiKey) {
+          try {
+            const raw = await usdaSearch(it.searchQuery, me.usdaApiKey, 5);
+            for (const f of raw) {
+              const m = normalizeUsdaFood(f);
+              if (m) usdaHits.push(m);
+            }
+          } catch {
+            // USDA down, continue
+          }
+        }
+        const hits = [...offHits, ...usdaHits].slice(0, 5);
+        // Cache hits so the next /meals POST upsert is a no-op.
+        for (const h of hits) {
+          try {
+            await prisma.foodItem.upsert({
+              where: { source_sourceId: { source: h.source, sourceId: h.sourceId } },
+              create: {
+                source: h.source,
+                sourceId: h.sourceId,
+                name: h.name,
+                brand: h.brand,
+                imageUrl: h.imageUrl,
+                servingSizeG: h.servingSizeG,
+                calories: h.calories,
+                proteinG: h.proteinG,
+                carbG: h.carbG,
+                fatG: h.fatG,
+                fiberG: h.fiberG,
+                sugarG: h.sugarG,
+                sodiumMg: h.sodiumMg,
+                sourceUrl: h.sourceUrl,
+                fetchedAt: new Date(),
+              },
+              update: { name: h.name, fetchedAt: new Date() },
+            });
+          } catch { /* ignore dup-key races */ }
+        }
+        return {
+          parsed: it,
+          hits,
+        };
+      }),
+    );
+
+    return {
+      reason: parsed.reason,
+      items: itemsWithHits,
+    };
+  });
+}
+
+/**
+ * Parse the LLM's response from /foods/ask-ai-multi. Tolerates the
+ * usual JSON variations (fenced, trailing-comma, partial). Returns
+ * null when no items are recoverable.
+ */
+function extractAskAiMultiResult(text: string): { items: Array<{ name: string; searchQuery: string; quantity: number; unit: string | null; reason: string }>; reason: string } | null {
+  const parsed = extractJson(text);
+  if (parsed && Array.isArray(parsed.items)) {
+    const items = parsed.items
+      .filter((x: any) => x && typeof x.searchQuery === 'string' && x.searchQuery.length >= 2)
+      .map((x: any) => ({
+        name: typeof x.name === 'string' ? x.name : x.searchQuery,
+        searchQuery: x.searchQuery,
+        quantity: typeof x.quantity === 'number' && x.quantity > 0 ? x.quantity : 1,
+        unit: typeof x.unit === 'string' ? x.unit : null,
+        reason: typeof x.reason === 'string' ? x.reason : '',
+      }));
+    if (items.length > 0) {
+      return {
+        items,
+        reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+      };
+    }
+  }
+  return null;
 }
 
 function extractJson(text: string): any | null {

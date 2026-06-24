@@ -9,6 +9,7 @@ import { QuickLogModal as CheckInsQuickLogModal, type DueMetricDto } from './Che
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
+import { convertForDisplay, type UnitSystem } from '@/lib/units';
 
 /**
  * Window event the parent page dispatches when a non-tile UI
@@ -100,6 +101,39 @@ const MEAL_LABELS: Record<MealType, string> = {
   LUNCH: 'Lunch',
   DINNER: 'Dinner',
   SNACK: 'Snack',
+};
+
+/**
+ * Canonical forms per substance category. Shown alongside the
+ * user's recently-logged forms so the picker isn't empty on first
+ * use. User can still type a free-form value at the bottom for
+ * anything not listed.
+ *
+ * Keep these short — long lists overwhelm the modal. Add a form
+ * here when a category becomes commonly logged but the user has
+ * never tried it.
+ */
+const CANONICAL_FORMS: Record<string, string[]> = {
+  CAFFEINE: [
+    'espresso', 'coffee', 'cold brew', 'latte', 'cappuccino', 'americano',
+    'green tea', 'black tea', 'matcha', 'energy drink', 'pre-workout',
+    'yerba mate', 'guarana',
+  ],
+  ALCOHOL: [
+    'wine', 'red wine', 'white wine', 'beer', 'ipa', 'lager', 'stout',
+    'whiskey', 'bourbon', 'scotch', 'vodka', 'rum', 'gin', 'tequila',
+    'mezcal', 'cocktail', 'sake', 'cider', 'seltzer',
+  ],
+  NICOTINE: [
+    'cigarette', 'cigar', 'pipe', 'vape', 'e-cigarette', 'nicotine gum',
+    'nicotine pouch', 'pouch', 'zyn', 'on!', 'chew', 'dip', 'snus',
+    'hookah', 'snuff',
+  ],
+  ELECTROLYTE: [
+    'liquid iv', 'lmnt', 'nuun', 'pedialyte', 'salt tablet', 'potassium',
+    'magnesium', 'sodium bicarb', 'coconut water', 'pickle juice',
+    'sole water',
+  ],
 };
 
 function inferMealType(): MealType {
@@ -273,25 +307,79 @@ function WaterTile() {
     queryFn: () => api<MeasurementsResponse>('/measurements?metric=WATER_ML&limit=200'),
     refetchInterval: 60_000,
   });
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const system: UnitSystem = (user?.units ?? 'METRIC') as UnitSystem;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let total = 0;
+  let totalMl = 0;
   for (const m of q.data?.items ?? []) {
-    if (new Date(m.recordedAt) >= today) total += m.value;
+    if (new Date(m.recordedAt) >= today) totalMl += m.value;
   }
   const targetMl = user?.targets?.waterGoalMl ?? 2500;
-  const pct = Math.min(100, Math.round((total / targetMl) * 100));
+  const pct = Math.min(100, Math.round((totalMl / targetMl) * 100));
+  // Display in the user's preferred unit. Storage stays in ml.
+  const totalDisp = convertForDisplay(totalMl, 'ml', system);
+  const summaryStr = `${totalDisp.value.toFixed(1)} ${totalDisp.unit} · ${pct}%`;
+  const logM = useMutation({
+    mutationFn: (ml: number) =>
+      api<{ id: string }>('/measurements', {
+        method: 'POST',
+        body: { metric: 'WATER_ML', value: ml, unit: 'ml', source: 'MANUAL' },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['today', 'water'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      qc.invalidateQueries({ queryKey: ['nutrition', 'water', 'today'] });
+      setOpen(false);
+      setValue('');
+    },
+  });
   return (
-    <WaterLogModal
-      tile={
-        <ActionTile
-          glyph="💧"
-          label="Water"
-          accent="cyan"
-          summary={<span className="text-ink-100">{(total / 1000).toFixed(1)} L · {pct}%</span>}
-        />
-      }
-    />
+    <>
+      <ActionTile
+        glyph="💧"
+        label="Water"
+        accent="cyan"
+        onClick={() => setOpen(true)}
+        summary={<span className="text-ink-100">{summaryStr}</span>}
+      />
+      <Modal open={open} onClose={() => setOpen(false)} title="Log water" width="max-w-sm">
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {[250, 500, 750, 1000].map((ml) => (
+              <button
+                key={ml}
+                type="button"
+                disabled={logM.isPending}
+                onClick={() => logM.mutate(ml)}
+                className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
+              >
+                +{ml} ml
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="custom ml"
+              autoFocus
+              className="flex-1 bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-sm font-mono rounded"
+            />
+            <button
+              type="button"
+              disabled={logM.isPending || !value}
+              onClick={() => logM.mutate(Number(value))}
+              className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
+            >
+              Log
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -399,79 +487,71 @@ function CheckInsSummary({ onPick }: { onPick: (m: DueMetricDto) => void }) {
 }
 
 /* ============================================================
- * Water log modal — simplest: inline pills + free input
- * ============================================================ */
-
-function WaterLogModal({ tile }: { tile: React.ReactNode }) {
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [value, setValue] = useState('');
-  const logM = useMutation({
-    mutationFn: (ml: number) =>
-      api<{ id: string }>('/measurements', {
-        method: 'POST',
-        body: { metric: 'WATER_ML', value: ml, unit: 'ml', source: 'MANUAL' },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['today', 'water'] });
-      qc.invalidateQueries({ queryKey: ['measurements'] });
-      qc.invalidateQueries({ queryKey: ['nutrition', 'water', 'today'] });
-      setOpen(false);
-      setValue('');
-    },
-  });
-  return (
-    <>
-      <div onClick={() => setOpen(true)}>{tile}</div>
-      <Modal open={open} onClose={() => setOpen(false)} title="Log water" width="max-w-sm">
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {[250, 500, 750, 1000].map((ml) => (
-              <button
-                key={ml}
-                type="button"
-                disabled={logM.isPending}
-                onClick={() => logM.mutate(ml)}
-                className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-              >
-                +{ml} ml
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="custom ml"
-              autoFocus
-              className="flex-1 bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-sm font-mono rounded"
-            />
-            <button
-              type="button"
-              disabled={logM.isPending || !value}
-              onClick={() => logM.mutate(Number(value))}
-              className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-            >
-              Log
-            </button>
-          </div>
-        </div>
-      </Modal>
-    </>
-  );
-}
-
-/* ============================================================
- * Food log modal: search OFF/USDA + saved foods + manual entry
+ * Food log modal: search OFF/USDA + saved foods + Ask AI
+ * multi-item entry.
  * ============================================================ */
 
 function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const [q, setQ] = useState('');
+  const [mode, setMode] = useState<'search' | 'ask'>('search');
   const [meal, setMeal] = useState<MealType>(inferMealType());
+
+  return (
+    <Modal open={open} onClose={onClose} title="Log food" width="max-w-2xl">
+      <div className="space-y-4">
+        {/* Mode selector + meal picker */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            {(['search', 'ask'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={classNames(
+                  'px-3 py-1 text-[10px] font-display tracking-widest uppercase border rounded',
+                  mode === m
+                    ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
+                    : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
+                )}
+              >
+                {m === 'search' ? 'Search' : 'Ask AI'}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mr-1">Meal:</span>
+            {(Object.keys(MEAL_LABELS) as MealType[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMeal(m)}
+                className={classNames(
+                  'px-2 py-0.5 text-xs border rounded',
+                  meal === m
+                    ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
+                    : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
+                )}
+              >
+                {MEAL_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {mode === 'search' ? <FoodSearchMode meal={meal} onClose={onClose} /> : <FoodAskAiMode meal={meal} onClose={onClose} />}
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Search mode — debounced OFF/USDA query + saved foods for
+ * quick-log. Single food at a time.
+ */
+function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [q, setQ] = useState('');
   const [servings, setServings] = useState('1');
-  // Search results — debounced trigger
   const [searchTrigger, setSearchTrigger] = useState('');
   useEffect(() => {
     if (!q || q.length < 2) return;
@@ -499,133 +579,331 @@ function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void })
   }, 300);
 
   return (
-    <Modal open={open} onClose={onClose} title="Log food" width="max-w-2xl">
-      <div className="space-y-4">
-        {/* Meal + servings */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">Meal:</span>
-          {(Object.keys(MEAL_LABELS) as MealType[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMeal(m)}
-              className={classNames(
-                'px-2 py-0.5 text-xs border rounded',
-                meal === m
-                  ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
-                  : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
-              )}
-            >
-              {MEAL_LABELS[m]}
-            </button>
+    <div className="space-y-4">
+      <input
+        type="text"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search foods (OFF / USDA)…"
+        autoFocus
+        className="w-full bg-bg-900 border border-ink-700/40 px-3 py-2 text-sm font-mono rounded"
+      />
+
+      {q.length >= 2 && (
+        <div className="max-h-48 overflow-y-auto border border-ink-700/40 rounded divide-y divide-ink-700/30">
+          {(searchQ.data?.items ?? []).map((hit, i) => (
+            <SearchResultRow
+              key={`${hit.source}-${hit.sourceId}-${i}`}
+              hit={hit}
+              servings={servings}
+              onLog={() => {
+                api('/meals', {
+                  method: 'POST',
+                  body: {
+                    meal,
+                    servings: Number(servings) || 1,
+                    source: hit.source,
+                    sourceId: hit.sourceId,
+                    name: hit.name,
+                    brand: hit.brand ?? null,
+                    servingSizeG: hit.servingSizeG ?? null,
+                    calories: hit.calories,
+                    proteinG: hit.proteinG,
+                    carbG: hit.carbG,
+                    fatG: hit.fatG,
+                    fiberG: hit.fiberG ?? null,
+                    sugarG: hit.sugarG ?? null,
+                    sodiumMg: hit.sodiumMg ?? null,
+                  },
+                }).then(() => {
+                  qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+                  qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
+                  onClose();
+                });
+              }}
+            />
           ))}
-        </div>
-
-        {/* Search */}
-        <div>
-          <input
-            type="text"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search foods (OFF / USDA)…"
-            autoFocus
-            className="w-full bg-bg-900 border border-ink-700/40 px-3 py-2 text-sm font-mono rounded"
-          />
-        </div>
-
-        {/* Results */}
-        {q.length >= 2 && (
-          <div className="max-h-48 overflow-y-auto border border-ink-700/40 rounded divide-y divide-ink-700/30">
-            {(searchQ.data?.items ?? []).map((hit, i) => (
-              <SearchResultRow
-                key={`${hit.source}-${hit.sourceId}-${i}`}
-                hit={hit}
-                servings={servings}
-                onLog={() => {
-                  // /meals POST takes flat fields (not nested under
-                  // `food`). Server upserts the FoodItem by
-                  // (source, sourceId) so the next log of the same
-                  // search hit reuses the same row.
-                  api('/meals', {
-                    method: 'POST',
-                    body: {
-                      meal,
-                      servings: Number(servings) || 1,
-                      source: hit.source,
-                      sourceId: hit.sourceId,
-                      name: hit.name,
-                      brand: hit.brand ?? null,
-                      servingSizeG: hit.servingSizeG ?? null,
-                      calories: hit.calories,
-                      proteinG: hit.proteinG,
-                      carbG: hit.carbG,
-                      fatG: hit.fatG,
-                      fiberG: hit.fiberG ?? null,
-                      sugarG: hit.sugarG ?? null,
-                      sodiumMg: hit.sodiumMg ?? null,
-                    },
-                  }).then(() => {
-                    qc.invalidateQueries({ queryKey: ['meals', 'today'] });
-                    qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
-                    onClose();
-                  });
-                }}
-              />
-            ))}
-            {searchQ.isLoading && (
-              <div className="p-3 text-[10px] font-mono text-ink-400 text-center">searching…</div>
-            )}
-            {searchQ.data && searchQ.data.items.length === 0 && (
-              <div className="p-3 text-[10px] font-mono text-ink-400 text-center">no matches</div>
-            )}
-          </div>
-        )}
-
-        {/* Saved foods (quick-log, no meal change) */}
-        <div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-2">
-            Recently used
-          </div>
-          {(savedQ.data?.items ?? []).slice(0, 8).map((f) => (
-            <div
-              key={f.id}
-              className="flex items-center justify-between border-b border-ink-700/30 py-1.5"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs truncate">{f.name}</div>
-                <div className="text-[10px] font-mono text-ink-500">
-                  {Math.round(f.calories)} kcal · {Math.round(f.proteinG)}g P · {Math.round(f.carbG)}g C · {Math.round(f.fatG)}g F
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <input
-                  type="number"
-                  min="0.1"
-                  step="0.1"
-                  value={servings}
-                  onChange={(e) => setServings(e.target.value)}
-                  className="w-14 bg-bg-900 border border-ink-700/40 px-1.5 py-0.5 text-xs font-mono text-right rounded"
-                />
-                <span className="text-[10px] font-mono text-ink-400">×</span>
-                <button
-                  type="button"
-                  disabled={logSavedM.isPending}
-                  onClick={() => logSavedM.run({ id: f.id, meal, servings: Number(servings) || 1 })}
-                  className="px-2 py-0.5 text-[10px] font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-                >
-                  Log
-                </button>
-              </div>
-            </div>
-          ))}
-          {savedQ.data?.items.length === 0 && (
-            <div className="text-[10px] font-mono text-ink-500 italic">
-              No saved foods yet. Use search to log a new one.
-            </div>
+          {searchQ.isLoading && (
+            <div className="p-3 text-[10px] font-mono text-ink-400 text-center">searching…</div>
+          )}
+          {searchQ.data && searchQ.data.items.length === 0 && (
+            <div className="p-3 text-[10px] font-mono text-ink-400 text-center">no matches</div>
           )}
         </div>
+      )}
+
+      <div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-2">
+          Recently used
+        </div>
+        {(savedQ.data?.items ?? []).slice(0, 8).map((f) => (
+          <div key={f.id} className="flex items-center justify-between border-b border-ink-700/30 py-1.5">
+            <div className="min-w-0 flex-1">
+              <div className="text-xs truncate">{f.name}</div>
+              <div className="text-[10px] font-mono text-ink-500">
+                {Math.round(f.calories)} kcal · {Math.round(f.proteinG)}g P · {Math.round(f.carbG)}g C · {Math.round(f.fatG)}g F
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={servings}
+                onChange={(e) => setServings(e.target.value)}
+                className="w-14 bg-bg-900 border border-ink-700/40 px-1.5 py-0.5 text-xs font-mono text-right rounded"
+              />
+              <span className="text-[10px] font-mono text-ink-400">×</span>
+              <button
+                type="button"
+                disabled={logSavedM.isPending}
+                onClick={() => logSavedM.run({ id: f.id, meal, servings: Number(servings) || 1 })}
+                className="px-2 py-0.5 text-[10px] font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
+              >
+                Log
+              </button>
+            </div>
+          </div>
+        ))}
+        {savedQ.data?.items.length === 0 && (
+          <div className="text-[10px] font-mono text-ink-500 italic">
+            No saved foods yet. Use search to log a new one.
+          </div>
+        )}
       </div>
-    </Modal>
+    </div>
+  );
+}
+
+/**
+ * Ask AI mode — paste a comma-separated description and the LLM
+ * splits it into individual items, each with a search query that
+ * gets piped through OFF/USDA. The preview table lets the user
+ * pick the right match (or override) before logging all of them.
+ *
+ * Example input: "1 cup milk, 1 cup kefir, 6 strawberries,
+ * collagen peptides, 1 avocado"
+ */
+function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [description, setDescription] = useState('');
+  type ParsedItem = {
+    name: string;
+    searchQuery: string;
+    quantity: number;
+    unit: string | null;
+    reason: string;
+  };
+  type ItemWithHits = {
+    parsed: ParsedItem;
+    hits: FoodSearchHit[];
+    selectedHit: number; // index into hits
+    servings: string;
+  };
+  const [preview, setPreview] = useState<{ reason: string; items: ItemWithHits[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const askM = useMutation({
+    mutationFn: () =>
+      api<{ reason: string; items: Array<{ parsed: ParsedItem; hits: FoodSearchHit[] }> }>(
+        '/foods/ask-ai-multi',
+        { method: 'POST', body: { description } },
+      ),
+    onSuccess: (r) => {
+      setPreview({
+        reason: r.reason,
+        items: r.items.map((it) => ({
+          parsed: it.parsed,
+          hits: it.hits,
+          selectedHit: 0, // default to first match
+          servings: String(it.parsed.quantity ?? 1),
+        })),
+      });
+      setError(null);
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : 'Ask AI failed'),
+  });
+
+  const batchLogM = useMutation({
+    mutationFn: async (items: ItemWithHits[]) => {
+      // Fire one POST /meals per confirmed item in parallel. Each
+      // upserts the FoodItem by (source, sourceId) on the server
+      // so the next log of the same search hit is faster.
+      const promises = items.map((it) => {
+        const hit = it.hits[it.selectedHit];
+        if (!hit) return Promise.resolve(null);
+        return api('/meals', {
+          method: 'POST',
+          body: {
+            meal,
+            servings: Number(it.servings) || 1,
+            source: hit.source,
+            sourceId: hit.sourceId,
+            name: hit.name,
+            brand: hit.brand ?? null,
+            servingSizeG: hit.servingSizeG ?? null,
+            calories: hit.calories,
+            proteinG: hit.proteinG,
+            carbG: hit.carbG,
+            fatG: hit.fatG,
+            fiberG: hit.fiberG ?? null,
+            sugarG: hit.sugarG ?? null,
+            sodiumMg: hit.sodiumMg ?? null,
+          },
+        });
+      });
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+      qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
+      onClose();
+    },
+  });
+
+  function reset() {
+    setPreview(null);
+    setError(null);
+    setDescription('');
+  }
+
+  return (
+    <div className="space-y-3">
+      {!preview ? (
+        <>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Comma-separated list with quantities:&#10;1 cup milk, 1 cup kefir, 6 strawberries, collagen peptides, 1 avocado"
+            rows={4}
+            autoFocus
+            className="w-full bg-bg-900 border border-ink-700/40 px-3 py-2 text-sm font-mono rounded resize-y"
+          />
+          {error && (
+            <div className="text-[11px] font-mono text-rose-300">{error}</div>
+          )}
+          <div className="flex justify-end">
+            <NeonButton
+              onClick={() => askM.mutate()}
+              loading={askM.isPending}
+              disabled={description.length < 3}
+              variant="cyan"
+            >
+              ✦ Parse items
+            </NeonButton>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono text-ink-300">
+              {preview.items.length} item{preview.items.length === 1 ? '' : 's'} parsed · {preview.reason}
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              className="text-[10px] font-mono text-neon-cyan hover:underline"
+            >
+              ← edit description
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {preview.items.map((it, idx) => (
+              <div key={idx} className="border border-ink-700/40 rounded p-2">
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs truncate">
+                      <span className="text-ink-400">
+                        {it.parsed.quantity}{it.parsed.unit ? ` ${it.parsed.unit}` : ''}
+                      </span>{' '}
+                      <span className="text-slate-200">{it.parsed.name}</span>
+                    </div>
+                    <div className="text-[10px] font-mono text-ink-500 truncate">
+                      search: {it.parsed.searchQuery}
+                      {it.parsed.reason && ` · ${it.parsed.reason}`}
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={it.servings}
+                    onChange={(e) =>
+                      setPreview((p) =>
+                        p ? {
+                          ...p,
+                          items: p.items.map((x, i) => i === idx ? { ...x, servings: e.target.value } : x),
+                        } : p,
+                      )
+                    }
+                    className="w-14 bg-bg-900 border border-ink-700/40 px-1.5 py-0.5 text-xs font-mono text-right rounded shrink-0"
+                    title="servings"
+                  />
+                </div>
+                {it.hits.length === 0 ? (
+                  <div className="text-[10px] font-mono text-ink-500 italic">
+                    No OFF/USDA matches — this item will be skipped.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {it.hits.map((hit, hitIdx) => (
+                      <button
+                        key={`${hit.source}-${hit.sourceId}-${hitIdx}`}
+                        type="button"
+                        onClick={() =>
+                          setPreview((p) =>
+                            p ? {
+                              ...p,
+                              items: p.items.map((x, i) => i === idx ? { ...x, selectedHit: hitIdx } : x),
+                            } : p,
+                          )
+                        }
+                        className={classNames(
+                          'w-full text-left px-2 py-1 rounded text-[10px] font-mono flex items-center justify-between gap-2',
+                          it.selectedHit === hitIdx
+                            ? 'bg-neon-cyan/15 border border-neon-cyan/60 text-neon-cyan'
+                            : 'border border-ink-700/30 text-ink-200 hover:border-neon-cyan/30 hover:bg-neon-cyan/5',
+                        )}
+                      >
+                        <span className="truncate">{hit.name} <span className="text-ink-500">· {hit.source}</span></span>
+                        <span className="text-ink-400 shrink-0">
+                          {Math.round(hit.calories)} kcal · {Math.round(hit.proteinG)}g P
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {batchLogM.isError && (
+            <div className="text-[11px] font-mono text-rose-300">
+              Log failed: {batchLogM.error instanceof Error ? batchLogM.error.message : 'unknown'}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={reset}
+              className="px-3 py-1.5 text-[10px] font-display tracking-widest uppercase border border-ink-700/40 text-ink-300 hover:border-neon-cyan/40 rounded"
+            >
+              Cancel
+            </button>
+            <NeonButton
+              onClick={() => batchLogM.mutate(preview.items.filter((it) => it.hits.length > 0))}
+              loading={batchLogM.isPending}
+              disabled={preview.items.filter((it) => it.hits.length > 0).length === 0}
+              variant="cyan"
+            >
+              Log {preview.items.filter((it) => it.hits.length > 0).length} item{preview.items.filter((it) => it.hits.length > 0).length === 1 ? '' : 's'}
+            </NeonButton>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -740,6 +1018,21 @@ function SubstanceLogModal({
   const recentForms = Array.from(
     new Set((recentQ.data?.items ?? []).filter((s) => s.category === category).map((s) => s.form)),
   );
+  // Canonical forms per category — shown alongside the user's
+  // recently-logged forms so a first-time entry isn't an empty
+  // picker. The user can also type a free-form value at the
+  // bottom for anything not listed.
+  const canonical = CANONICAL_FORMS[category] ?? [];
+  // Merge: recent first (in their original order), then canonical
+  // forms not already present. Dedup case-insensitively.
+  const seen = new Set<string>();
+  const orderedForms: string[] = [];
+  for (const f of [...recentForms, ...canonical]) {
+    const key = f.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    orderedForms.push(f);
+  }
   const logM = useMutation({
     mutationFn: (b: { form: string; amount?: number; context?: string }) =>
       api<{ id: string }>('/substances', { method: 'POST', body: { category, ...b } }),
@@ -760,19 +1053,28 @@ function SubstanceLogModal({
             </>
           )}
         </div>
-        {recentForms.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {recentForms.slice(0, 6).map((f) => (
-              <button
-                key={f}
-                type="button"
-                disabled={logM.isPending}
-                onClick={() => logM.mutate({ form: f })}
-                className="px-2.5 py-1 text-xs font-mono border border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5 rounded disabled:opacity-50"
-              >
-                {f}
-              </button>
-            ))}
+        {orderedForms.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+            {orderedForms.map((f) => {
+              const isRecent = recentForms.some((r) => r.toLowerCase() === f.toLowerCase());
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  disabled={logM.isPending}
+                  onClick={() => logM.mutate({ form: f })}
+                  className={classNames(
+                    'px-2.5 py-1 text-xs font-mono border rounded disabled:opacity-50',
+                    isRecent
+                      ? 'border-neon-cyan/50 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10'
+                      : 'border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5',
+                  )}
+                  title={isRecent ? 'recently logged' : 'common form'}
+                >
+                  {f}
+                </button>
+              );
+            })}
           </div>
         )}
         <div className="flex items-center gap-2">

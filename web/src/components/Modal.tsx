@@ -37,7 +37,6 @@ export function Modal({
           width,
         )}
         onClick={(e) => e.stopPropagation()}
-        style={{ borderColor: 'rgba(245,92,196,0.4)' }}
       >
         <h2 className="font-display tracking-widest text-sm uppercase neon-text-magenta mb-3">
           {title}
