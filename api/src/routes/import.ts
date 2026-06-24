@@ -6,6 +6,7 @@ import { parseFit, isFitBuffer, type FitImportResult, type FitKind } from '../li
 import { checkAchievements } from '../lib/achievements.js';
 import { checkRoutineProgress } from './routine.js';
 import { activityTitle } from '../lib/geo.js';
+import { importExport, ImportError, validatePayload } from '../lib/import.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
@@ -282,6 +283,40 @@ export async function importRoutes(app: FastifyInstance) {
       }),
     ]);
     return { recentWorkouts, recentSleep, recentHrv };
+  });
+
+  // ============================================================
+  // POST /import/data — accept a user-export JSON payload and
+  // re-create rows under the current user. Distinct from the
+  // FIT-import endpoints above: those ingest wearable data,
+  // this ingests our own user-data export.
+  //
+  // Body: { payload: ExportPayload, dryRun?: boolean, wipeFirst?: boolean }
+  //
+  // Body limit: 64 MB. A real user export with years of workouts
+  // + measurements can run 15-30 MB; we leave headroom for big
+  // imports. Caps at 64 MB to prevent runaway uploads.
+  // ============================================================
+  app.post('/data', { bodyLimit: 64 * 1024 * 1024 }, async (req, reply) => {
+    const me = await requireUser(req);
+    const body = z.object({
+      payload: z.unknown(),
+      dryRun: z.boolean().optional(),
+      wipeFirst: z.boolean().optional(),
+    }).parse(req.body);
+    try {
+      validatePayload(body.payload);
+    } catch (e) {
+      if (e instanceof ImportError) {
+        return reply.code(400).send({ error: e.message });
+      }
+      throw e;
+    }
+    const result = await importExport(me.id, body.payload as any, {
+      dryRun: body.dryRun,
+      wipeFirst: body.wipeFirst,
+    });
+    return reply.send(result);
   });
 }
 /**

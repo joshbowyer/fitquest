@@ -33,8 +33,237 @@ type Change = { metric: string; from: number | null; to: number };
  *    "substance over-use" flag in the morning report
  *
  * Casual leaves all of this off — same behaviour as before this
- * feature shipped.
- */
+  * feature shipped.
+  */
+
+// ============================================================
+// Data export + import panel. Lets the user back up everything
+// (workouts, measurements, food, daily logs, achievements,
+// breach progress, etc.) to a JSON file or a ZIP of CSVs, and
+// re-import from a previously-exported JSON. Round-trip safe.
+// ============================================================
+function DataPanel() {
+  const qc = useQueryClient();
+  const [importOpen, setImportOpen] = useState(false);
+
+  const { data: info, isLoading: infoLoading } = useQuery({
+    queryKey: ['export-info'],
+    queryFn: () => api<{
+      workouts: number; measurements: number; savedFoods: number;
+      dailies: number; dailyLogs: number; substanceLogs: number;
+      morningReports: number; inventoryItems: number; achievements: number;
+      breachKills: number; painLogs: number; prayers: number; meals: number;
+    }>('/export/info'),
+    staleTime: 60_000,
+  });
+
+  function handleDownload(path: string, filename: string) {
+    // Open in a new tab so the browser's download manager picks
+    // it up with the right Content-Disposition filename. The
+    // cookie is sent automatically (same origin).
+    const url = path.startsWith('http') ? path : `${window.location.origin}${path}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  return (
+    <Panel title="Data" variant="magenta">
+      <div className="text-[11px] text-ink-300 font-mono mb-3 leading-relaxed">
+        Back up everything — workouts, measurements, food, dailies,
+        morning reports, achievements, breach progress, and more.
+        JSON is round-trip safe (re-imports into the same or a
+        fresh FitQuest install). CSV is one file per table for
+        spreadsheets.
+      </div>
+
+      {/* Counts preview */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono mb-4">
+        {infoLoading ? (
+          <div className="col-span-full text-ink-500">loading…</div>
+        ) : info ? (
+          <>
+            <CountCell label="workouts" v={info.workouts} />
+            <CountCell label="measurements" v={info.measurements} />
+            <CountCell label="dailies" v={info.dailies + info.dailyLogs} />
+            <CountCell label="food" v={info.savedFoods + info.meals} />
+            <CountCell label="achievements" v={info.achievements} />
+            <CountCell label="substances" v={info.substanceLogs} />
+            <CountCell label="prayers" v={info.prayers} />
+            <CountCell label="pain logs" v={info.painLogs} />
+          </>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <NeonButton
+          icon="⬇"
+          onClick={() => handleDownload('/api/export/json', `fitquest-export-${new Date().toISOString().slice(0, 10)}.json`)}
+        >
+          Export JSON
+        </NeonButton>
+        <NeonButton
+          icon="📊"
+          onClick={() => handleDownload('/api/export/csv', `fitquest-export-${new Date().toISOString().slice(0, 10)}.zip`)}
+        >
+          Export CSV (.zip)
+        </NeonButton>
+        <NeonButton
+          icon="⬆"
+          onClick={() => setImportOpen(true)}
+        >
+          Import JSON
+        </NeonButton>
+      </div>
+
+      {importOpen && (
+        <ImportDialog
+          onClose={() => {
+            setImportOpen(false);
+            qc.invalidateQueries();
+          }}
+        />
+      )}
+    </Panel>
+  );
+}
+
+function CountCell({ label, v }: { label: string; v: number }) {
+  return (
+    <div className="border border-ink-700/50 px-2 py-1 rounded bg-bg-700/40">
+      <div className="text-ink-500 uppercase tracking-widest">{label}</div>
+      <div className="text-ink-100 text-sm">{v.toLocaleString()}</div>
+    </div>
+  );
+}
+
+function ImportDialog({ onClose }: { onClose: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [dryRun, setDryRun] = useState(true);
+  const [wipeFirst, setWipeFirst] = useState(false);
+  const [result, setResult] = useState<null | {
+    ok: boolean; schema: string; version: number;
+    imported: Record<string, number>;
+    skipped: Record<string, number>;
+    errors: { table: string; reason: string }[];
+    wiped: number;
+  }>(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleRun() {
+    if (!file) return;
+    setRunning(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const body = { payload, dryRun, wipeFirst };
+      const data = await api<typeof result>('/import/data', {
+        method: 'POST',
+        body,
+      });
+      setResult(data);
+    } catch (e: any) {
+      setErr(e?.message ?? 'Import failed');
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Import JSON">
+      <div className="space-y-3 text-sm">
+        <p className="text-[11px] text-ink-300 font-mono">
+          Select a previously-exported FitQuest JSON file. Dry-run
+          reports what would be imported without writing.
+        </p>
+        <input
+          type="file"
+          accept="application/json,.json"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          className="block w-full text-xs file:mr-2 file:px-3 file:py-1 file:rounded file:border file:border-neon-cyan/40 file:bg-bg-700 file:text-neon-cyan"
+        />
+        <label className="flex items-center gap-2 text-xs font-mono">
+          <input
+            type="checkbox"
+            checked={dryRun}
+            onChange={(e) => setDryRun(e.target.checked)}
+            className="accent-neon-cyan"
+          />
+          Dry run (no writes)
+        </label>
+        <label className="flex items-center gap-2 text-xs font-mono opacity-70">
+          <input
+            type="checkbox"
+            checked={wipeFirst}
+            onChange={(e) => setWipeFirst(e.target.checked)}
+            disabled
+            className="accent-neon-amber"
+          />
+          Wipe existing data first <span className="text-ink-500">(disabled — known bug, use /admin)</span>
+        </label>
+        {err && <div className="text-rose-400 text-xs font-mono">{err}</div>}
+        {result && (
+          <div className="border border-neon-cyan/30 bg-bg-700/50 p-3 rounded text-xs font-mono space-y-2">
+            <div className="text-ink-100">
+              {result.ok ? '✓ Import succeeded' : '⚠ Import completed with errors'}
+            </div>
+            <div className="text-ink-400">
+              schema: {result.schema} · version: {result.version}
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="text-emerald-300">
+                imported: {Object.values(result.imported).reduce((s, n) => s + n, 0)}
+              </div>
+              <div className="text-amber-300">
+                skipped: {Object.values(result.skipped).reduce((s, n) => s + n, 0)}
+              </div>
+              {result.wiped > 0 && (
+                <div className="text-rose-300">wiped: {result.wiped}</div>
+              )}
+              <div className="text-rose-300">
+                errors: {result.errors.length}
+              </div>
+            </div>
+            {result.errors.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-rose-300">error details</summary>
+                <div className="mt-1 max-h-32 overflow-y-auto text-[10px] text-ink-400">
+                  {result.errors.slice(0, 20).map((e, i) => (
+                    <div key={i} className="border-b border-ink-700/50 py-0.5">
+                      <span className="text-ink-100">{e.table}:</span> {e.reason.slice(0, 100)}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+        <div className="flex gap-2 pt-2">
+          <NeonButton
+            icon={running ? '⏳' : '▶'}
+            onClick={handleRun}
+            disabled={!file || running}
+          >
+            {running ? 'Running…' : dryRun ? 'Preview import' : 'Run import'}
+          </NeonButton>
+          <button
+            onClick={onClose}
+            className="px-3 py-1 text-xs font-mono text-ink-400 hover:text-ink-100"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ModeSection() {
   const { user, refresh } = useAuth();
   const [err, setErr] = useState<string | null>(null);
@@ -799,22 +1028,8 @@ export function SettingsPage() {
           </div>
         </Panel>
 
-        {/* DATA (placeholder) */}
-        <Panel title="Data" variant="magenta">
-          <div className="text-[10px] text-ink-300 font-mono mb-2">
-            Export and import coming in v0.5. For now, back up with
-            <code className="mx-1 px-1 bg-bg-700 border border-ink-500/30">pg_dump</code>
-            on the server side.
-          </div>
-          <div className="flex gap-2">
-            <button disabled className="btn-ghost opacity-40 cursor-not-allowed">
-              ⬇ Export JSON (soon)
-            </button>
-            <button disabled className="btn-ghost opacity-40 cursor-not-allowed">
-              ⬆ Import JSON (soon)
-            </button>
-          </div>
-        </Panel>
+        {/* DATA export + import */}
+        <DataPanel />
 
         {/* ACCOUNT */}
         <TwoFactorSetup />
