@@ -139,3 +139,25 @@ export function displayValue(value: number, unit: string, system: UnitSystem): s
   if (u === 'ml' || u === 'fl oz') return `${v.toFixed(1)} ${u}`;
   return `${Math.round(v)} ${u}`;
 }
+
+/**
+ * Format a sleep-onset fractional hour as a 12h clock label.
+ * Input is the value stored on a Measurement row: 22.5 = 10:30 PM,
+ * 0.5 = 12:30 AM, 7.0 = 7:00 AM. Used by the SleepOverviewChart
+ * to label the onset line in the tooltip. Independent of the
+ * user's imperial/metric preference — it's always a clock time.
+ */
+export function formatSleepOnset(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  // Wrap negatives and >24 (some sensors wrap around).
+  let v = ((value % 24) + 24) % 24;
+  const hour24 = Math.floor(v);
+  const mins = Math.round((v - hour24) * 60);
+  // Roll minutes >=60 to the next hour
+  const carry = mins >= 60 ? 1 : 0;
+  const h = (hour24 + carry) % 24;
+  const m = mins % 60;
+  const isPm = h >= 12;
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, '0')} ${isPm ? 'PM' : 'AM'}`;
+}
