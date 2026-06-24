@@ -178,11 +178,13 @@ export function DashboardPage() {
         }
       />
 
-      {/* Top hero: character + raid + hearts. All same row, same
-          height. HeartsCard returns null in Casual mode so the
-          right-hand slot just collapses to whatever's there. */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4 md:mb-6">
-        <Panel variant="cyan" className="lg:col-span-2">
+      {/* Top hero: character + raid + hearts + home-base. All same
+          row, same height, at lg breakpoint. On smaller screens
+          they stack. HeartsCard returns null in Casual mode so the
+          home-base card visually fills that slot when there's no
+          hearts indicator to render. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 md:mb-6">
+        <Panel variant="cyan" className="lg:col-span-1">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/70">Character</div>
@@ -217,8 +219,8 @@ export function DashboardPage() {
             </div>
             <div className="text-right shrink-0">
               <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Level</div>
-              <div className="font-display text-4xl md:text-5xl neon-text-cyan leading-none">{user.level}</div>
-              <div className="text-xs font-mono text-ink-300 mt-2">{user.xp} XP</div>
+              <div className="font-display text-3xl md:text-4xl neon-text-cyan leading-none">{user.level}</div>
+              <div className="text-[10px] font-mono text-ink-300 mt-1">{user.xp.toLocaleString()} XP</div>
             </div>
           </div>
           <div className="mt-3">
