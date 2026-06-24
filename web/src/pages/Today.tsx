@@ -10,6 +10,8 @@ import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
+import { TodayBlocks } from '@/components/TodayBlocks';
+import { type UnitSystem } from '@/lib/units';
 
 // /today — Dailies view (Habitica-style):
 // - Built-in WORKOUT (auto-completes when a workout is logged today; flips on schedule)
@@ -133,6 +135,12 @@ export function TodayPage() {
           </div>
         </div>
       )}
+
+      {/* One-stop-shop quick-log blocks. Each collapsed by default,
+          inline log form on click. See TodayBlocks for the block list. */}
+      <div className="mb-6">
+        <TodayBlocks system={(user?.units ?? 'METRIC') as UnitSystem} />
+      </div>
 
       {isLoading ? (
         <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
@@ -269,6 +277,14 @@ export function TodayPage() {
                 {counts.completed}/{counts.total}
               </span>
             </div>
+            <button
+              type="button"
+              onClick={() => setSearchParams({ wall: '1' })}
+              title="Full-screen checklist mode"
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-display tracking-widest uppercase border border-neon-magenta/50 text-neon-magenta hover:bg-neon-magenta/10 rounded"
+            >
+              ▢ Wall mode
+            </button>
             <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
               New Daily
             </NeonButton>
@@ -306,6 +322,16 @@ function WallModeShell({
         className="fixed top-3 right-3 z-50 inline-flex items-center justify-center w-9 h-9 border border-ink-700/60 text-ink-300 hover:border-neon-magenta hover:text-neon-magenta hover:bg-neon-magenta/10 rounded text-base leading-none"
       >
         ✕
+      </button>
+      {/* Exit pill — left side, visible from start so the user
+          always knows how to get back. */}
+      <button
+        type="button"
+        onClick={onExit}
+        title="Exit wall mode (Esc)"
+        className="fixed top-3 left-3 z-50 inline-flex items-center gap-1 px-2 py-1.5 text-[10px] font-display tracking-widest uppercase border border-ink-700/60 text-ink-300 hover:border-neon-magenta hover:text-neon-magenta hover:bg-neon-magenta/10 rounded"
+      >
+        ← Exit
       </button>
       {/* Completion banner */}
       <div
