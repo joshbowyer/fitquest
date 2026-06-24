@@ -358,10 +358,11 @@ function WallModeShell({
   // which also restarts the interval when the tab returns to
   // foreground so a backgrounded phone picks up the correct time
   // the moment it wakes.
-  const now = useLiveClock(60_000);
+  const now = useLiveClock(1_000);
   const time = now.toLocaleTimeString(undefined, {
     hour: 'numeric',
     minute: '2-digit',
+    second: '2-digit',
   });
   const date = now.toLocaleDateString(undefined, {
     weekday: 'long',
