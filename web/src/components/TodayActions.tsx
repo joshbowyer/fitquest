@@ -693,6 +693,11 @@ function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void
 function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void }) {
   const qc = useQueryClient();
   const [description, setDescription] = useState('');
+  // Search-source override. 'off' (default) = OpenFoodFacts +
+  // USDA fallback. 'usda' = USDA only. Useful when OFF returns
+  // generic/noisy matches for branded items (protein powders,
+  // supplements) and the user wants USDA's US-product coverage.
+  const [source, setSource] = useState<'off' | 'usda'>('off');
   type ParsedItem = {
     name: string;
     searchQuery: string;
@@ -713,7 +718,7 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
     mutationFn: () =>
       api<{ reason: string; items: Array<{ parsed: ParsedItem; hits: FoodSearchHit[] }> }>(
         '/foods/ask-ai-multi',
-        { method: 'POST', body: { description } },
+        { method: 'POST', body: { description, source } },
       ),
     onSuccess: (r) => {
       setPreview({
@@ -788,7 +793,30 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
           {error && (
             <div className="text-[11px] font-mono text-rose-300">{error}</div>
           )}
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            {/* Source override — OFF (default) tries OpenFoodFacts +
+                USDA fallback; USDA skips OFF entirely. The
+                user's USDA key (if configured) is used in both
+                modes. */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mr-1">Source:</span>
+              {(['off', 'usda'] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSource(s)}
+                  className={classNames(
+                    'px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest border rounded',
+                    source === s
+                      ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
+                      : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
+                  )}
+                  title={s === 'off' ? 'OpenFoodFacts + USDA fallback' : 'USDA only (skips OFF entirely)'}
+                >
+                  {s === 'off' ? 'OFF' : 'USDA'}
+                </button>
+              ))}
+            </div>
             <NeonButton
               onClick={() => askM.mutate()}
               loading={askM.isPending}

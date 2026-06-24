@@ -423,10 +423,21 @@ export async function foodRoutes(app: FastifyInstance) {
   // items + per-item match candidates for a meal description.
   const AskAiMultiSchema = z.object({
     description: z.string().min(3).max(2000),
+    // Search-source override. 'off' (default) uses OpenFoodFacts +
+    // USDA fallback; 'usda' skips OFF entirely and only uses
+    // USDA. Useful for testing — USDA has better US-product
+    // coverage (branded protein powders, supplements) while OFF
+    // has better international / generic coverage.
+    source: z.enum(['off', 'usda']).optional(),
   });
   app.post('/ask-ai-multi', async (req, reply) => {
     const me = await requireUser(req);
     const body = AskAiMultiSchema.parse(req.body);
+    if (body.source === 'usda' && !me.usdaApiKey) {
+      return reply.code(422).send({
+        error: 'USDA source selected but no USDA API key configured. Add one in /settings.',
+      });
+    }
     const config = await getActiveLlmConfig();
     if (!config) {
       return reply.code(422).send({
@@ -479,21 +490,31 @@ export async function foodRoutes(app: FastifyInstance) {
         if (lastWord && lastWord.length >= 4 && !queriesToTry.includes(lastWord)) {
           queriesToTry.push(lastWord);
         }
-        for (const q of queriesToTry) {
-          if (offHits.length >= 3) break;
-          try {
-            const raw = await offSearch(q, 5);
-            for (const p of raw) {
-              const m = normalizeOffProduct(p);
-              if (m) offHits.push(m);
+        // 'off' (default): try OFF first, then USDA fallback.
+        // 'usda' (override): skip OFF entirely, USDA-only. The user
+        // already had to opt in by passing the source flag, so we
+        // trust them when they say "use USDA". Useful when OFF's
+        // generic-product coverage is too noisy for branded items.
+        const skipOff = body.source === 'usda';
+        if (!skipOff) {
+          for (const q of queriesToTry) {
+            if (offHits.length >= 3) break;
+            try {
+              const raw = await offSearch(q, 5);
+              for (const p of raw) {
+                const m = normalizeOffProduct(p);
+                if (m) offHits.push(m);
+              }
+            } catch {
+              // OFF down, continue
             }
-          } catch {
-            // OFF down, continue
           }
         }
-        // USDA fallback only if OFF came up short AND the user has
-        // a key configured.
-        if (offHits.length < 3 && me.usdaApiKey) {
+        // USDA: either as fallback (default mode) or as primary
+        // (usda mode). Skip in default mode if OFF came up empty
+        // but the user has no key.
+        const wantUsda = skipOff || offHits.length < 3;
+        if (wantUsda && me.usdaApiKey) {
           for (const q of queriesToTry) {
             if (usdaHits.length >= 3) break;
             try {

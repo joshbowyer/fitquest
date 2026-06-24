@@ -8,7 +8,7 @@
  * Rate limit: 1000 req/hour per key. Plenty for a single user.
  */
 
-const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1';
+const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1/';
 
 export type UsdaFoodNutrient = {
   nutrientId: number;
@@ -90,7 +90,7 @@ export async function usdaSearch(
   pageSize = 10,
 ): Promise<UsdaSearchHit[]> {
   if (!apiKey) return [];
-  const url = new URL('/v1/foods/search', USDA_BASE);
+  const url = new URL('foods/search', USDA_BASE);
   url.searchParams.set('api_key', apiKey);
   url.searchParams.set('query', query);
   url.searchParams.set('pageSize', String(pageSize));
