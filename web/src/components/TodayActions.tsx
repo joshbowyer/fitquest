@@ -690,6 +690,27 @@ function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void
  * Example input: "1 cup milk, 1 cup kefir, 6 strawberries,
  * collagen peptides, 1 avocado"
  */
+// crypto.randomUUID() is gated to secure contexts (HTTPS +
+// localhost). LAN access via http://10.0.0.59:5173 is NOT
+// considered secure, so the API is missing there. Fall back to
+// crypto.getRandomValues which works everywhere crypto exists.
+function randomUuid(): string {
+  const c = typeof crypto !== 'undefined' ? crypto : undefined;
+  if (c?.randomUUID) return c.randomUUID();
+  if (c?.getRandomValues) {
+    const b = c.getRandomValues(new Uint8Array(16));
+    // RFC 4122 v4 layout
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+  }
+  // Last-resort: timestamp + random. Collision-prone but
+  // /meals is user-scoped so worst case is a stale row, not a
+  // global conflict.
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void }) {
   const qc = useQueryClient();
   const [description, setDescription] = useState('');
@@ -739,7 +760,7 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
           meal,
           servings: 1,
           source: 'MANUAL',
-          sourceId: `askai-${crypto.randomUUID()}`,
+          sourceId: `askai-${randomUuid()}`,
           name: p.name,
           brand: null,
           servingSizeG: null,
