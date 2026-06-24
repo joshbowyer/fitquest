@@ -109,7 +109,7 @@ const METRIC_HELP: Record<string, { about: string; tips: string[] }> = {
   },
   BICEP: { about: 'Genetic ceiling based on Casey Butt wrist-derived formulas.', tips: [] },
   CHEST: { about: 'Genetic ceiling based on wrist + height.', tips: [] },
-  SHOULDER: { about: 'Shoulder width (biacromial breadth) — bone structure + muscle.', tips: [] },
+  SHOULDER: { about: 'Shoulder width (biacromial breadth, distance between the two shoulders) — bone structure + muscle.', tips: [] },
   QUAD: { about: 'Genetic ceiling ~2.85× ankle (Casey Butt).', tips: [] },
   CALF: { about: 'Genetic ceiling ~1.9× ankle.', tips: [] },
   FOREARM: { about: 'Genetic ceiling ~2.3× wrist.', tips: [] },

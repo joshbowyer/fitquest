@@ -468,30 +468,45 @@ function CorrelationTable({
   // handful of points (~12 weeks of nightly snapshots), so this
   // stays cheap; react-query deduplicates identical keys.
   return (
-    <div className="border border-slate-700/60">
-      <table className="w-full text-xs font-mono">
-        <thead>
-          <tr className="text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-700/60">
-            <th className="text-left p-2">Habit</th>
-            <th className="text-left p-2">Outcome</th>
-            <th className="text-right p-2">r</th>
-            <th className="text-right p-2">n</th>
-            <th className="text-left p-2 pl-4">Effect</th>
-            <th className="text-left p-2 pl-4">12w trend</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((c) => (
-            <CorrelationRow
-              key={`${c.habit}-${c.outcome}-${c.lagDays}-${c.lookbackDays}`}
-              c={c}
-              lookbackDays={lookbackDays}
-              lagDays={lagDays}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {/* Desktop: 6-column table. */}
+      <div className="hidden md:block border border-slate-700/60">
+        <table className="w-full text-xs font-mono">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-700/60">
+              <th className="text-left p-2">Habit</th>
+              <th className="text-left p-2">Outcome</th>
+              <th className="text-right p-2">r</th>
+              <th className="text-right p-2">n</th>
+              <th className="text-left p-2 pl-4">Effect</th>
+              <th className="text-left p-2 pl-4">12w trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((c) => (
+              <CorrelationRow
+                key={`${c.habit}-${c.outcome}-${c.lagDays}-${c.lookbackDays}`}
+                c={c}
+                lookbackDays={lookbackDays}
+                lagDays={lagDays}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: stacked cards (no horizontal scroll). */}
+      <div className="md:hidden space-y-2">
+        {items.map((c) => (
+          <CorrelationCard
+            key={`m-${c.habit}-${c.outcome}-${c.lagDays}-${c.lookbackDays}`}
+            c={c}
+            lookbackDays={lookbackDays}
+            lagDays={lagDays}
+          />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -548,5 +563,70 @@ function CorrelationRow({
         )}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Mobile card variant — same data as CorrelationRow but stacked
+ * so a phone screen can show the sparkline + r + effect bar
+ * without horizontal scroll. Same query, deduplicated by react-query.
+ */
+function CorrelationCard({
+  c,
+  lookbackDays,
+  lagDays,
+}: {
+  c: Correlation;
+  lookbackDays: number;
+  lagDays: number;
+}) {
+  const positive = c.r > 0;
+  const width = Math.abs(c.r) * 100;
+  const historyQ = useQuery({
+    queryKey: [
+      'correlation-history',
+      c.habit,
+      c.outcome,
+      lookbackDays,
+      lagDays,
+    ],
+    queryFn: () =>
+      api<{ points: CorrelationHistoryPoint[] }>(
+        `/insights/correlations/history?habit=${c.habit}&outcome=${c.outcome}&lookbackDays=${lookbackDays}&lagDays=${lagDays}&weeks=12`,
+      ),
+  });
+  return (
+    <div className="border border-slate-700/60 p-2.5 space-y-1.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs text-slate-200 truncate">{c.habitLabel}</div>
+          <div className="text-[10px] text-slate-400 truncate">
+            → {c.outcomeLabel}
+            {c.lagDays > 0 && (
+              <span className="ml-1 text-amber-300/80">t-{c.lagDays}d</span>
+            )}
+          </div>
+        </div>
+        <div className={`text-sm font-bold tabular-nums shrink-0 ${positive ? 'text-lime-300' : 'text-fuchsia-400'}`}>
+          {c.r > 0 ? '+' : ''}{c.r.toFixed(2)}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 flex-1 bg-slate-800 border border-slate-700 overflow-hidden">
+          <div
+            className={positive ? 'bg-lime-400' : 'bg-fuchsia-500'}
+            style={{ width: `${width}%`, boxShadow: '0 0 4px currentColor' }}
+          />
+        </div>
+        <span className="text-[10px] text-slate-500 font-mono shrink-0">n={c.n}</span>
+        {historyQ.data?.points?.length ? (
+          <div className="shrink-0">
+            <CorrelationSparkline points={historyQ.data.points} />
+          </div>
+        ) : (
+          <div className="text-[9px] text-slate-600 w-[90px] text-right">no history</div>
+        )}
+      </div>
+    </div>
   );
 }

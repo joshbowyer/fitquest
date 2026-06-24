@@ -140,6 +140,13 @@ export function BodyCompPage() {
     [history, leanMassHistory],
   );
 
+  // Count circumference rows in the window so we can show an
+  // empty-state message when there's nothing to plot.
+  const circumferenceDataCount = useMemo(
+    () => history.filter((h) => CIRCUMFERENCE_GROUP.some((g) => g.metric === h.metric)).length,
+    [history],
+  );
+
   // Per-metric "current" values for the cards below.
   const latestByMetric = useMemo(() => {
     const out: Record<string, { value: number; recordedAt: string; unit: string } | null> = {};
@@ -212,6 +219,9 @@ export function BodyCompPage() {
             days={win}
             units={units}
             history={combinedHistory}
+            // Pad both Y axes so the line uses the full vertical
+            // space instead of hugging the bottom against a 0 baseline.
+            yPad={1.5}
             series={WEIGHT_GROUP.map((g, i) => ({
               metric: g.metric,
               color: g.color,
@@ -225,18 +235,28 @@ export function BodyCompPage() {
 
         {/* Circumference group */}
         <Panel variant="magenta" title="Circumferences" className="border-neon-magenta/30 mb-4">
-          <OverlayTrendChart
-            days={win}
-            units={units}
-            history={history}
-            series={CIRCUMFERENCE_GROUP.map((g) => ({
-              metric: g.metric,
-              color: g.color,
-              label: g.label,
-              unit: 'cm',
-              yAxis: g.yAxis,
-            }))}
-          />
+          {circumferenceDataCount === 0 ? (
+            <div className="text-[11px] font-mono text-ink-400 italic text-center py-6">
+              No circumferences logged yet in this window.
+              <br />
+              Take more measurements to populate the graph — neck, chest,
+              waist, hips, biceps, thigh, calf all count.
+            </div>
+          ) : (
+            <OverlayTrendChart
+              days={win}
+              units={units}
+              history={history}
+              yPad={0.5}
+              series={CIRCUMFERENCE_GROUP.map((g) => ({
+                metric: g.metric,
+                color: g.color,
+                label: g.label,
+                unit: 'cm',
+                yAxis: g.yAxis,
+              }))}
+            />
+          )}
         </Panel>
 
         {/* Per-metric cards */}

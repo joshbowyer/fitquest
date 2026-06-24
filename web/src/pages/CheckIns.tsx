@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout, PageHeader } from '@/components/Layout';
-import { Panel } from '@/components/Panel';
-import { CheckInsPanel, QuickLogModal } from '@/components/CheckInsPanel';
+import { QuickLogModal } from '@/components/CheckInsPanel';
 import { api } from '@/lib/api';
 import { classNames } from '@/lib/format';
 import { METRICS } from '@/lib/types';
@@ -64,19 +63,12 @@ export function CheckInsPage() {
           subtitle="Time-aware prompts for the measurements that change at different rates. AM for post-wakeup signals, PM for end-of-day reflection, WEEKLY for body comp + PRs."
         />
 
-        {/* Quick-prompts at the top mirror the dashboard's
-            CheckInsPanel. They fetch the same /check-ins/due endpoint
-            so the user has a single source of truth. */}
-        <Panel
-          variant="cyan"
-          title="Due right now"
-          className="border-neon-cyan/30 mb-4"
-        >
-          <CheckInsPanel />
-        </Panel>
+        {/* Note: the dashboard's CheckInsPanel is the at-a-glance
+            view (compact AM/PM/Weekly cards). This page is the
+            full schedule with proper "log" buttons — each metric
+            grouped under its cadence so the user can catch up on a
+            backlog or browse what's tracked. */}
 
-        {/* Full schedule, grouped by cadence. Each row shows the
-            metric, its last-logged timestamp, and a quick-log button. */}
         <div className="space-y-4">
           {allQ.data?.items.map((group) => (
             <CadenceGroup

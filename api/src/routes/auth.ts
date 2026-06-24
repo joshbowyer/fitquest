@@ -2,6 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import {
+  tickHearts,
+  heartMultiplier,
+  HARDCORE_SUBSTANCE_CAPS,
+} from '../lib/mode.js';
+import {
   createSession,
   createSessionAndFetchUser,
   setSessionCookie,
@@ -63,8 +68,14 @@ const Disable2faSchema = z.object({
  * Build the public user object returned by /login + /me + /auth/login/totp.
  * Centralized here so the three endpoints stay in lockstep — adding
  * a new field means editing one place.
+ *
+ * Also ticks the heart regen timer so Hardcore-mode UI (HeartsCard,
+ * heart penalty multiplier) sees a current value on every /me load.
  */
 async function publicUser(user: any) {
+  const hearts = await tickHearts(user.id);
+  const heartMult = heartMultiplier(hearts);
+  const mode = user.mode ?? 'CASUAL';
   return {
     id: user.id,
     email: user.email,
@@ -103,6 +114,12 @@ async function publicUser(user: any) {
     /// Surfaced so the frontend can decide whether to render the
     /// 2FA step in the login flow on next render.
     totpEnabled: user.totpEnabled,
+    /// Casual / Hardcore difficulty mode. Hearts tick on every /me
+    /// load so the HeartsCard always sees a current value.
+    mode,
+    hearts,
+    heartMultiplier: heartMult,
+    hardcoreCaps: mode === 'HARDCORE' ? HARDCORE_SUBSTANCE_CAPS : null,
     targets: computeGoalTargets({
       goal: user.goal,
       calorieBaseline: user.calorieBaseline,

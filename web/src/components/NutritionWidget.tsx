@@ -2,18 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
-import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
+import { METRICS, type MetricType } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
-import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
-import { formatRelative } from '@/lib/format';
-
-const NUTRITION_METRICS = METRICS_BY_CATEGORY.NUTRITION;
+import { convertForDisplay, type UnitSystem } from '@/lib/units';
 
 const DEFAULT_TARGETS: Record<string, number> = {
   CALORIES: 2200,
   PROTEIN_G: 140,
-  CARB_G: 240,
-  FAT_G: 70,
   WATER_ML: 2500,
 };
 
@@ -28,36 +23,75 @@ function loadTargets(): Record<string, number> {
   }
 }
 
+type MealsTodayResponse = {
+  date: string;
+  dayTotals: {
+    calories: number;
+    proteinG: number;
+    carbG: number;
+    fatG: number;
+  };
+};
+
+/**
+ * Dashboard Nutrition widget. Aggregates today's macros from two
+ * sources:
+ *   - Calories / protein / carbs / fat → /meals/today (food log)
+ *   - Water                            → /measurements (WATER_ML rows)
+ *
+ * Old version pulled everything from /measurements, which is empty
+ * for food — that's why the widget always showed 0 for calories and
+ * protein even when the user had meals logged.
+ */
 export function NutritionWidget() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const targets = loadTargets();
 
-  const allQ = useQuery({
-    queryKey: ['nutrition', 'all', 'today'],
+  const mealsQ = useQuery({
+    queryKey: ['nutrition', 'meals', 'today'],
+    queryFn: () => api<MealsTodayResponse>('/meals/today'),
+    refetchInterval: 60_000,
+  });
+  const waterQ = useQuery({
+    queryKey: ['nutrition', 'water', 'today'],
     queryFn: () => api<{ items: Array<{ metric: MetricType; value: number; recordedAt: string }> }>(
       '/measurements?limit=200',
     ),
     refetchInterval: 60_000,
   });
 
+  // Build the metric → total map from BOTH endpoints. Water wins
+  // from the measurements query; calories/protein/carb/fat from
+  // the meals query.
+  const totals = new Map<MetricType, number>();
+  const dayTotals = mealsQ.data?.dayTotals;
+  if (dayTotals) {
+    totals.set('CALORIES', dayTotals.calories);
+    totals.set('PROTEIN_G', dayTotals.proteinG);
+  }
+
+  // Water: sum WATER_ML rows for today.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todaysMeasurements = (allQ.data?.items ?? []).filter(
-    (m) => new Date(m.recordedAt) >= today && NUTRITION_METRICS.includes(m.metric),
-  );
-
-  const sumByMetric = new Map<MetricType, number>();
-  for (const m of todaysMeasurements) {
-    sumByMetric.set(m.metric, (sumByMetric.get(m.metric) ?? 0) + m.value);
+  let waterTotal = 0;
+  let waterLastAt: string | null = null;
+  for (const m of waterQ.data?.items ?? []) {
+    if (m.metric !== 'WATER_ML') continue;
+    if (new Date(m.recordedAt) < today) continue;
+    waterTotal += m.value;
+    if (!waterLastAt || m.recordedAt > waterLastAt) waterLastAt = m.recordedAt;
   }
+  totals.set('WATER_ML', waterTotal);
+
+  const NUTRITION_METRICS: MetricType[] = ['CALORIES', 'PROTEIN_G', 'WATER_ML'];
 
   return (
     <Panel variant="lime" title="Nutrition">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono text-ink-300">
-            {todaysMeasurements.length === 0 ? 'nothing logged' : `${todaysMeasurements.length} entries today`}
+            {dayTotals || waterTotal > 0 ? 'today' : 'nothing logged'}
           </div>
           <Link
             to="/nutrition"
@@ -69,7 +103,7 @@ export function NutritionWidget() {
         <div className="space-y-1.5">
           {NUTRITION_METRICS.map((m) => {
             const meta = METRICS[m];
-            const total = sumByMetric.get(m) ?? 0;
+            const total = totals.get(m) ?? 0;
             const target = targets[m] ?? meta.defaultMin;
             const pct = target > 0 ? Math.min(100, (total / target) * 100) : 0;
             const disp = convertForDisplay(total, meta.unit, system);
@@ -95,9 +129,9 @@ export function NutritionWidget() {
             );
           })}
         </div>
-        {todaysMeasurements.length > 0 && (
+        {waterLastAt && (
           <div className="text-[9px] font-mono text-ink-500 italic pt-1 border-t border-ink-700/30">
-            last: {formatRelative(todaysMeasurements[todaysMeasurements.length - 1]!.recordedAt)}
+            last: {new Date(waterLastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </div>
         )}
       </div>

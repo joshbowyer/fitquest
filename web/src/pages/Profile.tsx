@@ -56,7 +56,7 @@ const PREVIEW_METRICS = [
   { key: 'BICEP', label: 'Bicep', unit: 'cm' },
   { key: 'FOREARM', label: 'Forearm', unit: 'cm' },
   { key: 'CHEST', label: 'Chest', unit: 'cm' },
-  { key: 'SHOULDER', label: 'Shoulder', unit: 'cm' },
+  { key: 'SHOULDER', label: 'Shoulders', unit: 'cm' },
   { key: 'NECK', label: 'Neck', unit: 'cm' },
   { key: 'QUAD', label: 'Quad', unit: 'cm' },
   { key: 'CALF', label: 'Calf', unit: 'cm' },

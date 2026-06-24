@@ -458,6 +458,10 @@ export function DashboardPage() {
             {(prsQ.data?.items || []).slice(0, 10).map((p) => {
               // PR weight is stored in kg; convert at the edge for
               // imperial users. Plank / l-sit are time-based (seconds).
+              // Value is the Epley 1RM estimate (weight × (1 + reps/30)),
+              // so we label it "1RM est" so it doesn't get confused
+              // with the actual weight the user lifted — which is
+              // smaller for multi-rep sets.
               const isTime = p.exercise.toLowerCase().includes('plank') || p.exercise.toLowerCase().includes('l-sit');
               const system: UnitSystem = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
               const weightDisplay = isTime
@@ -474,6 +478,14 @@ export function DashboardPage() {
                   <span className="text-ink-100 truncate">{p.exercise}</span>
                   <span className="neon-text-lime text-right whitespace-nowrap">
                     {weightDisplay}
+                    {!isTime && (
+                      <span
+                        className="text-[9px] text-ink-400 ml-1 normal-case"
+                        title="Estimated 1RM (Epley): weight × (1 + reps/30)"
+                      >
+                        1RM
+                      </span>
+                    )}
                   </span>
                   <span className="text-ink-400 text-[10px] whitespace-nowrap text-right">
                     {formatRelative(p.achievedAt)}

@@ -192,7 +192,12 @@ function CheckInRow({
         >
           {lastLabel}
         </span>
-        <span className="text-neon-cyan text-[10px] shrink-0">+</span>
+        <span
+          aria-label="Quick log"
+          className="shrink-0 inline-flex items-center justify-center w-5 h-5 border border-neon-cyan/60 text-neon-cyan hover:bg-neon-cyan/10 rounded text-xs leading-none font-bold"
+        >
+          +
+        </span>
       </button>
     </li>
   );
