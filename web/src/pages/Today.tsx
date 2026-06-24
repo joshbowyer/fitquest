@@ -330,10 +330,21 @@ export function TodayPage() {
 }
 
 /**
- * Wall mode shell — full-screen, no Layout chrome. Big X/Y count
- * banner up top, a small ✕ Exit pill in the top-right corner. The
- * page body (checklist + actions) is passed in as children so the
- * tick handlers + state stay in the parent component.
+ * Wall mode shell — full-screen, no Layout chrome. Designed to live
+ * on a phone/tablet propped against a wall (landscape orientation)
+ * so the user can glance at the checklist throughout the day.
+ *
+ * - Forces landscape orientation via Screen Orientation API where
+ *   supported (Chrome Android / ChromeOS). Silently no-ops on
+ *   browsers that don't expose it.
+ * - When the API isn't available and the viewport is portrait,
+ *   shows a "rotate device" overlay so the user knows how to
+ *   orient the device manually.
+ * - Layout is single-row at the top: big X/Y completion counter
+ *   on the left, checklist + actions on the right. The pre-wall-mode
+ *   stacked layout didn't fit on a wall-pro landscape phone.
+ * - Restores the previous orientation on unmount so the rest of
+ *   the app isn't affected.
  */
 function WallModeShell({
   counts,
@@ -345,8 +356,57 @@ function WallModeShell({
   children: React.ReactNode;
 }) {
   const allDone = counts.total > 0 && counts.completed === counts.total;
+
+  // Track viewport aspect ratio so we can hint rotation when the
+  // API lock isn't available. We update on resize/orientationchange.
+  const [isLandscape, setIsLandscape] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(orientation: landscape)').matches;
+  });
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const onChange = () => setIsLandscape(mq.matches);
+    mq.addEventListener('change', onChange);
+    window.addEventListener('orientationchange', onChange);
+    window.addEventListener('resize', onChange);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      window.removeEventListener('orientationchange', onChange);
+      window.removeEventListener('resize', onChange);
+    };
+  }, []);
+
+  // Try to lock landscape while wall mode is mounted. Most desktop
+  // browsers + iOS Safari don't support .lock(); we silently fall
+  // through to the rotation-hint overlay in that case.
+  const [lockAttempted, setLockAttempted] = useState(false);
+  const [lockSucceeded, setLockSucceeded] = useState(false);
+  useEffect(() => {
+    const so = (screen as any).orientation;
+    if (!so || typeof so.lock !== 'function') {
+      setLockAttempted(true);
+      return;
+    }
+    let cancelled = false;
+    setLockAttempted(true);
+    so.lock('landscape')
+      .then(() => {
+        if (!cancelled) setLockSucceeded(true);
+      })
+      .catch(() => {
+        // Permission denied / not user-initiated / not supported —
+        // the rotation-hint overlay handles these gracefully.
+      });
+    return () => {
+      cancelled = true;
+      try { so.unlock?.(); } catch { /* ignore */ }
+    };
+  }, []);
+
+  const needsRotateHint = lockAttempted && !lockSucceeded && !isLandscape;
+
   return (
-    <div className="min-h-screen bg-bg-900 text-slate-100 px-4 py-4 md:px-8 md:py-6 max-w-3xl mx-auto pb-24">
+    <div className="min-h-screen bg-bg-900 text-slate-100 px-4 py-4 md:px-6 md:py-5 pb-16 overflow-x-hidden">
       {/* Exit pill — top-right corner */}
       <button
         type="button"
@@ -366,26 +426,62 @@ function WallModeShell({
       >
         ← Exit
       </button>
-      {/* Completion banner */}
-      <div
-        className={classNames(
-          'text-center pt-2 pb-6 mb-6 border-b',
-          allDone
-            ? 'border-neon-lime/40 text-neon-lime'
-            : 'border-neon-cyan/30 text-neon-cyan',
-        )}
-      >
-        <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-1 opacity-70">
-          Wall mode · today
+
+      {/* Rotate-device hint. Visible only when we couldn't lock
+          orientation AND the viewport is currently portrait. The
+          overlay is large enough to read from across the room. */}
+      {needsRotateHint && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-bg-900/95 backdrop-blur-sm text-center px-6">
+          <div className="text-6xl mb-4 animate-pulse">↻</div>
+          <div className="font-display tracking-widest text-2xl text-neon-magenta uppercase">
+            Rotate to landscape
+          </div>
+          <div className="text-xs font-mono text-ink-300 mt-3 max-w-sm">
+            Wall mode is designed for landscape. Turn your device
+            sideways so the checklist fits beside the completion
+            counter.
+          </div>
+          <button
+            type="button"
+            onClick={onExit}
+            className="mt-6 px-4 py-2 text-[10px] font-display tracking-widest uppercase border border-ink-700/60 text-ink-300 hover:border-neon-magenta rounded"
+          >
+            ← Back
+          </button>
         </div>
-        <div className="font-display text-7xl md:text-8xl tracking-tighter">
-          {counts.completed}<span className="opacity-30">/{counts.total}</span>
+      )}
+
+      {/* Landscape layout: single row at the top with the big
+          X/Y counter on the left and the body (tiles + checklist +
+          habits) on the right. The pre-landscape design stacked
+          the banner above everything which wasted a lot of vertical
+          space when the phone is rotated. min-h-screen ensures the
+          row always fills the visible viewport so tiles can
+          spread out on a landscape tablet without looking lonely. */}
+      <div className="max-w-6xl mx-auto min-h-[calc(100vh-2rem)] flex flex-col landscape:flex-row landscape:gap-6 gap-4">
+        <div
+          className={classNames(
+            'shrink-0 flex landscape:flex-col landscape:items-start landscape:justify-center landscape:w-72 landscape:border-r landscape:pr-6',
+            'text-center pt-2 pb-4 landscape:py-0 landscape:pt-0 border-b landscape:border-b-0',
+            allDone
+              ? 'border-neon-lime/40 text-neon-lime'
+              : 'border-neon-cyan/30 text-neon-cyan',
+          )}
+        >
+          <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-1 landscape:mb-2 opacity-70">
+            Wall mode · today
+          </div>
+          <div className="font-display text-6xl landscape:text-7xl tracking-tighter leading-none">
+            {counts.completed}<span className="opacity-30">/{counts.total}</span>
+          </div>
+          <div className="text-[11px] font-mono mt-2 opacity-70">
+            {allDone ? '✓ all dailies done' : 'tap to tick'}
+          </div>
         </div>
-        <div className="text-[11px] font-mono mt-2 opacity-70">
-          {allDone ? '✓ all dailies done' : 'tap to tick'}
+        <div className="flex-1 min-w-0 min-h-0">
+          {children}
         </div>
       </div>
-      {children}
     </div>
   );
 }
