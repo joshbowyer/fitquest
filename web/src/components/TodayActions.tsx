@@ -693,77 +693,65 @@ function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void
 function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void }) {
   const qc = useQueryClient();
   const [description, setDescription] = useState('');
-  // Search-source override. 'off' (default) = OpenFoodFacts +
-  // USDA fallback. 'usda' = USDA only. Useful when OFF returns
-  // generic/noisy matches for branded items (protein powders,
-  // supplements) and the user wants USDA's US-product coverage.
-  const [source, setSource] = useState<'off' | 'usda'>('off');
-  type ParsedItem = {
+  // Single-entry preview. The LLM returns one consolidated
+  // { name, reason, calories, proteinG, carbG, fatG, ... }
+  // covering the whole meal description (e.g. "1 cup milk, 1
+  // avocado, 6 strawberries"). User can edit the name and
+  // macronumbers before logging. A new MANUAL row is created on
+  // every submit so the same description can be logged multiple
+  // times without dedupe collisions.
+  type AskAiPreview = {
     name: string;
-    searchQuery: string;
-    quantity: number;
-    unit: string | null;
     reason: string;
+    calories: number;
+    proteinG: number;
+    carbG: number;
+    fatG: number;
+    fiberG?: number;
+    sugarG?: number;
+    sodiumMg?: number;
   };
-  type ItemWithHits = {
-    parsed: ParsedItem;
-    hits: FoodSearchHit[];
-    selectedHit: number; // index into hits
-    servings: string;
-  };
-  const [preview, setPreview] = useState<{ reason: string; items: ItemWithHits[] } | null>(null);
+  const [preview, setPreview] = useState<AskAiPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const askM = useMutation({
     mutationFn: () =>
-      api<{ reason: string; items: Array<{ parsed: ParsedItem; hits: FoodSearchHit[] }> }>(
-        '/foods/ask-ai-multi',
-        { method: 'POST', body: { description, source } },
-      ),
+      api<AskAiPreview>('/foods/ask-ai-multi', {
+        method: 'POST',
+        body: { description },
+      }),
     onSuccess: (r) => {
-      setPreview({
-        reason: r.reason,
-        items: r.items.map((it) => ({
-          parsed: it.parsed,
-          hits: it.hits,
-          selectedHit: 0, // default to first match
-          servings: String(it.parsed.quantity ?? 1),
-        })),
-      });
+      setPreview(r);
       setError(null);
     },
     onError: (e) => setError(e instanceof Error ? e.message : 'Ask AI failed'),
   });
 
-  const batchLogM = useMutation({
-    mutationFn: async (items: ItemWithHits[]) => {
-      // Fire one POST /meals per confirmed item in parallel. Each
-      // upserts the FoodItem by (source, sourceId) on the server
-      // so the next log of the same search hit is faster.
-      const promises = items.map((it) => {
-        const hit = it.hits[it.selectedHit];
-        if (!hit) return Promise.resolve(null);
-        return api('/meals', {
-          method: 'POST',
-          body: {
-            meal,
-            servings: Number(it.servings) || 1,
-            source: hit.source,
-            sourceId: hit.sourceId,
-            name: hit.name,
-            brand: hit.brand ?? null,
-            servingSizeG: hit.servingSizeG ?? null,
-            calories: hit.calories,
-            proteinG: hit.proteinG,
-            carbG: hit.carbG,
-            fatG: hit.fatG,
-            fiberG: hit.fiberG ?? null,
-            sugarG: hit.sugarG ?? null,
-            sodiumMg: hit.sodiumMg ?? null,
-          },
-        });
+  const logM = useMutation({
+    mutationFn: async (p: AskAiPreview) => {
+      // MANUAL source — no upsert into FoodItem, just a one-shot
+      // Meal row tied to this description. sourceId uses a fresh
+      // UUID so two loggings of the same description don't collide
+      // on the (source, sourceId) unique index.
+      return api('/meals', {
+        method: 'POST',
+        body: {
+          meal,
+          servings: 1,
+          source: 'MANUAL',
+          sourceId: `askai-${crypto.randomUUID()}`,
+          name: p.name,
+          brand: null,
+          servingSizeG: null,
+          calories: p.calories,
+          proteinG: p.proteinG,
+          carbG: p.carbG,
+          fatG: p.fatG,
+          fiberG: p.fiberG ?? null,
+          sugarG: p.sugarG ?? null,
+          sodiumMg: p.sodiumMg ?? null,
+        },
       });
-      return Promise.all(promises);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['meals', 'today'] });
@@ -775,7 +763,30 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
   function reset() {
     setPreview(null);
     setError(null);
-    setDescription('');
+  }
+
+  // Inline numeric editor — lets the user tighten any macro
+  // the LLM overshot/undershot before logging. Defaults stay
+  // locked to the LLM's number; edits commit on blur.
+  function MacroField({ label, valueKey, unit }: { label: string; valueKey: keyof AskAiPreview; unit: string }) {
+    const v = preview?.[valueKey];
+    if (typeof v !== 'number') return null;
+    return (
+      <label className="flex items-center gap-1.5 text-[10px] font-mono">
+        <span className="text-ink-400 w-12">{label}</span>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          value={Math.round(v)}
+          onChange={(e) =>
+            setPreview((p) => (p ? { ...p, [valueKey]: Number(e.target.value) || 0 } as AskAiPreview : p))
+          }
+          className="w-16 bg-bg-900 border border-ink-700/40 px-1.5 py-0.5 text-xs font-mono text-right rounded"
+        />
+        <span className="text-ink-500">{unit}</span>
+      </label>
+    );
   }
 
   return (
@@ -793,45 +804,22 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
           {error && (
             <div className="text-[11px] font-mono text-rose-300">{error}</div>
           )}
-          <div className="flex items-center justify-between gap-2">
-            {/* Source override — OFF (default) tries OpenFoodFacts +
-                USDA fallback; USDA skips OFF entirely. The
-                user's USDA key (if configured) is used in both
-                modes. */}
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mr-1">Source:</span>
-              {(['off', 'usda'] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSource(s)}
-                  className={classNames(
-                    'px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest border rounded',
-                    source === s
-                      ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
-                      : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
-                  )}
-                  title={s === 'off' ? 'OpenFoodFacts + USDA fallback' : 'USDA only (skips OFF entirely)'}
-                >
-                  {s === 'off' ? 'OFF' : 'USDA'}
-                </button>
-              ))}
-            </div>
+          <div className="flex justify-end gap-2">
             <NeonButton
               onClick={() => askM.mutate()}
               loading={askM.isPending}
               disabled={description.length < 3}
               variant="cyan"
             >
-              ✦ Parse items
+              ✦ Estimate macros
             </NeonButton>
           </div>
         </>
       ) : (
         <>
           <div className="flex items-center justify-between">
-            <div className="text-[10px] font-mono text-ink-300">
-              {preview.items.length} item{preview.items.length === 1 ? '' : 's'} parsed · {preview.reason}
+            <div className="text-[10px] font-mono text-ink-400">
+              LLM estimate · edit before logging
             </div>
             <button
               type="button"
@@ -842,79 +830,32 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
             </button>
           </div>
 
-          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {preview.items.map((it, idx) => (
-              <div key={idx} className="border border-ink-700/40 rounded p-2">
-                <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs truncate">
-                      <span className="text-ink-400">
-                        {it.parsed.quantity}{it.parsed.unit ? ` ${it.parsed.unit}` : ''}
-                      </span>{' '}
-                      <span className="text-slate-200">{it.parsed.name}</span>
-                    </div>
-                    <div className="text-[10px] font-mono text-ink-500 truncate">
-                      search: {it.parsed.searchQuery}
-                      {it.parsed.reason && ` · ${it.parsed.reason}`}
-                    </div>
-                  </div>
-                  <input
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    value={it.servings}
-                    onChange={(e) =>
-                      setPreview((p) =>
-                        p ? {
-                          ...p,
-                          items: p.items.map((x, i) => i === idx ? { ...x, servings: e.target.value } : x),
-                        } : p,
-                      )
-                    }
-                    className="w-14 bg-bg-900 border border-ink-700/40 px-1.5 py-0.5 text-xs font-mono text-right rounded shrink-0"
-                    title="servings"
-                  />
-                </div>
-                {it.hits.length === 0 ? (
-                  <div className="text-[10px] font-mono text-ink-500 italic">
-                    No OFF/USDA matches — this item will be skipped.
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {it.hits.map((hit, hitIdx) => (
-                      <button
-                        key={`${hit.source}-${hit.sourceId}-${hitIdx}`}
-                        type="button"
-                        onClick={() =>
-                          setPreview((p) =>
-                            p ? {
-                              ...p,
-                              items: p.items.map((x, i) => i === idx ? { ...x, selectedHit: hitIdx } : x),
-                            } : p,
-                          )
-                        }
-                        className={classNames(
-                          'w-full text-left px-2 py-1 rounded text-[10px] font-mono flex items-center justify-between gap-2',
-                          it.selectedHit === hitIdx
-                            ? 'bg-neon-cyan/15 border border-neon-cyan/60 text-neon-cyan'
-                            : 'border border-ink-700/30 text-ink-200 hover:border-neon-cyan/30 hover:bg-neon-cyan/5',
-                        )}
-                      >
-                        <span className="truncate">{hit.name} <span className="text-ink-500">· {hit.source}</span></span>
-                        <span className="text-ink-400 shrink-0">
-                          {Math.round(hit.calories)} kcal · {Math.round(hit.proteinG)}g P
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+          <div className="border border-neon-cyan/30 rounded p-3 space-y-2 bg-neon-cyan/5">
+            <input
+              type="text"
+              value={preview.name}
+              onChange={(e) => setPreview((p) => (p ? { ...p, name: e.target.value } : p))}
+              className="w-full bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-sm rounded"
+              placeholder="Meal name"
+            />
+            {preview.reason && (
+              <div className="text-[10px] font-mono text-ink-300 italic leading-snug">
+                {preview.reason}
               </div>
-            ))}
+            )}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <MacroField label="Cal" valueKey="calories" unit="kcal" />
+              <MacroField label="Protein" valueKey="proteinG" unit="g" />
+              <MacroField label="Carbs" valueKey="carbG" unit="g" />
+              <MacroField label="Fat" valueKey="fatG" unit="g" />
+              <MacroField label="Fiber" valueKey="fiberG" unit="g" />
+              <MacroField label="Sodium" valueKey="sodiumMg" unit="mg" />
+            </div>
           </div>
 
-          {batchLogM.isError && (
+          {logM.isError && (
             <div className="text-[11px] font-mono text-rose-300">
-              Log failed: {batchLogM.error instanceof Error ? batchLogM.error.message : 'unknown'}
+              Log failed: {logM.error instanceof Error ? logM.error.message : 'unknown'}
             </div>
           )}
 
@@ -927,12 +868,12 @@ function FoodAskAiMode({ meal, onClose }: { meal: MealType; onClose: () => void 
               Cancel
             </button>
             <NeonButton
-              onClick={() => batchLogM.mutate(preview.items.filter((it) => it.hits.length > 0))}
-              loading={batchLogM.isPending}
-              disabled={preview.items.filter((it) => it.hits.length > 0).length === 0}
+              onClick={() => logM.mutate(preview)}
+              loading={logM.isPending}
+              disabled={!preview.name.trim() || preview.calories < 1}
               variant="cyan"
             >
-              Log {preview.items.filter((it) => it.hits.length > 0).length} item{preview.items.filter((it) => it.hits.length > 0).length === 1 ? '' : 's'}
+              Log meal
             </NeonButton>
           </div>
         </>
