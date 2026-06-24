@@ -478,16 +478,14 @@ function WallModeShell({
           <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-2 text-neon-cyan opacity-80">
             FitQuest · Wall
           </div>
-          {/* HH:MM:SS in a fixed-width tabular block, AM/PM in its
-              own fixed-width inline-block so the suffix doesn't
-              jitter as the seconds tick from 09 → 14 → 17. */}
-          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 mb-2 whitespace-nowrap flex items-baseline">
-            <span className="tabular-nums">
-              {hh}:{mm}:{ss}
-            </span>
-            <span className="ml-2 inline-block w-10 text-2xl landscape:text-3xl text-amber-300/90 tabular-nums">
-              {ampm}
-            </span>
+          {/* HH:MM:SS on the left (variable width as digits change),
+              AM/PM pushed to the right edge of a fixed-width row
+              with ml-auto. The row has an explicit w-72 / w-80 so
+              the right anchor is stable across ticks — the AM/PM
+              stays put whether seconds are 09, 14, or 17. */}
+          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 mb-2 whitespace-nowrap flex items-baseline w-72 landscape:w-80">
+            <span className="tabular-nums">{hh}:{mm}:{ss}</span>
+            <span className="ml-auto tabular-nums">{ampm}</span>
           </div>
           <div className="font-display text-2xl landscape:text-3xl text-ink-100 leading-tight">
             {date}
