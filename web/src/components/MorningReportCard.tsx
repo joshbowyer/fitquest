@@ -180,6 +180,58 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
         </div>
       )}
 
+      {/* Implausible set values from the per-exercise plausibility
+          detector. Most often a typo (1350 lb instead of 135) or a
+          unit-conversion miss. Renders only when the user actually
+          has flags in the last ~36h — empty array renders nothing.
+          A 'block'-severity flag is treated as high-priority
+          (rose border) so the user sees it before the LLM turns
+          it into a fake PR narrative. */}
+      {(r.impossibleValueFlags?.length ?? 0) > 0 && (
+        <div className="mt-3 border-t border-amber-500/30 pt-2 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-display tracking-widest uppercase text-amber-300">
+              ⚠ Implausible sets
+            </div>
+            <span className="text-[10px] font-mono text-amber-400">
+              {r.impossibleValueFlags.length} flag{r.impossibleValueFlags.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          {r.impossibleValueFlags.map((f, i) => (
+            <div
+              key={`iv${i}`}
+              className={classNames(
+                'flex items-start justify-between gap-2 text-[11px] font-mono py-1 px-1.5 border',
+                f.severity === 'block'
+                  ? 'border-rose-500/40 text-rose-200 bg-rose-500/5'
+                  : 'border-amber-500/30 text-amber-200 bg-amber-500/5',
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate">
+                  <span className="text-slate-400">{f.exercise}</span>
+                  <span className="text-ink-500"> · set {f.setIndex + 1}</span>
+                </div>
+                <div className="text-[10px] text-ink-400 truncate">
+                  {f.field === 'reps'
+                    ? `${f.value} reps — that's likely a mis-log`
+                    : `${f.value} ${f.unit} — likely a typo or unit-conversion miss`}
+                  {f.workoutName ? ` · ${f.workoutName}` : ''}
+                </div>
+              </div>
+              <span className={classNames(
+                'text-[9px] uppercase tracking-widest shrink-0 px-1.5 py-0.5 border',
+                f.severity === 'block'
+                  ? 'text-rose-300 border-rose-500/40'
+                  : 'text-amber-300 border-amber-500/30',
+              )}>
+                {f.severity}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Hardcore-mode penalty ledger. Only renders when there are
           active penalties; the array is empty for Casual users OR
           for Hardcore users who are currently clean (full hearts,

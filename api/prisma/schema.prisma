@@ -75,6 +75,12 @@ enum MetricType {
   // but missing from this enum would 500 every MONITOR file with
   // respiration data on import. Critical fix.
   RESPIRATION_RATE
+  /// Hour-of-day the user fell asleep the previous night, stored
+  /// as fractional hours (22.5 = 10:30 PM). Computed from
+  /// parseSleep + localNightStart so a 12:30 AM sleep bucketed to
+  /// the previous calendar day.
+  /// Migration: 20250707190000_add_sleep_onset.
+  SLEEP_ONSET
 }
 
 enum MetricCategory {
@@ -92,6 +98,23 @@ enum WorkoutType {
   CARDIO
   MOBILITY
   OTHER
+}
+
+/// Method used to record a body-fat or weight measurement.
+/// Methodologically-known (DEXA / BOD_POD / NAVY_TAPE) get full
+/// confidence in the morning report's body-comp insight; visual
+/// estimates get partial; MANUAL + UNKNOWN are treated as low
+/// confidence. Kept in sync with the DB-side enum (see migration
+/// 20250707170000_add_measurement_source).
+enum MeasurementSource {
+  DEXA
+  BOD_POD
+  NAVY_TAPE
+  CALIPERS
+  BIA
+  VISUAL
+  UNKNOWN
+  MANUAL
 }
 
 enum Sex {
@@ -250,8 +273,9 @@ model User {
   inventoryItems   InventoryItem[]
   morningReports   MorningReport[]
   spiritualReflections SpiritualReflection[]
-  activityInsights    ActivityInsight[]
-  metricInsights      MetricInsight[]
+   activityInsights    ActivityInsight[]
+   metricInsights      MetricInsight[]
+   plateauPauses      PlateauPause[]
   trackedItems     UserTrackedItem[]
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
@@ -351,8 +375,14 @@ model Measurement {
   notes      String?
   recordedAt DateTime   @default(now())
   createdAt  DateTime   @default(now())
+  /// Method used to take body-fat or weight readings. DEXA/BOD_POD
+  /// are the gold standard; calipers/BIA are noisy; VISUAL/MANUAL
+  /// are estimates. Morning report's body-comp insight weights by
+  /// confidence (see api/src/lib/measurementSource.ts).
+  source     MeasurementSource @default(UNKNOWN)
 
   @@index([userId, metric, recordedAt])
+  @@index([userId, metric, source, recordedAt])
 }
 
 model GeneticMax {
@@ -398,6 +428,17 @@ model Workout {
   ///   elevationGainM?: number, avgHr?: number, maxHr?: number,
   ///   avgPaceSecPerKm?: number, source?: 'MANUAL'|'GPS' }
   cardio      Json?
+  /// Implausible set values flagged by the per-exercise plausibility
+  /// detector (Bench 500kg, Squat 1000 reps, blanket > 500kg,
+  /// etc.). Stored as JSONB so the morning report aggregator can
+  /// query recent workouts and surface "this PR seems off" before
+  /// the user loses trust in the LLM narrative. Null when no
+  /// flags — saves space vs. an empty array.
+  ///
+  /// Shape: ValidityFlag[] =
+  /// {exercise, setIndex, field: 'weight'|'reps', value, unit,
+  ///  reason, severity: 'flag'|'block'}.
+  validityFlags Json?
 
   @@index([userId, performedAt])
 }
@@ -671,6 +712,34 @@ model UserAchievement {
   unlockedAt    DateTime    @default(now())
 
   @@unique([userId, achievementId])
+}
+
+/// User-initiated pause on one or more plateau-detection kinds.
+/// When a row exists with `resumeAt > now`, detectPlateaus skips
+/// those rules (so a planned deload week doesn't spam "no PRs
+/// in 30 days"). `kind = 'ALL'` pauses every detector. Created via
+/// /plateaus pause endpoint; auto-expires via `resumeAt`.
+model PlateauPause {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      PlateauKind
+  pausedAt  DateTime    @default(now())
+  /// Future timestamp. While now < resumeAt the rule is paused.
+  resumeAt  DateTime
+  reason    String?
+  createdAt DateTime    @default(now())
+
+  @@index([userId, resumeAt])
+}
+
+enum PlateauKind {
+  NO_PR_RECENT
+  ONE_RM_REGRESSION
+  VOLUME_REGRESSION
+  WEIGHT_FLATLINE
+  METRIC_FLATLINE
+  ALL
 }
 
 model Session {
@@ -1213,6 +1282,26 @@ model MorningReport {
   /// user is in Casual mode OR has nothing to flag. Surfaced as a
   /// dedicated "Penalties" section on the dashboard card.
   penalties String?
+  /// Plateau detector output. JSON array of
+  /// {kind, exercise?, since, note} (e.g. NO_PR_RECENT,
+  /// ONE_RM_REGRESSION, VOLUME_REGRESSION, WEIGHT_FLATLINE).
+  /// Empty array when nothing's stale. Surfaced as a "Stale" section.
+  plateaus String?
+  /// Deterministic macro/timing nudges (caffeine pre-workout, alcohol
+  /// vs HRV, creatine consistency, hydration, sleep-overlap). JSON
+  /// array of {label, severity: 'warn'|'tip', note}. Surfaced as
+  /// "Macro nudges" section.
+  nudges String?
+  /// Mirror of nudges but for positive callouts (creatine on schedule,
+  /// caffeine-free evenings, etc.). Same shape. "Good calls" section.
+  positiveNudges String?
+  /// Implausible set values from workouts in the last 24h that the
+  /// per-exercise plausibility detector flagged (Bench 500kg, Squat
+  /// 1000 reps, etc.). JSON array of
+  /// {workoutId, workoutName, exercise, setIndex, value, unit,
+  /// reason, severity}. Surfaced as "Implausible sets" section so
+  /// the user can fix typos that pollute the LLM narrative.
+  impossibleValueFlags String?
   /// Model that generated the report (for audit + forcing regen
   /// when the LLM provider changes).
   model     String?

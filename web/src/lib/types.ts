@@ -337,6 +337,23 @@ export type Nudge = {
   context?: Record<string, number | string>;
 };
 
+/// One implausible set the per-exercise plausibility detector caught
+/// on workout commit. Surfaced in the morning report's "Implausible
+/// sets" section so the user can fix typos (1350 lb instead of 135)
+/// before they pollute the LLM narrative as fake PRs.
+export type ImpossibleValueFlag = {
+  workoutId: string;
+  workoutName: string | null;
+  exercise: string;
+  setIndex: number;
+  field: 'weight' | 'reps';
+  value: number;
+  unit: 'kg' | 'lb' | 'reps';
+  reason: string;
+  severity: 'flag' | 'block';
+  occurredAt: string;
+};
+
 export type MorningReport = {
   id: string;
   userId: string;
@@ -364,6 +381,12 @@ export type MorningReport = {
   /// Positive observations ("hit water 6/7 days", "creatine
   /// streak 30d"). Surfaced as "Good calls" section.
   positiveNudges: Nudge[];
+  /// Implausible set values from the per-exercise plausibility
+  /// detector (Bench 500kg, Squat 1000 reps, blanket > 500kg).
+  /// Surfaced as "Implausible sets" section so the user can fix
+  /// typos that would otherwise pollute the LLM narrative as
+  /// fake PRs.
+  impossibleValueFlags: ImpossibleValueFlag[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;

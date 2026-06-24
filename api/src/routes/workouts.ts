@@ -219,6 +219,13 @@ export async function workoutRoutes(app: FastifyInstance) {
     const duration = body.duration ?? 0;
     const prs: Array<{ exercise: string; value: number; previousValue: number | null; type: 'ONE_RM' }> = [];
 
+    // Heart multiplier is read once and reused both inside the
+    // transaction (XP / gold) and after it (raid damage). Hoisted
+    // out so the post-commit raid math doesn't ReferenceError when
+    // we reference `mult` outside the transaction scope.
+    const currentHearts = await tickHearts(me.id);
+    const mult = heartMultiplier(currentHearts);
+
     const result = await prisma.$transaction(async (tx) => {
       const workout = await tx.workout.create({
         data: {
@@ -232,6 +239,14 @@ export async function workoutRoutes(app: FastifyInstance) {
           // (not undefined) when the user didn't fill it in so the
           // stored value is consistent across rows.
           cardio: body.cardio ?? null,
+          // Per-set plausibility flags from flagSuspectSets (Bench
+          // > 350kg, Squat > 1000 reps, blanket > 500kg, etc.).
+          // Persisted so the morning report can surface them — without
+          // this, an "is this PR for real?" toast only shows on the
+          // workout detail screen the day of, then scrolls off.
+          // Stored as null (not []) when no flags, so empty workouts
+          // don't bloat the row.
+          validityFlags: validityFlags.length > 0 ? (validityFlags as any) : null,
           exercises: {
             create: body.exercises.map((ex) => ({
               name: ex.name,
@@ -279,8 +294,6 @@ export async function workoutRoutes(app: FastifyInstance) {
       // Hardcore mode with 0 hearts — halves both rewards until
       // they tick back up. Casual mode always returns 1.0 so the
       // math is identical to before.
-      const currentHearts = await tickHearts(me.id);
-      const mult = heartMultiplier(currentHearts);
       const baseXp = xpFromWorkout({
         type: workout.type,
         totalVolumeKg,

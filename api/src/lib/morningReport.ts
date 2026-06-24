@@ -48,6 +48,7 @@ import {
   lowConfidenceBodyFatFlag,
   type MeasurementSource,
 } from './measurementSource.js';
+import { impossibleValuesDomain, type ImpossibleValueItem } from './impossibleValues.js';
 
 type DateStr = string; // YYYY-MM-DD in user's timezone
 
@@ -339,6 +340,11 @@ export type ReportPayload = {
     bodyFatPct: number;
     source: MeasurementSource | null;
   }>;
+  /// Per-set plausibility flags from the last ~36h of workouts.
+  /// Surfaced as an "Implausible sets" section so the user can fix
+  /// typos (e.g. 1350 lb instead of 135) before they pollute the
+  /// LLM narrative as a fake PR.
+  impossibleValues: ImpossibleValueItem[];
 };
 
 function todayInTz(timezone: string | null): DateStr {
@@ -382,6 +388,7 @@ export async function gatherReportData(
   const [
     sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual,
     substanceCounts, streak, plateaus, nudges, sleepOverlap, bodyBattery, bodyFatSources,
+    impossibleValues,
   ] = await Promise.all([
     metricDomain(userId, 'SLEEP_HOURS', since7, since14),
     metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
@@ -399,6 +406,7 @@ export async function gatherReportData(
     buildSleepOverlapReport(userId, tz, 14, now),
     buildBodyBatteryReport(userId, tz, 14, now),
     bodyFatSourcesDomain(userId, since7),
+    impossibleValuesDomain(userId, now),
   ]);
 
   return {
@@ -431,6 +439,7 @@ export async function gatherReportData(
     sleepOverlap,
     bodyBattery,
     bodyFatSources,
+    impossibleValues,
   };
 }
 
@@ -446,6 +455,7 @@ The payload also includes deterministic engines that already produced their own 
 - sleepOverlap: substances taken within 8h before sleep onset, by category. Surfaced in UI; you may fold one concrete stat into the recovery section.
 - bodyBattery: body battery vs sleep onset/quality/duration/substances. Surfaced in UI; you may fold one concrete stat into the recovery section.
 - bodyFatSources: latest body-fat readings with their measurement method (DEXA / BodPod / calipers / BIA / visual / MANUAL). Mention confidence only if it's relevant.
+- impossibleValues: per-set values the plausibility detector flagged (Bench > 350kg, Squat > 500kg, blanket > 500kg, reps > 200, etc.) from the last ~36h of workouts. Surfaced in UI directly; if a 'block'-severity flag exists, mention it in the training section ("that 500kg bench looks like a typo — worth double-checking before tomorrow's session") so the user sees it now, not tomorrow. Don't invent PRs from flagged values.
 
 Hard rules:
 - Each section ≤ 2 sentences, ≤ 220 characters.
@@ -641,6 +651,12 @@ export type MorningReportResult = {
   /** Positive observations ("hit your water target 6/7 days").
    *  Surfaced alongside nudges. */
   positiveNudges: import('./macroNudges.js').Nudge[];
+  /** Implausible set values from the last ~36h of workouts that the
+   *  per-exercise plausibility detector flagged (Bench 500kg, Squat
+   *  1000 reps, etc.). Surfaced as "Implausible sets" section so
+   *  the user can fix typos that would otherwise pollute the LLM
+   *  narrative as fake PRs. Empty array when no flags. */
+  impossibleValueFlags: ImpossibleValueItem[];
   model: string | null;
   latencyMs: number | null;
   createdAt: string;
@@ -663,6 +679,7 @@ function rowToResult(
     plateaus: string | null;
     nudges: string | null;
     positiveNudges: string | null;
+    impossibleValueFlags: string | null;
     model: string | null;
     latencyMs: number | null;
     createdAt: Date;
@@ -710,6 +727,16 @@ function rowToResult(
       ? n
       : null,
   );
+  // Implausible set values from the plausibility detector.
+  // Defensive parsing — a corrupt row returns an empty array so the
+  // dashboard never breaks on bad data.
+  const impossibleValueFlags = parseJsonArray<ImpossibleValueItem>(row.impossibleValueFlags, (i) =>
+    i && typeof i.workoutId === 'string' && typeof i.exercise === 'string' &&
+    (i.field === 'weight' || i.field === 'reps') && typeof i.value === 'number' &&
+    (i.severity === 'flag' || i.severity === 'block')
+      ? i
+      : null,
+  );
   return {
     id: row.id,
     userId: row.userId,
@@ -725,6 +752,7 @@ function rowToResult(
     plateaus,
     nudges,
     positiveNudges,
+    impossibleValueFlags,
     model: row.model,
     latencyMs: row.latencyMs,
     createdAt: row.createdAt.toISOString(),
@@ -871,6 +899,10 @@ export async function getOrGenerateToday(
       plateaus: JSON.stringify(payload.plateaus),
       nudges: JSON.stringify(payload.nudges.warnings),
       positiveNudges: JSON.stringify(payload.nudges.positive),
+      // Implausible-set flags from the per-exercise plausibility
+      // detector. Same rationale as plateaus/nudges — surface in UI
+      // immediately without re-running the query.
+      impossibleValueFlags: JSON.stringify(payload.impossibleValues),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
     },
@@ -881,6 +913,7 @@ export async function getOrGenerateToday(
       plateaus: JSON.stringify(payload.plateaus),
       nudges: JSON.stringify(payload.nudges.warnings),
       positiveNudges: JSON.stringify(payload.nudges.positive),
+      impossibleValueFlags: JSON.stringify(payload.impossibleValues),
       model: result.model || config.model,
       latencyMs: result.latencyMs,
       updatedAt: new Date(),
