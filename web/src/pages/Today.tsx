@@ -358,11 +358,10 @@ function WallModeShell({
   // which also restarts the interval when the tab returns to
   // foreground so a backgrounded phone picks up the correct time
   // the moment it wakes.
-  const now = useLiveClock(1_000);
+  const now = useLiveClock(60_000);
   const time = now.toLocaleTimeString(undefined, {
     hour: 'numeric',
     minute: '2-digit',
-    second: '2-digit',
   });
   const date = now.toLocaleDateString(undefined, {
     weekday: 'long',
@@ -470,11 +469,16 @@ function WallModeShell({
           tick boxes without leaving the display. The X/Y counter is
           gone — the checkboxes themselves show progress. */}
       <div className="max-w-6xl mx-auto min-h-[calc(100vh-2rem)] flex flex-col landscape:flex-row landscape:gap-6 gap-4">
-        <div className="shrink-0 flex flex-col items-start justify-center landscape:w-80 landscape:border-r landscape:pr-6 text-left py-2 landscape:py-0">
+        <div className="shrink-0 flex flex-col items-start justify-center landscape:min-w-[18rem] landscape:border-r landscape:pr-6 text-left py-2 landscape:py-0">
           <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-2 text-neon-cyan opacity-80">
             FitQuest · Wall
           </div>
-          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 tabular-nums mb-2">
+          {/* whitespace-nowrap keeps AM/PM on the same line even
+              when wider digits (4, 5) push the time string past
+              the column's normal width. shrink-0 on the parent
+              prevents flex from squeezing it; the right column
+              picks up the slack via flex-1. */}
+          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 tabular-nums mb-2 whitespace-nowrap">
             {time}
           </div>
           <div className="font-display text-2xl landscape:text-3xl text-ink-100 leading-tight">
