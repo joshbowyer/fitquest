@@ -499,7 +499,13 @@ function CheckInsSummary({ onPick }: { onPick: (m: DueMetricDto) => void }) {
 
 function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<'search' | 'ask'>('search');
+  // Default to Ask AI — the LLM-direct path handles multi-item
+  // recipes well (vanilla protein shake, smoothie bowls, mixed
+  // salads) without needing every ingredient in OFF/USDA. Search
+  // mode is still here as a fallback for users who want a barcode
+  // paste or to log a known brand product, but the LLM path is
+  // the more common case.
+  const [mode, setMode] = useState<'search' | 'ask'>('ask');
   const [meal, setMeal] = useState<MealType>(inferMealType());
 
   return (
@@ -508,7 +514,7 @@ function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void })
         {/* Mode selector + meal picker */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1">
-            {(['search', 'ask'] as const).map((m) => (
+            {(['ask', 'search'] as const).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -519,8 +525,13 @@ function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void })
                     ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/10'
                     : 'border-ink-700/40 text-ink-300 hover:border-neon-cyan/40',
                 )}
+                title={
+                  m === 'ask'
+                    ? 'Ask the AI to estimate macros for a recipe / mixed dish'
+                    : 'Search OpenFoodFacts / USDA for a packaged product'
+                }
               >
-                {m === 'search' ? 'Search' : 'Ask AI'}
+                {m === 'ask' ? '✦ Ask AI' : 'Search'}
               </button>
             ))}
           </div>
