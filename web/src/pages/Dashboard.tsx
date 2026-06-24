@@ -263,6 +263,7 @@ export function DashboardPage() {
         </Panel>
 
         <HeartsCard />
+        <HomeBaseCard />
       </div>
 
       {/* Morning briefing (LLM-generated, per-user per-day).
@@ -282,15 +283,6 @@ export function DashboardPage() {
         <TodayHabitsPanel />
         <NutritionWidget />
         <HabitsWidget />
-      </div>
-
-      {/* Home base shield — tier + last few penance events. Sits
-          below the weigh-in row so the dashboard greets the user
-          with their most-engagement-relevant number (the shield
-          gates Breach boss damage). Tapping "Details →" opens
-          /home-base for the full event feed + penance management. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-4 md:mb-6">
-        <HomeBaseCard />
       </div>
 
       {/* Recovery trends — HRV + Sleep */}
