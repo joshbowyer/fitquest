@@ -6,6 +6,8 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { MetricTrendChart } from '@/components/MetricTrendChart';
+import { BodyBatteryChart } from '@/components/BodyBatteryChart';
+import { SleepOverviewChart } from '@/components/SleepOverviewChart';
 import { METRICS, type MetricType } from '@/lib/types';
 import { classNames, formatMetricWithUnit, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
@@ -161,6 +163,31 @@ export function RecoveryPage() {
         </Panel>
         <Panel variant="amber" title="Sleep quality — last 30 days">
           <MetricTrendChart metric="SLEEP_QUALITY" days={30} system={system} color="#ffc34d" />
+        </Panel>
+      </div>
+
+      {/* Sleep overview: hours + onset + quality on one chart */}
+      <Panel
+        variant="cyan"
+        title="Sleep overview — onset + hours + quality"
+        className="border-neon-cyan/30 mb-4"
+      >
+        <SleepOverviewChart days={30} />
+      </Panel>
+
+      {/* Body battery — 4 overlays (overview/onset/duration/quality) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        <Panel variant="lime" title="Body battery + sleep onset" className="border-neon-lime/30">
+          <BodyBatteryChart days={30} variant="onset" />
+        </Panel>
+        <Panel variant="amber" title="Body battery + sleep hours" className="border-neon-amber/30">
+          <BodyBatteryChart days={30} variant="duration" />
+        </Panel>
+        <Panel variant="cyan" title="Body battery + sleep quality" className="border-neon-cyan/30">
+          <BodyBatteryChart days={30} variant="quality" />
+        </Panel>
+        <Panel variant="magenta" title="Body battery + substances" className="border-neon-magenta/30">
+          <BodyBatteryChart days={30} variant="substances" />
         </Panel>
       </div>
 

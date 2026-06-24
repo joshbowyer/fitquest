@@ -31,6 +31,7 @@ import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
 import { adminRoutes } from './routes/admin.js';
 import { morningReportRoutes } from './routes/morningReport.js';
+import { plateauRoutes } from './routes/plateaus.js';
 import { checkInRoutes } from './routes/checkIns.js';
 import { activityInsightRoutes } from './routes/activityInsights.js';
 import { metricInsightRoutes } from './routes/metricInsights.js';
@@ -98,6 +99,7 @@ async function build() {
   await app.register(checkInRoutes);
   await app.register(activityInsightRoutes);
   await app.register(metricInsightRoutes);
+  await app.register(plateauRoutes, { prefix: '/plateaus' });
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');
