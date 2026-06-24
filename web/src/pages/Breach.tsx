@@ -7,7 +7,6 @@
 // accretion disk; HP is shown as a glowing arc around the hole.
 // On kill, surfaces a VICTORY modal with the reward preview + claim.
 
-import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, postJson } from '@/lib/api';
@@ -284,11 +283,11 @@ export function BreachPage() {
               <div className="flex flex-wrap gap-2 pt-2">
                 {isVictory ? (
                   <button
-                    onClick={() => claimDelayed.mutate()}
-                    disabled={claim.isPending}
+                    onClick={() => claimDelayed.run(undefined as never)}
+                    disabled={claimDelayed.isPending || claim.isPending}
                     className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-widest disabled:opacity-50"
                   >
-                    {claim.isPending ? 'Claiming…' : '⚡ Claim victory'}
+                    {claimDelayed.isPending || claim.isPending ? 'Claiming…' : '⚡ Claim victory'}
                   </button>
                 ) : (
                   <button
