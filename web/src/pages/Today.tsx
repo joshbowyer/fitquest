@@ -10,7 +10,8 @@ import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
-import { TodayBlocks } from '@/components/TodayBlocks';
+import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
+import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { type UnitSystem } from '@/lib/units';
 
 // /today — Dailies view (Habitica-style):
@@ -115,6 +116,15 @@ export function TodayPage() {
   const { counts } = data ?? { counts: { total: 0, completed: 0, isWorkoutDay: false } };
   const isWorkoutDay = counts.isWorkoutDay;
 
+  // Programmatic opener for the Activity modal so the WORKOUT daily
+  // tile (and the wall-mode version, etc.) can trigger the same
+  // modal the Activity tile uses, instead of duplicating the modal
+  // state. TodayActionsWrapper owns the openModal state internally;
+  // we just dispatch a custom event the wrapper listens for.
+  function openActivityFromDaily() {
+    window.dispatchEvent(new CustomEvent(OPEN_ACTIVITY_EVENT));
+  }
+
   const body = (
     <>
       {/* Workout day banner */}
@@ -136,100 +146,123 @@ export function TodayPage() {
         </div>
       )}
 
-      {/* One-stop-shop quick-log blocks. Each collapsed by default,
-          inline log form on click. See TodayBlocks for the block list. */}
+      {/* One-stop-shop quick-action grid. Small rectangular tiles,
+          each opens its own log modal. The Activity modal also
+          opens when the WORKOUT daily below dispatches the
+          OPEN_ACTIVITY_EVENT (handled by TodayActions internally). */}
       <div className="mb-6">
-        <TodayBlocks system={(user?.units ?? 'METRIC') as UnitSystem} />
+        <TodayActions />
       </div>
 
       {isLoading ? (
         <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
       ) : (
         <>
-          {/* Built-in WORKOUT daily */}
-          {data && data.builtins.length > 0 && (
-            <div className="mb-4">
-              <SectionHeader label="Built-in" count={data.builtins.length} />
-              <div className="space-y-2">
-                {data.builtins.map((d) => (
-                  <DailyRow
-                    key={d.id}
-                    daily={d}
-                    onToggle={() => {
-                      setPendingId(d.id);
-                      completeM.run(d.id);
-                    }}
-                    isPending={completeM.isPending}
-                    pendingId={pendingId}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Built-in SPIRITUAL dailies */}
-          {data && data.spiritualDailies.length > 0 && (
-            <div className="mb-4">
-              <SectionHeader label="Spiritual" count={data.spiritualDailies.length} accent="#cba6ff" />
-              <div className="space-y-2">
-                {data.spiritualDailies.map((d) => (
-                  <DailyRow
-                    key={d.id}
-                    daily={d}
-                    isPending={completeM.isPending}
-                    onToggle={() => {
-                      setPendingId(d.id);
-                      completeM.run(d.id);
-                    }}
-                    pendingId={pendingId}
-                  />
-                ))}
-              </div>
-              <div className="text-[10px] font-mono text-ink-400 italic mt-2">
-                Configure which prayers are daily obligations in <Link to="/spiritual" className="neon-text-cyan hover:underline">Spiritual →</Link>.
-              </div>
-            </div>
-          )}
-
-          {/* User-defined dailies */}
-          {data && data.userDailies.length > 0 && (
-            <div className="mb-4">
-              <SectionHeader label="Your dailies" count={data.userDailies.length} accent="#9bff5c" />
-              <div className="space-y-2">
-                {data.userDailies.map((d) => (
-                  <DailyRow
-                    key={d.id}
-                    daily={d}
-                    onToggle={() => {
-                      setPendingId(d.id);
-                      completeM.run(d.id);
-                    }}
-                    onEdit={() => setEditing(d)}
-                    onArchive={() => deleteM.run(d.id)}
-                    isPending={completeM.isPending}
-                    pendingId={pendingId}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {data && counts.total === 0 && (
-            <Panel>
-              <div className="text-center py-6 space-y-2">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">No dailies yet</div>
-                <div className="text-xs text-ink-400 font-mono max-w-md mx-auto">
-                  Add user-defined dailies (e.g. "Stretch 10m", "Read 30m"), or set up your
-                  spiritual practices on the Spiritual tab. Built-in WORKOUT appears once
-                  you mark a workout day in <Link to="/routine" className="neon-text-cyan hover:underline">Routine</Link>.
+          {/* Two-column layout: dailies on the left, habits on the
+              right. Both columns stack on mobile. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Dailies column — built-ins + spiritual + user-defined */}
+            <div>
+              {/* Built-in WORKOUT daily — clicks open the Activity modal
+                  from TodayActions instead of marking the daily complete.
+                  The "complete" path is still exposed as a small ✓ button
+                  for users who want to mark the daily without logging
+                  an actual workout. */}
+              {data && data.builtins.length > 0 && (
+                <div className="mb-4">
+                  <SectionHeader label="Built-in" count={data.builtins.length} />
+                  <div className="space-y-2">
+                    {data.builtins.map((d) => (
+                      <DailyRow
+                        key={d.id}
+                        daily={d}
+                        onToggle={() => {
+                          if (d.category === 'WORKOUT' && !d.todayDone) {
+                            openActivityFromDaily();
+                            return;
+                          }
+                          setPendingId(d.id);
+                          completeM.run(d.id);
+                        }}
+                        isPending={completeM.isPending}
+                        pendingId={pendingId}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
-                  New Daily
-                </NeonButton>
-              </div>
-            </Panel>
-          )}
+              )}
+
+              {/* Built-in SPIRITUAL dailies */}
+              {data && data.spiritualDailies.length > 0 && (
+                <div className="mb-4">
+                  <SectionHeader label="Spiritual" count={data.spiritualDailies.length} accent="#cba6ff" />
+                  <div className="space-y-2">
+                    {data.spiritualDailies.map((d) => (
+                      <DailyRow
+                        key={d.id}
+                        daily={d}
+                        isPending={completeM.isPending}
+                        onToggle={() => {
+                          setPendingId(d.id);
+                          completeM.run(d.id);
+                        }}
+                        pendingId={pendingId}
+                      />
+                    ))}
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-400 italic mt-2">
+                    Configure which prayers are daily obligations in <Link to="/spiritual" className="neon-text-cyan hover:underline">Spiritual →</Link>.
+                  </div>
+                </div>
+              )}
+
+              {/* User-defined dailies */}
+              {data && data.userDailies.length > 0 && (
+                <div className="mb-4">
+                  <SectionHeader label="Your dailies" count={data.userDailies.length} accent="#9bff5c" />
+                  <div className="space-y-2">
+                    {data.userDailies.map((d) => (
+                      <DailyRow
+                        key={d.id}
+                        daily={d}
+                        onToggle={() => {
+                          setPendingId(d.id);
+                          completeM.run(d.id);
+                        }}
+                        onEdit={() => setEditing(d)}
+                        onArchive={() => deleteM.run(d.id)}
+                        isPending={completeM.isPending}
+                        pendingId={pendingId}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state — only when no dailies at all */}
+              {data && counts.total === 0 && (
+                <Panel>
+                  <div className="text-center py-6 space-y-2">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">No dailies yet</div>
+                    <div className="text-xs text-ink-400 font-mono max-w-md mx-auto">
+                      Add user-defined dailies (e.g. "Stretch 10m", "Read 30m"), or set up your
+                      spiritual practices on the Spiritual tab. Built-in WORKOUT appears once
+                      you mark a workout day in <Link to="/routine" className="neon-text-cyan hover:underline">Routine</Link>.
+                    </div>
+                    <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
+                      New Daily
+                    </NeonButton>
+                  </div>
+                </Panel>
+              )}
+            </div>
+
+            {/* Habits column — reuses the TodayHabitsPanel so the
+                dashboard + today stay in sync. */}
+            <div>
+              <TodayHabitsPanel />
+            </div>
+          </div>
         </>
       )}
 
