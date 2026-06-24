@@ -4,6 +4,7 @@ import { useAuth, type User } from '@/lib/auth';
 import { CLASS_META } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { useNavOrder } from '@/hooks/useNavOrder';
+import { useLiveClock } from '@/hooks/useLiveClock';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -44,6 +45,10 @@ const NAV: NavItem[] = [
 export function Layout({ children }: Props) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  // Live clock for the sidebar footer. Updates every minute;
+  // the hook also restarts the interval on tab focus so a
+  // backgrounded tab doesn't display a stale time.
+  const now = useLiveClock(60_000);
   /// Mobile menu overlay. Single boolean — when true, the
   /// hamburger morphs into an X and a full-screen menu renders.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -273,7 +278,7 @@ export function Layout({ children }: Props) {
           )}
           <div className="text-[10px] text-ink-400 font-mono leading-relaxed">
             <div>// local time</div>
-            <div className="text-neon-cyan">{new Date().toLocaleString()}</div>
+            <div className="text-neon-cyan tabular-nums">{now.toLocaleString()}</div>
           </div>
         </div>
       </aside>

@@ -13,6 +13,7 @@ import { classNames } from '@/lib/format';
 import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
 import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { type UnitSystem } from '@/lib/units';
+import { useLiveClock } from '@/hooks/useLiveClock';
 
 // /today — Dailies view (Habitica-style):
 // - Built-in WORKOUT (auto-completes when a workout is logged today; flips on schedule)
@@ -350,22 +351,14 @@ function WallModeShell({
   onExit,
   children,
 }: {
-  counts: { total: number; completed: number };
   onExit: () => void;
   children: React.ReactNode;
 }) {
-  // Wall-clock display. Updates every minute — second-precision
-  // isn't useful for a "glance from across the room" display
-  // and a 1Hz setInterval would just waste battery on a propped
-  // phone. The time string is recomputed from `now` so we don't
-  // drift if the tab is backgrounded for a while.
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const tick = () => setNow(new Date());
-    const id = setInterval(tick, 60_000);
-    tick();
-    return () => clearInterval(id);
-  }, []);
+  // Wall-clock display. Updates every minute via the shared hook,
+  // which also restarts the interval when the tab returns to
+  // foreground so a backgrounded phone picks up the correct time
+  // the moment it wakes.
+  const now = useLiveClock(60_000);
   const time = now.toLocaleTimeString(undefined, {
     hour: 'numeric',
     minute: '2-digit',
@@ -480,10 +473,10 @@ function WallModeShell({
           <div className="font-display tracking-[0.3em] text-[10px] uppercase mb-2 text-neon-cyan opacity-80">
             FitQuest · Wall
           </div>
-          <div className="font-display text-7xl landscape:text-8xl tracking-tighter leading-none text-slate-100 tabular-nums">
+          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 tabular-nums mb-2">
             {time}
           </div>
-          <div className="text-sm font-mono mt-3 text-ink-300">
+          <div className="font-display text-2xl landscape:text-3xl text-ink-100 leading-tight">
             {date}
           </div>
         </div>
