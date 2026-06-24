@@ -16,6 +16,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { randomUuid } from '@/lib/uuid';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export type BreachBoss = {
   id: string;
@@ -121,6 +122,10 @@ export function BreachPage() {
 
   const claimDelayed = useDelayedMutation(claim);
 
+  // Debug log so we can verify the page is actually mounting when
+  // navigated to from the constellation map or sidebar.
+  console.log('[BreachPage] render', { isLoading, isError, hasData: !!data, status: data?.progress?.status, hasBoss: !!data?.boss });
+
   if (isLoading) {
     return (
       <Layout>
@@ -162,7 +167,9 @@ export function BreachPage() {
         <div className="space-y-4">
           <Panel title="SEALED" variant="default">
             <div className="flex flex-col items-center gap-6 py-8">
-              <BlackHoleSVG size={200} unlocked={false} hp={1} maxHp={1} tier={undefined} animated={false} />
+              <ErrorBoundary>
+                <BlackHoleSVG size={200} unlocked={false} hp={1} maxHp={1} tier={undefined} animated={false} />
+              </ErrorBoundary>
               <div className="text-center space-y-2 max-w-md">
                 <p className="text-sm text-slate-300">
                   Somewhere beneath the Nexus, something breathes. You can almost hear it
@@ -211,14 +218,16 @@ export function BreachPage() {
           <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6 items-center">
             {/* Black hole visual */}
             <div className="flex justify-center">
-              <BlackHoleSVG
-                size={240}
-                unlocked={true}
-                hp={progress.bossHp}
-                maxHp={progress.bossMaxHp}
-                tier={boss.tier}
-                animated={!isVictory && !isCooldown}
-              />
+              <ErrorBoundary>
+                <BlackHoleSVG
+                  size={240}
+                  unlocked={true}
+                  hp={progress.bossHp}
+                  maxHp={progress.bossMaxHp}
+                  tier={boss.tier}
+                  animated={!isVictory && !isCooldown}
+                />
+              </ErrorBoundary>
             </div>
             {/* Boss info */}
             <div className="space-y-3">
