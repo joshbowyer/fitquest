@@ -207,6 +207,46 @@ async function substanceCountsDomain(
 }
 
 /**
+ * Examen trend over the last N Sundays. Returns
+ * { loggedCount, totalWeeks, latestWeekStart|null } so the LLM
+ * can fold a one-line stat into the spiritual section ("you
+ * logged your examen 4 of last 5 Sundays"). The full response
+ * bodies are NOT pulled into the morning-report gather — only
+ * the rollup. The full history lives on /examen.
+ *
+ * `weeks` defaults to 5 (matches the morning report's "5 Sundays"
+ * framing). Uses the same Sunday-of-week key as the /examen
+ * endpoint so the rows line up exactly.
+ */
+async function examenTrendDomain(
+  userId: string,
+  timezone: string | null,
+  weeks: number = 5,
+): Promise<{
+  loggedCount: number;
+  totalWeeks: number;
+  latestWeekStart: string | null;
+}> {
+  const { sundayOfWeek } = await import('./plateauSnapshot.js');
+  const now = new Date();
+  const thisSunday = sundayOfWeek(now, timezone);
+  const [y, m, d] = thisSunday.split('-').map(Number);
+  const cutoffDt = new Date(Date.UTC(y, m - 1, d));
+  cutoffDt.setUTCDate(cutoffDt.getUTCDate() - (weeks - 1) * 7);
+  const cutoff = cutoffDt.toISOString().slice(0, 10);
+  const rows = await prisma.examenResponse.findMany({
+    where: { userId, weekStart: { gte: cutoff, lte: thisSunday } },
+    select: { weekStart: true },
+    orderBy: { weekStart: 'desc' },
+  });
+  return {
+    loggedCount: rows.length,
+    totalWeeks: weeks,
+    latestWeekStart: rows[0]?.weekStart ?? null,
+  };
+}
+
+/**
  * Recent body-fat readings with their measurement source. Used by
  * the LLM to fold confidence into the recovery/coaching prose
  * (e.g. "your latest 10.5% reading was from calipers — confidence
@@ -343,8 +383,16 @@ export type ReportPayload = {
   /// Per-set plausibility flags from the last ~36h of workouts.
   /// Surfaced as an "Implausible sets" section so the user can fix
   /// typos (e.g. 1350 lb instead of 135) before they pollute the
-  /// LLM narrative as a fake PR.
+  /// LLM narrative as fake PRs.
   impossibleValues: ImpossibleValueItem[];
+  /// Ignatian-examen trend over the last 5 Sundays. The full
+  /// responses live on /examen; this is just the rollup so the
+  /// LLM can mention "logged 4 of 5" in the spiritual section.
+  examenTrend: {
+    loggedCount: number;
+    totalWeeks: number;
+    latestWeekStart: string | null;
+  };
 };
 
 function todayInTz(timezone: string | null): DateStr {
@@ -388,7 +436,7 @@ export async function gatherReportData(
   const [
     sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual,
     substanceCounts, streak, plateaus, nudges, sleepOverlap, bodyBattery, bodyFatSources,
-    impossibleValues,
+    impossibleValues, examenTrend,
   ] = await Promise.all([
     metricDomain(userId, 'SLEEP_HOURS', since7, since14),
     metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
@@ -407,6 +455,7 @@ export async function gatherReportData(
     buildBodyBatteryReport(userId, tz, 14, now),
     bodyFatSourcesDomain(userId, since7),
     impossibleValuesDomain(userId, now),
+    examenTrendDomain(userId, tz, 5),
   ]);
 
   return {
@@ -440,6 +489,7 @@ export async function gatherReportData(
     bodyBattery,
     bodyFatSources,
     impossibleValues,
+    examenTrend,
   };
 }
 
@@ -456,6 +506,7 @@ The payload also includes deterministic engines that already produced their own 
 - bodyBattery: body battery vs sleep onset/quality/duration/substances. Surfaced in UI; you may fold one concrete stat into the recovery section.
 - bodyFatSources: latest body-fat readings with their measurement method (DEXA / BodPod / calipers / BIA / visual / MANUAL). Mention confidence only if it's relevant.
 - impossibleValues: per-set values the plausibility detector flagged (Bench > 350kg, Squat > 500kg, blanket > 500kg, reps > 200, etc.) from the last ~36h of workouts. Surfaced in UI directly; if a 'block'-severity flag exists, mention it in the training section ("that 500kg bench looks like a typo — worth double-checking before tomorrow's session") so the user sees it now, not tomorrow. Don't invent PRs from flagged values.
+- examenTrend: Ignatian-exam consistency over the last 5 Sundays — {loggedCount, totalWeeks: 5, latestWeekStart}. If loggedCount >= 3, mention warmly in the spiritual section ("you've logged your examen 4 of last 5 Sundays"). If 0, stay silent — the user may not have opted into this practice. Never quote the actual response text; just the consistency stat.
 
 Hard rules:
 - Each section ≤ 2 sentences, ≤ 220 characters.

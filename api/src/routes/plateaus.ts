@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { PLATEAU_KINDS, type PlateauKind } from '../lib/plateau.js';
+import { refreshPlateauSnapshot, sundayOfWeek } from '../lib/plateauSnapshot.js';
 
 const PlateauKindSchema = z.enum([
   'NO_PR_RECENT',
@@ -106,7 +107,79 @@ export async function plateauRoutes(app: FastifyInstance) {
     const plateaus = await detectPlateaus(me.id);
     return { plateaus };
   });
+
+  /**
+   * GET /plateaus/snapshot
+   * Return the most recent cached PlateauSnapshot (or null when no
+   * snapshot exists yet — the weekly cron hasn't run, or the user
+   * signed up in the last 24h). The dashboard badge reads from
+   * here so we don't run the full detector on every page load.
+   *
+   * Query param `?force=1` triggers a refresh on the way out and
+   * returns the freshly-cached snapshot — used by the dashboard
+   * "Re-check" button.
+   */
+  app.get<{ Querystring: { force?: string } }>('/snapshot', async (req) => {
+    const me = await requireUser(req);
+    if (req.query.force === '1') {
+      const r = await refreshPlateauSnapshot(me.id, me.timezone);
+      const row = await prisma.plateauSnapshot.findUnique({
+        where: { userId_weekStart: { userId: me.id, weekStart: r.weekStart } },
+      });
+      return parseSnapshotRow(row);
+    }
+    const row = await prisma.plateauSnapshot.findFirst({
+      where: { userId: me.id },
+      orderBy: { generatedAt: 'desc' },
+    });
+    return parseSnapshotRow(row);
+  });
+
+  /**
+   * GET /plateaus/snapshot/badges
+   * Lightweight count for the sidebar / topbar badge. Returns
+   * { count: number, weekStart: string|null, stale: boolean } so
+   * the UI can decide whether to highlight. `stale` is true when
+   * the snapshot is older than 8 days (i.e. the cron missed a
+   * week — schedule drift, server down, etc.) so the badge can
+   * pulse red instead of amber.
+   */
+  app.get('/snapshot/badges', async (req) => {
+    const me = await requireUser(req);
+    const row = await prisma.plateauSnapshot.findFirst({
+      where: { userId: me.id },
+      orderBy: { generatedAt: 'desc' },
+    });
+    if (!row) return { count: 0, weekStart: null, stale: false };
+    const ageMs = Date.now() - row.generatedAt.getTime();
+    const eightDaysMs = 8 * 24 * 60 * 60 * 1000;
+    return {
+      count: row.flagCount,
+      weekStart: row.weekStart,
+      stale: ageMs > eightDaysMs,
+    };
+  });
 }
 
 // Re-export for tests / other callers.
 export { PLATEAU_KINDS };
+
+function parseSnapshotRow(row: {
+  weekStart: string;
+  plateaus: string;
+  flagCount: number;
+  generatedAt: Date;
+} | null) {
+  if (!row) return { weekStart: null, flagCount: 0, plateaus: [], generatedAt: null };
+  let plateaus: any[] = [];
+  try {
+    const parsed = JSON.parse(row.plateaus);
+    if (Array.isArray(parsed)) plateaus = parsed;
+  } catch {}
+  return {
+    weekStart: row.weekStart,
+    flagCount: row.flagCount,
+    plateaus,
+    generatedAt: row.generatedAt.toISOString(),
+  };
+}

@@ -354,6 +354,45 @@ export type ImpossibleValueFlag = {
   occurredAt: string;
 };
 
+/// Cached plateau snapshot, refreshed weekly by the cron in
+/// api/src/index.ts (Sunday 22:00 local). Used by the sidebar /
+/// topbar badge so the user sees "X stale items" without
+/// forcing a morning-report regeneration.
+export type PlateauSnapshot = {
+  weekStart: string | null;
+  flagCount: number;
+  plateaus: Plateau[];
+  generatedAt: string | null;
+};
+
+export type PlateauBadge = {
+  count: number;
+  weekStart: string | null;
+  /// True when the snapshot is older than 8 days — cron missed a
+  /// week (server down, schedule drift, etc.). UI pulses red.
+  stale: boolean;
+};
+
+/// Ignatian examen response — Sunday-evening reflection. Three
+/// open-text fields (consoled / desolated / godsPresence) plus an
+/// optional notes overflow. One row per user per week.
+export type ExamenResponse = {
+  id: string;
+  weekStart: string;
+  consoled: string;
+  desolated: string;
+  godsPresence: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isCurrentWeek: boolean;
+};
+
+export type ExamenList = {
+  currentWeek: string;
+  items: ExamenResponse[];
+};
+
 export type MorningReport = {
   id: string;
   userId: string;
@@ -387,6 +426,15 @@ export type MorningReport = {
   /// typos that would otherwise pollute the LLM narrative as
   /// fake PRs.
   impossibleValueFlags: ImpossibleValueFlag[];
+  /// Ignatian-exam trend over the last 5 Sundays. Used by the
+  /// LLM to mention consistency in the spiritual section
+  /// ("logged 4 of last 5 Sundays"). The full responses live on
+  /// /examen.
+  examenTrend: {
+    loggedCount: number;
+    totalWeeks: number;
+    latestWeekStart: string | null;
+  };
   model: string | null;
   latencyMs: number | null;
   createdAt: string;

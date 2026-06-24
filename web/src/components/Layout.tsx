@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth, type User } from '@/lib/auth';
 import { CLASS_META } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { useNavOrder } from '@/hooks/useNavOrder';
 import { useLiveClock } from '@/hooks/useLiveClock';
+import { api } from '@/lib/api';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -49,6 +51,18 @@ export function Layout({ children }: Props) {
   // the hook also restarts the interval on tab focus so a
   // backgrounded tab doesn't display a stale time.
   const now = useLiveClock(60_000);
+  // Plateau badge — surfaces the weekly cron result on the
+  // Insights nav link so the user sees "X stale" without opening
+  // /insights. Refreshes on a 30-min cadence (server writes ~once
+  // a week so this is just to pick up manual force-refreshes).
+  // Skipped in the no-auth shell so /login doesn't hit a 401.
+  const plateauBadgeQ = useQuery({
+    queryKey: ['plateaus', 'badge'],
+    queryFn: () => api<{ count: number; weekStart: string | null; stale: boolean }>('/plateaus/snapshot/badges'),
+    enabled: !!user,
+    refetchInterval: 30 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
+  });
   /// Mobile menu overlay. Single boolean — when true, the
   /// hamburger morphs into an X and a full-screen menu renders.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -234,6 +248,26 @@ export function Layout({ children }: Props) {
             >
               <span className="text-base w-5 text-center">{item.icon}</span>
               <span className="flex-1 truncate">{item.label}</span>
+              {/* Plateau badge — only on the Insights link. Pulsed
+                  red when the snapshot is stale (cron missed a week),
+                  amber otherwise. Empty when count = 0 or no data. */}
+              {item.to === '/insights' && (plateauBadgeQ.data?.count ?? 0) > 0 && (
+                <span
+                  className={classNames(
+                    'text-[10px] font-mono px-1.5 py-0.5 border rounded',
+                    plateauBadgeQ.data?.stale
+                      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10 animate-pulse'
+                      : 'text-amber-300 border-amber-500/40 bg-amber-500/10',
+                  )}
+                  title={
+                    plateauBadgeQ.data?.stale
+                      ? `Cron missed a week — last snapshot is stale`
+                      : `${plateauBadgeQ.data?.count} plateau flag${(plateauBadgeQ.data?.count ?? 0) === 1 ? '' : 's'} this week`
+                  }
+                >
+                  {plateauBadgeQ.data?.count} stale
+                </span>
+              )}
               {editingNav && (
                 <span className="text-ink-400 text-[10px] tracking-normal" aria-hidden="true">
                   ⠿

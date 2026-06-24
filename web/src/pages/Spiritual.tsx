@@ -10,6 +10,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { formatRelative } from '@/lib/format';
 import { DIFFICULTY_TIERS, type DifficultyTier } from '@/lib/difficultyTiers';
 import { SpiritualDirectorCard } from '@/components/SpiritualDirectorCard';
+import { ExamenSection } from '@/components/ExamenSection';
 
 // Persist the dismissal across remounts (tab switches) and reloads.
 // The server-side showOrdainPicker stays true until the user logs a
@@ -173,6 +174,15 @@ export function SpiritualPage() {
           the user reads when they open the page. */}
       <div className="mb-4 md:mb-6">
         <SpiritualDirectorCard />
+      </div>
+
+      {/* Ignatian examen — Sunday-evening reflection. Three open-
+          text fields (consoled / desolated / godsPresence) + optional
+          notes. Listed BELOW the spiritual director so the day's
+          Gospel reflection comes first; the examen is a weekly
+          practice, not a daily one. */}
+      <div className="mb-4 md:mb-6">
+        <ExamenSection />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">

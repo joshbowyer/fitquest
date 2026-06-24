@@ -36,6 +36,7 @@ import { checkInRoutes } from './routes/checkIns.js';
 import { activityInsightRoutes } from './routes/activityInsights.js';
 import { metricInsightRoutes } from './routes/metricInsights.js';
 import { importRoutes } from './routes/import.js';
+import { examenRoutes } from './routes/examen.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
 import { foodRoutes, savedFoodRoutes, foodYouImportRoutes } from './routes/foods.js';
@@ -100,6 +101,7 @@ async function build() {
   await app.register(activityInsightRoutes);
   await app.register(metricInsightRoutes);
   await app.register(plateauRoutes, { prefix: '/plateaus' });
+  await app.register(examenRoutes, { prefix: '/examen' });
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');
@@ -212,6 +214,38 @@ async function main() {
       }
     }, 24 * 60 * 60 * 1000);
   }, corrMs);
+
+  // Plateau snapshot cron — Sunday 22:00 local. Runs detectPlateaus
+  // for every active user and persists the result so the dashboard
+  // can show a stale-badge count without forcing a morning-report
+  // regeneration on every page load. Failed per-user runs are
+  // caught + logged so one broken detector doesn't poison the batch.
+  const plateauNow = new Date();
+  const plateauFireAt = new Date(plateauNow.getTime());
+  plateauFireAt.setHours(22, 0, 0, 0);
+  if (plateauFireAt.getTime() <= plateauNow.getTime()) plateauFireAt.setDate(plateauFireAt.getDate() + ((7 - plateauFireAt.getDay() + 7) % 7) + 1);
+  const plateauMs = plateauFireAt.getTime() - plateauNow.getTime();
+  app.log.info({ msUntilNext: plateauMs }, 'plateau snapshot scheduled');
+  setTimeout(() => {
+    (async () => {
+      try {
+        const { refreshAllPlateauSnapshots } = await import('./lib/plateauSnapshot.js');
+        const r = await refreshAllPlateauSnapshots();
+        app.log.info(r, 'plateau weekly snapshot complete');
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'plateau weekly snapshot failed');
+      }
+    })();
+    setInterval(async () => {
+      try {
+        const { refreshAllPlateauSnapshots } = await import('./lib/plateauSnapshot.js');
+        const r = await refreshAllPlateauSnapshots();
+        app.log.info(r, 'plateau weekly snapshot complete');
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'plateau weekly snapshot failed');
+      }
+    }, 7 * 24 * 60 * 60 * 1000);
+  }, plateauMs);
 
   const shutdown = async () => {
     app.log.info('shutting down');

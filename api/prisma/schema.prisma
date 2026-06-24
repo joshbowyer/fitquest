@@ -276,6 +276,8 @@ model User {
    activityInsights    ActivityInsight[]
    metricInsights      MetricInsight[]
    plateauPauses      PlateauPause[]
+   plateauSnapshots   PlateauSnapshot[]
+   examenResponses    ExamenResponse[]
   trackedItems     UserTrackedItem[]
   dailyTracked     DailyTrackedItem[]
   substanceLogs    SubstanceLog[]
@@ -731,6 +733,51 @@ model PlateauPause {
   createdAt DateTime    @default(now())
 
   @@index([userId, resumeAt])
+}
+
+/// Cached plateau detection output, refreshed weekly by the cron
+/// job in api/src/index.ts (Sunday 22:00 local). Lets the
+/// dashboard surface a stale-badge count without forcing a
+/// morning-report regeneration on every page load. Shape:
+/// { kind, exercise?, since, label, severity, note, context }.
+model PlateauSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Sunday-of-week in the user's local timezone (YYYY-MM-DD).
+  /// One row per user per week; the weekly cron overwrites.
+  weekStart   String
+  /// JSON array of Plateau shape (see api/src/lib/plateau.ts).
+  plateaus    String
+  /// Convenience count so the badge query doesn't have to parse
+  /// the JSON. 0 means clean week.
+  flagCount   Int      @default(0)
+  generatedAt DateTime @default(now())
+
+  @@unique([userId, weekStart])
+  @@index([userId, generatedAt])
+}
+
+/// Ignatian examen response — Sunday-evening reflection. Three
+/// open-text fields (consoled / desolated / godsPresence) plus an
+/// optional notes overflow. Surfaced in the morning report's
+/// spiritual section ("4 of last 5 Sundays logged").
+model ExamenResponse {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Sunday-of-week in the user's local timezone (YYYY-MM-DD).
+  /// One response per user per week (latest wins via UPSERT).
+  weekStart     String
+  consoled      String
+  desolated     String
+  godsPresence  String
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, weekStart])
+  @@index([userId, createdAt])
 }
 
 enum PlateauKind {
