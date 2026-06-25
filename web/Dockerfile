@@ -36,6 +36,8 @@ COPY web/tsconfig.json ./web/tsconfig.json
 COPY web/tsconfig.app.json ./web/tsconfig.app.json
 COPY web/tsconfig.node.json ./web/tsconfig.node.json
 COPY web/vite.config.ts ./web/vite.config.ts
+COPY web/postcss.config.js ./web/postcss.config.js
+COPY web/tailwind.config.js ./web/tailwind.config.js
 COPY web/index.html ./web/index.html
 COPY web/src ./web/src
 COPY web/public ./web/public
