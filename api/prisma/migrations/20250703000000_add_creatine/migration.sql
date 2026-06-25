@@ -1,1 +1,0 @@
-ALTER TABLE "User" ADD COLUMN "creatine" BOOLEAN NOT NULL DEFAULT false;

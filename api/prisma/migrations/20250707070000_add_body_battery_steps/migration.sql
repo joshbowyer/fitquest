@@ -1,3 +1,0 @@
--- AlterEnum
-ALTER TYPE "MetricType" ADD VALUE 'BODY_BATTERY';
-ALTER TYPE "MetricType" ADD VALUE 'STEPS';
