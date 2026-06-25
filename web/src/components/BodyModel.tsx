@@ -113,13 +113,51 @@ export type PainMarker = {
   latestAt: string;
 };
 
+// Volume intensity band for the avatar palette. Set-count bands
+// drive the saturation/opacity of the recovery color so the user
+// can see "I worked this muscle lightly vs heavily" at a glance.
+export type VolumeBand = 'none' | 'light' | 'moderate' | 'heavy';
+
+export function bandForSetCount(setCount: number): VolumeBand {
+  if (setCount <= 0) return 'none';
+  if (setCount <= 2) return 'light';
+  if (setCount <= 5) return 'moderate';
+  return 'heavy';
+}
+
+// Recovery band for the avatar palette. Maps the 0-100 recovery
+// score to one of 5 named states that drive the HUE of the part.
+export type RecoveryBand = 'rested' | 'primed' | 'active' | 'fatigued' | 'overloaded';
+
+export function bandForRecoveryScore(score: number): RecoveryBand {
+  if (score >= 90) return 'rested';
+  if (score >= 70) return 'primed';
+  if (score >= 50) return 'active';
+  if (score >= 30) return 'fatigued';
+  return 'overloaded';
+}
+
 // Muscle-worked marker: a part was trained at the given time.
-// Used to show recent activity on the body.
+// Used to show recent activity on the body. Newer fields
+// (`setCount`, `sessions`) drive the 13-state color palette.
+// The legacy `intensity` field is kept for back-compat.
+export type MuscleWorkedSession = {
+  workoutId: string;
+  workoutName: string | null;
+  performedAt: string;
+  setCount: number;
+  totalVolumeKg: number;
+};
+
 export type MuscleWorkedMarker = {
   bodyPart: BodyPartId;
-  workedAt: string;  // ISO timestamp
-  // Rough intensity of the work (0-10). Volume-based proxy.
+  workedAt: string;  // ISO timestamp of the latest session
+  // Legacy 0-10 volume proxy. New clients should use setCount.
   intensity: number;
+  // New: total sets across the 36h window.
+  setCount: number;
+  // Per-workout breakdown that drives the click-list modal.
+  sessions: MuscleWorkedSession[];
 };
 
 // Recovery status per body part, 0-100.
@@ -305,20 +343,31 @@ function BodyPartMesh({
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  // Color priority: hovered > recovery > cyan default
-  // Pain is shown ONLY as an overlay marker (red/magenta sphere)
-  // so the user can see "overworked AND has pain" at the same time.
-  let baseColor = '#14d6e8'; // default cyan
-  if (recovery) baseColor = recoveryToColor(recovery.score);
-  if (hovered) baseColor = '#14d6e8';
+  // 13-state palette: recovery band drives the hue, volume band
+  // drives the brightness/opacity. Hover overrides to cyan.
+  const baseColor = bodyPartColor({ recovery, worked, hovered });
 
-  // Recently worked + recovery data = keep recovery color but pulse
-  const recentlyWorked = worked && (Date.now() - new Date(worked.workedAt).getTime()) < 48 * 60 * 60 * 1000;
+  // Volume band drives wireframe opacity too. Light = faint wireframe,
+  // heavy = bright wireframe. Lets the user see at a glance which
+  // muscles got "real" work vs which were just touched.
+  const volumeBand = bandForSetCount(worked?.setCount ?? 0);
+  const wireOpacity = hovered
+    ? 0.95
+    : volumeBand === 'heavy'
+    ? 0.85
+    : volumeBand === 'moderate'
+    ? 0.7
+    : volumeBand === 'light'
+    ? 0.45
+    : 0.3;
+
+  // Recently worked = pulse the wireframe so it draws the eye.
+  const recentlyWorked = worked && (Date.now() - new Date(worked.workedAt).getTime()) < 36 * 60 * 60 * 1000;
   const emissiveBoost = hovered
     ? 0.85
     : recentlyWorked
-    ? 0.6
-    : 0.3;
+    ? 0.55 + (volumeBand === 'heavy' ? 0.2 : 0)
+    : 0.25;
 
   return (
     <group position={part.position}>
@@ -359,7 +408,7 @@ function BodyPartMesh({
           color={baseColor}
           wireframe
           transparent
-          opacity={hovered ? 0.95 : 0.55}
+          opacity={wireOpacity}
         />
       </mesh>
 
@@ -384,12 +433,14 @@ function BodyPartMesh({
         </group>
       )}
 
-      {/* Recently-worked marker — small cyan dot ABOVE the part.
-          Only shown if no pain marker is taking the top spot. */}
+      {/* Recently-worked marker — small dot ABOVE the part, color
+          matches the recovery band so the visual story is
+          consistent. Only shown if no pain marker is taking the
+          top spot. */}
       {recentlyWorked && (
         <mesh position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}>
-          <sphereGeometry args={[0.05, 12, 12]} />
-          <meshBasicMaterial color="#14d6e8" />
+          <sphereGeometry args={volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04, 12, 12} />
+          <meshBasicMaterial color={baseColor} />
         </mesh>
       )}
     </group>
@@ -412,23 +463,127 @@ export function intensityLabel(intensity: number): string {
   return 'severe';
 }
 
+// ============================================================
+// 13-state body avatar palette
+// ============================================================
+//
+// Encodes TWO axes into a single color:
+//   1. Recovery state (HUE): rested → primed → active → fatigued → overloaded
+//   2. Volume intensity (SATURATION/BRIGHTNESS): none → light → moderate → heavy
+//
+// This lets the user see at a glance:
+//   - Was this muscle worked? (intensity > none)
+//   - How hard? (light / moderate / heavy)
+//   - Is it recovered? (rested = past work fully digested;
+//                       active = past work, super-compensating;
+//                       fatigued = past work, still digesting;
+//                       overloaded = too much, back off)
+//   - No work? (rested, none = cool slate)
+//
+// Pastel/desaturated tones keep the body readable as an
+// abstract 3D model — pure-saturated colors would dominate
+// and lose the wireframe structure.
+//
+// CSS hex values are kept in sync with the Tailwind colors used
+// elsewhere (cyan-300/400/500, lime-400, amber-300/400/500,
+// rose-400/500) so the body avatar matches the rest of the
+// dashboard's color language.
+
+export const PALETTE_HEX: Record<RecoveryBand, Record<VolumeBand, string>> = {
+  // Cool slate. "I haven't touched this muscle recently."
+  rested: {
+    none:     '#3f475a',  // slate-600, the resting baseline
+    light:    '#3f475a',
+    moderate: '#3f475a',
+    heavy:    '#3f475a',
+  },
+  // Cyan — past work is fully digested; you're primed.
+  primed: {
+    none:     '#67e8f9',  // not used (primed implies prior work) but kept for shape
+    light:    '#67e8f9',  // cyan-300
+    moderate: '#22d3ee',  // cyan-400
+    heavy:    '#0891b2',  // cyan-600
+  },
+  // Green — recent work, recovering well.
+  active: {
+    none:     '#86efac',
+    light:    '#86efac',  // green-300
+    moderate: '#4ade80',  // green-400
+    heavy:    '#16a34a',  // green-600
+  },
+  // Amber — recent work, not recovered yet.
+  fatigued: {
+    none:     '#fcd34d',
+    light:    '#fcd34d',  // amber-300
+    moderate: '#f59e0b',  // amber-500
+    heavy:    '#b45309',  // amber-700
+  },
+  // Red/magenta — overworked, mandatory rest.
+  overloaded: {
+    none:     '#fb7185',
+    light:    '#fb7185',  // rose-400
+    moderate: '#f43f5e',  // rose-500
+    heavy:    '#9f1239',  // rose-800
+  },
+};
+
 /**
- * Recovery score (0-100) to color. 100 = fully recovered (lime),
- * 50 = active / mid-recovery (goldenrod), 25 = fatigued (magenta),
- * 0 = overworked (deep purple). Deep purple reads as "too fatigued
- * to train" — distinct from "in pain" which uses the warm pain
- * palette below.
+ * Single entry point for body-part color. Combines recovery +
+ * volume into the 13-state palette. Hover overrides to cyan.
+ */
+export function bodyPartColor(input: {
+  recovery: RecoveryMarker | null;
+  worked: MuscleWorkedMarker | null;
+  hovered?: boolean;
+}): string {
+  if (input.hovered) return '#14d6e8';
+  if (!input.worked) {
+    // No recent work — show rested color (the only band that
+    // matters in the "no work" case).
+    return PALETTE_HEX.rested.none;
+  }
+  const recoveryBand: RecoveryBand = input.recovery
+    ? bandForRecoveryScore(input.recovery.score)
+    : 'active'; // default: assume active when no recovery data
+  const volumeBand = bandForSetCount(input.worked.setCount ?? 0);
+  // If recovery says rested but the user worked recently (a
+  // workout from >36h ago), still show the worked color so the
+  // body reflects "I did this today" until the work fully fades.
+  // We pick the recovery band from recovery.score and the volume
+  // band from setCount, then resolve via the matrix.
+  return PALETTE_HEX[recoveryBand][volumeBand];
+}
+
+/**
+ * Recovery score (0-100) to a single hue — used by the hover
+ * card and the recovery list where we don't care about volume.
+ * Kept for back-compat with any older callers.
  */
 export function recoveryToColor(score: number): string {
-  if (score >= 80) return '#9bff5c';
-  if (score >= 50) return '#ffc34d';
-  if (score >= 25) return '#f55cc4';
-  return '#6b1fb8';   // overworked — deep purple
+  // Use the heaviest-intensity row so the color reads as "this
+  // muscle's overall state" rather than muted.
+  const band = bandForRecoveryScore(score);
+  if (band === 'rested') return PALETTE_HEX.rested.none;
+  if (band === 'primed') return PALETTE_HEX.primed.heavy;
+  if (band === 'active') return PALETTE_HEX.active.heavy;
+  if (band === 'fatigued') return PALETTE_HEX.fatigued.heavy;
+  return PALETTE_HEX.overloaded.heavy;
 }
 
 export function recoveryLabel(score: number): string {
-  if (score >= 80) return 'recovered';
-  if (score >= 50) return 'active';
-  if (score >= 25) return 'fatigued';
-  return 'overworked';
+  return bandForRecoveryScore(score);
+}
+
+/**
+ * Map a (recovery, volume) pair to a human-readable summary.
+ * Used in the hover card + click-list modal.
+ */
+export function partSummary(input: {
+  recovery: RecoveryMarker | null;
+  worked: MuscleWorkedMarker | null;
+}): string {
+  if (!input.worked) return 'rested · no recent work';
+  const r = input.recovery ? bandForRecoveryScore(input.recovery.score) : 'active';
+  const v = bandForSetCount(input.worked.setCount ?? 0);
+  return `${r} · ${v}`;
 }

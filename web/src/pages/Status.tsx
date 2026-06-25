@@ -18,6 +18,11 @@ import {
   intensityLabel,
   recoveryToColor,
   recoveryLabel,
+  bodyPartColor,
+  PALETTE_HEX,
+  bandForRecoveryScore,
+  bandForSetCount,
+  partSummary,
   type BodyPartMeta,
   type BodyPartId,
   type PainMarker,
@@ -241,15 +246,18 @@ function StatusBody({
               />
             </div>
           )}
-          <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-mono">
-            <Legend color="#9bff5c" label="recovered" />
-            <Legend color="#ffc34d" label="active" />
-            <Legend color="#f55cc4" label="fatigued" />
-            <Legend color="#6b1fb8" label="overworked" />
-            <Legend color="#ffd28a" label="pain · mild" />
-            <Legend color="#ff9a3c" label="pain · mod" />
-            <Legend color="#ff6420" label="pain · high" />
-            <Legend color="#ff3030" label="pain · severe" />
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
+            <span className="text-ink-500">recovery:</span>
+            <Legend color="#3f475a" label="rested" />
+            <Legend color="#0891b2" label="primed" />
+            <Legend color="#16a34a" label="active" />
+            <Legend color="#b45309" label="fatigued" />
+            <Legend color="#9f1239" label="overloaded" />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-3 text-[10px] font-mono text-ink-500">
+            <span>volume tint: light → heavy (opacity)</span>
+            <span>·</span>
+            <span>click a part to see contributing exercises</span>
           </div>
         </Panel>
 
@@ -408,10 +416,13 @@ function StatusBody({
       </div>
 
       {selected && (
-        <PainLogModal
+        <PartDetailsModal
           part={selected}
+          recovery={data?.recovery.find((r) => r.bodyPart === selected.id)}
+          worked={data?.worked.find((w) => w.bodyPart === selected.id)}
+          painCount={painMarkers.filter((p) => p.bodyPart === selected.id).length}
           onClose={() => setSelected(null)}
-          onSaved={() => qc.invalidateQueries({ queryKey: ['status'] })}
+          onPainLogged={() => qc.invalidateQueries({ queryKey: ['status'] })}
         />
       )}
 
@@ -469,17 +480,29 @@ function HoverInfo({
   worked?: MuscleWorkedMarker;
   pain?: PainMarker;
 }) {
+  const recoveryBand = recovery ? bandForRecoveryScore(recovery.score) : 'rested';
+  const volumeBand = bandForSetCount(worked?.setCount ?? 0);
+  const summary = partSummary({ recovery: recovery ?? null, worked: worked ?? null });
   return (
     <div className="space-y-1">
       <div>
         <span className="text-ink-300">Part:</span>{' '}
         <span className="text-neon-cyan font-display tracking-widest">{part.label}</span>
       </div>
+      <div>
+        <span className="text-ink-300">State:</span>{' '}
+        <span
+          className="font-mono uppercase tracking-widest"
+          style={{ color: PALETTE_HEX[recoveryBand][volumeBand === 'none' ? 'moderate' : volumeBand] }}
+        >
+          {summary}
+        </span>
+      </div>
       {recovery && (
         <div>
           <span className="text-ink-300">Recovery:</span>{' '}
           <span style={{ color: recoveryToColor(recovery.score) }}>
-            {recovery.score}/100 · {recoveryLabel(recovery.score)}
+            {recovery.score}/100 · {recoveryBand}
           </span>
           {recovery.lastWorkedAt && (
             <span className="text-ink-400 ml-2 text-[10px]">
@@ -491,7 +514,9 @@ function HoverInfo({
       {worked && (
         <div>
           <span className="text-ink-300">Worked:</span>{' '}
-          <span className="text-neon-cyan">{timeAgo(worked.workedAt)} · intensity {worked.intensity}/10</span>
+          <span className="text-neon-cyan">
+            {worked.setCount ?? 0} sets · {timeAgo(worked.workedAt)} · {volumeBand}
+          </span>
         </div>
       )}
       {pain && (
@@ -527,6 +552,198 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
       <div className="text-[10px] uppercase tracking-widest text-ink-400 font-mono">{label}</div>
       <div className="text-base font-display" style={{ color: color ?? '#fafafd' }}>{value}</div>
     </div>
+  );
+}
+
+// ============================================================
+// PartDetailsModal — opened when the user clicks a body part.
+// Shows recovery + volume summary, the contributing exercises
+// from the last 36h (today + yesterday), and a Log Pain button
+// that opens the existing PainLogModal inline.
+// ============================================================
+function PartDetailsModal({
+  part,
+  recovery,
+  worked,
+  painCount,
+  onClose,
+  onPainLogged,
+}: {
+  part: BodyPartMeta;
+  recovery: RecoveryMarker | undefined;
+  worked: MuscleWorkedMarker | undefined;
+  painCount: number;
+  onClose: () => void;
+  onPainLogged: () => void;
+}) {
+  const qc = useQueryClient();
+  const [loggingPain, setLoggingPain] = useState(false);
+
+  // Fetch contributing exercises for this part. Window is
+  // hard-capped server-side at 36h, but we let the server pick
+  // the cutoff so the client doesn't have to compute "yesterday's
+  // midnight" in tz-aware code.
+  const exQ = useQuery({
+    queryKey: ['part-exercises', part.id],
+    queryFn: () => api<{
+      bodyPart: string;
+      since: string;
+      windowHours: number;
+      workouts: {
+        id: string;
+        name: string | null;
+        type: string;
+        performedAt: string;
+        exercises: {
+          id: string;
+          name: string;
+          setCount: number;
+          totalVolumeKg: number;
+          topSet: { reps: number; weight: number | null; duration: number | null } | null;
+        }[];
+      }[];
+    }>(`/status/part/${part.id}/exercises`),
+    enabled: !!part,
+    staleTime: 30_000,
+  });
+
+  const totalSets = exQ.data?.workouts.reduce(
+    (s, w) => s + w.exercises.reduce((ss, e) => ss + e.setCount, 0),
+    0
+  ) ?? 0;
+  const totalVolume = exQ.data?.workouts.reduce(
+    (s, w) => s + w.exercises.reduce((ss, e) => ss + e.totalVolumeKg, 0),
+    0
+  ) ?? 0;
+  const sessionCount = exQ.data?.workouts.length ?? 0;
+
+  // Summary line that combines recovery × volume into a single
+  // phrase. Mirrors the wireframe color story.
+  const recoveryBand = recovery
+    ? bandForRecoveryScore(recovery.score)
+    : 'rested';
+  const volumeBand = bandForSetCount(worked?.setCount ?? 0);
+  const summaryText = partSummary({ recovery: recovery ?? null, worked: worked ?? null });
+
+  return (
+    <>
+      <Modal open onClose={onClose} title={`${part.label} · ${part.group.toUpperCase()}`}>
+        <div className="space-y-4 text-sm">
+          {/* Status summary — the color story in text form */}
+          <div className="border border-ink-700/40 rounded px-3 py-2 bg-bg-900/50">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+                state
+              </span>
+              <span
+                className="font-display tracking-widest text-xs uppercase"
+                style={{ color: PALETTE_HEX[recoveryBand][volumeBand === 'none' ? 'moderate' : volumeBand] }}
+              >
+                {summaryText}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-mono">
+              <div>
+                <div className="text-ink-500 uppercase tracking-widest text-[9px]">recovery</div>
+                <div className="text-ink-100">{recovery?.score ?? '—'}<span className="text-ink-500">/100</span></div>
+                <div className="text-ink-400 text-[10px]">{recoveryBand}</div>
+              </div>
+              <div>
+                <div className="text-ink-500 uppercase tracking-widest text-[9px]">sets (36h)</div>
+                <div className="text-ink-100">{totalSets || (worked?.setCount ?? 0)}</div>
+                <div className="text-ink-400 text-[10px]">{volumeBand}</div>
+              </div>
+              <div>
+                <div className="text-ink-500 uppercase tracking-widest text-[9px]">volume</div>
+                <div className="text-ink-100">{totalVolume.toLocaleString()}<span className="text-ink-500"> kg</span></div>
+                <div className="text-ink-400 text-[10px]">{sessionCount} session{sessionCount === 1 ? '' : 's'}</div>
+              </div>
+            </div>
+            {recovery?.lastWorkedAt && (
+              <div className="text-[10px] font-mono text-ink-400 mt-2">
+                last worked · {timeAgo(recovery.lastWorkedAt)}
+              </div>
+            )}
+            {painCount > 0 && (
+              <div className="text-[10px] font-mono text-neon-amber/80 mt-1">
+                {painCount} active pain log{painCount === 1 ? '' : 's'} on this part
+              </div>
+            )}
+          </div>
+
+          {/* Contributing exercises — last 36h only */}
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+              Contributing exercises · last {exQ.data?.windowHours ?? 36}h
+            </div>
+            {exQ.isLoading ? (
+              <div className="text-xs text-ink-400 italic">loading…</div>
+            ) : exQ.data && exQ.data.workouts.length > 0 ? (
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {exQ.data.workouts.map((w) => (
+                  <div key={w.id} className="border border-ink-700/30 rounded px-2 py-1.5 bg-bg-900/30">
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-xs font-display tracking-wider text-ink-100 truncate">
+                        {w.name ?? `${w.type} workout`}
+                      </div>
+                      <div className="text-[10px] font-mono text-ink-400 shrink-0 ml-2">
+                        {timeAgo(w.performedAt)}
+                      </div>
+                    </div>
+                    {w.exercises.map((e) => (
+                      <div key={e.id} className="mt-1 flex items-baseline justify-between text-[11px] font-mono pl-2 border-l border-ink-700/40">
+                        <div className="text-ink-200 truncate">{e.name}</div>
+                        <div className="text-ink-400 shrink-0 ml-2">
+                          {e.setCount} set{e.setCount === 1 ? '' : 's'}
+                          {e.totalVolumeKg > 0 ? ` · ${e.totalVolumeKg.toLocaleString()}kg` : ''}
+                          {e.topSet && e.topSet.weight != null
+                            ? ` · top ${e.topSet.weight}×${e.topSet.reps}`
+                            : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-ink-400 italic">
+                No exercises for this part in the last {exQ.data?.windowHours ?? 36}h.
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-2 border-t border-ink-700/40">
+            <button
+              onClick={onClose}
+              className="px-3 py-1 text-xs font-mono text-ink-400 hover:text-ink-100"
+            >
+              Close
+            </button>
+            <NeonButton
+              icon="⚠"
+              variant="violet"
+              onClick={() => setLoggingPain(true)}
+            >
+              Log pain here
+            </NeonButton>
+          </div>
+        </div>
+      </Modal>
+
+      {loggingPain && (
+        <PainLogModal
+          part={part}
+          onClose={() => setLoggingPain(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['status'] });
+            qc.invalidateQueries({ queryKey: ['part-exercises', part.id] });
+            onPainLogged();
+            setLoggingPain(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
