@@ -68,10 +68,21 @@ ENV NODE_ENV=production
 # the prod-deps stage pruned.
 COPY --from=deps /app/node_modules/prisma ./node_modules/prisma
 COPY --from=deps /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=build /app/api/dist ./dist
+# Copy the schema + the compiled api before prod-deps so the
+# prisma generate step below can find schema.prisma.
 COPY --from=build /app/api/prisma ./prisma
+COPY --from=build /app/api/dist ./dist
 COPY api/package.json ./
+COPY --from=prod-deps /app/node_modules ./node_modules
+# Generate the Prisma client in the runtime image. The build
+# stage ran `prisma generate` too, but `npm ci --omit=dev` in
+# prod-deps overwrites node_modules with a freshly-installed
+# @prisma/client that doesn't have the generated files
+# (postinstall scripts run, but they regenerate against an
+# empty schema since ./prisma isn't visible during npm install).
+# Running it here, with ./prisma in place, produces a client
+# that matches the actual schema in the runtime image.
+RUN npx prisma generate
 EXPOSE 3001
 # Apply pending migrations then start the api. `prisma migrate deploy`
 # is the production-safe variant — it never resets, never creates,
