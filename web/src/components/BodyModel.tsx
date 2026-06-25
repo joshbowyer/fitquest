@@ -127,14 +127,27 @@ export function bandForSetCount(setCount: number): VolumeBand {
 
 // Recovery band for the avatar palette. Maps the 0-100 recovery
 // score to one of 5 named states that drive the HUE of the part.
-export type RecoveryBand = 'rested' | 'primed' | 'active' | 'fatigued' | 'overloaded';
+//
+// Naming: NEUTRAL-TO-POSITIVE framing. The "spent" state is the
+// natural post-workout state — the user worked the muscle hard
+// enough to need 24-48h before stressing it again. That's not a
+// problem, it's the training stimulus. Older naming ("overloaded")
+// sounded like failure; the new labels describe the cycle the
+// user is intentionally going through.
+//
+//   untrained  90-100   no recent work; this part is cold
+//   primed     70-89    past work fully digested; supercompensated (PR-ready)
+//   recovering 50-69    recent work, digesting fine
+//   fatigued   30-49    recent work, not yet recovered
+//   spent      0-29     worked hard; give it a day off
+export type RecoveryBand = 'untrained' | 'primed' | 'recovering' | 'fatigued' | 'spent';
 
 export function bandForRecoveryScore(score: number): RecoveryBand {
-  if (score >= 90) return 'rested';
+  if (score >= 90) return 'untrained';
   if (score >= 70) return 'primed';
-  if (score >= 50) return 'active';
+  if (score >= 50) return 'recovering';
   if (score >= 30) return 'fatigued';
-  return 'overloaded';
+  return 'spent';
 }
 
 // Muscle-worked marker: a part was trained at the given time.
@@ -238,15 +251,14 @@ export function BodyModel({
         camera={{ position: [0, 0.2, 7.5], fov: 45 }}
         // alpha:false so the scene background fills the canvas
         // solidly. With alpha:true the page bg bleeds through
-        // and "rested" muscles (slate-600) end up nearly invisible
-        // against the dark page background. Inline style is a
+        // and the wireframe colors wash out. Inline style is a
         // belt-and-suspenders fallback for the renderer startup
         // before the scene mounts.
         gl={{ antialias: true, alpha: false }}
-        style={{ background: '#0e0f1a' }}
+        style={{ background: '#0e1a2b' }}
         dpr={[1, 2]}
       >
-        <color attach="background" args={['#0e0f1a']} />
+        <color attach="background" args={['#0e1a2b']} />
         <ambientLight intensity={0.3} />
         <pointLight position={[3, 3, 3]} intensity={0.6} color="#14d6e8" />
         <pointLight position={[-3, -2, 2]} intensity={0.4} color="#f55cc4" />
@@ -507,22 +519,22 @@ export function intensityLabel(intensity: number): string {
 export const PALETTE_HEX: Record<RecoveryBand, Record<VolumeBand, string>> = {
   // Cool slate. "I haven't touched this muscle recently."
   // Brightened from #3f475a (slate-600) so the wireframe stays
-  // visible against the body's solid #0e0f1a canvas background.
-  rested: {
-    none:     '#64748b',  // slate-500 — bright enough to read on #0e0f1a
+  // visible against the body's solid #0e1a2b (deep navy) canvas.
+  untrained: {
+    none:     '#64748b',  // slate-500 — reads on deep navy
     light:    '#64748b',
     moderate: '#64748b',
     heavy:    '#64748b',
   },
-  // Cyan — past work is fully digested; you're primed.
+  // Cyan — past work fully digested; you're supercompensated.
   primed: {
-    none:     '#67e8f9',  // not used (primed implies prior work) but kept for shape
+    none:     '#67e8f9',
     light:    '#67e8f9',  // cyan-300
     moderate: '#22d3ee',  // cyan-400
     heavy:    '#0891b2',  // cyan-600
   },
-  // Green — recent work, recovering well.
-  active: {
+  // Green — recent work, digesting fine.
+  recovering: {
     none:     '#86efac',
     light:    '#86efac',  // green-300
     moderate: '#4ade80',  // green-400
@@ -535,8 +547,9 @@ export const PALETTE_HEX: Record<RecoveryBand, Record<VolumeBand, string>> = {
     moderate: '#f59e0b',  // amber-500
     heavy:    '#b45309',  // amber-700
   },
-  // Red/magenta — overworked, mandatory rest.
-  overloaded: {
+  // Red/rose — spent. The training stimulus landed; this part
+  // is now asking for 24-48h before the next session hits it.
+  spent: {
     none:     '#fb7185',
     light:    '#fb7185',  // rose-400
     moderate: '#f43f5e',  // rose-500
@@ -555,19 +568,14 @@ export function bodyPartColor(input: {
 }): string {
   if (input.hovered) return '#14d6e8';
   if (!input.worked) {
-    // No recent work — show rested color (the only band that
+    // No recent work — show untrained color (the only band that
     // matters in the "no work" case).
-    return PALETTE_HEX.rested.none;
+    return PALETTE_HEX.untrained.none;
   }
   const recoveryBand: RecoveryBand = input.recovery
     ? bandForRecoveryScore(input.recovery.score)
-    : 'active'; // default: assume active when no recovery data
+    : 'recovering'; // default: assume recovering when no recovery data
   const volumeBand = bandForSetCount(input.worked.setCount ?? 0);
-  // If recovery says rested but the user worked recently (a
-  // workout from >36h ago), still show the worked color so the
-  // body reflects "I did this today" until the work fully fades.
-  // We pick the recovery band from recovery.score and the volume
-  // band from setCount, then resolve via the matrix.
   return PALETTE_HEX[recoveryBand][volumeBand];
 }
 
@@ -580,11 +588,11 @@ export function recoveryToColor(score: number): string {
   // Use the heaviest-intensity row so the color reads as "this
   // muscle's overall state" rather than muted.
   const band = bandForRecoveryScore(score);
-  if (band === 'rested') return PALETTE_HEX.rested.none;
+  if (band === 'untrained') return PALETTE_HEX.untrained.none;
   if (band === 'primed') return PALETTE_HEX.primed.heavy;
-  if (band === 'active') return PALETTE_HEX.active.heavy;
+  if (band === 'recovering') return PALETTE_HEX.recovering.heavy;
   if (band === 'fatigued') return PALETTE_HEX.fatigued.heavy;
-  return PALETTE_HEX.overloaded.heavy;
+  return PALETTE_HEX.spent.heavy;
 }
 
 export function recoveryLabel(score: number): string {
@@ -599,8 +607,8 @@ export function partSummary(input: {
   recovery: RecoveryMarker | null;
   worked: MuscleWorkedMarker | null;
 }): string {
-  if (!input.worked) return 'rested · no recent work';
-  const r = input.recovery ? bandForRecoveryScore(input.recovery.score) : 'active';
+  if (!input.worked) return 'untrained · no recent work';
+  const r = input.recovery ? bandForRecoveryScore(input.recovery.score) : 'recovering';
   const v = bandForSetCount(input.worked.setCount ?? 0);
   return `${r} · ${v}`;
 }

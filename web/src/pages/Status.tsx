@@ -248,11 +248,11 @@ function StatusBody({
           )}
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
             <span className="text-ink-500">recovery:</span>
-            <Legend color="#3f475a" label="rested" />
+            <Legend color="#64748b" label="untrained" />
             <Legend color="#0891b2" label="primed" />
-            <Legend color="#16a34a" label="active" />
+            <Legend color="#16a34a" label="recovering" />
             <Legend color="#b45309" label="fatigued" />
-            <Legend color="#9f1239" label="overloaded" />
+            <Legend color="#9f1239" label="spent" />
           </div>
           <div className="mt-1 flex flex-wrap gap-3 text-[10px] font-mono text-ink-500">
             <span>volume tint: light → heavy (opacity)</span>
@@ -480,7 +480,7 @@ function HoverInfo({
   worked?: MuscleWorkedMarker;
   pain?: PainMarker;
 }) {
-  const recoveryBand = recovery ? bandForRecoveryScore(recovery.score) : 'rested';
+  const recoveryBand = recovery ? bandForRecoveryScore(recovery.score) : 'untrained';
   const volumeBand = bandForSetCount(worked?.setCount ?? 0);
   const summary = partSummary({ recovery: recovery ?? null, worked: worked ?? null });
   return (
@@ -621,7 +621,7 @@ function PartDetailsModal({
   // phrase. Mirrors the wireframe color story.
   const recoveryBand = recovery
     ? bandForRecoveryScore(recovery.score)
-    : 'rested';
+    : 'untrained';
   const volumeBand = bandForSetCount(worked?.setCount ?? 0);
   const summaryText = partSummary({ recovery: recovery ?? null, worked: worked ?? null });
 
