@@ -37,6 +37,46 @@ docker compose --profile production up --build
 
 Add `WEB_DOMAIN=fit.example.com` to `.env` and point DNS at the host. Caddy handles TLS automatically.
 
+## Deploy via Portainer (no git clone needed)
+
+The simplest deploy path uses [Portainer](https://www.portainer.io/)'s
+"Web editor" stack mode. Images are auto-built and pushed to GitHub
+Container Registry (ghcr.io) by the `.github/workflows/build-images.yml`
+workflow on every push to `main`.
+
+**One-time setup:**
+
+1. Make the repo's GitHub Actions workflow run. It builds `api` and `web`
+   images and pushes them to `ghcr.io/joshbowyer/fitquest-api:latest` and
+   `ghcr.io/joshbowyer/fitquest-web:latest`. Wait for the first build to
+   finish (Actions tab on GitHub).
+2. In Portainer, go to **Stacks → Add stack → Web editor**.
+3. Paste the contents of [`docker-compose.portainer.yml`](./docker-compose.portainer.yml).
+4. In the **Environment variables** section, set at minimum:
+   - `COOKIE_SECRET` — `openssl rand -hex 32`
+   - `WEB_ORIGIN` — your public URL (e.g. `https://fit.example.com` or
+     `http://your-server-ip:8080` if no reverse proxy)
+5. Click **Deploy the stack**.
+
+The stack uses the latest images from ghcr.io. To pin a specific version,
+change `:latest` to a commit SHA tag (e.g. `:sha-abc1234`) in the compose
+file — the workflow builds these tags automatically too.
+
+**Updating:** Portainer's **Stacks → [your stack] → Pull and redeploy**
+fetches the new `:latest` image and restarts the containers.
+
+### Alternative: Portainer "Git repository" mode
+
+If you prefer Portainer to build from source instead of pulling pre-built
+images, use the existing `docker-compose.yml`:
+
+1. Portainer → **Stacks → Add stack → Git repository**.
+2. **Repository URL**: `https://github.com/joshbowyer/fitquest`
+3. **Compose path**: `docker-compose.yml`
+4. **Environment variables**: same as above.
+5. Click **Deploy**. Portainer clones the repo and builds the api/web
+   images from the Dockerfiles.
+
 ## Local dev (without Docker)
 
 ```bash
