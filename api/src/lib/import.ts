@@ -102,47 +102,56 @@ async function wipeUserData(userId: string, prisma: PrismaClient): Promise<numbe
   // Count before so the caller can report how much was removed.
   const before = await prisma.workout.count({ where: { userId } });
 
-  await prisma.$transaction([
-    prisma.breachDamageEvent.deleteMany({ where: { userId } }),
-    prisma.userBreachProgress.deleteMany({ where: { userId } }),
-    prisma.penanceEvent.deleteMany({ where: { userId } }),
-    prisma.penanceTemplate.deleteMany({ where: { userId } }),
-    prisma.homeBase.deleteMany({ where: { userId } }),
-    prisma.set.deleteMany({ where: { exercise: { workout: { userId } } } }),
-    prisma.exercise.deleteMany({ where: { workout: { userId } } }),
-    prisma.workout.deleteMany({ where: { userId } }),
-    prisma.measurement.deleteMany({ where: { userId } }),
-    prisma.geneticMax.deleteMany({ where: { userId } }),
-    prisma.pr.deleteMany({ where: { userId } }),
-    prisma.avatar.deleteMany({ where: { userId } }),
-    prisma.userSkill.deleteMany({ where: { userId } }),
-    prisma.userAchievement.deleteMany({ where: { userId } }),
-    prisma.plateauSnapshot.deleteMany({ where: { userId } }),
-    prisma.plateauPause.deleteMany({ where: { userId } }),
-    prisma.examenResponse.deleteMany({ where: { userId } }),
-    prisma.userWorldProgress.deleteMany({ where: { userId } }),
-    prisma.painLog.deleteMany({ where: { userId } }),
-    prisma.routineDay.deleteMany({ where: { userId } }),
-    prisma.routine.deleteMany({ where: { userId } }),
-    prisma.prayerLog.deleteMany({ where: { userId } }),
-    prisma.dailyLog.deleteMany({ where: { userId } }),
-    prisma.daily.deleteMany({ where: { userId } }),
-    prisma.supplementLog.deleteMany({ where: { userId } }),
-    prisma.habitLog.deleteMany({ where: { userId } }),
-    prisma.habit.deleteMany({ where: { userId } }),
-    prisma.inventoryItem.deleteMany({ where: { userId } }),
-    prisma.morningReport.deleteMany({ where: { userId } }),
-    prisma.spiritualReflection.deleteMany({ where: { userId } }),
-    prisma.dailyTrackedItem.deleteMany({ where: { userId } }),
-    prisma.userTrackedItem.deleteMany({ where: { userId } }),
-    prisma.substanceLog.deleteMany({ where: { userId } }),
-    prisma.mealEntry.deleteMany({ where: { userId } }),
-    prisma.foodItem.deleteMany({ where: { userId } }),
-    prisma.savedFood.deleteMany({ where: { userId } }),
-    prisma.correlationSnapshot.deleteMany({ where: { userId } }),
-    prisma.metricInsight.deleteMany({ where: { userId } }),
-    prisma.activityInsight.deleteMany({ where: { userId } }),
-  ]);
+  // Sequential awaits instead of $transaction([...]) — the array form
+  // loses per-call type discrimination in Prisma 5.22 and the second
+  // call onwards gets validated against the first call's schema. We
+  // hit this with breachDamageEvent.deleteMany() being validated as
+  // FoodItem.deleteMany(). Slower than a single transaction but
+  // correctness > 30ms here.
+  //
+  // FoodItem is intentionally excluded: it's a system-wide cache
+  // (USDA + OpenFoodFacts + MANUAL sources) shared across all users.
+  // Per-user meal rows are wiped via MealEntry below; the FoodItem
+  // catalog is seeded once at startup and never per-user.
+  await prisma.breachDamageEvent.deleteMany({ where: { userId } });
+  await prisma.userBreachProgress.deleteMany({ where: { userId } });
+  await prisma.penanceEvent.deleteMany({ where: { userId } });
+  await prisma.penanceTemplate.deleteMany({ where: { userId } });
+  await prisma.homeBase.deleteMany({ where: { userId } });
+  await prisma.set.deleteMany({ where: { exercise: { workout: { userId } } } });
+  await prisma.exercise.deleteMany({ where: { workout: { userId } } });
+  await prisma.workout.deleteMany({ where: { userId } });
+  await prisma.measurement.deleteMany({ where: { userId } });
+  await prisma.geneticMax.deleteMany({ where: { userId } });
+  await prisma.pr.deleteMany({ where: { userId } });
+  await prisma.avatar.deleteMany({ where: { userId } });
+  await prisma.userSkill.deleteMany({ where: { userId } });
+  await prisma.userAchievement.deleteMany({ where: { userId } });
+  await prisma.plateauSnapshot.deleteMany({ where: { userId } });
+  await prisma.plateauPause.deleteMany({ where: { userId } });
+  await prisma.examenResponse.deleteMany({ where: { userId } });
+  await prisma.userWorldProgress.deleteMany({ where: { userId } });
+  await prisma.painLog.deleteMany({ where: { userId } });
+  await prisma.routineDay.deleteMany({ where: { userId } });
+  await prisma.routine.deleteMany({ where: { userId } });
+  await prisma.prayerLog.deleteMany({ where: { userId } });
+  await prisma.dailyLog.deleteMany({ where: { userId } });
+  await prisma.daily.deleteMany({ where: { userId } });
+  await prisma.supplementLog.deleteMany({ where: { userId } });
+  await prisma.habitLog.deleteMany({ where: { userId } });
+  await prisma.habit.deleteMany({ where: { userId } });
+  await prisma.inventoryItem.deleteMany({ where: { userId } });
+  await prisma.morningReport.deleteMany({ where: { userId } });
+  await prisma.spiritualReflection.deleteMany({ where: { userId } });
+  await prisma.dailyTrackedItem.deleteMany({ where: { userId } });
+  await prisma.userTrackedItem.deleteMany({ where: { userId } });
+  await prisma.substanceLog.deleteMany({ where: { userId } });
+  await prisma.mealEntry.deleteMany({ where: { userId } });
+  // (foodItem skipped — system-wide catalog, not per-user)
+  await prisma.savedFood.deleteMany({ where: { userId } });
+  await prisma.correlationSnapshot.deleteMany({ where: { userId } });
+  await prisma.metricInsight.deleteMany({ where: { userId } });
+  await prisma.activityInsight.deleteMany({ where: { userId } });
 
   return before;
 }
@@ -179,6 +188,22 @@ export async function importExport(
       : null,
   };
 
+  // Inner helpers. Defined as `let` so the wipeFirst block below
+  // can call `fail` even though it's lexically declared before
+  // those helpers. (TDZ throws ReferenceError if a `const fn = ...`
+  // helper is called before its declaration line.)
+  const bump = (k: string, n: number) => {
+    result.imported[k] = (result.imported[k] ?? 0) + n;
+  };
+  const skip = (k: string) => {
+    result.skipped[k] = (result.skipped[k] ?? 0) + 1;
+  };
+  let fail: (table: string, id: string | undefined, reason: string) => void;
+  fail = (table, id, reason) => {
+    result.errors.push({ table, id, reason });
+    result.ok = false;
+  };
+
   if (options.wipeFirst && !options.dryRun) {
     // Wipe is best-effort. If the $transaction misroutes a model
     // at runtime (we've seen breachDamageEvent get the FoodItem
@@ -192,16 +217,6 @@ export async function importExport(
     }
   }
 
-  const bump = (k: string, n: number) => {
-    result.imported[k] = (result.imported[k] ?? 0) + n;
-  };
-  const skip = (k: string) => {
-    result.skipped[k] = (result.skipped[k] ?? 0) + 1;
-  };
-  const fail = (table: string, id: string | undefined, reason: string) => {
-    result.errors.push({ table, id, reason });
-    result.ok = false;
-  };
   // Unique-constraint violations on additive imports (already
   // imported / already in DB) are reported as `skipped` not
   // errors. The user re-running the same import twice shouldn't
