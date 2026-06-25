@@ -236,7 +236,14 @@ export function BodyModel({
     >
       <Canvas
         camera={{ position: [0, 0.2, 7.5], fov: 45 }}
-        gl={{ antialias: true, alpha: true }}
+        // alpha:false so the scene background fills the canvas
+        // solidly. With alpha:true the page bg bleeds through
+        // and "rested" muscles (slate-600) end up nearly invisible
+        // against the dark page background. Inline style is a
+        // belt-and-suspenders fallback for the renderer startup
+        // before the scene mounts.
+        gl={{ antialias: true, alpha: false }}
+        style={{ background: '#0e0f1a' }}
         dpr={[1, 2]}
       >
         <color attach="background" args={['#0e0f1a']} />
@@ -499,11 +506,13 @@ export function intensityLabel(intensity: number): string {
 
 export const PALETTE_HEX: Record<RecoveryBand, Record<VolumeBand, string>> = {
   // Cool slate. "I haven't touched this muscle recently."
+  // Brightened from #3f475a (slate-600) so the wireframe stays
+  // visible against the body's solid #0e0f1a canvas background.
   rested: {
-    none:     '#3f475a',  // slate-600, the resting baseline
-    light:    '#3f475a',
-    moderate: '#3f475a',
-    heavy:    '#3f475a',
+    none:     '#64748b',  // slate-500 — bright enough to read on #0e0f1a
+    light:    '#64748b',
+    moderate: '#64748b',
+    heavy:    '#64748b',
   },
   // Cyan — past work is fully digested; you're primed.
   primed: {

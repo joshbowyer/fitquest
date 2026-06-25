@@ -149,9 +149,13 @@ export async function statusRoutes(app: FastifyInstance) {
 
       if (vol) {
         const hoursSince = (now - new Date(vol.lastWorkedAt).getTime()) / (60 * 60 * 1000);
-        // Recovery grows with half-life: score = 100 - 50 * 2^(-hours / halfLife)
-        // But we cap the lower bound by volume: more volume = need more time
-        const volumePenalty = Math.min(80, vol.totalLoad / 10);
+        // Recovery grows with half-life. The volume penalty uses
+        // totalLoad directly (no divisor) so heavy work genuinely
+        // scores lower. A shoulder day at 9 sets × 70kg produces
+        // ~180 load units; with the old /10 divisor that was
+        // capped at ~18, which read as "primed" when it should
+        // have read as "overloaded".
+        const volumePenalty = vol.totalLoad;
         score = Math.max(0, 100 - volumePenalty * Math.pow(0.5, hoursSince / HALF_LIFE_HOURS));
       }
       if (pain) {
