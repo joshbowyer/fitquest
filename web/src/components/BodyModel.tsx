@@ -436,10 +436,18 @@ function BodyPartMesh({
       {/* Recently-worked marker — small dot ABOVE the part, color
           matches the recovery band so the visual story is
           consistent. Only shown if no pain marker is taking the
-          top spot. */}
+          top spot. SphereGeometry args are [radius, widthSegs,
+          heightSegs]; R3F needs the array form, not a single
+          number (the old shape silently breaks the renderer). */}
       {recentlyWorked && (
         <mesh position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}>
-          <sphereGeometry args={volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04, 12, 12} />
+          <sphereGeometry
+            args={[
+              volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04,
+              12,
+              12,
+            ]}
+          />
           <meshBasicMaterial color={baseColor} />
         </mesh>
       )}
