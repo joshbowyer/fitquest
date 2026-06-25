@@ -1,14 +1,15 @@
 FROM node:22-alpine AS base
-# Prisma's query engine is a native binary that links against
-# OpenSSL. Alpine ships with musl libc + its own OpenSSL but the
-# Prisma engines expect OpenSSL 1.1.x. Without this apk add,
-# prisma generate + migrate deploy fail on arm64 with:
+# Prisma's query engine is a native binary. The api/prisma/
+# schema.prisma has binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+# so the generated engine is libquery_engine-linux-musl-openssl-3.0.x.so.node,
+# which links against OpenSSL 3.x (libssl.so.3, libcrypto.so.3).
+# Alpine ships those via the standard `openssl` package. Without
+# this apk add, prisma generate + migrate deploy fail with:
 #   "Error: Could not parse schema engine response:
 #    SyntaxError: Unexpected token 'E', 'Error load'..."
-# openssl1.1-compat installs the 1.1 ABI shims the Prisma engines
-# look for. The api image needs this in every stage that calls
-# the prisma CLI (deps, build, prod-deps) plus the runner.
-RUN apk add --no-cache openssl1.1-compat
+# (the engine binary fails to dlopen and the wrapper returns
+# the raw stderr as an unparseable JSON response).
+RUN apk add --no-cache openssl
 WORKDIR /app
 
 # Build context is the workspace root (.) so the shared root
@@ -56,10 +57,10 @@ RUN npm ci --workspaces --include-workspace-root --omit=dev \
 
 FROM node:22-alpine AS runner
 # The CMD below runs `npx prisma migrate deploy`, which needs
-# the OpenSSL 1.1 ABI shims. The api stages inherit the openssl
-# apk from the `base` stage but this final stage uses a fresh
-# node:22-alpine so it needs its own apk add.
-RUN apk add --no-cache openssl1.1-compat
+# the OpenSSL 3.x libs for the Prisma query engine binary.
+# This stage is FROM node:22-alpine (not FROM base) so it
+# doesn't inherit the apk add — install openssl again here.
+RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
 # Re-add the prisma CLI in the runtime image so the CMD can
