@@ -8,7 +8,11 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json* ./
 COPY web/package.json ./web/package.json
-RUN npm ci --workspaces --include-workspace-root
+# npm workspaces don't always install optionalDependencies
+# (e.g. @rollup/rollup-linux-x64-musl needed by alpine). Force
+# them so vite can load its native rollup binary.
+RUN npm ci --workspaces --include-workspace-root \
+ && npm install --no-save @rollup/rollup-linux-x64-musl
 
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
