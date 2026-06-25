@@ -49,7 +49,10 @@ jobs:
       - name: Build + push ${{ matrix.service }}
         uses: docker/build-push-action@v5
         with:
-          context: ./${{ matrix.service }}
+          # Workspace root so npm workspaces + the root package-lock.json
+          # are in scope. Each Dockerfile scopes its COPY paths under
+          # ${{ matrix.service }}/.
+          context: .
           file: ./${{ matrix.service }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}

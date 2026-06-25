@@ -35,9 +35,9 @@ services:
       PORT: 3001
       API_HOST: 0.0.0.0
       # Override these in Portainer's "Environment variables" panel
-      # or a .env file mounted into the stack. Defaults shown are
-      # for local testing only — COOKIE_SECRET MUST be changed.
-      COOKIE_SECRET: ${COOKIE_SECRET:?COOKIE_SECRET is required — generate with: openssl rand -hex 32}
+      # or a .env file mounted into the stack. COOKIE_SECRET MUST
+      # be set — generate one with: openssl rand -hex 32
+      COOKIE_SECRET: ${COOKIE_SECRET}
       # Browser origin for CORS. Set to your public URL.
       # Behind Portainer's edge proxy: https://your-domain.tld
       # Direct (no reverse proxy): http://localhost:3001

@@ -18,8 +18,11 @@ services:
 
   api:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      # Workspace root context — the Dockerfile does `COPY api/...`
+      # to scope to its service. Required because npm workspaces share
+      # a single root package-lock.json.
+      context: .
+      dockerfile: ./api/Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -36,8 +39,8 @@ services:
 
   web:
     build:
-      context: ./web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./web/Dockerfile
       # VITE_API_URL is intentionally NOT set so the web's lib/api.ts
       # falls back to '/api' and nginx (in this container) proxies
       # /api/* → api:3001. If you want the browser to hit the API
