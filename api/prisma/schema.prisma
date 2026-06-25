@@ -482,6 +482,12 @@ model Exercise {
   // tag exercises manually.
   musclesWorked BodyPart[] @default([])
   sets          Set[]
+  // Live-mode timestamps: when the user opened this exercise's first
+  // set entry, and when they finished the last set of this exercise.
+  // Null for workouts entered in bulk mode (legacy data, and any
+  // workout where the user opted into the bulk flow).
+  startedAt   DateTime?
+  completedAt DateTime?
 }
 
 /// Why a set was not performed. Logged on the Set itself rather than
@@ -512,6 +518,18 @@ model Set {
   // avatar's "Condition" badge and the morning report.
   skipped    Boolean     @default(false)
   skipReason SkipReason?
+  // Live-mode timestamps. startedAt = user opened the set entry form
+  // (or first set of a workout). completedAt = user tapped Continue.
+  // Both null for workouts logged in bulk mode.
+  //
+  // restSeconds = seconds rested BEFORE this set (i.e. time between
+  // the previous set's completedAt and this set's startedAt). For the
+  // first set of a workout it's null. For the LAST set of a workout
+  // it's the time from completedAt until the workout finished
+  // (transitioning to the next exercise, or hitting Done).
+  startedAt   DateTime?
+  completedAt DateTime?
+  restSeconds Int?
 }
 
 model Pr {

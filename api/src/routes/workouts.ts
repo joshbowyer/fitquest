@@ -108,6 +108,16 @@ const SetInput = z.object({
   // count against streaks or dailies.
   skipped: z.boolean().default(false),
   skipReason: z.nativeEnum(SkipReason).optional().nullable(),
+  // Live-mode timing. All three optional so bulk-mode workouts
+  // (legacy + the user's opted-in bulk path) keep working untouched.
+  //  startedAt    = user opened the entry for this set
+  //  completedAt  = user tapped Continue
+  //  restSeconds  = seconds rested before this set, computed by the
+  //                 client at commit time from completedAt of the
+  //                 previous set. First set of the workout = null.
+  startedAt: z.string().datetime().optional().nullable(),
+  completedAt: z.string().datetime().optional().nullable(),
+  restSeconds: z.number().int().min(0).max(60 * 60 * 6).optional().nullable(),
 });
 
 const ExerciseInput = z.object({
@@ -118,6 +128,11 @@ const ExerciseInput = z.object({
   // because it comes from the same static rule list the user sees.
   musclesWorked: z.array(z.string()).optional(),
   sets: z.array(SetInput).min(1),
+  // Live-mode timing at the exercise level. Both optional for the
+  // same reason as Set.startedAt / completedAt — bulk-mode workouts
+  // don't carry them and the API shouldn't require them.
+  startedAt: z.string().datetime().optional().nullable(),
+  completedAt: z.string().datetime().optional().nullable(),
 });
 
 const CardioInput = z.object({
@@ -253,7 +268,32 @@ export async function workoutRoutes(app: FastifyInstance) {
               order: ex.order,
               notes: ex.notes,
               musclesWorked: (ex.musclesWorked ?? []) as any,
-              sets: { create: ex.sets.map((s) => ({ ...s })) },
+              // Live-mode exercise timing. Spread after the literal
+              // fields so a future field collision can't accidentally
+              // overwrite the client's value with undefined.
+              ...(ex.startedAt ? { startedAt: new Date(ex.startedAt) } : {}),
+              ...(ex.completedAt ? { completedAt: new Date(ex.completedAt) } : {}),
+              sets: {
+                create: ex.sets.map((s) => ({
+                  reps: s.reps,
+                  weight: s.weight ?? null,
+                  duration: s.duration ?? null,
+                  rpe: s.rpe ?? null,
+                  completed: s.completed,
+                  order: s.order,
+                  skipped: s.skipped,
+                  skipReason: s.skipReason ?? null,
+                  // Same pattern as the exercise fields above — only
+                  // forward each timestamp when the client sent it.
+                  // Sending `undefined` would round-trip as null which
+                  // the API contract treats as "no live-mode data",
+                  // same as not sending the field at all, but the
+                  // conditional spread keeps the payload tidy.
+                  ...(s.startedAt ? { startedAt: new Date(s.startedAt) } : {}),
+                  ...(s.completedAt ? { completedAt: new Date(s.completedAt) } : {}),
+                  ...(s.restSeconds != null ? { restSeconds: s.restSeconds } : {}),
+                })),
+              },
             })),
           },
         },

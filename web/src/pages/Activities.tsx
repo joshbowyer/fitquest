@@ -10,6 +10,7 @@ import type { Workout } from '@/lib/types';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { setVolumeKg } from '@/lib/exerciseVolume';
 import { WorkoutLogger } from '@/components/WorkoutLogger';
+import { LiveWorkoutLogger } from '@/components/LiveWorkoutLogger';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function kgToLb(kg: number): number { return kg * 2.20462; }
@@ -30,6 +31,20 @@ export function ActivitiesPage() {
   // couple of years of daily activity.
   const [historyFilter, setHistoryFilter] = useState<'all' | '7d' | '30d' | '90d'>('all');
   const [exerciseFilter, setExerciseFilter] = useState('');
+
+  // Log mode. Live mode is the default — one set at a time, rest timer
+  // auto-starts, timestamps captured for Garmin FIT correlation. Bulk
+  // mode is the legacy form (all sets typed up front, user can paste
+  // from a notebook / spreadsheet). The choice persists in localStorage
+  // so the user's preference sticks across sessions without needing
+  // a server round-trip.
+  const [logMode, setLogMode] = useState<'live' | 'bulk'>(() => {
+    if (typeof window === 'undefined') return 'live';
+    return (window.localStorage.getItem('fitquest.logMode') as 'live' | 'bulk' | null) || 'live';
+  });
+  useEffect(() => {
+    window.localStorage.setItem('fitquest.logMode', logMode);
+  }, [logMode]);
 
   const list = useQuery({
     queryKey: ['workouts'],
@@ -99,11 +114,40 @@ export function ActivitiesPage() {
             </Panel>
           }
         >
-          <WorkoutLogger
-            user={user}
-            units={units}
-            copyFrom={copyFromQ.data?.item}
-          />
+          {/* Log mode toggle. Lives outside the logger so the toggle
+              survives the logger's internal resets. Defaults to live;
+              persists in localStorage. */}
+          <div className="flex items-center gap-1 mb-2">
+            <span className="text-[10px] font-mono text-ink-400 uppercase tracking-widest mr-1">Log mode</span>
+            {(['live', 'bulk'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setLogMode(m)}
+                className={classNames(
+                  'px-2 py-1 text-[10px] font-mono uppercase tracking-widest border',
+                  logMode === m
+                    ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                    : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+                )}
+                title={m === 'live'
+                  ? 'Enter-as-you-go. One set at a time. Rest auto-timer. Timestamps recorded for Garmin FIT correlation.'
+                  : 'Bulk entry. Fill in all sets up front, commit at the end.'}
+              >
+                {m === 'live' ? 'Live' : 'Bulk'}
+              </button>
+            ))}
+          </div>
+
+          {logMode === 'live' ? (
+            <LiveWorkoutLogger user={user} units={units} />
+          ) : (
+            <WorkoutLogger
+              user={user}
+              units={units}
+              copyFrom={copyFromQ.data?.item}
+            />
+          )}
         </ErrorBoundary>
 
         {/* History */}
