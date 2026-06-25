@@ -266,6 +266,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
 
 function ModeSection() {
   const { user, refresh } = useAuth();
+  const qc = useQueryClient();
   const [err, setErr] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<'CASUAL' | 'HARDCORE' | null>(null);
 
@@ -286,6 +287,11 @@ function ModeSection() {
         // Force-refresh the auth context so the dashboard's Hearts
         // card mounts/unmounts without waiting for the next /me poll.
         refresh();
+        // Invalidate the local /me query so `current` (which drives the
+        // ModeCard active highlight) reflects the new mode immediately.
+        // Without this the card still shows the previous mode as active
+        // even though the server-side state has flipped.
+        qc.invalidateQueries({ queryKey: ['user', 'me'] });
       },
     },
     600,
