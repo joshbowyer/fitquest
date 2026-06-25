@@ -45,7 +45,7 @@ export function NutritionPage() {
           t
             ? (() => {
                 const w = convertForDisplay(t.waterGoalMl, 'ml', system);
-                return `Goal: ${t.goal.toLowerCase()} · ${t.calorieGoal} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${user?.calorieBaseline ?? 2200}) · ${t.proteinGoalG}g protein · ${w.value.toFixed(0)} ${w.unit} water (35 ml/kg)`;
+                return `Goal: ${t.goal.toLowerCase()} · ${Math.round(t.calorieGoal)} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${Math.round(user?.calorieBaseline ?? 2200)}) · ${Math.round(t.proteinGoalG)}g protein · ${w.value.toFixed(0)} ${w.unit} water (35 ml/kg)`;
               })()
             : 'Track your food and water. Daily targets are in /settings.'
         }

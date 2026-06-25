@@ -661,7 +661,7 @@ export function SettingsPage() {
           action={
             <span className="text-[10px] font-mono text-ink-400">
               {user.targets
-                ? `${user.targets.calorieGoal} cal · ${user.targets.proteinGoalG}g protein · ${user.targets.waterGoalMl} ml water`
+                ? `${Math.round(user.targets.calorieGoal)} cal · ${Math.round(user.targets.proteinGoalG)}g protein · ${Math.round(user.targets.waterGoalMl)} ml water`
                 : '…'}
             </span>
           }
