@@ -38,11 +38,14 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      # VITE_API_URL is intentionally NOT set so the web's lib/api.ts
+      # falls back to '/api' and nginx (in this container) proxies
+      # /api/* → api:3001. If you want the browser to hit the API
+      # directly (e.g. separate origins), set VITE_API_URL=http://api:3001
+      # or your public URL at build time.
     restart: unless-stopped
     depends_on:
       - api
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
     ports:
       - "8080:80"
 

@@ -265,6 +265,20 @@ export async function firePenances(
     const r = await firePenance(userId, f.key, f.source);
     if (r) {
       out.push({ key: f.key, ...r });
+      // Spawn check after each penance fire. After any shield
+      // drop, roll the dice: if tier is COMPROMISED or worse,
+      // there's a chance a portal leak spawns at home base.
+      // No-op if an active leak exists or the 24h cooldown
+      // hasn't elapsed. Best-effort — a spawn failure must not
+      // block the penance result.
+      if (r.shieldAfter < r.shieldBefore) {
+        try {
+          const { maybeSpawnLeak } = await import('./portalLeaks.js');
+          await maybeSpawnLeak(userId, r.shieldAfter);
+        } catch {
+          // Swallow — leak system is best-effort.
+        }
+      }
     }
   }
   return out;

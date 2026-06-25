@@ -1,9 +1,17 @@
 # Caddy config for production (optional profile)
-# Routes: / -> web, /api -> api
+# Routes:
+#   /api/* → api:3001 (prefix /api/ is stripped by handle_path)
+#   /*     → web:80   (SPA fallback handled by nginx inside web container)
+#
+# Set WEB_DOMAIN in .env to your public hostname (e.g. fit.example.com)
+# for automatic HTTPS via Let's Encrypt.
 {$WEB_DOMAIN:localhost} {
   encode gzip zstd
-  @api path /api/*
-  handle @api {
+
+  # Strip /api/ prefix so the api container receives paths like
+  # /auth/login, not /api/auth/login. The api mounts routes at
+  # /auth, /users, etc. — no /api prefix.
+  handle_path /api/* {
     reverse_proxy api:3001 {
       header_up Host {host}
       header_up X-Real-IP {remote_host}
@@ -11,6 +19,9 @@
       header_up X-Forwarded-Proto {scheme}
     }
   }
+
+  # Everything else goes to the web (nginx) container. The web
+  # container's own nginx handles SPA fallback for client routes.
   handle {
     reverse_proxy web:80
   }

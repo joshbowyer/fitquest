@@ -532,6 +532,24 @@ export async function workoutRoutes(app: FastifyInstance) {
     });
   });
 
+  // Portal-leak damage — best-effort. If the user has an active
+  // leak, the workout commit also deals damage to (or feeds) it.
+  // Wrapped in try/catch so a leak bug can't block the workout
+  // commit response.
+  app.post('/:id/leak-damage', async (req) => {
+    const me = await requireUser(req);
+    const { id } = req.params as { id: string };
+    const existing = await prisma.workout.findFirst({ where: { id, userId: me.id } });
+    if (!existing) return { error: 'Not found' };
+    const { applyLeakDamage } = await import('../lib/portalLeaks.js');
+    try {
+      const result = await applyLeakDamage(me.id, id);
+      return result ?? { skipped: true };
+    } catch (e: any) {
+      return { skipped: true, reason: e?.message ?? 'unknown' };
+    }
+  });
+
   app.delete('/:id', async (req) => {
     const me = await requireUser(req);
     const id = (req.params as any).id;
