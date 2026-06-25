@@ -18,10 +18,34 @@ jobs:
       packages: write  # needed to push to ghcr.io
     strategy:
       fail-fast: false
+      # Multi-arch: amd64 (most cloud VMs) + arm64 (Apple Silicon,
+      # Graviton, Raspberry Pi 4/5). One build per (service, arch);
+      # the resulting manifests are auto-merged by buildx into a
+      # single multi-arch image per tag.
       matrix:
         service: [api, web]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            # Rollup picks its native binary from
+            # @rollup/rollup-linux-{arch}-musl at build time.
+            # GH runners are amd64, so amd64 builds use the native
+            # x64 binary; arm64 builds cross-compile via QEMU and
+            # need the arm64 binary.
+            rollup_pkg: '@rollup/rollup-linux-x64-musl'
+          - arch: arm64
+            platform: linux/arm64
+            rollup_pkg: '@rollup/rollup-linux-arm64-musl'
     steps:
       - uses: actions/checkout@v4
+
+      # QEMU + binfmt lets the amd64 runner execute arm64
+      # binaries, so docker buildx can cross-compile the arm64
+      # images. Slower than native but no other runner is
+      # available for free.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -46,7 +70,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-,format=short
 
-      - name: Build + push ${{ matrix.service }}
+      - name: Build + push ${{ matrix.service }} (${{ matrix.arch }})
         uses: docker/build-push-action@v5
         with:
           # Workspace root so npm workspaces + the root package-lock.json
@@ -54,10 +78,16 @@ jobs:
           # ${{ matrix.service }}/.
           context: .
           file: ./${{ matrix.service }}/Dockerfile
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Skip cache for now — these are small images and GH Actions
-          # cache misses are cheaper than cache-hit surprises.
-          cache-from: ''
-          cache-to: ''
+          # The web Dockerfile installs the right rollup native
+          # binary for the current build arch via this ARG. The
+          # api Dockerfile ignores it (no native binaries needed).
+          build-args: |
+            ROLLUP_PKG=${{ matrix.rollup_pkg }}
+          # GH Actions cache, scoped per (service, arch) so an
+          # arm64 rebuild doesn't pull amd64 layers.
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.arch }}

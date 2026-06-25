@@ -6,13 +6,16 @@ WORKDIR /app
 # workspaces.
 
 FROM base AS deps
+ARG ROLLUP_PKG=@rollup/rollup-linux-x64-musl
 COPY package.json package-lock.json* ./
 COPY web/package.json ./web/package.json
-# npm workspaces don't always install optionalDependencies
-# (e.g. @rollup/rollup-linux-x64-musl needed by alpine). Force
-# them so vite can load its native rollup binary.
+# npm workspaces don't always install optionalDependencies.
+# Force-install the rollup native binary for the target arch —
+# the workflow passes ROLLUP_PKG via --build-arg based on the
+# current matrix entry (linux-x64-musl for amd64 builds,
+# linux-arm64-musl for arm64 builds).
 RUN npm ci --workspaces --include-workspace-root \
- && npm install --no-save @rollup/rollup-linux-x64-musl
+ && npm install --no-save "${ROLLUP_PKG}"
 
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
