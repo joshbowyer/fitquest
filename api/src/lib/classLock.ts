@@ -1,4 +1,4 @@
-import type { User } from '@prisma/client';
+import type { User } from './prisma.js';
 
 /**
  * Class lock rules. The user can change their class once a year, on (or

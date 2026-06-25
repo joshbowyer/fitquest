@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { DayOfWeek } from '@prisma/client';
+import { DayOfWeek } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 

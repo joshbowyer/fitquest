@@ -15,7 +15,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { MetricType } from '@prisma/client';
+import { MetricType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import {

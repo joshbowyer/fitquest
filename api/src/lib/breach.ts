@@ -24,7 +24,7 @@
 // - LEGENDARY: 50-100 gold, 5 soulstones, RARE item guaranteed
 // - APEX: 100-200 gold, 10 soulstones, EPIC item guaranteed
 
-import type { Prisma, PrismaClient, WorkoutType } from '@prisma/client';
+import type { Prisma, PrismaClient, WorkoutType } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
 
 export const BREACH_UNLOCK_LEVEL = 10;

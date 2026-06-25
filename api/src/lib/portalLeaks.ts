@@ -18,7 +18,7 @@
 // is stable. Rarity scales with user level.
 // ============================================================
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
 import { tierForShield } from './penance.js';
 

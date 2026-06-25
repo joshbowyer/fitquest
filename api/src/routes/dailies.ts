@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { DayOfWeek, DailyCategory } from '@prisma/client';
+import { DayOfWeek, DailyCategory } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';

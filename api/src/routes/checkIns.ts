@@ -26,7 +26,7 @@ import {
   isCheckInMetric,
   type Cadence,
 } from '../lib/checkIns.js';
-import type { MetricType } from '@prisma/client';
+import type { MetricType } from '../lib/prisma.js';
 
 type DueMetricDto = {
   metric: MetricType;

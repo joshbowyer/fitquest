@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-import { BodyPart } from '@prisma/client';
+import { BodyPart } from '../lib/prisma.js';
 
 const createSchema = z.object({
   bodyPart: z.nativeEnum(BodyPart),

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { FoodSource, MealType } from '@prisma/client';
+import { FoodSource, MealType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { todayInTz, localMidnightUtc } from '../lib/timezone.js';

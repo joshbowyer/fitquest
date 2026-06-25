@@ -12,7 +12,7 @@
  * derived values are the default.
  */
 
-import { CalorieGoal } from '@prisma/client';
+import { CalorieGoal } from './prisma.js';
 
 export type GoalTargets = {
   goal: CalorieGoal;

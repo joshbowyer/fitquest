@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { GeneticMaxSource, MetricType } from '@prisma/client';
+import { GeneticMaxSource, MetricType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeGeneticMax, computeAllGeneticMaxes } from '../lib/geneticMax.js';

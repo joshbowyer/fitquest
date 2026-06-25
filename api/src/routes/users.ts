@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CalorieGoal, CalorieSource, ClassName } from '@prisma/client';
+import { CalorieGoal, CalorieSource, ClassName } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeAllGeneticMaxes } from '../lib/geneticMax.js';

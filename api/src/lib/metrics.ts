@@ -1,4 +1,4 @@
-import { MetricType } from '@prisma/client';
+import { MetricType } from './prisma.js';
 
 export type MetricCategory =
   | 'HYPERTROPHY'

@@ -13,7 +13,7 @@
  * api/src/__tests__/measurementSource.test.ts.
  */
 
-import { MeasurementSource } from '@prisma/client';
+import { MeasurementSource } from './prisma.js';
 
 // Re-export so consumers can `import { MeasurementSource } from
 // './measurementSource.js'` rather than reaching into @prisma/client.

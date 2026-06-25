@@ -1,4 +1,4 @@
-import { PrismaClient, ItemRarity, EquipSlot, ClassName } from '@prisma/client';
+import { PrismaClient, ItemRarity, EquipSlot, ClassName } from './prisma.js';
 
 const prisma = new PrismaClient();
 

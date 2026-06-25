@@ -29,7 +29,7 @@
  * windows become meaningless — that's a logged-out / fresh-account
  * edge case that resolves itself once they set a timezone.
  */
-import type { MetricType } from '@prisma/client';
+import type { MetricType } from './prisma.js';
 
 export type Cadence = 'AM' | 'PM' | 'WEEKLY';
 

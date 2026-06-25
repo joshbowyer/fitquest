@@ -9,7 +9,7 @@ import {
   isCheckInMetric,
   CADENCES,
 } from '../lib/checkIns';
-import type { MetricType } from '@prisma/client';
+import type { MetricType } from '../lib/prisma.js';
 
 describe('cadence defaults', () => {
   it('covers every MetricType', () => {

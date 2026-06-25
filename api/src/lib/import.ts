@@ -23,7 +23,7 @@
 //
 // Dry-run mode validates + reports without writing.
 
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
 import { EXPORT_SCHEMA, EXPORT_VERSION, type ExportPayload } from './export.js';
 import { randomUuid } from './randomUuid.js';

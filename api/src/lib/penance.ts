@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js';
-import type { ShieldTier } from '@prisma/client';
+import type { ShieldTier } from './prisma.js';
 
 /**
  * Home-base shield + penance system.

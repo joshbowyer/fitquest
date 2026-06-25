@@ -1,4 +1,4 @@
-import type { MetricType } from '@prisma/client';
+import type { MetricType } from './prisma.js';
 import { METRICS } from './metrics.js';
 
 type Inputs = {

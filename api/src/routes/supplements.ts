@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { TrackedItemCategory, TrackedItemUnit } from '@prisma/client';
+import { TrackedItemCategory, TrackedItemUnit } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 

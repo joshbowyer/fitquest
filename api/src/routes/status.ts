@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
-import type { BodyPart } from '@prisma/client';
+import type { BodyPart } from '../lib/prisma.js';
 
 /**
  * Per-body-part recovery score (0-100).

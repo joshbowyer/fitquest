@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Prisma, SkipReason, WorkoutType } from '@prisma/client';
+import { Prisma, SkipReason, WorkoutType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { bestEstimatedOneRm, isPrCandidate } from '../lib/pr.js';

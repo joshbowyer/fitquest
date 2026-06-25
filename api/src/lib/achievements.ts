@@ -1,4 +1,4 @@
-import { AchievementCategory, type PrismaClient } from '@prisma/client';
+import { AchievementCategory, type PrismaClient } from './prisma.js';
 import { prisma } from './prisma.js';
 import { getWeighInStreak, getCategoryStreak } from './streaks.js';
 

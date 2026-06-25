@@ -1,4 +1,4 @@
-import type { ClassName } from '@prisma/client';
+import type { ClassName } from './prisma.js';
 
 /**
  * Compute raid damage dealt by a workout, given the user's class.

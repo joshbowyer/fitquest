@@ -1,4 +1,4 @@
-import type { ClassName } from '@prisma/client';
+import type { ClassName } from './prisma.js';
 
 export type SkillEffect =
   | { type: 'xp_multiplier'; value: number; appliesTo: string }
