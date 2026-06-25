@@ -47,6 +47,11 @@ export type ImportResult = {
   imported: Record<string, number>;
   skipped: Record<string, number>;
   errors: { table: string; id?: string; reason: string }[];
+  // Source-of-truth labels so the UI can show "Imported 67 workouts
+  // from LobsterWrangler into <you>" without re-parsing the payload.
+  // Always null when the payload's user metadata is missing.
+  sourceUserId: string | null;
+  sourceUsername: string | null;
 };
 
 export class ImportError extends Error {
@@ -59,6 +64,13 @@ export class ImportError extends Error {
 // ============================================================
 // Schema gate. Reject unknown / mismatched payloads up front
 // before we touch the database.
+//
+// Note: payload.userId is NOT required. The import is
+// userId-agnostic — every imported row gets the importing
+// user's id, regardless of who the export was created by.
+// Payload.userId is preserved in the response so the UI can
+// show "imported from <username>" for confirmation, but it's
+// informational only and doesn't gate the import.
 // ============================================================
 export function validatePayload(payload: unknown): asserts payload is ExportPayload {
   if (!payload || typeof payload !== 'object') {
@@ -77,9 +89,9 @@ export function validatePayload(payload: unknown): asserts payload is ExportPayl
   if (!p.tables || typeof p.tables !== 'object') {
     throw new ImportError('tables_missing');
   }
-  if (!p.userId || typeof p.userId !== 'string') {
-    throw new ImportError('userId_missing');
-  }
+  // payload.userId is informational only — see comment above.
+  // We don't require it because the import never compares it
+  // to the current user.
 }
 
 // ============================================================
@@ -157,6 +169,14 @@ export async function importExport(
     imported: {},
     skipped: {},
     errors: [],
+    // Best-effort extraction of source labels. payload.userId and
+    // payload.user are both optional in our schema gate — if
+    // either is missing we just leave the labels null instead of
+    // throwing. The UI can render "(unknown source)" when null.
+    sourceUserId: typeof (payload as any).userId === 'string' ? (payload as any).userId : null,
+    sourceUsername: typeof (payload as any).user?.username === 'string'
+      ? (payload as any).user.username
+      : null,
   };
 
   if (options.wipeFirst && !options.dryRun) {
