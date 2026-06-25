@@ -9,6 +9,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Avatar } from '@/components/Avatar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DeleteButton } from '@/components/DeleteButton';
+import { formatWeight, formatNum } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   BodyModel,
@@ -248,7 +249,7 @@ function StatusBody({
           )}
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
             <span className="text-ink-500">recovery:</span>
-            <Legend color="#64748b" label="untrained" />
+            <Legend color="#94a3b8" label="untrained" />
             <Legend color="#0891b2" label="primed" />
             <Legend color="#16a34a" label="recovering" />
             <Legend color="#b45309" label="fatigued" />
@@ -615,6 +616,7 @@ function PartDetailsModal({
     (s, w) => s + w.exercises.reduce((ss, e) => ss + e.totalVolumeKg, 0),
     0
   ) ?? 0;
+  const totalVolumeRounded = Math.round(totalVolume);
   const sessionCount = exQ.data?.workouts.length ?? 0;
 
   // Summary line that combines recovery × volume into a single
@@ -655,7 +657,7 @@ function PartDetailsModal({
               </div>
               <div>
                 <div className="text-ink-500 uppercase tracking-widest text-[9px]">volume</div>
-                <div className="text-ink-100">{totalVolume.toLocaleString()}<span className="text-ink-500"> kg</span></div>
+                <div className="text-ink-100">{totalVolumeRounded.toLocaleString()}<span className="text-ink-500"> kg</span></div>
                 <div className="text-ink-400 text-[10px]">{sessionCount} session{sessionCount === 1 ? '' : 's'}</div>
               </div>
             </div>
@@ -695,9 +697,9 @@ function PartDetailsModal({
                         <div className="text-ink-200 truncate">{e.name}</div>
                         <div className="text-ink-400 shrink-0 ml-2">
                           {e.setCount} set{e.setCount === 1 ? '' : 's'}
-                          {e.totalVolumeKg > 0 ? ` · ${e.totalVolumeKg.toLocaleString()}kg` : ''}
+                          {e.totalVolumeKg > 0 ? ` · ${Math.round(e.totalVolumeKg).toLocaleString()}kg` : ''}
                           {e.topSet && e.topSet.weight != null
-                            ? ` · top ${e.topSet.weight}×${e.topSet.reps}`
+                            ? ` · top ${formatWeight(e.topSet.weight, '')}×${e.topSet.reps}`
                             : ''}
                         </div>
                       </div>

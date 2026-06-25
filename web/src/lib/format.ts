@@ -73,6 +73,34 @@ export function classNames(...xs: Array<string | false | null | undefined>): str
   return xs.filter(Boolean).join(' ');
 }
 
+// Format a weight value (kg or lb) with a sensible number of
+// decimals. Capped at 2 so user-typed values like 69.871858...
+// never escape to the UI. Trailing zeros stripped so 100.0
+// reads as "100" and 100.50 reads as "100.5".
+export function formatWeight(value: number, unit: 'kg' | 'lb' = 'kg', maxDecimals = 1): string {
+  if (!Number.isFinite(value)) return '—';
+  const rounded = Number(value.toFixed(maxDecimals));
+  // Strip trailing zeros without losing integer formatting.
+  const str = rounded.toString();
+  return unit ? `${str} ${unit}` : str;
+}
+
+// Format an arbitrary numeric value with a max decimal cap.
+// Strips trailing zeros. Use this whenever you're rendering a
+// server-supplied number that might have arbitrary precision.
+export function formatNum(value: number, maxDecimals = 2): string {
+  if (!Number.isFinite(value)) return '—';
+  const rounded = Number(value.toFixed(maxDecimals));
+  return rounded.toString();
+}
+
+// Format an integer-ish quantity (servings, reps, set count).
+// Rounds to integer if close enough; otherwise 1 decimal.
+export function formatQty(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  return Math.round(value).toString();
+}
+
 // Format a metric value based on its unit
 export function formatMetricValue(value: number, unit: string): string {
   if (!Number.isFinite(value)) return '—';

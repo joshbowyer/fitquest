@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { api } from '@/lib/api';
+import { formatQty, formatNum } from '@/lib/format';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import {
@@ -172,7 +173,7 @@ function MealItemRow({
           )}
         </div>
         <div className="text-[10px] font-mono text-ink-400">
-          ×{entry.servings} · {entry.served.calories.toFixed(0)} cal ·{' '}
+          ×{formatQty(entry.servings)} · {entry.served.calories.toFixed(0)} cal ·{' '}
           {entry.served.proteinG.toFixed(1)}p
           {entry.note && (
             <span className="text-ink-500 ml-1 italic truncate">— {entry.note}</span>
@@ -290,7 +291,7 @@ function EditMealModal({
             New served: {(entry.served.calories / entry.servings * sNum).toFixed(0)} cal ·{' '}
             {(entry.served.proteinG / entry.servings * sNum).toFixed(1)}p
             <span className="text-ink-500 ml-1">
-              (scale {entry.servings}→{sNum})
+              (scale {formatQty(entry.servings)}→{formatQty(sNum)})
             </span>
           </div>
         )}

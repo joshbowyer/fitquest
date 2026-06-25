@@ -518,13 +518,14 @@ export function intensityLabel(intensity: number): string {
 
 export const PALETTE_HEX: Record<RecoveryBand, Record<VolumeBand, string>> = {
   // Cool slate. "I haven't touched this muscle recently."
-  // Brightened from #3f475a (slate-600) so the wireframe stays
-  // visible against the body's solid #0e1a2b (deep navy) canvas.
+  // Lighter (slate-400 #94a3b8) so untrained parts read clearly
+  // against the deep navy bg without being mistaken for one of
+  // the recovery hues.
   untrained: {
-    none:     '#64748b',  // slate-500 — reads on deep navy
-    light:    '#64748b',
-    moderate: '#64748b',
-    heavy:    '#64748b',
+    none:     '#94a3b8',  // slate-400
+    light:    '#94a3b8',
+    moderate: '#94a3b8',
+    heavy:    '#94a3b8',
   },
   // Cyan — past work fully digested; you're supercompensated.
   primed: {
