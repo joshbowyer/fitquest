@@ -210,18 +210,18 @@ enum MemberRole {
 }
 
 model User {
-  id                    String                @id @default(cuid())
-  email                 String                @unique
-  username              String                @unique
+  id                    String                  @id @default(cuid())
+  email                 String                  @unique
+  username              String                  @unique
   passwordHash          String
   class                 ClassName?
-  level                 Int                   @default(1)
-  xp                    Int                   @default(0)
-  gold                  Int                   @default(0)
+  level                 Int                     @default(1)
+  xp                    Int                     @default(0)
+  gold                  Int                     @default(0)
   // Soulstones: rare drop from raids/world bosses, used to bypass the
   // 9-day class-change lock. Capped softly via the boss/raid reward logic.
-  soulstones            Int                   @default(0)
-  units                 UnitSystem            @default(METRIC)
+  soulstones            Int                     @default(0)
+  units                 UnitSystem              @default(METRIC)
   // Static frame inputs (rarely change). Used by genetic-max formulas.
   heightCm              Float?
   wristCm               Float?
@@ -264,17 +264,17 @@ model User {
   classChangedAt        DateTime?
   // Admin role. First user to register is bootstrapped to admin.
   // Future: 2FA / TOTP secret + recovery codes live here too.
-  isAdmin               Boolean               @default(false)
+  isAdmin               Boolean                 @default(false)
   twoFactorSecret       String?
-  twoFactorEnabled      Boolean               @default(false)
+  twoFactorEnabled      Boolean                 @default(false)
   // TOTP recovery codes (one-time use, hashed at rest).
   twoFactorBackupCodes  String?
   worldProgress         UserWorldProgress[]
   painLogs              PainLog[]
   routine               Routine?
   worldBosses           WorldBoss[]
-  sentInvites           PartyInvite[]         @relation("Inviter")
-  receivedInvites       PartyInvite[]         @relation("Invitee")
+  sentInvites           PartyInvite[]           @relation("Inviter")
+  receivedInvites       PartyInvite[]           @relation("Invitee")
   prayerLogs            PrayerLog[]
   habits                Habit[]
   habitLogs             HabitLog[]
@@ -296,24 +296,24 @@ model User {
   mealEntries           MealEntry[]
   savedFoods            SavedFood[]
   correlationSnapshots  CorrelationSnapshot[]
-  teamWorkoutsLed       TeamWorkout[]         @relation("TeamWorkoutLeader")
+  teamWorkoutsLed       TeamWorkout[]           @relation("TeamWorkoutLeader")
   teamParticipations    TeamParticipant[]
   trustedDevices        TrustedDevice[]
   recoveryCodes         RecoveryCode[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
-  spiritualDailyPrayers PrayerType[]          @default([ROSARY, SCRIPTURE])
+  spiritualDailyPrayers PrayerType[]            @default([ROSARY, SCRIPTURE])
   // Creatine adds intracellular water weight (~1-2 kg). When true, the
   // user wants it accounted for in lean-mass display so a "real" LBM
   // number doesn't include the water. Stored raw so we can compute
   // both numbers downstream.
-  creatine              Boolean               @default(false)
+  creatine              Boolean                 @default(false)
   // IANA timezone name (e.g. "America/New_York"). Used to render
   // absolute timestamps in the user's local time. Defaults to UTC.
   timezone              String?
   spiritualSubclass     SpiritualSubclass?
-  spiritualXp           Int                   @default(0)
-  ordained              Boolean               @default(false)
+  spiritualXp           Int                     @default(0)
+  ordained              Boolean                 @default(false)
   ordainedAt            DateTime?
   sex                   Sex?
   /// Goal for daily calorie/macro targets. Drives the conservative
@@ -322,17 +322,17 @@ model User {
   /// per the user's preference for the high end of the range.
   /// Default MAINTAIN. User can override individual targets in
   /// /settings to fine-tune.
-  goal                  CalorieGoal           @default(MAINTAIN)
+  goal                  CalorieGoal             @default(MAINTAIN)
   /// Casual/Hardcore difficulty toggle. Casual = current no-consequences
   /// behavior (streaks can be broken freely, no heart system). Hardcore =
   /// full penalty ladder (heart system, streak-break on miss, reduced XP
   /// when hearts are low). Default Casual so existing users aren't
   /// surprised by a difficulty change.
-  mode                  UserMode              @default(CASUAL)
+  mode                  UserMode                @default(CASUAL)
   /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
   /// missed planned workout in the routine, regen 1 per 8h. Always 5
   /// in Casual mode (the value is preserved but unused).
-  hearts                Int                   @default(5)
+  hearts                Int                     @default(5)
   /// Timestamp of last heart regeneration tick. Used to compute
   /// accrued regeneration since last read; the server applies the
   /// accrued delta on every /users/me read so the UI stays honest
@@ -342,10 +342,10 @@ model User {
   /// this + goal offset (cut -250, maintain 0, bulk +250). Default
   /// 2200 is a reasonable placeholder; the user should set this to
   /// their actual maintenance once they have data.
-  calorieBaseline       Int                   @default(2200)
+  calorieBaseline       Int                     @default(2200)
   /// What the baseline number represents. Affects only the UI label
   /// ("Maintenance" vs "BMR" vs "BMR + NEAT"). Math is the same.
-  calorieSource         CalorieSource         @default(BASELINE)
+  calorieSource         CalorieSource           @default(BASELINE)
   /// USDA FoodData Central API key. Free; sign up at
   /// https://fdc.nal.usda.gov/api-key-signup.html. Required for the
   /// upcoming food tracker; the LLM will use this when looking up
@@ -365,15 +365,17 @@ model User {
   /// Whether the user must complete a TOTP code at login. False
   /// during the grace window after first registration so the user
   /// isn't locked out if the authenticator app setup fails.
-  totpEnabled           Boolean               @default(false)
+  totpEnabled           Boolean                 @default(false)
   /// Counter for failed login attempts. Reset on successful login.
   /// Used by the brute-force protection in the auth route.
-  failedLogins          Int                   @default(0)
+  failedLogins          Int                     @default(0)
   /// When the account was last locked out due to too many failed
   /// attempts. Null = not locked. Resets on successful login.
   lockedUntil           DateTime?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  PortalLeak            PortalLeak[]
+  PortalLeakDamageEvent PortalLeakDamageEvent[]
 
   @@index([email])
   @@index([username])
@@ -414,21 +416,21 @@ model GeneticMax {
 }
 
 model Workout {
-  id                 String              @id @default(cuid())
-  userId             String
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type               WorkoutType
-  name               String?
-  duration           Int?
-  notes              String?
-  performedAt        DateTime            @default(now())
-  createdAt          DateTime            @default(now())
-  exercises          Exercise[]
+  id                     String                  @id @default(cuid())
+  userId                 String
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                   WorkoutType
+  name                   String?
+  duration               Int?
+  notes                  String?
+  performedAt            DateTime                @default(now())
+  createdAt              DateTime                @default(now())
+  exercises              Exercise[]
   /// Per-second trackpoint stream (lat/lng/ele/timestamp + HR/cadence/power/
   /// speed/distance). Populated by the FIT importer from RecordMesg. Kept as
   /// JSONB rather than a separate table since we don't query into individual
   /// points and most workouts are short. Empty array when no GPS / no FIT.
-  trackJson          Json                @default("[]")
+  trackJson              Json                    @default("[]")
   /// Optional cardio block for non-set activities (hike / run / cycle /
   /// row / swim). Lets the user log a single distance + duration + pace
   /// without a full exercise breakdown. Stored as JSONB so we can
@@ -441,7 +443,7 @@ model Workout {
   ///   'WALK_CASUAL'|'WALK_BRISK'|'JOG'|'RUN'|'SPRINT'|'CRUISE'|'INTERVALS',
   ///   elevationGainM?: number, avgHr?: number, maxHr?: number,
   ///   avgPaceSecPerKm?: number, source?: 'MANUAL'|'GPS' }
-  cardio             Json?
+  cardio                 Json?
   /// Implausible set values flagged by the per-exercise plausibility
   /// detector (Bench 500kg, Squat 1000 reps, blanket > 500kg,
   /// etc.). Stored as JSONB so the morning report aggregator can
@@ -452,13 +454,17 @@ model Workout {
   /// Shape: ValidityFlag[] =
   /// {exercise, setIndex, field: 'weight'|'reps', value, unit,
   ///  reason, severity: 'flag'|'block'}.
-  validityFlags      Json?
+  validityFlags          Json?
   /// Breach damage events from this workout (one row per matched
   /// workout → one BreachDamageEvent, see UserBreachProgress docs).
   /// We don't define a back-relation on BreachDamageEvent because
   /// we look them up by user, not by workout — keeps the model
   /// surface small.
-  breachDamageEvents BreachDamageEvent[]
+  breachDamageEvents     BreachDamageEvent[]
+  /// Audit trail of leak damage events (workout → leak HP).
+  /// Looked up by leak, not by user — so no back-relation on
+  /// PortalLeakDamageEvent needed.
+  portalLeakDamageEvents PortalLeakDamageEvent[]
 
   @@index([userId, performedAt])
 }
@@ -849,6 +855,92 @@ model BreachDamageEvent {
 
   @@index([userId, createdAt])
   @@index([bossId, createdAt])
+}
+
+// ============================================================
+// Portal leaks — small home-base encounters spawned when the
+// user's shield drops below COMPROMISED. One leak can be active
+// at a time; resolved leaks enter a 24h cooldown. Match the leak's
+// preferredTags via workout commits to damage it; mismatched
+// workouts feed it. Defeat = loot drop. Overwhelm = penance
+// + shield drain.
+// ============================================================
+
+enum PortalLeakStatus {
+  ACTIVE // currently damaging the user / being damaged by them
+  DEFEATED // user reduced HP to 0; pending loot claim
+  OVERWHELMED // leak HP exceeded overwhelm threshold; cooldown
+  EXPIRED // leak aged out without resolution; cooldown
+}
+
+model PortalLeak {
+  id                    String                  @id @default(cuid())
+  userId                String
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Random monster name pulled from the seed pool. Lets the UI
+  /// show a themed encounter without LLM cost.
+  monsterName           String
+  /// Visual glyph (until sprite-overhaul lands). One of the
+  /// portal-monster icons from lib/portalLeaks.ts.
+  monsterEmoji          String
+  /// Visual color for the leak ring + status chip.
+  monsterColor          String
+  /// One-sentence flavor text shown on spawn notification.
+  intro                 String
+  /// Body-part / muscle tags this leak is "weak to". Workout
+  /// commits that match deal damage; mismatched workouts heal
+  /// the leak by a small amount. JSON array of strings.
+  preferredTags         Json
+  /// Bonus tags that grant extra damage. Rare category bonus
+  /// (e.g. "cardio" on a strength leak) — same shape as Breach.
+  bonusTags             Json                    @default("[]")
+  /// Current HP. Starts at maxHp. Decremented by matched
+  /// workouts, incremented by mismatched ones (capped at
+  /// maxHp * OVERWHELM_CAP_MULT).
+  hp                    Int                     @default(100)
+  /// Starting HP. Sized smaller than Breach bosses (80-160)
+  /// since leaks are 1-shot encounters, not boss fights.
+  maxHp                 Int                     @default(100)
+  /// Lifecycle state. ACTIVE → DEFEATED (user kills) or
+  /// OVERWHELMED (leak kills user) or EXPIRED (48h timer).
+  status                PortalLeakStatus        @default(ACTIVE)
+  spawnedAt             DateTime                @default(now())
+  resolvedAt            DateTime?
+  /// ItemDef.id of the loot that drops on defeat. Null until
+  /// resolved. Set when the leak is created so the loot is
+  /// deterministic per encounter (the user's "prize" rolls
+  /// at spawn, not at claim, so it's stable).
+  itemDrop              String?
+  /// Reason text for the resolution (e.g. "you sealed the leak",
+  /// "the leak overwhelmed you"). Surfaced in the toast.
+  resolvedReason        String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  PortalLeakDamageEvent PortalLeakDamageEvent[]
+
+  @@index([userId, status])
+  @@index([userId, spawnedAt])
+}
+
+model PortalLeakDamageEvent {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leakId      String
+  leak        PortalLeak @relation(fields: [leakId], references: [id], onDelete: Cascade)
+  workoutId   String?
+  workout     Workout?   @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  /// Damage dealt. Negative = leak fed (mismatched workout).
+  damage      Int
+  /// Leak HP after the event. Lets the UI render a timeline
+  /// without re-deriving.
+  leakHpAfter Int
+  /// 'matched' | 'mismatched' | 'partial' | 'bonus'.
+  matchType   String
+  createdAt   DateTime   @default(now())
+
+  @@index([userId, createdAt])
+  @@index([leakId, createdAt])
 }
 
 model Party {
@@ -1504,6 +1596,7 @@ enum ItemRarity {
 enum ItemSource {
   MONSTER_DROP
   BOSS_DROP
+  PORTAL_LEAK
   QUEST_REWARD
   SHOP
   CRAFTED

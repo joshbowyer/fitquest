@@ -375,13 +375,33 @@ export async function importExport(
   }
 
   // ----- BREACH PROGRESS (1 row max) -----
+  // Breach boss IDs are seeded by server, may differ between
+  // instances. Remap currentBossId by name when present.
+  const bossIdByName = new Map<string, string>();
+  for (const b of await prisma.breachBoss.findMany({ select: { id: true, name: true } })) {
+    bossIdByName.set(b.name, b.id);
+  }
   if (t.userBreachProgress) {
     try {
       const b = t.userBreachProgress as Record<string, unknown>;
+      const data = stripUnknown(b, ['id', 'userId', 'createdAt', 'updatedAt']);
+      // Try to remap currentBossId by boss name OR fall back to
+      // a direct id match. If neither works, drop the field (the
+      // schema FK requires it to exist; we can't keep a stale id).
+      const oldBossId = b.currentBossId as string | undefined;
+      if (oldBossId) {
+        const byName = bossIdByName.get(oldBossId);
+        const byId = byName ?? (await prisma.breachBoss.findUnique({ where: { id: oldBossId } }))?.id;
+        if (byId) {
+          (data as Record<string, unknown>).currentBossId = byId;
+        } else {
+          delete (data as Record<string, unknown>).currentBossId;
+        }
+      }
       await prisma.userBreachProgress.upsert({
         where: { userId },
-        update: stripUnknown(b, ['id', 'userId', 'createdAt', 'updatedAt']),
-        create: { userId, ...stripUnknown(b, ['id', 'userId', 'createdAt', 'updatedAt']) },
+        update: data,
+        create: { userId, ...data },
       });
       bump('userBreachProgress', 1);
     } catch (e: any) {
@@ -406,14 +426,39 @@ export async function importExport(
     }
   }
 
-  // ----- ACHIEVEMENTS -----
+// ----- ACHIEVEMENTS -----
+  // Achievement IDs are system-assigned by the seed script and may
+  // differ between server instances. Remap by key (the slug) so
+  // existing achievements get matched up correctly.
+  const achIdByKey = new Map<string, string>();
+  for (const a of await prisma.achievement.findMany({ select: { id: true, key: true } })) {
+    if (a.key) achIdByKey.set(a.key, a.id);
+  }
   if (Array.isArray(t.userAchievements)) {
-    for (const ua of t.userAchievements as Array<Record<string, unknown>>) {
+    for (const ua of t.userAchievements) {
       try {
-        const data = stripUnknown(ua, ['id', 'userId']);
-        await prisma.userAchievement.create({ data: { ...data, userId } });
+        const data = stripUnknown(ua, ['id', 'userId', 'achievementId', 'achievementKey']);
+        const key = (ua as Record<string, unknown>).achievementKey as string | undefined;
+        const oldAchId = (ua as Record<string, unknown>).achievementId as string | undefined;
+        let newAchId: string | undefined;
+        // Try matching the old achievementId against any currently-
+        // seeded achievement id or key (handles re-seeded instances
+        // where cuids may match or differ).
+        if (oldAchId) {
+          const asKey = achIdByKey.get(String(oldAchId));
+          if (asKey) newAchId = asKey;
+          else {
+            const direct = await prisma.achievement.findUnique({ where: { id: String(oldAchId) } });
+            if (direct) newAchId = direct.id;
+          }
+        }
+        if (!newAchId && key) newAchId = achIdByKey.get(key);
+        if (!newAchId) { skip('userAchievements'); continue; }
+        await prisma.userAchievement.create({ data: { ...data, userId, achievementId: newAchId } });
         bump('userAchievements', 1);
       } catch (e: any) {
+        if (isDuplicate(e)) { skip('userAchievements'); continue; }
+        fail('userAchievements', String(ua.id ?? ''), e?.message ?? 'unknown');
         fail('userAchievements', String(ua.id ?? ''), e?.message ?? 'unknown');
       }
     }
@@ -482,29 +527,30 @@ export async function importExport(
     }
   }
 
-  // ----- ROUTINES → ROUTINE DAYS -----
+// ----- ROUTINES → ROUTINE DAYS -----
+  // Note: RoutineDay has no `routineId` field in the current schema
+  // — it uses `userId` as the FK directly. So routineDays are flat
+  // per-user; we import them as-is. Skip the nested grouping.
   if (Array.isArray(t.routines)) {
-    for (const r of t.routines as Array<Record<string, unknown>>) {
+    for (const r of t.routines) {
       try {
-        const oldId = String(r.id ?? '');
-        const newId = randomUuid();
-        idMap.set(oldId, newId);
         const data = stripUnknown(r, ['id', 'userId']);
-        await prisma.routine.create({ data: { ...data, id: newId, userId } });
+        await prisma.routine.create({ data: { ...data, userId } });
         bump('routines', 1);
-
-        const days = (t.routineDays as Array<Record<string, unknown>>).filter((d) => d.routineId === oldId);
-        for (const dRaw of days) {
-          try {
-            const d = stripUnknown(dRaw, ['id', 'routineId']);
-            await prisma.routineDay.create({ data: { ...d, routineId: newId } });
-            bump('routineDays', 1);
-          } catch (e: any) {
-            fail('routineDays', String(dRaw.id ?? ''), e?.message ?? 'unknown');
-          }
-        }
       } catch (e: any) {
         fail('routines', String(r.id ?? ''), e?.message ?? 'unknown');
+      }
+    }
+  }
+  if (Array.isArray(t.routineDays)) {
+    for (const d of t.routineDays as Array<Record<string, unknown>>) {
+      try {
+        const data = stripUnknown(d, ['id', 'userId']);
+        await prisma.routineDay.create({ data: { ...data, userId } });
+        bump('routineDays', 1);
+      } catch (e: any) {
+        if (isDuplicate(e)) { skip('routineDays'); continue; }
+        fail('routineDays', String(d.id ?? ''), e?.message ?? 'unknown');
       }
     }
   }
@@ -633,9 +679,11 @@ export async function importExport(
     }
   }
 
-  // ----- USER TRACKED ITEMS → DAILY TRACKED ITEMS -----
+// ----- USER TRACKED ITEMS → DAILY TRACKED ITEMS -----
+  // Note: DailyTrackedItem uses `itemId` (string FK), not `userItemId`.
+  // The old ID→new ID remap is required, but keyed by itemId.
   if (Array.isArray(t.userTrackedItems)) {
-    for (const ut of t.userTrackedItems as Array<Record<string, unknown>>) {
+    for (const ut of t.userTrackedItems) {
       try {
         const oldId = String(ut.id ?? '');
         const newId = randomUuid();
@@ -644,11 +692,11 @@ export async function importExport(
         await prisma.userTrackedItem.create({ data: { ...data, id: newId, userId } });
         bump('userTrackedItems', 1);
 
-        const dailyLogs = (t.dailyTrackedItems as Array<Record<string, unknown>>).filter((d) => d.userItemId === oldId);
+        const dailyLogs = (t.dailyTrackedItems as Array<Record<string, unknown>>).filter((d) => d.itemId === oldId);
         for (const dRaw of dailyLogs) {
           try {
-            const d = stripUnknown(dRaw, ['id', 'userItemId', 'userId']);
-            await prisma.dailyTrackedItem.create({ data: { ...d, userItemId: newId, userId } });
+            const d = stripUnknown(dRaw, ['id', 'itemId', 'userId']);
+            await prisma.dailyTrackedItem.create({ data: { ...d, itemId: newId, userId } });
             bump('dailyTrackedItems', 1);
           } catch (e: any) {
             fail('dailyTrackedItems', String(dRaw.id ?? ''), e?.message ?? 'unknown');
