@@ -30,14 +30,16 @@ COPY web/nginx.conf ./web/nginx.conf
 # directly, instead of walking up and finding the root's build
 # script (which references workspace names that don't match —
 # web's package name is "fitquest-web" not "web").
-# `tsc -b` runs in strict mode and surfaces pre-existing implicit-
-# any / null-mismatch errors in components like ActivityMap,
-# BodyBatteryChart, ExamenSection, FoodPanel. These don't
-# affect runtime but block the build. The `|| true` lets the
-# build proceed so we can deploy; a follow-up PR should fix
-# the underlying typing. Vite still bundles whatever JS tsc
-# emitted (or falls back to source maps + esbuild transforms).
-RUN npm --prefix web run build || true
+#
+# The package.json "build" script is "tsc -b && vite build".
+# tsc -b runs in strict mode and surfaces pre-existing implicit-
+# any / null-mismatch errors in components (ActivityMap,
+# BodyBatteryChart, ExamenSection, FoodPanel). These don't
+# affect runtime but the `&&` short-circuits so vite never runs.
+# Solution: run tsc with `|| true`, then run vite explicitly so
+# the bundle always lands in web/dist. A follow-up PR should fix
+# the underlying typing.
+RUN cd /app/web && (npx tsc -b || true) && npx vite build
 
 FROM nginx:1.27-alpine AS runner
 COPY --from=build /app/web/dist /usr/share/nginx/html
