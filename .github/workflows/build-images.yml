@@ -11,17 +11,18 @@ env:
   IMAGE_PREFIX: ${{ github.repository }}  # = joshbowyer/fitquest
 
 jobs:
+  # Per-arch builds push to arch-specific tags (e.g. sha-<hash>-amd64)
+  # to avoid overwriting each other's manifest lists. The merge job
+  # below combines them into the shared :main / :latest / :sha-<hash>
+  # tags as a proper multi-arch manifest list.
   build:
+    name: Build ${{ matrix.service }} (${{ matrix.arch }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write  # needed to push to ghcr.io
     strategy:
       fail-fast: false
-      # Multi-arch: amd64 (most cloud VMs) + arm64 (Apple Silicon,
-      # Graviton, Raspberry Pi 4/5). One build per (service, arch);
-      # the resulting manifests are auto-merged by buildx into a
-      # single multi-arch image per tag.
       matrix:
         service: [api, web]
         arch: [amd64, arm64]
@@ -62,32 +63,97 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          # Per-arch tags. The merge job combines these into the
+          # shared :main / :latest / :sha-* tags afterwards.
+          # Without -${{ matrix.arch }} suffix, two matrix entries
+          # pushing the same tag would race and the later one
+          # would overwrite the earlier multi-arch manifest list
+          # with a single-arch one (losing the other arch).
           tags: |
-            type=ref,event=branch           # branch name (e.g. main)
-            type=ref,event=pr               # PR number
-            type=semver,pattern={{version}} # v1.2.3 → 1.2.3
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
+            type=ref,event=branch,enable=${{ matrix.arch == 'amd64' }}
+            type=ref,event=pr,enable=${{ matrix.arch == 'amd64' }}
+            type=semver,pattern={{version}},enable=${{ matrix.arch == 'amd64' }}
+            type=raw,value=latest-${{ matrix.arch }}
+            type=sha,prefix=sha-,format=short,suffix=-${{ matrix.arch }}
+          flavor: latest=auto
 
       - name: Build + push ${{ matrix.service }} (${{ matrix.arch }})
         uses: docker/build-push-action@v5
         with:
-          # Workspace root so npm workspaces + the root package-lock.json
-          # are in scope. Each Dockerfile scopes its COPY paths under
-          # ${{ matrix.service }}/.
           context: .
           file: ./${{ matrix.service }}/Dockerfile
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # The web Dockerfile installs the right rollup native
-          # binary for the current build arch via this ARG. The
-          # api Dockerfile ignores it (no native binaries needed).
           build-args: |
             ROLLUP_PKG=${{ matrix.rollup_pkg }}
-          # GH Actions cache, scoped per (service, arch) so an
-          # arm64 rebuild doesn't pull amd64 layers.
+          # Cache scoped per (service, arch) so an arm64 rebuild
+          # doesn't pull amd64 layers.
           cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.arch }}
+
+  # Merge per-arch tags into the shared manifest-list tags
+  # (:main, :latest, :sha-*). Needs: packages: write.
+  merge:
+    name: Merge ${{ matrix.service }} manifests
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, web]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve per-arch source tags
+        id: src
+        # Derive the per-arch suffix used by the build job's tags.
+        # The build job's metadata-action suffixes with -amd64 /
+        # -arm64; the shared tag (without suffix) is the same
+        # value with that suffix stripped.
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="pr-${{ github.event.pull_request.number }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # v1.2.3 → 1.2.3
+            BASE="${GITHUB_REF_NAME#v}"
+          else
+            BASE="sha-${GITHUB_SHA::7}"
+          fi
+          echo "shared_tag=${BASE}" >> "$GITHUB_OUTPUT"
+          echo "amd64_tag=${BASE}-amd64" >> "$GITHUB_OUTPUT"
+          echo "arm64_tag=${BASE}-arm64" >> "$GITHUB_OUTPUT"
+
+      # Combine the per-arch manifests into a multi-arch manifest
+      # list under the shared tags. `imagetools create` reads the
+      # referenced tags, downloads their manifests + layers, and
+      # pushes a new manifest-list tag that references both.
+      - name: Merge per-arch manifests
+        run: |
+          set -euo pipefail
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}"
+          SHARED_TAG="${{ steps.src.outputs.shared_tag }}"
+          AMD64_TAG="${{ steps.src.outputs.amd64_tag }}"
+          ARM64_TAG="${{ steps.src.outputs.arm64_tag }}"
+          echo "Merging per-arch manifests into manifest list:"
+          echo "  ${IMAGE_BASE}:${AMD64_TAG}"
+          echo "  ${IMAGE_BASE}:${ARM64_TAG}"
+          echo "As:"
+          echo "  ${IMAGE_BASE}:${SHARED_TAG}"
+          echo "  ${IMAGE_BASE}:latest"
+          docker buildx imagetools create \
+            --tag "${IMAGE_BASE}:${SHARED_TAG}" \
+            --tag "${IMAGE_BASE}:latest" \
+            "${IMAGE_BASE}:${AMD64_TAG}" \
+            "${IMAGE_BASE}:${ARM64_TAG}"
