@@ -114,40 +114,47 @@ export function ActivitiesPage() {
             </Panel>
           }
         >
-          {/* Log mode toggle. Lives outside the logger so the toggle
-              survives the logger's internal resets. Defaults to live;
-              persists in localStorage. */}
-          <div className="flex items-center gap-1 mb-2">
-            <span className="text-[10px] font-mono text-ink-400 uppercase tracking-widest mr-1">Log mode</span>
-            {(['live', 'bulk'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setLogMode(m)}
-                className={classNames(
-                  'px-2 py-1 text-[10px] font-mono uppercase tracking-widest border',
-                  logMode === m
-                    ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
-                    : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
-                )}
-                title={m === 'live'
-                  ? 'Enter-as-you-go. One set at a time. Rest auto-timer. Timestamps recorded for Garmin FIT correlation.'
-                  : 'Bulk entry. Fill in all sets up front, commit at the end.'}
-              >
-                {m === 'live' ? 'Live' : 'Bulk'}
-              </button>
-            ))}
-          </div>
+          {/* Single container so the grid sees ONE child cell, not
+              two. Without this wrapper, ErrorBoundary's children leak
+              into the grid as siblings — toggle becomes the left cell
+              and the logger becomes the right cell, with history
+              wrapping below on its own row. */}
+          <div className="space-y-2">
+            {/* Log mode toggle. Lives outside the logger so the toggle
+                survives the logger's internal resets. Defaults to live;
+                persists in localStorage. */}
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-mono text-ink-400 uppercase tracking-widest mr-1">Log mode</span>
+              {(['live', 'bulk'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setLogMode(m)}
+                  className={classNames(
+                    'px-2 py-1 text-[10px] font-mono uppercase tracking-widest border',
+                    logMode === m
+                      ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                      : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+                  )}
+                  title={m === 'live'
+                    ? 'Enter-as-you-go. One set at a time. Rest auto-timer. Timestamps recorded for Garmin FIT correlation.'
+                    : 'Bulk entry. Fill in all sets up front, commit at the end.'}
+                >
+                  {m === 'live' ? 'Live' : 'Bulk'}
+                </button>
+              ))}
+            </div>
 
-          {logMode === 'live' ? (
-            <LiveWorkoutLogger user={user} units={units} />
-          ) : (
-            <WorkoutLogger
-              user={user}
-              units={units}
-              copyFrom={copyFromQ.data?.item}
-            />
-          )}
+            {logMode === 'live' ? (
+              <LiveWorkoutLogger user={user} units={units} />
+            ) : (
+              <WorkoutLogger
+                user={user}
+                units={units}
+                copyFrom={copyFromQ.data?.item}
+              />
+            )}
+          </div>
         </ErrorBoundary>
 
         {/* History */}
