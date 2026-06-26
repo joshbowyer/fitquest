@@ -107,8 +107,12 @@ function QuickLogForm({
 
 /**
  * Water block. Reads WATER_ML rows for today, shows running total
- * vs. user.targets.waterMl, +250 / +500 / +750 ml quick pills, free
- * input in ml (stored as-is; conversion to fl oz is display-only).
+ * vs. user.targets.waterMl, preset quick-pills matching the
+ * Nutrition tab (8/12/16/24 fl oz imperial, 200/250/350/500/750 ml
+ * metric), plus any custom amounts the user has added (persisted
+ * in localStorage). Free input falls through to a custom amount;
+ * submitting a custom value that isn't already a preset adds it
+ * to the row.
  */
 function WaterBlock({ system }: { system: UnitSystem }) {
   const qc = useQueryClient();
@@ -119,6 +123,42 @@ function WaterBlock({ system }: { system: UnitSystem }) {
     queryFn: () => api<MeasurementsResponse>('/measurements?metric=WATER_ML&limit=200'),
     refetchInterval: 60_000,
   });
+
+  // Custom presets — user-added amounts persisted in localStorage.
+  // We keep them in ml (storage unit) regardless of display unit, so
+  // the user's saved custom 32 fl oz (~946 ml) doesn't get re-shown as
+  // a clunky "946" pill — it's converted to fl oz at display time.
+  const [customPresetsMl, setCustomPresetsMl] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('fitquest.water.customPresetsMl');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((v) => typeof v === 'number' && v > 0 && v < 10000);
+    } catch {
+      return [];
+    }
+  });
+  function addCustomPreset(ml: number) {
+    setCustomPresetsMl((prev) => {
+      // Round to nearest 1 ml so 32.0 fl oz + 32.0 fl oz doesn't
+      // create two near-duplicate pills.
+      const r = Math.round(ml);
+      if (prev.includes(r) || r <= 0) return prev;
+      const next = [...prev, r].sort((a, b) => a - b);
+      try { window.localStorage.setItem('fitquest.water.customPresetsMl', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+  function removeCustomPreset(ml: number) {
+    setCustomPresetsMl((prev) => {
+      const next = prev.filter((v) => v !== ml);
+      try { window.localStorage.setItem('fitquest.water.customPresetsMl', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let total = 0;
@@ -153,18 +193,172 @@ function WaterBlock({ system }: { system: UnitSystem }) {
         </>
       }
     >
-      <QuickLogForm
-        primaryLabel="ml"
-        pillOptions={[
-          { label: '+250 ml', value: 250 },
-          { label: '+500 ml', value: 500 },
-          { label: '+750 ml', value: 750 },
-        ]}
+      {/* Presets match the Nutrition tab (8/12/16/24 fl oz imperial,
+          200/250/350/500/750 ml metric). Custom amounts the user
+          has saved also render as pills, with a tiny × to remove. */}
+      <WaterQuickLogRow
+        isImperial={system === 'IMPERIAL'}
+        customPresetsMl={customPresetsMl}
         onSubmit={(v) => logM.mutate(v)}
+        onCustomSubmit={(v) => {
+          logM.mutate(v);
+          addCustomPreset(v);
+        }}
+        onRemoveCustom={removeCustomPreset}
         disabled={logM.isPending}
-        unit="ml"
       />
     </CollapsibleBlock>
+  );
+}
+
+/**
+ * Water preset + custom amount row. The built-in pills mirror the
+ * Nutrition tab (8/12/16/24 fl oz imperial, 200/250/350/500/750 ml
+ * metric). User-saved custom amounts render as additional pills
+ * after the built-ins, with a × affordance to remove them.
+ *
+ * Amounts are always stored as ml on the backend; conversion to fl oz
+ * is display-only (Nutrition.tsx does the same).
+ */
+function WaterQuickLogRow({
+  isImperial,
+  customPresetsMl,
+  onSubmit,
+  onCustomSubmit,
+  onRemoveCustom,
+  disabled,
+}: {
+  isImperial: boolean;
+  customPresetsMl: number[];
+  onSubmit: (ml: number) => void;
+  onCustomSubmit: (ml: number) => void;
+  onRemoveCustom: (ml: number) => void;
+  disabled?: boolean;
+}) {
+  const [value, setValue] = useState('');
+  // Built-in presets in ml. Imperial displays as fl oz; metric stays ml.
+  const builtIn: { ml: number; imperial: string; metric: string }[] = [
+    { ml: 237, imperial: '+8 oz',  metric: '+237' },
+    { ml: 355, imperial: '+12 oz', metric: '+355' },
+    { ml: 473, imperial: '+16 oz', metric: '+473' },
+    { ml: 710, imperial: '+24 oz', metric: '+710' },
+  ];
+  // Metric-only extras the Nutrition tab uses (250/350/500/750 are
+  // also useful in metric even if the imperial picks round to them).
+  const metricExtras: { ml: number; label: string }[] = [
+    { ml: 200, label: '+200' },
+    { ml: 250, label: '+250' },
+    { ml: 500, label: '+500' },
+    { ml: 750, label: '+750' },
+  ];
+
+  function submitCustom() {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return;
+    // Imperial input is in fl oz; convert to ml before sending.
+    const ml = isImperial ? Math.round(n * 29.5735) : Math.round(n);
+    onCustomSubmit(ml);
+    setValue('');
+  }
+
+  function pillLabel(ml: number): string {
+    if (isImperial) {
+      const oz = ml / 29.5735;
+      // Whole oz when clean; otherwise 1 decimal.
+      const clean = Math.round(oz * 10) % 10 === 0
+        ? `${Math.round(oz)} oz`
+        : `${oz.toFixed(1)} oz`;
+      return `+${clean}`;
+    }
+    return `+${ml}`;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 items-center">
+        {builtIn.map((p) => (
+          <button
+            key={p.ml}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSubmit(p.ml)}
+            className="px-2.5 py-1 text-[11px] font-mono border border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+            title={isImperial ? p.imperial : `${p.ml} ml`}
+          >
+            {isImperial ? p.imperial : p.metric}
+          </button>
+        ))}
+        {/* Show metric-only extras (200/250/500/750) only in metric mode —
+            in imperial they're redundant with 8/12/16/24 oz. */}
+        {!isImperial && metricExtras.map((p) => (
+          <button
+            key={p.ml}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSubmit(p.ml)}
+            className="px-2.5 py-1 text-[11px] font-mono border border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+            title={`${p.ml} ml`}
+          >
+            {p.label}
+          </button>
+        ))}
+        {/* User-saved custom amounts. Rendered with a tiny × so the
+            user can clean up. Distinct border color so they don't
+            blend with the built-in pills. */}
+        {customPresetsMl.map((ml) => (
+          <span
+            key={ml}
+            className="inline-flex items-stretch border border-neon-amber/40 rounded overflow-hidden"
+            title={`Custom ${pillLabel(ml).slice(1)}`}
+          >
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onSubmit(ml)}
+              className="px-2.5 py-1 text-[11px] font-mono text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pillLabel(ml)}
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onRemoveCustom(ml)}
+              title="Remove this custom preset"
+              className="px-1.5 py-1 text-[10px] font-mono text-neon-amber/70 hover:text-neon-amber hover:bg-neon-amber/10 border-l border-neon-amber/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') submitCustom();
+          }}
+          placeholder={isImperial ? 'fl oz' : 'ml'}
+          className="flex-1 bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-xs font-mono rounded"
+          disabled={disabled}
+        />
+        <span className="text-[10px] font-mono text-ink-400">
+          {isImperial ? 'fl oz' : 'ml'}
+        </span>
+        <button
+          type="button"
+          disabled={disabled || !value || isNaN(Number(value)) || Number(value) <= 0}
+          onClick={submitCustom}
+          className="px-3 py-1.5 text-xs font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50 disabled:cursor-not-allowed rounded"
+          title="Log this amount and add it as a custom preset"
+        >
+          + Log & save
+        </button>
+      </div>
+    </div>
   );
 }
 

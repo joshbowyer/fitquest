@@ -55,8 +55,8 @@ export async function insightRoutes(app: FastifyInstance) {
   });
 
   // Manual trigger for the nightly snapshot. Useful after a bulk
-  // import (e.g. FoodYou weigh-ins) so the user doesn't have to
-  // wait for 03:30 to see fresh correlations.
+  // weigh-in import so the user doesn't have to wait for 03:30 to
+  // see fresh correlations.
   app.post('/correlations/snapshot', async (req) => {
     const me = await requireUser(req);
     const result = await snapshotCorrelations(me.id);

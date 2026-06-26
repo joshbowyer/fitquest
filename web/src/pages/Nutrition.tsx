@@ -597,6 +597,41 @@ function WaterLogPanel({ units }: { units: UnitSystem }) {
   const [custom, setCustom] = useState('');
   const customNum = Number(custom);
 
+  // Custom presets — same shape and storage key as TodayBlocks so
+  // the two tabs share the user's saved amounts. Display unit
+  // conversion happens at render time (Nutrition already handles
+  // fl oz <-> ml for the custom input).
+  const [customPresetsMl, setCustomPresetsMl] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('fitquest.water.customPresetsMl');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((v) => typeof v === 'number' && v > 0 && v < 10000);
+    } catch {
+      return [];
+    }
+  });
+  function addCustomPreset(ml: number) {
+    setCustomPresetsMl((prev) => {
+      const r = Math.round(ml);
+      if (prev.includes(r) || r <= 0) return prev;
+      const next = [...prev, r].sort((a, b) => a - b);
+      try { window.localStorage.setItem('fitquest.water.customPresetsMl', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+  function removeCustomPreset(ml: number) {
+    setCustomPresetsMl((prev) => {
+      const next = prev.filter((v) => v !== ml);
+      try { window.localStorage.setItem('fitquest.water.customPresetsMl', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+  // Custom amount is stored in ml after imperial->ml conversion so
+  // the persistence key matches TodayBlocks exactly.
+
   const todayQ = useQuery({
     queryKey: ['measurements', 'today', 'WATER_ML'],
     queryFn: () =>
@@ -665,6 +700,39 @@ function WaterLogPanel({ units }: { units: UnitSystem }) {
             {p.label}
           </button>
         ))}
+        {/* Custom presets — same storage as TodayBlocks so the two
+            tabs share. Show as amber-bordered pills so they don't
+            blend with the built-in ones. */}
+        {customPresetsMl.map((ml) => {
+          const label = units === 'IMPERIAL'
+            ? `+${Math.round(ml / 29.5735)} oz`
+            : `+${ml}`;
+          return (
+            <span
+              key={ml}
+              className="inline-flex items-stretch border border-neon-amber/40 rounded overflow-hidden"
+              title={`Custom ${label}`}
+            >
+              <button
+                type="button"
+                disabled={logM.isPending}
+                onClick={() => logM.run(ml)}
+                className="px-3 h-8 text-[11px] font-mono text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {label}
+              </button>
+              <button
+                type="button"
+                disabled={logM.isPending}
+                onClick={() => removeCustomPreset(ml)}
+                title="Remove this custom preset"
+                className="px-1.5 text-[10px] font-mono text-neon-amber/70 hover:text-neon-amber hover:bg-neon-amber/10 border-l border-neon-amber/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
         <div className="flex items-center gap-1 ml-auto">
           <input
             type="number"
@@ -686,12 +754,11 @@ function WaterLogPanel({ units }: { units: UnitSystem }) {
             loading={logM.isPending}
             loadingText="…"
             onClick={() => {
-              if (units === 'IMPERIAL') {
-                // convert fl oz to ml for storage
-                logM.run(Math.round(customNum * 29.5735));
-              } else {
-                logM.run(Math.round(customNum));
-              }
+              const ml = units === 'IMPERIAL'
+                ? Math.round(customNum * 29.5735)
+                : Math.round(customNum);
+              logM.run(ml);
+              addCustomPreset(ml);
             }}
           >
             Log

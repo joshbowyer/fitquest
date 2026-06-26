@@ -170,7 +170,7 @@ export function FoodPanel() {
             size="sm"
             variant="cyan"
             onClick={() => setRecentOpen(true)}
-            title="Browse all foods you've logged + saved + import from FoodYou backup"
+            title="Browse your recently-eaten foods (last 7 days) + saved recipes"
           >
             <span className="sm:hidden">Recent</span>
             <span className="hidden sm:inline">Recent foods</span>
@@ -371,6 +371,7 @@ export function FoodPanel() {
       {recentOpen && (
         <RecentFoodsModal
           items={savedQ.data?.items ?? []}
+          recentMeals={recentQ.data?.items ?? []}
           onClose={() => setRecentOpen(false)}
           onLog={(food) => {
             setLogFood(food);
@@ -763,53 +764,34 @@ function AskAiModal({
 // ============================================================================
 // Manage Saved Foods modal — list, add, edit, delete the user's recipes
 // ============================================================================
-// Recent foods modal — full list + FoodYou import
+// Recent foods modal — saved foods + recently eaten meals
 // ============================================================================
 //
-// Shows ALL the user's saved foods (the "Your saved foods"
-// list, but bigger + with quick-log). If a FoodYou backup DB
-// is found in /tmp, also shows the importable list pulled from
-// it: foods the user actually logged in FoodYou + their recent
-// search terms' best OFF/USDA matches + recent catalog additions.
+// Two sections:
+//  1. Your saved foods — the always-available quick-log list (the
+//     ★-starred recipes that survive across sessions).
+//  2. Recently eaten — last 7 days of MealEntry rows, deduped by
+//     (food.source, food.sourceId, food.name). This catches items
+//     added by Ask AI or anything the user logged once but didn't
+//     bother to save.
+//
 // Click an item to open the LogMeal modal.
-
-type FoodYouImportFood = {
-  name: string;
-  brand: string | null;
-  servingSizeG: number | null;
-  calories: number;
-  proteinG: number;
-  carbG: number;
-  fatG: number;
-  fiberG: number | null;
-  sugarG: number | null;
-  sodiumMg: number | null;
-  source: 'diary';
-  foodYouId: number;
-};
-
-type FoodYouImportResponse =
-  | {
-      available: true;
-      path: string;
-      diary: FoodYouImportFood[];
-    }
-  | { available: false; reason: string; message: string; path?: string };
 
 function RecentFoodsModal({
   items,
+  recentMeals,
   onClose,
   onLog,
   onSavedChanged,
 }: {
   items: SavedFoodDto[];
+  recentMeals: MealEntry[];
   onClose: () => void;
   onLog: (food: FoodMatch) => void;
   onSavedChanged: () => void;
 }) {
   // Map a SavedFood into the FoodMatch shape the LogMeal modal
-  // expects, so the user can quick-log a saved food from here
-  // (and then import a FoodYou food from the same modal).
+  // expects, so the user can quick-log a saved food from here.
   function savedToMatch(s: SavedFoodDto): FoodMatch {
     return {
       source: 'MANUAL',
@@ -829,57 +811,38 @@ function RecentFoodsModal({
     };
   }
 
-  // Map a FoodYou diary row into the FoodMatch shape so the user
-  // can quick-log a meal directly from the import list without
-  // first having to add it to their saved foods. We synthesize a
-  // stable sourceId from the foodYouId so the LogMeal modal can
-  // pass it through to the server (which upserts a FoodItem by
-  // (source, sourceId) and creates the MealEntry in one tx).
-  function foodYouToMatch(f: FoodYouImportFood): FoodMatch {
+  // Map a MealEntry (one logged meal) into a FoodMatch so the
+  // LogMeal modal can pre-fill from it. The food.source +
+  // food.sourceId pair is the (source, sourceId) unique key the
+  // server uses to upsert FoodItem, so a re-log of an already-eaten
+  // food (Ask AI result, OFF search hit, USDA entry, anything)
+  // reuses the existing FoodItem row instead of creating a duplicate.
+  function mealToMatch(m: MealEntry): FoodMatch {
     return {
-      source: 'MANUAL',
-      sourceId: `foodyou-${f.foodYouId}`,
-      name: f.name,
-      brand: f.brand,
-      imageUrl: null,
-      servingSizeG: f.servingSizeG,
-      calories: f.calories,
-      proteinG: f.proteinG,
-      carbG: f.carbG,
-      fatG: f.fatG,
-      fiberG: f.fiberG,
-      sugarG: f.sugarG,
-      sodiumMg: f.sodiumMg,
+      source: m.food.source as any,
+      sourceId: m.food.sourceId,
+      name: m.food.name,
+      brand: m.food.brand,
+      imageUrl: m.food.imageUrl,
+      servingSizeG: m.food.servingSizeG,
+      // The MealEntry carries the macros-as-served (already scaled
+      // by servings), but the LogMeal modal wants per-100g (or per
+      // serving) numbers and re-scales via the servings picker. The
+      // server uses per-100g from FoodItem, but for ad-hoc re-log
+      // we send the per-serving numbers and let the modal's
+      // servings default to 1.0.
+      calories: m.served.calories,
+      proteinG: m.served.proteinG,
+      carbG: m.served.carbG,
+      fatG: m.served.fatG,
+      fiberG: m.served.fiberG,
+      sugarG: m.served.sugarG,
+      sodiumMg: m.served.sodiumMg,
       sourceUrl: null,
     };
   }
 
-  // FoodYou import state
-  const importQ = useQuery({
-    queryKey: ['foods', 'import', 'foodyou'],
-    queryFn: () => api<FoodYouImportResponse>('/foods/import/foodyou'),
-    // Don't run unless the modal is open.
-    enabled: true,
-    retry: false,
-  });
-  const importM = useDelayedMutation<
-    { ok: boolean; created: number; skipped: number },
-    { items: Omit<FoodYouImportFood, 'foodYouId' | 'source'>[] }
-  >({
-    mutationFn: (body) =>
-      api('/foods/import/foodyou/commit', { method: 'POST', body }),
-    onSuccess: () => {
-      onSavedChanged();
-      importQ.refetch();
-    },
-  }, 800);
-  // Which import-item ids the user has checked. Map<foodYouId, checked>.
-  const [picked, setPicked] = useState<Set<number>>(new Set());
-
-  // Free-text filter applied to BOTH the saved-foods list and
-  // the FoodYou import list. The query is debounced implicitly
-  // via React state updates; for a few hundred items we don't
-  // need anything fancier. Empty query = show everything.
+  // Free-text filter applied to BOTH lists. Empty = show all.
   const [filter, setFilter] = useState('');
   const f = filter.trim().toLowerCase();
   const matches = (name: string, brand: string | null | undefined) => {
@@ -889,37 +852,18 @@ function RecentFoodsModal({
     return false;
   };
 
-  const importData = importQ.data && importQ.data.available ? importQ.data : null;
-  // Diary entries: every distinct food the user actually logged
-  // in FoodYou (the DiaryProduct table, ordered by id DESC so
-  // most recent first). Deduped by (name+brand) so logging the
-  // same item 5 times shows once. The user explicitly asked
-  // for THIS — the actual meal log, not custom-adds or searches.
-  const allImportable = importData?.diary ?? [];
-
-  // "Import all" = check the currently-filtered diary entries.
-  // When a filter is active, "all" means the visible subset
-  // (so the user can quickly import just the matches).
-  function pickAll() {
-    const next = new Set<number>(picked);
-    if (!importData) return next;
-    for (const f of importData.diary) {
-      if (matches(f.name, f.brand)) next.add(f.foodYouId);
-    }
-    return next;
+  // Dedup recent meals: many entries per food (one per log). Keep
+  // the most-recent row per (source, sourceId, name) so the list
+  // is browseable. Most-recent = first occurrence in `recentMeals`
+  // (the API returns them loggedAt DESC).
+  const dedupedMeals: MealEntry[] = [];
+  const seen = new Set<string>();
+  for (const m of recentMeals) {
+    const key = `${m.food.source}|${m.food.sourceId}|${m.food.name.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedupedMeals.push(m);
   }
-  // "Clear" = uncheck the currently-filtered entries (so
-  // "select all → clear" cycles in the user's filter scope).
-  function clearAll() {
-    const next = new Set<number>(picked);
-    if (!importData) return next;
-    for (const f of importData.diary) {
-      if (matches(f.name, f.brand)) next.delete(f.foodYouId);
-    }
-    return next;
-  }
-  const filteredDiary = (importData?.diary ?? []).filter((f) => matches(f.name, f.brand));
-  const allPicked = filteredDiary.length > 0 && filteredDiary.every((f) => picked.has(f.foodYouId));
 
   return createPortal(
     <div
@@ -937,15 +881,12 @@ function RecentFoodsModal({
           <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
         </div>
 
-        {/* ---------- Your saved foods (the always-available quick-log list) ---------- */}
+        {/* ---------- Recently eaten (last 7 days) ---------- */}
         <div className="mb-4">
           <div className="flex items-center gap-2 mb-1.5">
             <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
-              Your saved foods ({items.length})
+              Recently eaten ({dedupedMeals.length})
             </div>
-            {/* Filter input — applies to BOTH the saved-foods
-                list and the FoodYou import list. Case-insensitive
-                substring match against name + brand. ESC clears. */}
             <input
               autoFocus
               className="input-neon flex-1 text-[11px] h-6 px-2"
@@ -957,11 +898,68 @@ function RecentFoodsModal({
               }}
             />
           </div>
+          {dedupedMeals.length === 0 ? (
+            <div className="text-xs text-ink-400 font-mono py-2">
+              Nothing logged in the last 7 days. Search + log something below and it'll show up here next time.
+            </div>
+          ) : (
+            (() => {
+              const filtered = dedupedMeals.filter((m) => matches(m.food.name, m.food.brand));
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-xs text-ink-400 font-mono py-2 text-center">
+                    No recent meals match "{filter}".
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-1 max-h-72 overflow-y-auto">
+                  {filtered.slice(0, 50).map((m) => (
+                    <div
+                      key={m.id}
+                      className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
+                    >
+                      <span className="text-slate-200 truncate flex-1">
+                        {m.food.name}
+                        {m.food.brand && (
+                          <span className="text-ink-400 ml-1">· {m.food.brand}</span>
+                        )}
+                      </span>
+                      <span className="text-amber-300 text-[10px] shrink-0">
+                        {m.served.calories.toFixed(0)} cal
+                      </span>
+                      <span className="text-ink-500 text-[10px] shrink-0">
+                        ·{m.served.proteinG.toFixed(0)}p
+                      </span>
+                      <span className="text-ink-500 text-[10px] shrink-0 hidden sm:inline">
+                        ·{new Date(m.loggedAt).toLocaleDateString()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onLog(mealToMatch(m))}
+                        className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
+                        title="Quick-log this food again"
+                      >
+                        + log
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          )}
+        </div>
+
+        {/* ---------- Your saved foods (the always-available list) ---------- */}
+        <div className="border-t border-ink-500/20 pt-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
+              Your saved foods ({items.length})
+            </div>
+          </div>
           {items.length === 0 ? (
             <div className="text-xs text-ink-400 font-mono py-2">
-              You don't have any saved foods yet. Either save a search
-              result with the ★ save button, or import from a FoodYou
-              backup below.
+              No saved foods yet. Star a search result with the ★ button to add one.
             </div>
           ) : (
             (() => {
@@ -974,201 +972,40 @@ function RecentFoodsModal({
                 );
               }
               return (
-            <div className="space-y-1 max-h-44 overflow-y-auto">
-              {filtered.slice(0, 30).map((s) => (
-                <div
-                  key={s.id}
-                  className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
-                >
-                  <span className="text-slate-200 truncate flex-1">{s.name}</span>
-                  <span className="text-amber-300 text-[10px] shrink-0">
-                    {s.calories.toFixed(0)} cal
-                  </span>
-                  <span className="text-ink-500 text-[10px] shrink-0">
-                    ·{s.proteinG.toFixed(0)}p
-                  </span>
-                  <span className="text-ink-500 text-[10px] shrink-0">
-                    ·×{s.useCount}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onLog(savedToMatch(s))}
-                    className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
-                    title="Quick-log this food"
-                  >
-                    + log
-                  </button>
-                </div>
-              ))}
-            </div>
-              );
-            })()
-          )}
-        </div>
-
-        {/* ---------- FoodYou backup import ---------- */}
-        <div className="border-t border-ink-500/20 pt-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-500">
-              Import from FoodYou backup
-            </div>
-            {importData && allImportable.length > 0 && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPicked(allPicked ? clearAll() : pickAll())}
-                  className="text-[10px] font-mono text-violet-300 hover:underline"
-                >
-                  {allPicked ? 'clear' : 'select all'}
-                </button>
-                <NeonButton
-                  size="sm"
-                  variant="cyan"
-                  disabled={picked.size === 0 || importM.isPending}
-                  loading={importM.isPending}
-                  loadingText="Importing…"
-                  onClick={() => {
-                    // Translate the picked-set into the items the
-                    // server expects. We strip the FoodYou-specific
-                    // fields (foodYouId, source) before sending.
-                    const itemsToSend = allImportable
-                      .filter((f) => picked.has(f.foodYouId))
-                      .map((f) => ({
-                        name: f.name,
-                        brand: f.brand,
-                        servingSizeG: f.servingSizeG,
-                        calories: f.calories,
-                        proteinG: f.proteinG,
-                        carbG: f.carbG,
-                        fatG: f.fatG,
-                        fiberG: f.fiberG,
-                        sugarG: f.sugarG,
-                        sodiumMg: f.sodiumMg,
-                      }));
-                    importM.run({ items: itemsToSend });
-                    setPicked(new Set());
-                  }}
-                >
-                  Import {picked.size > 0 ? `(${picked.size})` : ''}
-                </NeonButton>
-              </div>
-            )}
-          </div>
-          {importQ.isLoading && (
-            <div className="text-xs text-ink-400 font-mono py-2">⏳ Looking for a FoodYou backup in /tmp/…</div>
-          )}
-          {!importQ.isLoading && importQ.data && importQ.data.available === false && (
-            <div className="text-xs text-ink-400 font-mono py-2 space-y-1">
-              <div>No FoodYou backup found at {importQ.data.path ?? '/tmp/foodyou-*.db'}.</div>
-              {importQ.data.reason === 'parse_error' && (
-                <div className="text-rose-400">{importQ.data.message}</div>
-              )}
-              <div className="text-[10px] text-ink-500">
-                Drop a FoodYou SQLite export (foodyou-*.db) in /tmp/
-                and reload this modal.
-              </div>
-            </div>
-          )}
-          {importData && (
-            <div className="space-y-1 max-h-72 overflow-y-auto">
-              {allImportable.length === 0 ? (
-                <div className="text-xs text-ink-400 font-mono py-2">
-                  No foods found in the backup.
-                </div>
-              ) : (
-                <>
-                  <div className="text-[10px] font-mono text-amber-300 mt-1 mb-1">
-                    {(() => {
-                      const filtered = allImportable.filter((f) => matches(f.name, f.brand));
-                      if (f) return `${filtered.length} of ${allImportable.length} match "${filter}"`;
-                      return `${allImportable.length} foods you actually ate`;
-                    })()}
-                    <span className="text-ink-500"> · newest first</span>
-                    {f && (
+                <div className="space-y-1 max-h-44 overflow-y-auto">
+                  {filtered.slice(0, 30).map((s) => (
+                    <div
+                      key={s.id}
+                      className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
+                    >
+                      <span className="text-slate-200 truncate flex-1">{s.name}</span>
+                      <span className="text-amber-300 text-[10px] shrink-0">
+                        {s.calories.toFixed(0)} cal
+                      </span>
+                      <span className="text-ink-500 text-[10px] shrink-0">
+                        ·{s.proteinG.toFixed(0)}p
+                      </span>
+                      <span className="text-ink-500 text-[10px] shrink-0">
+                        ·×{s.useCount}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => setFilter('')}
-                        className="ml-2 text-cyan-300 hover:underline"
+                        onClick={() => onLog(savedToMatch(s))}
+                        className="px-2 py-0.5 text-[10px] font-mono border border-neon-amber/50 text-neon-amber hover:bg-neon-amber/10 shrink-0"
+                        title="Quick-log this food"
                       >
-                        clear filter
+                        + log
                       </button>
-                    )}
-                  </div>
-                  {allImportable.filter((f) => matches(f.name, f.brand)).map((f) => (
-                    <ImportRow
-                      key={f.foodYouId}
-                      f={f}
-                      checked={picked.has(f.foodYouId)}
-                      onToggle={() => {
-                        const next = new Set(picked);
-                        if (next.has(f.foodYouId)) next.delete(f.foodYouId);
-                        else next.add(f.foodYouId);
-                        setPicked(next);
-                      }}
-                      onLog={(row) => onLog(foodYouToMatch(row))}
-                    />
+                    </div>
                   ))}
-                </>
-              )}
-            </div>
+                </div>
+              );
+            })()
           )}
         </div>
       </div>
     </div>,
     document.body,
-  );
-}
-
-function ImportRow({
-  f,
-  checked,
-  onToggle,
-  onLog,
-}: {
-  f: FoodYouImportFood;
-  checked: boolean;
-  onToggle: () => void;
-  onLog: (f: FoodMatch) => void;
-}) {
-  return (
-    <label
-      className={`flex items-center gap-2 px-2 py-1 text-[11px] font-mono border cursor-pointer ${
-        checked
-          ? 'border-neon-cyan/60 bg-neon-cyan/10'
-          : 'border-ink-500/20 hover:bg-slate-800/40'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        className="rounded shrink-0"
-      />
-      <div className="flex-1 min-w-0">
-        <div className="text-slate-100 truncate">{f.name}</div>
-        <div className="text-[10px] text-ink-400 truncate">
-          {f.brand && <span className="text-ink-300">{f.brand} · </span>}
-          {f.calories.toFixed(0)} cal · {f.proteinG.toFixed(1)}p · {f.carbG.toFixed(1)}c · {f.fatG.toFixed(1)}f
-          <span className="text-ink-500"> per {f.servingSizeG ?? 100}g</span>
-        </div>
-      </div>
-      {/* Quick-log: open the LogMeal modal with the food's macros
-          pre-filled, no import step required. Stops propagation so
-          the label's checkbox toggle doesn't fire when the user
-          is just trying to log a single row. */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onLog(f);
-        }}
-        className="px-2 py-0.5 text-[10px] font-mono border border-neon-lime/60 text-neon-lime hover:bg-neon-lime/10 shrink-0"
-        title="Open Log meal modal with these macros pre-filled"
-      >
-        Log
-      </button>
-    </label>
   );
 }
 
