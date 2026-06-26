@@ -54,6 +54,20 @@ export type WorkoutLoggerProps = {
   /** Optional ref to a past workout to pre-fill from
    * (?copyFrom=<id> on Activities page). */
   copyFrom?: any;
+  /**
+   * Optional WorkoutTemplate to prefill the bulk form with. The
+   * parent should pass a unique `key` so this component remounts
+   * on template change. Weight stays at 0 — the user fills it in.
+   */
+  templatePrefill?: {
+    name?: string | null;
+    notes?: string | null;
+    type?: WorkoutType;
+    exercises?: Array<{
+      name: string;
+      sets: Array<{ targetReps: number }>;
+    }>;
+  } | null;
 };
 
 // =============================================================================
@@ -62,16 +76,32 @@ export type WorkoutLoggerProps = {
 
 export function WorkoutLogger({
   user, units, title = 'Log Session', initialType = 'STRENGTH', compact = false, onCommit, copyFrom,
+  templatePrefill,
 }: WorkoutLoggerProps) {
   const qc = useQueryClient();
-  const [type, setType] = useState<WorkoutType>(initialType);
-  const [name, setName] = useState('');
+  const [type, setType] = useState<WorkoutType>(templatePrefill?.type ?? initialType);
+  const [name, setName] = useState(templatePrefill?.name ?? '');
   const [duration, setDuration] = useState(60);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(templatePrefill?.notes ?? '');
   const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
   const [cardio, setCardio] = useState<DraftCardio>(emptyCardio());
   const [cardioOpen, setCardioOpen] = useState(false);
-  const [exercises, setExercises] = useState<DraftExercise[]>([emptyExercise()]);
+  const [exercises, setExercises] = useState<DraftExercise[]>(() => {
+    if (templatePrefill?.exercises?.length) {
+      return templatePrefill.exercises.map((ex) => ({
+        name: ex.name,
+        sets: ex.sets.map((s) => ({
+          reps: s.targetReps,
+          // Weight intentionally blank — the user said "leave weight blank"
+          // for routines so they fill it in at runtime.
+          weight: 0,
+          duration: 0,
+          rpe: 0,
+        })),
+      }));
+    }
+    return [emptyExercise()];
+  });
   const [result, setResult] = useState<any | null>(null);
 
   // Apply `copyFrom` once on mount. Used by the ActivityDetail

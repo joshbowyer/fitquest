@@ -4,6 +4,7 @@ import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { DashboardPage } from './pages/Dashboard';
 import { ActivitiesPage } from './pages/Activities';
+import { RoutinesPage } from './pages/Routines';
 import { ActivityDetailPage } from './pages/ActivityDetail';
 import { MeasurementsPage } from './pages/Measurements';
 import { InsightsPage } from './pages/Insights';
@@ -72,6 +73,8 @@ export default function App() {
       <Route path="/workouts" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />
       <Route path="/activities" element={<RequireAuth><ActivitiesPage /></RequireAuth>} />
       <Route path="/activities/:id" element={<RequireAuth><ActivityDetailPage /></RequireAuth>} />
+      <Route path="/routines" element={<RequireAuth><RoutinesPage /></RequireAuth>} />
+      <Route path="/routines/:id" element={<RequireAuth><RoutinesPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />

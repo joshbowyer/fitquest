@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { measurementRoutes } from './routes/measurements.js';
 import { workoutRoutes } from './routes/workouts.js';
+import { workoutTemplateRoutes } from './routes/workoutTemplates.js';
 import { geneticMaxRoutes } from './routes/geneticMax.js';
 import { partyRoutes } from './routes/parties.js';
 import { teamWorkoutRoutes } from './routes/teamWorkouts.js';
@@ -72,6 +73,7 @@ async function build() {
   await app.register(userRoutes, { prefix: '/users' });
   await app.register(measurementRoutes, { prefix: '/measurements' });
   await app.register(workoutRoutes, { prefix: '/workouts' });
+  await app.register(workoutTemplateRoutes, { prefix: '/workout-templates' });
   await app.register(geneticMaxRoutes, { prefix: '/genetic-max' });
   await app.register(partyRoutes, { prefix: '/parties' });
   await app.register(teamWorkoutRoutes, { prefix: '/team-workouts' });

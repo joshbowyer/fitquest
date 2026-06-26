@@ -53,6 +53,24 @@ export type LiveWorkoutLoggerProps = {
   title?: string;
   initialType?: WorkoutType;
   onCommit?: (workoutId: string, response: any) => void;
+  /**
+   * Optional WorkoutTemplate to prefill the setup phase with. The parent
+   * should also pass a unique `key` so this component remounts on
+   * template change — otherwise the user picks a new template and the
+   * state stays the same.
+   *
+   * Weight is intentionally left at 0 even if the template stored it;
+   * the user said "leave weight blank" so they fill it in live.
+   */
+  templatePrefill?: {
+    name?: string | null;
+    notes?: string | null;
+    type?: WorkoutType;
+    exercises?: Array<{
+      name: string;
+      sets: Array<{ targetReps: number }>;
+    }>;
+  } | null;
 };
 
 // One planned set up front. The user only configures count + a single
@@ -97,17 +115,30 @@ const STRENGTH_TYPES: WorkoutType[] = ['STRENGTH', 'HYPERTROPHY', 'CALISTHENICS'
 
 export function LiveWorkoutLogger({
   user, units, title = 'Log Session', initialType = 'STRENGTH', onCommit,
+  templatePrefill,
 }: LiveWorkoutLoggerProps) {
   const qc = useQueryClient();
 
   // ── Setup-phase state ────────────────────────────────────────────────
-  const [type, setType] = useState<WorkoutType>(initialType);
-  const [name, setName] = useState('');
-  const [notes, setNotes] = useState('');
+  // When the parent passes `templatePrefill`, seed exercises/type/notes
+  // from it. The parent should remount this component (via key prop)
+  // when the user picks a different template so we always start clean.
+  const seedExercises: PlannedExercise[] = templatePrefill?.exercises?.length
+    ? templatePrefill.exercises.map((ex) => ({
+        name: ex.name,
+        // targetWeight stays 0 — the user said "leave weight blank".
+        sets: ex.sets.map((s) => ({
+          targetReps: s.targetReps,
+          targetWeight: 0,
+        })),
+      }))
+    : [{ name: '', sets: [{ targetReps: 8, targetWeight: 0 }] }];
+
+  const [type, setType] = useState<WorkoutType>(templatePrefill?.type ?? initialType);
+  const [name, setName] = useState(templatePrefill?.name ?? '');
+  const [notes, setNotes] = useState(templatePrefill?.notes ?? '');
   const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
-  const [exercises, setExercises] = useState<PlannedExercise[]>([
-    { name: '', sets: [{ targetReps: 8, targetWeight: 0 }] },
-  ]);
+  const [exercises, setExercises] = useState<PlannedExercise[]>(seedExercises);
 
   // ── Live-phase state ─────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('setup');

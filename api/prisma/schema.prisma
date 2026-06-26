@@ -249,6 +249,7 @@ model User {
   achievements          UserAchievement[]
   skills                UserSkill[]
   homeBase              HomeBase?
+  workoutTemplates      WorkoutTemplate[]
   penanceTemplates      PenanceTemplate[]
   penanceEvents         PenanceEvent[]
   // Breach boss progress. One row per user; lazily created on
@@ -530,6 +531,68 @@ model Set {
   startedAt   DateTime?
   completedAt DateTime?
   restSeconds Int?
+}
+
+// =============================================================================
+// Workout templates — saved workout patterns the user can reuse.
+// Mirrors Workout → Exercise → Set but stores TARGET values (what the
+// user aims to do) instead of ACTUAL values (what they did). Weight is
+// intentionally absent — the user said "leave weight blank" so they
+// fill it in live. RPE and duration are also not pre-stored.
+//
+// The full nested shape lives in three tables so we can:
+//   - list a user's templates without loading exercises (just the row)
+//   - duplicate a template in one tx (server endpoint below)
+//   - export/import a template set alongside the user's data
+//
+// FKs cascade on delete — removing a template wipes its exercises +
+// sets so the user can rename / replace without manual cleanup.
+// =============================================================================
+
+model WorkoutTemplate {
+  id        String                     @id @default(cuid())
+  userId    String
+  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Human name, e.g. "Push Day 5x5", "Heavy Squat". Free text.
+  name      String
+  // Default workout type — preselected in setup phase, user can override.
+  type      WorkoutType                @default(STRENGTH)
+  // Free-form notes shown above the workout logger when this template
+  // is picked (e.g. "Barbell bench first, accessories after, abs at end").
+  notes     String?
+  exercises WorkoutTemplateExercise[]
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+model WorkoutTemplateExercise {
+  id         String           @id @default(cuid())
+  templateId String
+  template   WorkoutTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  // Exercise name (free text — same lookup as the live logger).
+  name       String
+  order      Int              @default(0)
+  sets       WorkoutTemplateSet[]
+
+  @@index([templateId])
+}
+
+model WorkoutTemplateSet {
+  id             String                  @id @default(cuid())
+  exerciseId     String
+  exercise       WorkoutTemplateExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  order          Int                     @default(0)
+  // Target rep count. What the user aims for, not what they did.
+  // The actual set rows at workout-commit time use reps (Set.reps).
+  targetReps     Int
+  // Optional target duration for timed exercises (plank, l-sit, etc).
+  // Stored for completeness; weight is intentionally NOT stored.
+  targetDuration Int?
+
+  @@index([exerciseId])
 }
 
 model Pr {

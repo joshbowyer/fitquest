@@ -25,6 +25,7 @@ const NAV: NavItem[] = [
   { to: '/status',       label: 'Status',     icon: '◊', mobile: true },
   { to: '/today',        label: 'Today',      icon: '◐', mobile: true },
   { to: '/activities',   label: 'Activity',   icon: '▣', mobile: true },
+  { to: '/routines',     label: 'Routines',   icon: '☰', mobile: false },
   { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
   { to: '/breach',       label: 'Breach',     icon: '◉', mobile: true },
   { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },

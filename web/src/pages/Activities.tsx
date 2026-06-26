@@ -12,6 +12,8 @@ import { setVolumeKg } from '@/lib/exerciseVolume';
 import { WorkoutLogger } from '@/components/WorkoutLogger';
 import { LiveWorkoutLogger } from '@/components/LiveWorkoutLogger';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { NeonButton } from '@/components/NeonButton';
+import { Link } from 'react-router-dom';
 
 function kgToLb(kg: number): number { return kg * 2.20462; }
 function weightUnitLabel(units: UnitSystem): string {
@@ -49,6 +51,41 @@ export function ActivitiesPage() {
   const list = useQuery({
     queryKey: ['workouts'],
     queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=100'),
+  });
+
+  // Saved workout routines (templates). The quick-start card shows
+  // these as clickable chips; clicking one prefills the logger with
+  // the template's exercises + rep targets.
+  type WorkoutTemplateListItem = {
+    id: string;
+    name: string;
+    type: string;
+    notes: string | null;
+    exerciseCount: number;
+    updatedAt: string;
+  };
+  const templatesQ = useQuery({
+    queryKey: ['workout-templates'],
+    queryFn: () => api<{ items: WorkoutTemplateListItem[] }>('/workout-templates'),
+  });
+
+  // Selected template — when set, the logger below remounts (via key)
+  // and pre-fills from the template's full detail fetch.
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const selectedTemplateQ = useQuery({
+    queryKey: ['workout-template', selectedTemplateId],
+    queryFn: () => api<{
+      id: string;
+      name: string;
+      type: string;
+      notes: string | null;
+      exercises: Array<{
+        name: string;
+        order: number;
+        sets: Array<{ order: number; targetReps: number; targetDuration: number | null }>;
+      }>;
+    }>(`/workout-templates/${selectedTemplateId}`),
+    enabled: !!selectedTemplateId,
   });
 
   // Honor ?copyFrom=<workoutId> from the detail page. We fetch that
@@ -145,13 +182,109 @@ export function ActivitiesPage() {
               ))}
             </div>
 
+            {/* ---------- Quick start: saved routines ---------- */}
+            <div className="border border-neon-cyan/30 bg-bg-900/40 p-2.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
+                  Quick start · pick a routine
+                </div>
+                <Link
+                  to="/routines"
+                  className="text-[10px] font-mono text-neon-cyan hover:underline"
+                >
+                  Manage →
+                </Link>
+              </div>
+              {templatesQ.isLoading && (
+                <div className="text-[10px] font-mono text-ink-400">⏳ Loading routines…</div>
+              )}
+              {templatesQ.data && templatesQ.data.items.length === 0 && (
+                <div className="text-[10px] font-mono text-ink-400 py-1">
+                  No saved routines yet.{' '}
+                  <Link to="/routines" className="text-neon-cyan hover:underline">
+                    Create one
+                  </Link>{' '}
+                  to prefill exercises + reps.
+                </div>
+              )}
+              {templatesQ.data && templatesQ.data.items.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {templatesQ.data.items.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSelectedTemplateId(t.id)}
+                      className={classNames(
+                        'px-2.5 py-1.5 text-[11px] font-mono border transition-all text-left',
+                        selectedTemplateId === t.id
+                          ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10 shadow-neon-cyan/30'
+                          : 'border-ink-500/40 text-ink-200 hover:border-neon-cyan/60 hover:bg-neon-cyan/5',
+                      )}
+                      title={`${t.exerciseCount} exercises · ${t.type.toLowerCase()}`}
+                    >
+                      <span className="block leading-tight">{t.name}</span>
+                      <span className="block text-[9px] text-ink-400 leading-tight">
+                        {t.exerciseCount} ex · {t.type.toLowerCase()}
+                      </span>
+                    </button>
+                  ))}
+                  {selectedTemplateId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTemplateId(null)}
+                      className="px-2 py-1 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
+              {selectedTemplateId && selectedTemplateQ.isSuccess && selectedTemplateQ.data && (
+                <div className="text-[10px] font-mono text-neon-cyan/70">
+                  ⤓ Prefilling logger with {selectedTemplateQ.data.exercises.length} exercises from{' '}
+                  <span className="text-neon-cyan">{selectedTemplateQ.data.name}</span>. Weight left blank — fill it in as you go.
+                </div>
+              )}
+            </div>
+
             {logMode === 'live' ? (
-              <LiveWorkoutLogger user={user} units={units} />
+              <LiveWorkoutLogger
+                key={`live-${selectedTemplateId ?? 'none'}`}
+                user={user}
+                units={units}
+                templatePrefill={
+                  selectedTemplateQ.data
+                    ? {
+                        name: selectedTemplateQ.data.name,
+                        notes: selectedTemplateQ.data.notes,
+                        type: selectedTemplateQ.data.type as any,
+                        exercises: selectedTemplateQ.data.exercises.map((ex) => ({
+                          name: ex.name,
+                          sets: ex.sets.map((s) => ({ targetReps: s.targetReps })),
+                        })),
+                      }
+                    : null
+                }
+              />
             ) : (
               <WorkoutLogger
+                key={`bulk-${selectedTemplateId ?? 'none'}`}
                 user={user}
                 units={units}
                 copyFrom={copyFromQ.data?.item}
+                templatePrefill={
+                  selectedTemplateQ.data
+                    ? {
+                        name: selectedTemplateQ.data.name,
+                        notes: selectedTemplateQ.data.notes,
+                        type: selectedTemplateQ.data.type as any,
+                        exercises: selectedTemplateQ.data.exercises.map((ex) => ({
+                          name: ex.name,
+                          sets: ex.sets.map((s) => ({ targetReps: s.targetReps })),
+                        })),
+                      }
+                    : null
+                }
               />
             )}
           </div>

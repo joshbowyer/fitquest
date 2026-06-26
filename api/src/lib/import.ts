@@ -148,6 +148,9 @@ async function wipeUserData(userId: string, prisma: PrismaClient): Promise<numbe
   await prisma.substanceLog.deleteMany({ where: { userId } });
   await prisma.mealEntry.deleteMany({ where: { userId } });
   // (foodItem skipped — system-wide catalog, not per-user)
+  // WorkoutTemplateExercise → WorkoutTemplateSet cascade via the schema,
+  // so deleting the parent is enough.
+  await prisma.workoutTemplate.deleteMany({ where: { userId } });
   await prisma.savedFood.deleteMany({ where: { userId } });
   await prisma.correlationSnapshot.deleteMany({ where: { userId } });
   await prisma.metricInsight.deleteMany({ where: { userId } });
@@ -586,6 +589,75 @@ export async function importExport(
       } catch (e: any) {
         if (isDuplicate(e)) { skip('routineDays'); continue; }
         fail('routineDays', String(d.id ?? ''), e?.message ?? 'unknown');
+      }
+    }
+  }
+
+  // ----- WORKOUT TEMPLATES -----
+  // Parent/child tree: WorkoutTemplate → WorkoutTemplateExercise →
+  // WorkoutTemplateSet. We rebuild the FKs in-memory so the imported
+  // set can coexist with any existing templates the user has.
+  //
+  // We always re-create with fresh ids (matching the workout path).
+  // Duplicates are caught on the @unique field below.
+  const tplIdMap = new Map<string, string>();
+  if (Array.isArray(t.workoutTemplates)) {
+    for (const tpl of t.workoutTemplates as Array<Record<string, unknown>>) {
+      try {
+        const oldId = String(tpl.id ?? '');
+        const newId = randomUuid();
+        tplIdMap.set(oldId, newId);
+        const data = stripUnknown(tpl, ['id', 'userId', 'createdAt', 'updatedAt']);
+        await prisma.workoutTemplate.create({ data: { ...data, id: newId, userId } });
+        bump('workoutTemplates', 1);
+      } catch (e: any) {
+        fail('workoutTemplates', String(tpl.id ?? ''), e?.message ?? 'unknown');
+      }
+    }
+  }
+
+  const tplExerciseIdMap = new Map<string, string>();
+  if (Array.isArray(t.workoutTemplateExercises)) {
+    for (const ex of t.workoutTemplateExercises as Array<Record<string, unknown>>) {
+      try {
+        const oldExId = String(ex.id ?? '');
+        const newExId = randomUuid();
+        tplExerciseIdMap.set(oldExId, newExId);
+        const oldTplId = String(ex.templateId ?? '');
+        const newTplId = tplIdMap.get(oldTplId);
+        if (!newTplId) {
+          // Orphan exercise (template missing in export). Skip rather
+          // than fail the whole template tree.
+          fail('workoutTemplateExercises', oldExId, 'orphan: template not in export');
+          continue;
+        }
+        const data = stripUnknown(ex, ['id', 'templateId']);
+        await prisma.workoutTemplateExercise.create({
+          data: { ...data, id: newExId, templateId: newTplId },
+        });
+        bump('workoutTemplateExercises', 1);
+      } catch (e: any) {
+        fail('workoutTemplateExercises', String(ex.id ?? ''), e?.message ?? 'unknown');
+      }
+    }
+  }
+
+  if (Array.isArray(t.workoutTemplateSets)) {
+    for (const set of t.workoutTemplateSets as Array<Record<string, unknown>>) {
+      try {
+        const oldExId = String(set.exerciseId ?? '');
+        const newExId = tplExerciseIdMap.get(oldExId);
+        if (!newExId) {
+          fail('workoutTemplateSets', String(set.id ?? ''), 'orphan: exercise not in export');
+          continue;
+        }
+        const data = stripUnknown(set, ['id', 'exerciseId']);
+        await prisma.workoutTemplateSet.create({
+          data: { ...data, exerciseId: newExId },
+        });
+        bump('workoutTemplateSets', 1);
+      } catch (e: any) {
+        fail('workoutTemplateSets', String(set.id ?? ''), e?.message ?? 'unknown');
       }
     }
   }

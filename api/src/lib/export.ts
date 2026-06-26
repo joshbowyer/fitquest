@@ -65,6 +65,9 @@ export type ExportPayload = {
     painLogs: unknown[];
     routines: unknown[];
     routineDays: unknown[];
+    workoutTemplates: unknown[];
+    workoutTemplateExercises: unknown[];
+    workoutTemplateSets: unknown[];
     prayerLogs: unknown[];
     dailies: unknown[];
     dailyLogs: unknown[];
@@ -175,6 +178,9 @@ export async function buildExport(userId: string): Promise<ExportPayload> {
     painLogs,
     routines,
     routineDays,
+    workoutTemplates,
+    workoutTemplateExercises,
+    workoutTemplateSets,
     prayerLogs,
     dailies,
     dailyLogs,
@@ -214,6 +220,21 @@ export async function buildExport(userId: string): Promise<ExportPayload> {
     prisma.painLog.findMany({ where: { userId }, orderBy: { loggedAt: 'asc' } }),
     prisma.routine.findMany({ where: { userId } }),
     prisma.routineDay.findMany({ where: { userId }, orderBy: { day: 'asc' } }),
+    // Workout templates — fetched as three flat lists (matching the
+    // pattern used for Workout/Exercise/Set). The import.ts module
+    // rebuilds the parent/child tree from these via FK remapping.
+    prisma.workoutTemplate.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.workoutTemplateExercise.findMany({
+      where: { template: { userId } },
+      orderBy: { order: 'asc' },
+    }),
+    prisma.workoutTemplateSet.findMany({
+      where: { exercise: { template: { userId } } },
+      orderBy: { order: 'asc' },
+    }),
     prisma.prayerLog.findMany({ where: { userId }, orderBy: { loggedAt: 'asc' } }),
     prisma.daily.findMany({ where: { userId } }),
     prisma.dailyLog.findMany({ where: { userId }, orderBy: { loggedAt: 'asc' } }),
@@ -259,6 +280,9 @@ export async function buildExport(userId: string): Promise<ExportPayload> {
     painLogs,
     routines,
     routineDays,
+    workoutTemplates,
+    workoutTemplateExercises,
+    workoutTemplateSets,
     prayerLogs,
     dailies,
     dailyLogs,
