@@ -20,8 +20,18 @@ export async function exportRoutes(app: FastifyInstance) {
 
   app.get('/export/json', async (req, reply) => {
     const me = await requireUser(req);
-    const payload = await buildExport(me.id);
-    const filename = `fitquest-export-${me.username}-${new Date().toISOString().slice(0, 10)}.json`;
+    // Optional ?tables=a,b,c filter — lets the caller pull just a
+    // subset (e.g. ?tables=workoutTemplates,workoutTemplateExercises,
+    // workoutTemplateSets to ship routines to prod without dragging
+    // the user's full workout + measurement history).
+    const q = (req.query ?? {}) as { tables?: string };
+    const tableFilter = typeof q.tables === 'string' && q.tables.trim()
+      ? q.tables.split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+    const payload = await buildExport(me.id, { tables: tableFilter });
+    const filename = tableFilter
+      ? `fitquest-export-${me.username}-${tableFilter.join('-')}-${new Date().toISOString().slice(0, 10)}.json`
+      : `fitquest-export-${me.username}-${new Date().toISOString().slice(0, 10)}.json`;
     reply.header('Content-Type', 'application/json; charset=utf-8');
     reply.header('Content-Disposition', `attachment; filename="${filename}"`);
     return reply.send(JSON.stringify(payload, null, 2));

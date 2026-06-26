@@ -154,7 +154,10 @@ function safeUser<T extends Record<string, unknown>>(user: T): Record<string, un
 // (10k+ workouts) this could be optimized with streaming;
 // today it's a single in-memory snapshot.
 // ============================================================
-export async function buildExport(userId: string): Promise<ExportPayload> {
+export async function buildExport(
+  userId: string,
+  options?: { tables?: string[] | null },
+): Promise<ExportPayload> {
   const [
     user,
     workouts,
@@ -308,14 +311,32 @@ export async function buildExport(userId: string): Promise<ExportPayload> {
     counts[k] = Array.isArray(v) ? v.length : v == null ? 0 : 1;
   }
 
+  // Optional table filter — when the caller passes `tables: [...]`,
+  // strip everything else from the payload. Useful for partial
+  // exports (e.g. just the workout templates) without dragging along
+  // years of measurements and workouts. If `tables` is omitted, the
+  // full payload is returned (existing behavior, used by
+  // Settings → Export / Import and the import round-trip).
+  let filteredTables: typeof tables = tables;
+  let filteredCounts = counts;
+  if (options?.tables && options.tables.length > 0) {
+    const allowed = new Set(options.tables);
+    filteredTables = Object.fromEntries(
+      Object.entries(tables).filter(([k]) => allowed.has(k)),
+    ) as typeof tables;
+    filteredCounts = Object.fromEntries(
+      Object.entries(counts).filter(([k]) => allowed.has(k)),
+    );
+  }
+
   return {
     schema: EXPORT_SCHEMA,
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     userId,
     user: safeUser(user as unknown as Record<string, unknown>),
-    tables,
-    counts,
+    tables: filteredTables,
+    counts: filteredCounts,
   };
 }
 
