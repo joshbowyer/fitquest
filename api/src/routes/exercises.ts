@@ -21,6 +21,7 @@ export async function exerciseRoutes(app: FastifyInstance) {
       { name: 'Lateral Raise', category: 'HYPERTROPHY' },
       { name: 'Incline Press', category: 'HYPERTROPHY' },
       { name: 'Romanian Deadlift', category: 'HYPERTROPHY' },
+      { name: 'Single Leg RDL', category: 'HYPERTROPHY' },
       { name: 'Leg Press', category: 'HYPERTROPHY' },
       { name: 'Calf Raise', category: 'HYPERTROPHY' },
       { name: 'Plank', category: 'CALISTHENICS' },

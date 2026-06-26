@@ -147,6 +147,18 @@ const EXERCISE_DB: ExerciseMuscles[] = [
     secondary: [{ part: 'BACK_LOWER', priority: 70 }, { part: 'TRAPS', priority: 40 }],
     stabilizers: [{ part: 'FOREARM_L', priority: 30 }, { part: 'FOREARM_R', priority: 30 }],
     load: 'FREE_WEIGHT', displayName: 'Romanian Deadlift', group: 'back' },
+  // Single-leg RDL must come BEFORE the generic 'rdl' rule above
+  // (substring match — 'single leg rdl' contains 'rdl') so it gets
+  // its own display name. Same muscle map as the barbell RDL since
+  // it's the same movement pattern, just unilateral. The unilateral
+  // aspect doesn't add new muscles, just shifts load balance which
+  // the body-part model already captures via the lower-back
+  // stabilizers.
+  { matches: ['single leg rdl', 'single-leg rdl', 'sl rdl', 'sldl'],
+    primary: [{ part: 'HAMSTRING_L', priority: 100 }, { part: 'HAMSTRING_R', priority: 100 }, { part: 'GLUTE_L', priority: 80 }, { part: 'GLUTE_R', priority: 80 }],
+    secondary: [{ part: 'BACK_LOWER', priority: 70 }, { part: 'ABS', priority: 40 }],
+    stabilizers: [{ part: 'FOREARM_L', priority: 30 }, { part: 'FOREARM_R', priority: 30 }],
+    load: 'FREE_WEIGHT', displayName: 'Single Leg RDL', group: 'legs' },
   { matches: ['lat pulldown', 'pulldown', 'pull down'],
     primary: [{ part: 'LAT_L', priority: 100 }, { part: 'LAT_R', priority: 100 }],
     secondary: [{ part: 'BICEP_L', priority: 70 }, { part: 'BICEP_R', priority: 70 }, { part: 'TRAPS', priority: 50 }, { part: 'BACK_UPPER', priority: 40 }],
