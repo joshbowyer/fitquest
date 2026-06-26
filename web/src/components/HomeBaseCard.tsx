@@ -10,13 +10,13 @@ import type { HomeBase as HomeBaseData, PenanceEvent, ShieldTier } from '@/lib/t
 
 /**
  * Home-base shield widget for the dashboard. Shows:
- *  - Tier name + color (FORTIFIED / STABLE / COMPROMISED / BREECHED)
+ *  - Tier name + color (FORTIFIED / STABLE / COMPROMISED / BREACHED)
  *  - Shield value (0-100) as a horizontal bar
  *  - Last 5 penance events (newest first)
  *  - Link to /home-base for full history + penance management
  *
  * The shield is the engagement foundation that Breach builds on:
- * a Breeched shield (≤29) doubles incoming boss damage; FORTIFIED
+ * a Breached shield (≤29) doubles incoming boss damage; FORTIFIED
  * (≥90) halves it. For now, the widget is purely informational —
  * no Breach bosses exist yet, but the user can already see their
  * tier and what moved it.

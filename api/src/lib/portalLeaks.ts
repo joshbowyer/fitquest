@@ -45,7 +45,7 @@ const SPAWN_PROBABILITY: Record<string, number> = {
   FORTIFIED: 0,    // never spawn when shielded
   STABLE: 0.05,     // 5% — almost never
   COMPROMISED: 0.20, // 20%
-  BREECHED: 0.50,   // 50%
+  BREACHED: 0.50,   // 50%
 };
 
 // ============================================================

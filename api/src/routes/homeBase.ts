@@ -190,7 +190,7 @@ export async function homeBaseRoutes(app: FastifyInstance) {
 
   /**
    * POST /home-base/dev-tools/breach-shield
-   * Dev-only: sets the calling admin's shield to 0 (BREECHED) and
+   * Dev-only: sets the calling admin's shield to 0 (BREACHED) and
    * logs a "manual breach" penance event for the audit feed. Used
    * by the Admin → Dev tools panel to test the missed_all_dailies
    * penance auto-fire (open the morning report after this and the
@@ -206,16 +206,16 @@ export async function homeBaseRoutes(app: FastifyInstance) {
     const tierBefore = base.tier;
     const updated = await prisma.homeBase.update({
       where: { id: base.id },
-      data: { shield: 0, tier: 'BREECHED' },
+      data: { shield: 0, tier: 'BREACHED' },
     });
     await prisma.penanceEvent.create({
       data: {
         userId: me.id,
         penanceKey: 'custom',
-        label: `Dev tools · manual breach (${shieldBefore} ${tierBefore} → 0 BREECHED)`,
+        label: `Dev tools · manual breach (${shieldBefore} ${tierBefore} → 0 BREACHED)`,
         shieldDelta: -shieldBefore,
         shieldAfter: 0,
-        tierAfter: 'BREECHED',
+        tierAfter: 'BREACHED',
         source: 'manual',
       },
     });

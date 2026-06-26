@@ -654,12 +654,12 @@ model UserSkill {
 ///  FORTIFIED    90-100   no monsters can enter, full cosmetic skin
 ///  STABLE       60-89    normal defense
 ///  COMPROMISED  30-59    portal leaks possible (Phase 2)
-///  BREECHED     0-29     monsters trickle in + daily chip damage
+///  BREACHED     0-29     monsters trickle in + daily chip damage
 enum ShieldTier {
   FORTIFIED
   STABLE
   COMPROMISED
-  BREECHED
+  BREACHED
 }
 
 /// Per-user home-base state. One row per user; the shield value

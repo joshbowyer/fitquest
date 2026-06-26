@@ -28,7 +28,7 @@ const SPAWN_TIER_TEXT = {
   FORTIFIED:   'Shield secure. No leaks will spawn.',
   STABLE:      'Stable — leaks are rare (≈5%).',
   COMPROMISED: 'Compromised — leaks roll every 20% on each breach.',
-  BREECHED:    'BREECHED — leaks roll every 50% on each breach.',
+  BREACHED:    'BREACHED — leaks roll every 50% on each breach.',
 };
 
 export function PortalLeakCard() {
@@ -43,7 +43,7 @@ export function PortalLeakCard() {
 
   const shieldQ = useQuery({
     queryKey: ['home-base', 'shield-tier'],
-    queryFn: () => api<{ tier: 'FORTIFIED' | 'STABLE' | 'COMPROMISED' | 'BREECHED' }>('/home-base/summary'),
+    queryFn: () => api<{ tier: 'FORTIFIED' | 'STABLE' | 'COMPROMISED' | 'BREACHED' }>('/home-base/summary'),
     staleTime: 60_000,
   });
 

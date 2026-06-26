@@ -39,13 +39,13 @@ export const DAILY_DAMAGE_CAP_RATIO = 1.5;
 //   FORTIFIED    0.5×  healthy home base resists the breach
 //   STABLE       1.0×  baseline
 //   COMPROMISED  1.25× slight bump
-//   BREECHED     2.0×  the leak is already in; the breach escalates
+//   BREACHED     2.0×  the leak is already in; the breach escalates
 // Heals aren't scaled (the mismatched-heal math doesn't amplify).
 const SHIELD_TIER_DMG_MULT: Record<string, number> = {
   FORTIFIED: 0.5,
   STABLE: 1.0,
   COMPROMISED: 1.25,
-  BREECHED: 2.0,
+  BREACHED: 2.0,
 };
 
 // Re-encounter rule: same boss after death returns at +25% maxHp.
@@ -376,7 +376,7 @@ export async function applyWorkoutDamage(
   killed: boolean;
   /** Shield-tier multiplier that was applied to this hit (0.5×..2.0×). */
   shieldMult: number;
-  /** Tier name (FORTIFIED / STABLE / COMPROMISED / BREECHED). */
+  /** Tier name (FORTIFIED / STABLE / COMPROMISED / BREACHED). */
   shieldTier: string;
 } | null> {
   const progress = await getOrCreateProgress(userId, prisma);
@@ -428,7 +428,7 @@ export async function applyWorkoutDamage(
   }
 
   // Shield-tier damage modifier. FORTIFIED halves damage (a healthy
-  // home base resists), BREECHED doubles it (the leak is already
+  // home base resists), BREACHED doubles it (the leak is already
   // in). Heals aren't multiplied — negative damage stays as the
   // raw mismatched-heal value so the boss can't be healed harder
   // by a vulnerable home base.

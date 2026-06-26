@@ -624,7 +624,7 @@ export const STAT_LABEL: Record<string, string> = {
 
 export type FoodSource = 'OPENFOODFACTS' | 'USDA' | 'MANUAL';
 
-export type ShieldTier = 'FORTIFIED' | 'STABLE' | 'COMPROMISED' | 'BREECHED';
+export type ShieldTier = 'FORTIFIED' | 'STABLE' | 'COMPROMISED' | 'BREACHED';
 
 export type PenanceEvent = {
   id: string;

@@ -542,7 +542,7 @@ export async function workoutRoutes(app: FastifyInstance) {
           unlocked: !!(unlockResult?.unlockedAt && unlockResult.unlockedAt.getTime() >= Date.now() - 1000) || beforeLevel < 10 && result.level >= 10,
           // Home-base shield tier multiplier that was applied to
           // this hit. 0.5× (FORTIFIED halves damage), 1.0×
-          // (STABLE default), 1.25× (COMPROMISED), 2.0× (BREECHED).
+          // (STABLE default), 1.25× (COMPROMISED), 2.0× (BREACHED).
           // UI surfaces this in the damage floater so the user
           // understands why the same workout did less/more.
           shieldMult: damageResult.shieldMult,

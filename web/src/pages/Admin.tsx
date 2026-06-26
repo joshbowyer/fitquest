@@ -1158,7 +1158,7 @@ function DevToolsPanel() {
   }, 600);
 
   // Force-spawn: POST a low shield score to the spawn check. The
-  // server rolls per-tier (50% at BREECHED, etc) so a low score
+  // server rolls per-tier (50% at BREACHED, etc) so a low score
   // usually spawns. Idempotent — if a leak already exists, returns
   // the existing one.
   const spawnM = useDelayedMutation<{ spawned: boolean; leakId?: string }, void>({
@@ -1171,7 +1171,7 @@ function DevToolsPanel() {
 
   // Mark all dailies as missed for today by setting shield to 0,
   // then firing missed_all_dailies. The cleanest way to test the
-  // penance is to set shield to 0 (BREECHED tier) and open the
+  // penance is to set shield to 0 (BREACHED tier) and open the
   // morning report — which auto-fires missed_all_dailies against
   // yesterday's empty dailies.
   const breachM = useDelayedMutation<{ shield: number; tier: string }, void>({
@@ -1227,7 +1227,7 @@ function DevToolsPanel() {
             Force-spawn portal leak
           </div>
           <div className="text-[10px] font-mono text-ink-500 leading-snug">
-            Sets shield to 25 (BREECHED), then rolls the spawn dice
+            Sets shield to 25 (BREACHED), then rolls the spawn dice
             (50%). Returns existing leak if one is already active.
           </div>
           <NeonButton

@@ -27,11 +27,11 @@ describe('tierForShield', () => {
   it('classifies 30 as COMPROMISED (boundary)', () => {
     expect(tierForShield(30)).toBe('COMPROMISED');
   });
-  it('classifies 29 as BREECHED', () => {
-    expect(tierForShield(29)).toBe('BREECHED');
+  it('classifies 29 as BREACHED', () => {
+    expect(tierForShield(29)).toBe('BREACHED');
   });
-  it('classifies 0 as BREECHED', () => {
-    expect(tierForShield(0)).toBe('BREECHED');
+  it('classifies 0 as BREACHED', () => {
+    expect(tierForShield(0)).toBe('BREACHED');
   });
 });
 
@@ -49,12 +49,12 @@ describe('clampShield', () => {
 
 describe('tier label / color maps', () => {
   it('every tier has a label', () => {
-    for (const t of ['FORTIFIED', 'STABLE', 'COMPROMISED', 'BREECHED'] as const) {
+    for (const t of ['FORTIFIED', 'STABLE', 'COMPROMISED', 'BREACHED'] as const) {
       expect(TIER_LABEL[t]).toBeTruthy();
     }
   });
   it('every tier has a hex color', () => {
-    for (const t of ['FORTIFIED', 'STABLE', 'COMPROMISED', 'BREECHED'] as const) {
+    for (const t of ['FORTIFIED', 'STABLE', 'COMPROMISED', 'BREACHED'] as const) {
       expect(TIER_COLOR[t]).toMatch(/^#[0-9a-f]{6}$/i);
     }
   });

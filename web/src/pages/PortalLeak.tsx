@@ -90,7 +90,7 @@ function ActiveLeakCard({
             Your home base is quiet. Leaks spawn automatically when the shield drops below COMPROMISED (&lt;60).
           </div>
           <div className="text-[10px] font-mono text-ink-400 leading-relaxed">
-            Push the shield down by skipping dailies, missing workouts, or logging too many espressos. Each breach event rolls the spawn dice per tier (FORTIFIED=0, STABLE=5%, COMPROMISED=20%, BREECHED=50%).
+            Push the shield down by skipping dailies, missing workouts, or logging too many espressos. Each breach event rolls the spawn dice per tier (FORTIFIED=0, STABLE=5%, COMPROMISED=20%, BREACHED=50%).
           </div>
         </div>
       </Panel>

@@ -11,7 +11,7 @@ import type { ShieldTier } from './prisma.js';
  *   FORTIFIED    90-100   no monsters can enter
  *   STABLE       60-89    normal defense
  *   COMPROMISED  30-59    portal leaks possible (Phase 2)
- *   BREECHED     0-29     monsters trickle in + daily chip damage
+ *   BREACHED     0-29     monsters trickle in + daily chip damage
  *
  * Penances are templates (system defaults + user-custom) that fire
  * on events and adjust the shield by their `shieldDelta`. After
@@ -19,7 +19,7 @@ import type { ShieldTier } from './prisma.js';
  * is re-derived.
  *
  * The Breach (level-10 unlock) will multiply boss damage by tier
- * — FORTIFIED halves incoming damage, BREECHED doubles it. That
+ * — FORTIFIED halves incoming damage, BREACHED doubles it. That
  * integration is Phase 2; this commit ships the foundation +
  * triggers so the dashboard widget + home-base page can render.
  */
@@ -126,7 +126,7 @@ export function tierForShield(shield: number): ShieldTier {
   if (shield >= 90) return 'FORTIFIED';
   if (shield >= 60) return 'STABLE';
   if (shield >= 30) return 'COMPROMISED';
-  return 'BREECHED';
+  return 'BREACHED';
 }
 
 /** Human-readable label for each tier (for UI display). */
@@ -134,7 +134,7 @@ export const TIER_LABEL: Record<ShieldTier, string> = {
   FORTIFIED: 'Fortified',
   STABLE: 'Stable',
   COMPROMISED: 'Compromised',
-  BREECHED: 'Breached',
+  BREACHED: 'Breached',
 };
 
 /** Color hint for each tier (matches the cyberpunk theme palette). */
@@ -142,7 +142,7 @@ export const TIER_COLOR: Record<ShieldTier, string> = {
   FORTIFIED: '#56e88e',     // neon-lime
   STABLE: '#14d6e8',        // neon-cyan
   COMPROMISED: '#ffaa3a',   // neon-amber
-  BREECHED: '#dc2626',      // neon-red
+  BREACHED: '#dc2626',      // neon-red
 };
 
 /** Clamp shield to [0, 100]. */
