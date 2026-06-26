@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { requireUser } from '../lib/auth.js';
+import { requireUser, requireAdmin } from '../lib/auth.js';
 import {
   getOrCreateHomeBase,
   recentPenanceEvents,
@@ -186,6 +186,40 @@ export async function homeBaseRoutes(app: FastifyInstance) {
       tierColor: TIER_COLOR[base.tier],
       recentEvents: events,
     };
+  });
+
+  /**
+   * POST /home-base/dev-tools/breach-shield
+   * Dev-only: sets the calling admin's shield to 0 (BREECHED) and
+   * logs a "manual breach" penance event for the audit feed. Used
+   * by the Admin → Dev tools panel to test the missed_all_dailies
+   * penance auto-fire (open the morning report after this and the
+   * -20 should show in the home-base event feed).
+   *
+   * Gated to admins (requireAdmin) — pointless to expose to
+   * regular users but a useful dev tool.
+   */
+  app.post('/dev-tools/breach-shield', async (req) => {
+    const me = await requireAdmin(req);
+    const base = await getOrCreateHomeBase(me.id);
+    const shieldBefore = base.shield;
+    const tierBefore = base.tier;
+    const updated = await prisma.homeBase.update({
+      where: { id: base.id },
+      data: { shield: 0, tier: 'BREECHED' },
+    });
+    await prisma.penanceEvent.create({
+      data: {
+        userId: me.id,
+        penanceKey: 'custom',
+        label: `Dev tools · manual breach (${shieldBefore} ${tierBefore} → 0 BREECHED)`,
+        shieldDelta: -shieldBefore,
+        shieldAfter: 0,
+        tierAfter: 'BREECHED',
+        source: 'manual',
+      },
+    });
+    return { shield: updated.shield, tier: updated.tier };
   });
 }
 

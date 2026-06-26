@@ -95,6 +95,20 @@ export async function measurementRoutes(app: FastifyInstance) {
         recordedAt: body.recordedAt ? new Date(body.recordedAt) : new Date(),
       },
     });
+    // Fire a checkin_* penance based on the metric's cadence bucket.
+    // skip-cadence metrics (derived, e.g. LEAN_MASS) don't get a
+    // penance since the user didn't actually log them. Best-effort —
+    // an error here doesn't fail the measurement insert.
+    try {
+      const { DEFAULT_CADENCE } = await import('../lib/checkIns.js');
+      const cadence = DEFAULT_CADENCE[body.metric as keyof typeof DEFAULT_CADENCE];
+      if (cadence === 'AM' || cadence === 'PM' || cadence === 'WEEKLY') {
+        const { firePenance } = await import('../lib/penance.js');
+        await firePenance(me.id, `checkin_${cadence.toLowerCase()}` as any, 'auto_decay');
+      }
+    } catch (err) {
+      console.warn('[measurements] checkin penance fire failed', err);
+    }
     await checkAchievements(me.id);
     return { item: m };
   });

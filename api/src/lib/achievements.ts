@@ -11,6 +11,7 @@ type Criteria =
   | { kind: 'streak_days'; gte: number }
   | { kind: 'party_join' }
   | { kind: 'raid_victory' }
+  | { kind: 'leak_kill'; gte: number }
   | { kind: 'vo2_max_gte'; gte: number }
   | { kind: 'plank_hold_gte'; gte: number }
   | { kind: 'weigh_in_count'; gte: number }
@@ -108,6 +109,8 @@ export const ACHIEVEMENT_DEFS: Array<{
   // ============================================================
   { key: 'first_party',   name: 'Formed A Band',     description: 'Join or create a party.', category: 'SOCIAL', icon: 'shield', criteria: { kind: 'party_join' }, points: 10 },
   { key: 'raid_victory',  name: 'Boss Down',          description: 'Defeat a raid boss with your party.', category: 'SOCIAL', icon: 'sword', criteria: { kind: 'raid_victory' }, points: 100 },
+  { key: 'first_leak',     name: 'Sealed the Breach',    description: 'Defeat a portal leak and claim its loot.', category: 'SOCIAL', icon: 'shield', criteria: { kind: 'leak_kill', gte: 1 }, points: 25, witty: true },
+  { key: 'ten_leaks',     name: 'Plumber',              description: 'Ten portal leaks sealed. You are a maintenance crew.', category: 'SOCIAL', icon: 'wrench', criteria: { kind: 'leak_kill', gte: 10 }, points: 80 },
   { key: 'world_boss_kill', name: 'World Boss Down', description: 'Defeat a world boss.', category: 'SOCIAL', icon: 'sword', criteria: { kind: 'boss_kill' }, points: 200, witty: true },
 
   // ============================================================
@@ -194,6 +197,10 @@ export async function checkAchievements(
       prayerLogs: { select: { loggedAt: true } },
       worldProgress: true,
       worldBosses: true,
+      // Portal leaks the user has sealed. Pre-filter to DEFEATED
+      // server-side so we don't ship the active ones back. Used
+      // by the `leak_kill` achievement criteria kind.
+      portalLeaks: { where: { status: 'DEFEATED' }, select: { id: true } },
     },
   });
   if (!user) return [];
@@ -303,6 +310,11 @@ export async function checkAchievements(
         break;
       case 'raid_victory':
         ok = user.raidContribs.some((c) => c.raid.status === 'VICTORY');
+        break;
+      case 'leak_kill':
+        // The user.prisma query above pre-filters to status: DEFEATED
+        // so portalLeaks.length() is the leak-kill count.
+        ok = user.portalLeaks.length >= c.gte;
         break;
       case 'boss_kill':
         ok = user.worldBosses?.some((b) => b.defeatedAt != null) ?? false;

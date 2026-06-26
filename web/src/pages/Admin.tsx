@@ -885,6 +885,18 @@ export function AdminPage() {
         </Panel>
       </div>
 
+      {/* -------- Dev tools — only shown to admins (page is gated) --------
+          Convenient surface for the engagement-loop code paths that
+          don't otherwise have an admin UI:
+            - Grant a starter item to yourself (tests the claim →
+              inventory → equip → stats roll-up flow end-to-end)
+            - Force-spawn a portal leak (tests shield drop → leak →
+              attack → claim loop end-to-end)
+            - Mark today's dailies as missed (tests the
+              missed_all_dailies penance auto-fire)
+      */}
+      <DevToolsPanel />
+
       {/* -------- Delete-user confirmation modal -------- */}
       <DeleteUserModal
         target={deleteTarget}
@@ -1115,5 +1127,155 @@ function DeleteUserModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// =============================================================================
+// DevToolsPanel — admin-only knobs for the engagement-loop code paths.
+//
+// The host page is already gated to isAdmin=true, so this panel
+// only renders for users with admin rights. Each tool is a single
+// mutation that hits an existing endpoint; we just surface them
+// here so the dev workflow doesn't require a curl + open the DB.
+// =============================================================================
+function DevToolsPanel() {
+  const qc = useQueryClient();
+  const [itemDefId, setItemDefId] = useState<string>('');
+
+  // Item catalog for the grant picker. Limit to 50 so the dropdown
+  // isn't enormous — admins know what they're looking for.
+  const catalogQ = useQuery({
+    queryKey: ['items', 'catalog', 'dev'],
+    queryFn: () => api<{ items: Array<{ id: string; name: string; rarity: string; slot: string }> }>('/items?limit=50'),
+  });
+
+  const grantM = useDelayedMutation<{ item: { id: string; name: string } }, string>({
+    mutationFn: (id) => api('/inventory/grant', {
+      method: 'POST',
+      body: { itemDefId: id, source: 'STARTER_KIT' },
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory'] }),
+  }, 600);
+
+  // Force-spawn: POST a low shield score to the spawn check. The
+  // server rolls per-tier (50% at BREECHED, etc) so a low score
+  // usually spawns. Idempotent — if a leak already exists, returns
+  // the existing one.
+  const spawnM = useDelayedMutation<{ spawned: boolean; leakId?: string }, void>({
+    mutationFn: () => api('/portal-leak/check-spawn', {
+      method: 'POST',
+      body: { shieldScore: 25 },
+    }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-leak'] }),
+  }, 600);
+
+  // Mark all dailies as missed for today by setting shield to 0,
+  // then firing missed_all_dailies. The cleanest way to test the
+  // penance is to set shield to 0 (BREECHED tier) and open the
+  // morning report — which auto-fires missed_all_dailies against
+  // yesterday's empty dailies.
+  const breachM = useDelayedMutation<{ shield: number; tier: string }, void>({
+    mutationFn: () => api('/home-base/dev-tools/breach-shield', { method: 'POST' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['home-base'] });
+      qc.invalidateQueries({ queryKey: ['portal-leak'] });
+    },
+  }, 600);
+
+  return (
+    <Panel title="Dev tools" variant="amber" className="mt-4">
+      <div className="text-[10px] font-mono text-ink-400 mb-3 italic">
+        Admin-only knobs for the engagement-loop code paths. Each one
+        hits an existing endpoint — this surface just makes them
+        clickable.
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Grant item */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            Grant item to me
+          </div>
+          <select
+            value={itemDefId}
+            onChange={(e) => setItemDefId(e.target.value)}
+            className="w-full rounded border border-ink-500/40 bg-bg-900 px-2 py-1.5 text-xs font-mono"
+            disabled={catalogQ.isLoading}
+          >
+            <option value="">— pick an item —</option>
+            {catalogQ.data?.items.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name} [{it.rarity}] {it.slot}
+              </option>
+            ))}
+          </select>
+          <NeonButton
+            size="sm"
+            variant="amber"
+            onClick={() => itemDefId && grantM.run(itemDefId)}
+            disabled={!itemDefId || grantM.isPending}
+            loading={grantM.isPending}
+            loadingText="Granting…"
+          >
+            Grant to my inventory
+          </NeonButton>
+        </div>
+
+        {/* Spawn leak */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            Force-spawn portal leak
+          </div>
+          <div className="text-[10px] font-mono text-ink-500 leading-snug">
+            Sets shield to 25 (BREECHED), then rolls the spawn dice
+            (50%). Returns existing leak if one is already active.
+          </div>
+          <NeonButton
+            size="sm"
+            variant="magenta"
+            onClick={() => spawnM.run(undefined)}
+            disabled={spawnM.isPending}
+            loading={spawnM.isPending}
+            loadingText="Spawning…"
+          >
+            Spawn leak
+          </NeonButton>
+        </div>
+
+        {/* Breach shield */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            Mark all dailies missed
+          </div>
+          <div className="text-[10px] font-mono text-ink-500 leading-snug">
+            Sets shield to 0 so the next morning report fires
+            missed_all_dailies (-20). Check the home-base feed
+            after the next refresh.
+          </div>
+          <NeonButton
+            size="sm"
+            variant="magenta"
+            onClick={() => breachM.run(undefined)}
+            disabled={breachM.isPending}
+            loading={breachM.isPending}
+            loadingText="Breaching…"
+          >
+            Breach shield
+          </NeonButton>
+        </div>
+      </div>
+
+      {(grantM.data || spawnM.data || breachM.data) && (
+        <div className="mt-3 text-[10px] font-mono text-ink-400 border-t border-ink-700/30 pt-2">
+          {grantM.data && <div>✓ Granted: {grantM.data.item?.name}</div>}
+          {spawnM.data && (
+            <div>✓ Leak: {spawnM.data.spawned ? 'spawned' : 'already active'}</div>
+          )}
+          {breachM.data && (
+            <div>✓ Shield: {breachM.data.shield} ({breachM.data.tier})</div>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }

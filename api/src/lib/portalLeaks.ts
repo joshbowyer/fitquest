@@ -436,6 +436,15 @@ export async function claimLeakLoot(
     }),
   ]);
 
+  // Fire the first-leak + every-Nth-leak achievements. Best-effort:
+  // a failed check shouldn't fail the claim.
+  try {
+    const { checkAchievements } = await import('./achievements.js');
+    await checkAchievements(userId);
+  } catch (err) {
+    console.warn('[portalLeaks] checkAchievements after claim failed', err);
+  }
+
   return {
     item: { id: item.id, name: item.name, rarity: item.rarity, color: item.color },
     leakId: leak.id,
