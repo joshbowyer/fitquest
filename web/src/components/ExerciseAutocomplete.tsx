@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { suggestExercises, type ExerciseLoad, ruleForExercise, musclesForExercise } from '@/lib/muscles';
+import { suggestExercises, type ExerciseLoad, type SuggestCategory, ruleForExercise, musclesForExercise } from '@/lib/muscles';
 import type { BodyPartId } from './BodyModel';
 import { classNames } from '@/lib/format';
 
@@ -9,6 +9,14 @@ type Props = {
   onMusclesChange?: (muscles: BodyPartId[]) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Optional WorkoutType category to filter the suggestions by.
+   * Used by the activity logger to show only cardio exercises when
+   * the user picks CARDIO, only mobility/conditioning when MOBILITY,
+   * etc. Matches within the chosen category are boosted above
+   * out-of-category matches (which still appear, just lower-ranked).
+   */
+  filterCategory?: SuggestCategory | null;
 };
 
 const LOAD_LABEL: Record<ExerciseLoad, { label: string; color: string }> = {
@@ -20,12 +28,12 @@ const LOAD_LABEL: Record<ExerciseLoad, { label: string; color: string }> = {
   OTHER:                { label: '—',                  color: '#787888' },
 };
 
-export function ExerciseAutocomplete({ value, onChange, onMusclesChange, placeholder, className }: Props) {
+export function ExerciseAutocomplete({ value, onChange, onMusclesChange, placeholder, className, filterCategory }: Props) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const suggestions = suggestExercises(value, 8);
+  const suggestions = suggestExercises(value, 8, filterCategory);
   const exactRule = ruleForExercise(value);
 
   // When user selects a suggestion (or types an exact match), propagate

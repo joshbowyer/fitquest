@@ -34,6 +34,19 @@ export async function exerciseRoutes(app: FastifyInstance) {
       { name: 'Bike', category: 'CARDIO' },
       { name: 'Row', category: 'CARDIO' },
       { name: 'Swim', category: 'CARDIO' },
+      // MOBILITY / CONDITIONING (time-based, no per-set reps)
+      { name: 'Box Jumps', category: 'MOBILITY' },
+      { name: 'Boxing', category: 'MOBILITY' },
+      { name: 'Burpees', category: 'MOBILITY' },
+      { name: 'Battle Ropes', category: 'MOBILITY' },
+      { name: 'Kettlebell Swings', category: 'MOBILITY' },
+      { name: 'Rope Climb', category: 'MOBILITY' },
+      { name: 'Med Ball Slams', category: 'MOBILITY' },
+      { name: 'Tire Flips', category: 'MOBILITY' },
+      { name: "Farmer's Walk", category: 'MOBILITY' },
+      { name: 'Plyo Push-Up', category: 'MOBILITY' },
+      { name: 'Jump Squats', category: 'MOBILITY' },
+      { name: 'Jump Rope', category: 'MOBILITY' },
     ];
     return { items: builtin };
   });

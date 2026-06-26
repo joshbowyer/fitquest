@@ -65,7 +65,10 @@ export type WorkoutLoggerProps = {
     type?: WorkoutType;
     exercises?: Array<{
       name: string;
-      sets: Array<{ targetReps: number }>;
+      sets: Array<{
+        targetReps: number;
+        targetDuration?: number | null;
+      }>;
     }>;
   } | null;
 };
@@ -283,6 +286,7 @@ export function WorkoutLogger({
                     <ExerciseAutocomplete
                       className="flex-1"
                       value={ex.name}
+                      filterCategory={type as any}
                       onChange={(v) => {
                         const copy = [...exercises];
                         copy[i] = { ...copy[i], name: v };

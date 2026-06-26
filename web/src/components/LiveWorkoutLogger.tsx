@@ -68,7 +68,10 @@ export type LiveWorkoutLoggerProps = {
     type?: WorkoutType;
     exercises?: Array<{
       name: string;
-      sets: Array<{ targetReps: number }>;
+      sets: Array<{
+        targetReps: number;
+        targetDuration?: number | null;
+      }>;
     }>;
   } | null;
 };
@@ -79,6 +82,9 @@ export type LiveWorkoutLoggerProps = {
 type PlannedSet = {
   targetReps: number;
   targetWeight: number;
+  /** Seconds — for timed exercises (plank, run, burpees, etc).
+   *  Strength sets leave this at 0. */
+  targetDuration: number;
 };
 
 type PlannedExercise = {
@@ -112,6 +118,10 @@ type CapturedSet = {
 type Phase = 'setup' | 'live' | 'done';
 
 const STRENGTH_TYPES: WorkoutType[] = ['STRENGTH', 'HYPERTROPHY', 'CALISTHENICS'];
+// Time-based types: no per-set reps/weight. The setup phase shows
+// just a duration field per exercise; live phase goes straight to
+// commit when the user taps Done.
+const TIMED_TYPES: WorkoutType[] = ['CARDIO', 'MOBILITY', 'OTHER'];
 
 export function LiveWorkoutLogger({
   user, units, title = 'Log Session', initialType = 'STRENGTH', onCommit,
@@ -127,12 +137,14 @@ export function LiveWorkoutLogger({
     ? templatePrefill.exercises.map((ex) => ({
         name: ex.name,
         // targetWeight stays 0 — the user said "leave weight blank".
+        // targetDuration carries through (for cardio / timed types).
         sets: ex.sets.map((s) => ({
           targetReps: s.targetReps,
           targetWeight: 0,
+          targetDuration: s.targetDuration ?? 0,
         })),
       }))
-    : [{ name: '', sets: [{ targetReps: 8, targetWeight: 0 }] }];
+    : [{ name: '', sets: [{ targetReps: 8, targetWeight: 0, targetDuration: 0 }] }];
 
   const [type, setType] = useState<WorkoutType>(templatePrefill?.type ?? initialType);
   const [name, setName] = useState(templatePrefill?.name ?? '');
@@ -202,6 +214,8 @@ export function LiveWorkoutLogger({
 
   // ── Derived values ───────────────────────────────────────────────────
   const isStrength = STRENGTH_TYPES.includes(type);
+  const isCardio = type === 'CARDIO';
+  const isTimed = TIMED_TYPES.includes(type);
   const totalPlannedSets = exercises.reduce((acc, e) => acc + e.sets.length, 0);
   const completedSets = capturedSets.filter((s) => !s.skipped).length;
 
@@ -363,74 +377,116 @@ export function LiveWorkoutLogger({
   // ── Commit ───────────────────────────────────────────────────────────
   const createM = useDelayedMutation({
     mutationFn: () => {
-      // Final restSeconds for the very last captured set = time since
-      // its completedAt until "now" (when Finish was tapped). This is
-      // technically the post-workout rest the user took before walking
-      // out of the gym — small but worth recording.
-      const finalized: CapturedSet[] = capturedSets.map((s, i) => {
-        if (i < capturedSets.length - 1) return s;
-        if (s.restSeconds != null) return s;
-        // Last set: rest = now - completedAt. Clamp to >= 0.
-        const elapsed = Math.max(0, Math.round((Date.now() - new Date(s.completedAt).getTime()) / 1000));
-        return { ...s, restSeconds: elapsed };
-      });
+      // ── STRENGTH path: use the captured sets with full timestamps
+      //    (live-mode per-set timing). Existing behavior.
+      // ── TIMED path (CARDIO / MOBILITY / OTHER): no captured sets,
+      //    no per-set timing. Build the payload straight from the
+      //    planned exercises with a single timed set each.
+      const exPayload = isStrength
+        ? buildLivePayload()
+        : buildTimedPayload();
 
-      // Group sets back into exercises, attaching the per-exercise
-      // startedAt/completedAt spans from the captured timestamps.
-      const exPayload = exercises.map((ex, ei) => {
-        const exSets = finalized.filter((s) => s.exerciseIndex === ei);
-        const exStart = exSets.length
-          ? exSets.reduce((min, s) => (s.startedAt < min ? s.startedAt : min), exSets[0].startedAt)
-          : null;
-        const exEnd = exSets.length
-          ? exSets.reduce((max, s) => (s.completedAt > max ? s.completedAt : max), exSets[0].completedAt)
-          : null;
-        return {
-          name: ex.name,
-          order: ei,
-          musclesWorked: musclesForExercise(ex.name),
-          startedAt: exStart,
-          completedAt: exEnd,
-          sets: exSets.map((s, j) => {
-            let weight: number | undefined;
-            const bodyweight = user?.weightKg ?? null;
-            if (loadForExercise(ex.name) === 'BODYWEIGHT' && bodyweight) {
-              weight = bodyweight;
-            } else if (loadForExercise(ex.name) === 'WEIGHTED_BODYWEIGHT' && bodyweight) {
-              weight = bodyweight + weightToKg(s.weight, units)!;
-            } else {
-              weight = weightToKg(s.weight, units);
-            }
-            return {
-              reps: s.skipped ? 0 : s.reps,
-              weight: weight || undefined,
-              duration: s.skipped ? undefined : (s.duration || undefined),
-              rpe: s.skipped ? undefined : (s.rpe || undefined),
-              order: j,
-              completed: !s.skipped,
-              skipped: !!s.skipped,
-              skipReason: s.skipReason ?? null,
-              startedAt: s.startedAt,
-              completedAt: s.completedAt,
-              restSeconds: s.restSeconds,
-            };
-          }),
-        };
-      });
+      // Workout duration: for live mode, derive from captured
+      // timestamps; for timed mode, derive from the target durations.
+      // The server uses this for XP / PR calculations only — actual
+      // effort shows up in the set rows.
+      const duration = isStrength
+        ? Math.max(1, Math.round(workoutElapsedSec / 60))
+        : Math.max(1, Math.round(
+            exercises.reduce((acc, ex) => acc + (ex.sets[0]?.targetDuration ?? 0), 0) / 60,
+          ));
 
       return api<any>('/workouts', {
         method: 'POST',
         body: {
           type,
           name: name || undefined,
-          // Workout duration is auto-derived from timestamps for live
-          // mode; the user never sees a "duration" input here.
-          duration: Math.max(1, Math.round(workoutElapsedSec / 60)),
+          duration,
           notes: notes || undefined,
           performedAt: localInputToIso(performedAt),
           exercises: exPayload,
         },
       });
+
+      function buildLivePayload() {
+        // Final restSeconds for the very last captured set = time since
+        // its completedAt until "now" (when Finish was tapped).
+        const finalized: CapturedSet[] = capturedSets.map((s, i) => {
+          if (i < capturedSets.length - 1) return s;
+          if (s.restSeconds != null) return s;
+          const elapsed = Math.max(0, Math.round((Date.now() - new Date(s.completedAt).getTime()) / 1000));
+          return { ...s, restSeconds: elapsed };
+        });
+        return exercises.map((ex, ei) => {
+          const exSets = finalized.filter((s) => s.exerciseIndex === ei);
+          const exStart = exSets.length
+            ? exSets.reduce((min, s) => (s.startedAt < min ? s.startedAt : min), exSets[0].startedAt)
+            : null;
+          const exEnd = exSets.length
+            ? exSets.reduce((max, s) => (s.completedAt > max ? s.completedAt : max), exSets[0].completedAt)
+            : null;
+          return {
+            name: ex.name,
+            order: ei,
+            musclesWorked: musclesForExercise(ex.name),
+            startedAt: exStart,
+            completedAt: exEnd,
+            sets: exSets.map((s, j) => {
+              let weight: number | undefined;
+              const bodyweight = user?.weightKg ?? null;
+              if (loadForExercise(ex.name) === 'BODYWEIGHT' && bodyweight) {
+                weight = bodyweight;
+              } else if (loadForExercise(ex.name) === 'WEIGHTED_BODYWEIGHT' && bodyweight) {
+                weight = bodyweight + weightToKg(s.weight, units)!;
+              } else {
+                weight = weightToKg(s.weight, units);
+              }
+              return {
+                reps: s.skipped ? 0 : s.reps,
+                weight: weight || undefined,
+                duration: s.skipped ? undefined : (s.duration || undefined),
+                rpe: s.skipped ? undefined : (s.rpe || undefined),
+                order: j,
+                completed: !s.skipped,
+                skipped: !!s.skipped,
+                skipReason: s.skipReason ?? null,
+                startedAt: s.startedAt,
+                completedAt: s.completedAt,
+                restSeconds: s.restSeconds,
+              };
+            }),
+          };
+        });
+      }
+
+      function buildTimedPayload() {
+        // Each planned exercise becomes a single timed set.
+        // Cardio sets have reps=0 (we don't track cardio reps).
+        // Mobility/Other sets use the duration as-is.
+        return exercises.map((ex, ei) => {
+          const targetDuration = ex.sets[0]?.targetDuration ?? 0;
+          return {
+            name: ex.name,
+            order: ei,
+            musclesWorked: musclesForExercise(ex.name),
+            startedAt: null,
+            completedAt: null,
+            sets: [{
+              reps: 0,
+              weight: undefined,
+              duration: targetDuration || undefined,
+              rpe: undefined,
+              order: 0,
+              completed: true,
+              skipped: false,
+              skipReason: null,
+              startedAt: null,
+              completedAt: null,
+              restSeconds: null,
+            }],
+          };
+        });
+      }
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['workouts'] });
@@ -478,9 +534,14 @@ export function LiveWorkoutLogger({
                 </button>
               ))}
             </div>
-            {!isStrength && (
-              <div className="mt-2 text-[10px] font-mono text-amber-300">
-                Live mode is for strength / hypertrophy / calisthenics. Switch to bulk mode for other types.
+            {!isStrength && isCardio && (
+              <div className="mt-2 text-[10px] font-mono text-amber-300/90">
+                Cardio mode: per-set weight/reps are hidden. Time + distance are the metric — log the activity and a single target duration below.
+              </div>
+            )}
+            {!isStrength && !isCardio && isTimed && (
+              <div className="mt-2 text-[10px] font-mono text-amber-300/90">
+                Mobility / Other: each exercise is logged as a single timed entry. Weight and reps are hidden.
               </div>
             )}
           </div>
@@ -521,6 +582,7 @@ export function LiveWorkoutLogger({
                     <ExerciseAutocomplete
                       className="flex-1"
                       value={ex.name}
+                      filterCategory={type as any}
                       onChange={(v) => {
                         const copy = [...exercises];
                         copy[ei] = { ...copy[ei], name: v };
@@ -539,82 +601,146 @@ export function LiveWorkoutLogger({
                   </div>
 
                   <div className="text-[9px] font-mono text-ink-400">
-                    {ex.sets.length} planned set{ex.sets.length === 1 ? '' : 's'}
+                    {isStrength
+                      ? `${ex.sets.length} planned set${ex.sets.length === 1 ? '' : 's'}`
+                      : isTimed
+                        ? 'timed entry'
+                        : ''}
                   </div>
 
-                  <div className="grid grid-cols-1 gap-1">
-                    {ex.sets.map((s, si) => (
-                      <div key={si} className="flex items-center gap-2 text-xs">
-                        <span className="font-mono text-ink-400 w-12">#{si + 1}</span>
-                        <input
-                          type="number"
-                          min={0}
-                          inputMode="numeric"
-                          value={s.targetWeight || ''}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            const copy = [...exercises];
-                            copy[ei] = {
-                              ...copy[ei],
-                              sets: copy[ei].sets.map((ss, jj) => jj === si ? { ...ss, targetWeight: v } : ss),
-                            };
-                            setExercises(copy);
-                          }}
-                          className="input-neon flex-1"
-                          placeholder={`weight (${weightUnitLabel(units)})`}
-                        />
-                        <input
-                          type="number"
-                          min={0}
-                          inputMode="numeric"
-                          value={s.targetReps || ''}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            const copy = [...exercises];
-                            copy[ei] = {
-                              ...copy[ei],
-                              sets: copy[ei].sets.map((ss, jj) => jj === si ? { ...ss, targetReps: v } : ss),
-                            };
-                            setExercises(copy);
-                          }}
-                          className="input-neon flex-1"
-                          placeholder="reps"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const copy = [...exercises];
-                            copy[ei] = { ...copy[ei], sets: copy[ei].sets.filter((_, jj) => jj !== si) };
-                            setExercises(copy);
-                          }}
-                          className="px-2 h-9 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
-                        >
-                          ×
-                        </button>
+                  {/* Per-set inputs — strength only. Timed types use a
+                      single duration field per exercise below. */}
+                  {isStrength && (
+                    <>
+                      <div className="grid grid-cols-1 gap-1">
+                        {ex.sets.map((s, si) => (
+                          <div key={si} className="flex items-center gap-2 text-xs">
+                            <span className="font-mono text-ink-400 w-12">#{si + 1}</span>
+                            <input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              value={s.targetWeight || ''}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                const copy = [...exercises];
+                                copy[ei] = {
+                                  ...copy[ei],
+                                  sets: copy[ei].sets.map((ss, jj) => jj === si ? { ...ss, targetWeight: v } : ss),
+                                };
+                                setExercises(copy);
+                              }}
+                              className="input-neon flex-1"
+                              placeholder={`weight (${weightUnitLabel(units)})`}
+                            />
+                            <input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              value={s.targetReps || ''}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                const copy = [...exercises];
+                                copy[ei] = {
+                                  ...copy[ei],
+                                  sets: copy[ei].sets.map((ss, jj) => jj === si ? { ...ss, targetReps: v } : ss),
+                                };
+                                setExercises(copy);
+                              }}
+                              className="input-neon flex-1"
+                              placeholder="reps"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const copy = [...exercises];
+                                copy[ei] = { ...copy[ei], sets: copy[ei].sets.filter((_, jj) => jj !== si) };
+                                setExercises(copy);
+                              }}
+                              className="px-2 h-9 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const copy = [...exercises];
-                      copy[ei] = {
-                        ...copy[ei],
-                        sets: [...copy[ei].sets, { targetReps: 8, targetWeight: copy[ei].sets[copy[ei].sets.length - 1]?.targetWeight ?? 0 }],
-                      };
-                      setExercises(copy);
-                    }}
-                    className="px-3 h-9 text-[10px] font-mono border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/10"
-                  >
-                    + Add set
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const copy = [...exercises];
+                          // For strength, repeat the previous set's
+                          // weight + default 8 reps. For timed types,
+                          // repeat the previous set's duration so
+                          // adding a second interval doesn't reset
+                          // the user's first entry.
+                          const prev = copy[ei].sets[copy[ei].sets.length - 1];
+                          copy[ei] = {
+                            ...copy[ei],
+                            sets: [...copy[ei].sets, {
+                              targetReps: prev?.targetReps ?? 8,
+                              targetWeight: prev?.targetWeight ?? 0,
+                              targetDuration: prev?.targetDuration ?? 0,
+                            }],
+                          };
+                          setExercises(copy);
+                        }}
+                        className="px-3 h-9 text-[10px] font-mono border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/10"
+                      >
+                        + Add set
+                      </button>
+                    </>
+                  )}
+
+                  {/* Timed input — single duration field per exercise
+                      for CARDIO / MOBILITY / OTHER. Stores in the first
+                      set's targetDuration so the API shape is
+                      uniform (no schema change). */}
+                  {isTimed && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-[10px] font-mono text-ink-400 w-12 shrink-0">
+                        {isCardio ? 'run' : 'time'}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        value={ex.sets[0]?.targetDuration ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value === '' ? 0 : Number(e.target.value);
+                          const copy = [...exercises];
+                          // Replace the first set's targetDuration.
+                          // reps/weight stay 0 — irrelevant for timed.
+                          copy[ei] = {
+                            ...copy[ei],
+                            sets: [{ targetReps: 0, targetWeight: 0, targetDuration: v }],
+                          };
+                          setExercises(copy);
+                        }}
+                        className="input-neon flex-1"
+                        placeholder={isCardio ? 'minutes' : 'seconds'}
+                      />
+                      <span className="text-[10px] font-mono text-ink-400">
+                        {isCardio ? 'min' : 'sec'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               ))}
 
               <button
                 type="button"
-                onClick={() => setExercises([...exercises, { name: '', sets: [{ targetReps: 8, targetWeight: 0 }] }])}
+                onClick={() => setExercises([
+                  ...exercises,
+                  {
+                    name: '',
+                    sets: [{
+                      targetReps: isStrength ? 8 : 0,
+                      targetWeight: 0,
+                      targetDuration: isStrength ? 0 : (isCardio ? 30 * 60 : 60),
+                    }],
+                  },
+                ])}
                 className="px-3 h-9 text-[10px] font-mono border border-neon-cyan/60 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10"
               >
                 + Add exercise
@@ -644,6 +770,27 @@ export function LiveWorkoutLogger({
                 }
               >
                 Start workout →
+              </NeonButton>
+            </div>
+          )}
+
+          {/* Timed types commit straight from setup — no per-set flow.
+              The single duration per exercise is the only thing the
+              user has to fill in, so a separate "live" phase would
+              just add clicks. */}
+          {!isStrength && (
+            <div className="flex justify-end gap-2 pt-2 border-t border-ink-500/20">
+              <NeonButton
+                variant="cyan"
+                onClick={() => createM.run(undefined)}
+                loading={createM.isPending}
+                disabled={
+                  exercises.some((e) => !e.name.trim())
+                  || exercises.every((e) => !e.sets[0]?.targetDuration)
+                  || createM.isPending
+                }
+              >
+                Log workout →
               </NeonButton>
             </div>
           )}

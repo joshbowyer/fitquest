@@ -479,6 +479,7 @@ function TemplateEditor({
               <ExerciseAutocomplete
                 className="flex-1 text-sm"
                 value={ex.name}
+                filterCategory={draft.type as any}
                 onChange={(v) => {
                   const copy = [...draft.exercises];
                   copy[ei] = { ...copy[ei], name: v };

@@ -36,7 +36,49 @@ export type ExerciseMuscles = {
   load: ExerciseLoad;
   displayName: string;
   group: 'chest' | 'back' | 'shoulders' | 'arms' | 'legs' | 'core' | 'cardio';
+  /**
+   * WorkoutType category used by the exercise picker to filter the
+   * dropdown by the user's current workout type. Maps 1:1 to the
+   * WorkoutType enum. Defaults are inferred at lookup time if missing.
+   */
+  category?: 'STRENGTH' | 'HYPERTROPHY' | 'CALISTHENICS' | 'CARDIO' | 'MOBILITY' | 'OTHER';
 };
+
+/**
+ * Map an ExerciseLoad + muscle group to a default WorkoutType category.
+ * Used as a fallback when a rule doesn't explicitly declare `category`,
+ * so we don't have to retag every existing rule.
+ *
+ * Mapping rationale:
+ *   - FREE_WEIGHT barbell compounds  → STRENGTH (the canonical lifts)
+ *   - FREE_WEIGHT accessories       → HYPERTROPHY
+ *   - MACHINE                       → HYPERTROPHY (isolation work)
+ *   - WEIGHTED_BODYWEIGHT           → CALISTHENICS (a weighted pull-up
+ *                                    is still a pull-up)
+ *   - BODYWEIGHT                    → CALISTHENICS
+ *   - CARDIO                        → CARDIO
+ *   - OTHER                         → MOBILITY (catch-all for
+ *                                    conditioning / plyometric /
+ *                                    sport-specific drills that
+ *                                    don't fit the other buckets)
+ */
+export function categoryForRule(rule: ExerciseMuscles): 'STRENGTH' | 'HYPERTROPHY' | 'CALISTHENICS' | 'CARDIO' | 'MOBILITY' | 'OTHER' {
+  if (rule.category) return rule.category;
+  if (rule.load === 'CARDIO') return 'CARDIO';
+  if (rule.load === 'FREE_WEIGHT') {
+    // Big barbell compounds are STRENGTH; everything else free-weight
+    // is HYPERTROPHY (curls, raises, etc).
+    const compoundNames = [
+      'bench press', 'squat', 'deadlift', 'overhead press',
+      'back squat', 'front squat', 'barbell row', 'incline bench press',
+      'decline bench press', 'close-grip bench press',
+    ];
+    return compoundNames.includes(rule.displayName.toLowerCase()) ? 'STRENGTH' : 'HYPERTROPHY';
+  }
+  if (rule.load === 'MACHINE') return 'HYPERTROPHY';
+  if (rule.load === 'BODYWEIGHT' || rule.load === 'WEIGHTED_BODYWEIGHT') return 'CALISTHENICS';
+  return 'MOBILITY';
+}
 
 const EXERCISE_DB: ExerciseMuscles[] = [
   // ───────── Bodyweight chest / push ─────────
@@ -388,7 +430,58 @@ const EXERCISE_DB: ExerciseMuscles[] = [
   { matches: ['jump rope', 'skipping'],
     primary: [{ part: 'CALF_L', priority: 80 }, { part: 'CALF_R', priority: 80 }],
     secondary: [{ part: 'SHOULDER_L', priority: 50 }, { part: 'SHOULDER_R', priority: 50 }],
-    load: 'CARDIO', displayName: 'Jump Rope', group: 'cardio' },
+    load: 'CARDIO', displayName: 'Jump Rope', group: 'cardio', category: 'MOBILITY' },
+
+  // ───────── MOBILITY / CONDITIONING (time-based) ─────────
+  // The user groups plyometrics, boxing, jump rope, battle ropes etc.
+  // under "mobility" — semantically conditioning more than stretching,
+  // but the UI presents them as time-based blocks (no per-set reps).
+  // These are mostly OTHER load + cardio-ish muscles.
+  { matches: ['box jump', 'box jumps', 'jump onto box'],
+    primary: [{ part: 'QUAD_L', priority: 90 }, { part: 'QUAD_R', priority: 90 }, { part: 'GLUTE_L', priority: 90 }, { part: 'GLUTE_R', priority: 90 }, { part: 'CALF_L', priority: 90 }, { part: 'CALF_R', priority: 90 }],
+    secondary: [{ part: 'HAMSTRING_L', priority: 60 }, { part: 'HAMSTRING_R', priority: 60 }, { part: 'ABS', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Box Jumps', group: 'legs', category: 'MOBILITY' },
+  { matches: ['boxing', 'shadowbox', 'shadow box', 'heavy bag', 'speed bag'],
+    primary: [{ part: 'SHOULDER_L', priority: 80 }, { part: 'SHOULDER_R', priority: 80 }, { part: 'TRICEP_L', priority: 60 }, { part: 'TRICEP_R', priority: 60 }, { part: 'PECTORAL', priority: 60 }],
+    secondary: [{ part: 'ABS', priority: 70 }, { part: 'OBLIQUE_L', priority: 60 }, { part: 'OBLIQUE_R', priority: 60 }, { part: 'QUAD_L', priority: 50 }, { part: 'QUAD_R', priority: 50 }, { part: 'CALF_L', priority: 50 }, { part: 'CALF_R', priority: 50 }],
+    stabilizers: [{ part: 'LAT_L', priority: 40 }, { part: 'LAT_R', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Boxing', group: 'cardio', category: 'MOBILITY' },
+  { matches: ['burpee', 'burpees'],
+    primary: [{ part: 'PECTORAL', priority: 80 }, { part: 'QUAD_L', priority: 80 }, { part: 'QUAD_R', priority: 80 }, { part: 'GLUTE_L', priority: 70 }, { part: 'GLUTE_R', priority: 70 }],
+    secondary: [{ part: 'TRICEP_L', priority: 60 }, { part: 'TRICEP_R', priority: 60 }, { part: 'HAMSTRING_L', priority: 60 }, { part: 'HAMSTRING_R', priority: 60 }, { part: 'ABS', priority: 60 }, { part: 'CALF_L', priority: 50 }, { part: 'CALF_R', priority: 50 }],
+    load: 'BODYWEIGHT', displayName: 'Burpees', group: 'cardio', category: 'MOBILITY' },
+  { matches: ['battle rope', 'battle ropes', 'battling ropes'],
+    primary: [{ part: 'SHOULDER_L', priority: 90 }, { part: 'SHOULDER_R', priority: 90 }, { part: 'BICEP_L', priority: 70 }, { part: 'BICEP_R', priority: 70 }, { part: 'TRICEP_L', priority: 70 }, { part: 'TRICEP_R', priority: 70 }],
+    secondary: [{ part: 'ABS', priority: 80 }, { part: 'OBLIQUE_L', priority: 60 }, { part: 'OBLIQUE_R', priority: 60 }, { part: 'LAT_L', priority: 60 }, { part: 'LAT_R', priority: 60 }],
+    load: 'FREE_WEIGHT', displayName: 'Battle Ropes', group: 'cardio', category: 'MOBILITY' },
+  { matches: ['kettlebell swing', 'kb swing', 'kettlebell swings', 'russian swing'],
+    primary: [{ part: 'GLUTE_L', priority: 90 }, { part: 'GLUTE_R', priority: 90 }, { part: 'HAMSTRING_L', priority: 80 }, { part: 'HAMSTRING_R', priority: 80 }, { part: 'BACK_LOWER', priority: 70 }],
+    secondary: [{ part: 'ABS', priority: 60 }, { part: 'SHOULDER_L', priority: 50 }, { part: 'SHOULDER_R', priority: 50 }, { part: 'FOREARM_L', priority: 40 }, { part: 'FOREARM_R', priority: 40 }],
+    load: 'FREE_WEIGHT', displayName: 'Kettlebell Swings', group: 'legs', category: 'MOBILITY' },
+  { matches: ['rope climb', 'climbing rope'],
+    primary: [{ part: 'LAT_L', priority: 100 }, { part: 'LAT_R', priority: 100 }, { part: 'BICEP_L', priority: 90 }, { part: 'BICEP_R', priority: 90 }, { part: 'FOREARM_L', priority: 90 }, { part: 'FOREARM_R', priority: 90 }],
+    secondary: [{ part: 'BACK_UPPER', priority: 70 }, { part: 'ABS', priority: 60 }, { part: 'OBLIQUE_L', priority: 40 }, { part: 'OBLIQUE_R', priority: 40 }, { part: 'QUAD_L', priority: 40 }, { part: 'QUAD_R', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Rope Climb', group: 'back', category: 'MOBILITY' },
+  { matches: ['med ball slam', 'medicine ball slam', 'med ball slams', 'ball slam'],
+    primary: [{ part: 'LAT_L', priority: 90 }, { part: 'LAT_R', priority: 90 }, { part: 'TRICEP_L', priority: 70 }, { part: 'TRICEP_R', priority: 70 }, { part: 'SHOULDER_L', priority: 70 }, { part: 'SHOULDER_R', priority: 70 }, { part: 'ABS', priority: 70 }],
+    secondary: [{ part: 'OBLIQUE_L', priority: 50 }, { part: 'OBLIQUE_R', priority: 50 }, { part: 'BACK_LOWER', priority: 60 }],
+    load: 'FREE_WEIGHT', displayName: 'Med Ball Slams', group: 'core', category: 'MOBILITY' },
+  { matches: ['tire flip', 'tire flips'],
+    primary: [{ part: 'PECTORAL', priority: 90 }, { part: 'TRICEP_L', priority: 80 }, { part: 'TRICEP_R', priority: 80 }, { part: 'BACK_LOWER', priority: 80 }, { part: 'GLUTE_L', priority: 80 }, { part: 'GLUTE_R', priority: 80 }, { part: 'QUAD_L', priority: 80 }, { part: 'QUAD_R', priority: 80 }],
+    secondary: [{ part: 'ABS', priority: 70 }, { part: 'LAT_L', priority: 60 }, { part: 'LAT_R', priority: 60 }, { part: 'TRAPS', priority: 50 }],
+    load: 'OTHER', displayName: 'Tire Flips', group: 'cardio', category: 'MOBILITY' },
+  { matches: ['farmers walk', "farmer's walk", 'farmers carry', 'suitcase carry'],
+    primary: [{ part: 'FOREARM_L', priority: 90 }, { part: 'FOREARM_R', priority: 90 }, { part: 'TRAPS', priority: 80 }, { part: 'OBLIQUE_L', priority: 70 }, { part: 'OBLIQUE_R', priority: 70 }],
+    secondary: [{ part: 'ABS', priority: 60 }, { part: 'BACK_LOWER', priority: 60 }, { part: 'GLUTE_L', priority: 50 }, { part: 'GLUTE_R', priority: 50 }, { part: 'QUAD_L', priority: 50 }, { part: 'QUAD_R', priority: 50 }],
+    load: 'FREE_WEIGHT', displayName: "Farmer's Walk", group: 'core', category: 'MOBILITY' },
+  { matches: ['plyo push', 'plyo push-up', 'plyometric push-up', 'clap push-up', 'clap pushup'],
+    primary: [{ part: 'PECTORAL', priority: 90 }, { part: 'TRICEP_L', priority: 90 }, { part: 'TRICEP_R', priority: 90 }, { part: 'SHOULDER_L', priority: 70 }, { part: 'SHOULDER_R', priority: 70 }],
+    secondary: [{ part: 'ABS', priority: 60 }, { part: 'TRAPS', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Plyo Push-Up', group: 'chest', category: 'MOBILITY' },
+  { matches: ['jump squat', 'jump squats'],
+    primary: [{ part: 'QUAD_L', priority: 90 }, { part: 'QUAD_R', priority: 90 }, { part: 'GLUTE_L', priority: 90 }, { part: 'GLUTE_R', priority: 90 }, { part: 'CALF_L', priority: 80 }, { part: 'CALF_R', priority: 80 }],
+    secondary: [{ part: 'HAMSTRING_L', priority: 50 }, { part: 'HAMSTRING_R', priority: 50 }, { part: 'ABS', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Jump Squats', group: 'legs', category: 'MOBILITY' },
 ];
 
 // Flat lookup. Returns the FIRST matching rule.
@@ -442,35 +535,62 @@ export function ruleForExercise(name: string): ExerciseMuscles | undefined {
  * Get autocomplete suggestions for an exercise input. Returns up
  * to `limit` display names that match the partial input.
  */
-export function suggestExercises(partial: string, limit = 8): Array<{
+export type SuggestCategory =
+  | 'STRENGTH' | 'HYPERTROPHY' | 'CALISTHENICS'
+  | 'CARDIO' | 'MOBILITY' | 'OTHER';
+
+export function suggestExercises(
+  partial: string,
+  limit = 8,
+  category?: SuggestCategory | null,
+): Array<{
   name: string;
   load: ExerciseLoad;
   group: string;
+  category: SuggestCategory;
 }> {
   if (!partial || partial.length < 1) return [];
   const lower = partial.toLowerCase().trim();
 
-  // Score each rule by how well its display name matches.
+  // Score each rule by how well its display name matches. When
+  // `category` is set, prefer rules that resolve to that category —
+  // they're promoted to the top regardless of their raw text score.
+  // This is how the activity logger's per-type dropdown works.
   const scored: Array<{ rule: ExerciseMuscles; score: number }> = [];
   for (const rule of EXERCISE_DB) {
     const nameLower = rule.displayName.toLowerCase();
-    if (nameLower.startsWith(lower)) {
-      scored.push({ rule, score: 100 });
-    } else if (nameLower.includes(lower)) {
-      scored.push({ rule, score: 50 });
-    } else if (rule.matches.some((m) => m.includes(lower))) {
-      scored.push({ rule, score: 25 });
-    }
+    const ruleCategory = categoryForRule(rule);
+    const matchesCategory = !category || ruleCategory === category;
+    let textScore = 0;
+    if (nameLower.startsWith(lower)) textScore = 100;
+    else if (nameLower.includes(lower)) textScore = 50;
+    else if (rule.matches.some((m) => m.includes(lower))) textScore = 25;
+    if (textScore === 0) continue;
+    // Boost matching-category rules by +10 so they always outrank
+    // wrong-category rules with the same text score. Keeps results
+    // usable when the user types a partial word.
+    const final = matchesCategory ? textScore + 10 : textScore;
+    scored.push({ rule, score: final });
   }
   scored.sort((a, b) => b.score - a.score);
 
   // De-dup by displayName (in case two rules match)
   const seen = new Set<string>();
-  const out: Array<{ name: string; load: ExerciseLoad; group: string }> = [];
+  const out: Array<{
+    name: string;
+    load: ExerciseLoad;
+    group: string;
+    category: SuggestCategory;
+  }> = [];
   for (const { rule } of scored) {
     if (seen.has(rule.displayName.toLowerCase())) continue;
     seen.add(rule.displayName.toLowerCase());
-    out.push({ name: rule.displayName, load: rule.load, group: rule.group });
+    out.push({
+      name: rule.displayName,
+      load: rule.load,
+      group: rule.group,
+      category: categoryForRule(rule),
+    });
     if (out.length >= limit) break;
   }
   return out;
