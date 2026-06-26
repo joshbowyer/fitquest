@@ -80,6 +80,16 @@ type TrackedItem = {
   category: 'VITAMIN' | 'MINERAL' | 'FATTY_ACID' | 'PROBIOTIC' | 'HERB' | 'AMINO_ACID' | 'OTHER';
   defaultDose: number;
   doseUnit: string;
+  /**
+   * Today log inline on the tracked item (returned by GET /supplements/tracked
+   * so the UI renders in one round-trip). null = not taken yet today.
+   */
+  today: {
+    logId: string;
+    dose: number;
+    doseUnit: string;
+    checkedAt: string;
+  } | null;
 };
 
 type CheckInsDueResponse = {
@@ -409,14 +419,16 @@ function SupplementSummary({ category }: { category: TrackedItem['category'] | n
     queryKey: ['supplements', 'tracked'],
     queryFn: () => api<{ items: TrackedItem[] }>('/supplements/tracked'),
   });
-  let total = q.data?.items.length ?? 0;
-  let checkedToday = 0;
-  if (q.data && category) {
-    total = q.data.items.filter((i) => i.category === category).length;
-  }
+  const items = q.data?.items ?? [];
+  // Filter to this category (or all categories when null) BEFORE
+  // counting, otherwise "Supplements" tile shows progress across
+  // vitamins + probiotics which double-counts items that fall in both.
+  const filtered = category ? items.filter((i) => i.category === category) : items;
+  const total = filtered.length;
+  const checkedToday = filtered.filter((i) => i.today).length;
   return total > 0 ? (
     <span className="text-ink-100">
-      {total} tracked · {checkedToday}/{total} today
+      {total} tracked · <span className={checkedToday === total ? 'text-neon-lime' : 'text-ink-300'}>{checkedToday}/{total}</span> today
     </span>
   ) : (
     <span className="text-ink-500">none tracked</span>
@@ -963,7 +975,15 @@ function SupplementLogModal({
     mutationFn: (id) => api(`/supplements/tracked/${id}/check`, { method: 'POST', body: {} }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['supplements'] });
-      onClose();
+    },
+  }, 300);
+  // Undo: DELETE today's log. The server endpoint is
+  // /supplements/tracked/:id/check (DELETE) which removes the
+  // DailyTrackedItem for today.
+  const uncheckM = useDelayedMutation<{ ok: boolean }, string>({
+    mutationFn: (id) => api(`/supplements/tracked/${id}/check`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['supplements'] });
     },
   }, 300);
   return (
@@ -974,24 +994,54 @@ function SupplementLogModal({
             No tracked items{category ? ` in ${category}` : ''}. Add some in <a href="/nutrition" className="text-neon-cyan underline">/nutrition</a>.
           </div>
         )}
-        {items.map((i) => (
-          <div key={i.id} className="flex items-center justify-between border border-ink-700/30 p-2 rounded">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm">{i.name}</div>
-              <div className="text-[10px] font-mono text-ink-500">
-                {i.defaultDose} {i.doseUnit} · {i.category.toLowerCase()}
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={checkM.isPending}
-              onClick={() => checkM.run(i.id)}
-              className="px-3 py-1 text-xs font-mono border border-neon-lime/50 text-neon-lime hover:bg-neon-lime/10 rounded disabled:opacity-50"
+        {items.map((i) => {
+          const taken = !!i.today;
+          return (
+            <div
+              key={i.id}
+              className={
+                'flex items-center justify-between border p-2 rounded ' +
+                (taken
+                  ? 'border-neon-lime/40 bg-neon-lime/5'
+                  : 'border-ink-700/30')
+              }
             >
-              ✓ Took
-            </button>
-          </div>
-        ))}
+              <div className="min-w-0 flex-1">
+                <div className="text-sm flex items-center gap-2">
+                  {i.name}
+                  {taken && (
+                    <span className="text-[10px] font-mono text-neon-lime">✓ taken today</span>
+                  )}
+                </div>
+                <div className="text-[10px] font-mono text-ink-500">
+                  {taken && i.today
+                    ? `${i.today.dose} ${i.today.doseUnit} · logged ${new Date(i.today.checkedAt).toLocaleTimeString()}`
+                    : `${i.defaultDose} ${i.doseUnit} · ${i.category.toLowerCase()}`}
+                </div>
+              </div>
+              {taken ? (
+                <button
+                  type="button"
+                  disabled={uncheckM.isPending}
+                  onClick={() => uncheckM.run(i.id)}
+                  className="px-3 py-1 text-xs font-mono border border-ink-500/40 text-ink-300 hover:border-rose-500/60 hover:text-rose-300 rounded disabled:opacity-50"
+                  title="Undo today's log"
+                >
+                  Undo
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={checkM.isPending}
+                  onClick={() => checkM.run(i.id)}
+                  className="px-3 py-1 text-xs font-mono border border-neon-lime/50 text-neon-lime hover:bg-neon-lime/10 rounded disabled:opacity-50"
+                >
+                  ✓ Took
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </Modal>
   );
