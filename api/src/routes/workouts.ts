@@ -380,12 +380,22 @@ export async function workoutRoutes(app: FastifyInstance) {
     // or the user's shield is already clamped.
     {
       const penanceLib = await import('../lib/penance.js');
-      const fires: Array<{ key: 'logged_mobility' | 'logged_cardio_30'; source: 'workout_commit' }> = [];
+      const fires: Array<{ key: 'logged_mobility' | 'logged_cardio_30' | 'log_stretch'; source: 'workout_commit' }> = [];
       if (body.type === 'MOBILITY') {
         fires.push({ key: 'logged_mobility', source: 'workout_commit' });
       }
       if (body.type === 'CARDIO' && duration >= 30) {
         fires.push({ key: 'logged_cardio_30', source: 'workout_commit' });
+      }
+      // Stretch / yoga exercises are typically named explicitly
+      // (Stretch, Yoga, Foam Roll, Hip Opener, etc). The user fires
+      // this manually as a small per-session bump regardless of
+      // workout type — the only criterion is the exercise name
+      // matching a stretch keyword.
+      const stretchKeywords = /\b(stretch|yoga|foam\s*roll|hip\s*open|shoulder\s*mob|thoracic|mobility\s*flow)\b/i;
+      const hadStretch = (body.exercises ?? []).some((e) => stretchKeywords.test(e.name ?? ''));
+      if (hadStretch) {
+        fires.push({ key: 'log_stretch', source: 'workout_commit' });
       }
       if (fires.length > 0) {
         await penanceLib.firePenances(me.id, fires);

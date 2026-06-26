@@ -35,47 +35,90 @@ export type PenanceKey =
   | 'hit_water_target'
   | 'completed_prayer'
   | 'missed_all_dailies'
+  // New items (2026-06-26): wider penance menu so users can both
+  // hurt AND repair the shield through more daily actions.
+  | 'missed_sleep'           // logged <6h sleep
+  | 'late_night_log'         // logged a meal/workout after midnight
+  | 'broke_streak'           // workout streak reset
+  | 'perfect_day'            // all dailies + workout + targets met
+  | 'streak_7day'            // hit a 7-day streak milestone
+  | 'log_stretch'            // dedicated stretch / yoga session
+  | 'meal_logged'            // every meal entry adds a small bump
+  | 'checkin_am'             // morning check-in completed
+  | 'checkin_pm'             // evening check-in completed
+  | 'checkin_weekly'         // weekly check-in completed
   | 'custom';
 
 export const PENANCE_DELTAS: Record<Exclude<PenanceKey, 'custom'>, number> = {
   // Damage penances (negative).
   missed_workout: -15,
-  missed_all_dailies: -5,
+  missed_all_dailies: -20,    // bumped from -5 → every daily missed
+                                   // in a day is a real hit now
+  missed_sleep: -10,           // <6h sleep logged
+  late_night_log: -8,         // any log after midnight
+  broke_streak: -12,          // workout streak reset
   substance_overuse: -20,
   // Repair penances (positive).
   substance_checkin: 2,
+  substance_free_day: 5,
   logged_mobility: 8,
   logged_cardio_30: 6,
-  substance_free_day: 5,
+  log_stretch: 4,              // dedicated stretch / yoga
   hit_protein_target: 4,
   hit_water_target: 3,
   completed_prayer: 4,
+  meal_logged: 1,              // small per-meal bump
+  checkin_am: 3,               // morning check-in
+  checkin_pm: 3,               // evening check-in
+  checkin_weekly: 5,           // weekly check-in
+  perfect_day: 12,             // all dailies + workout + targets
+  streak_7day: 8,              // 7-day streak milestone
 };
 
 export const PENANCE_LABELS: Record<Exclude<PenanceKey, 'custom'>, string> = {
   missed_workout: 'Skipped the forge',
   missed_all_dailies: 'Quiet at home',
+  missed_sleep: 'Slept short',
+  late_night_log: 'Late-night log',
+  broke_streak: 'Streak broken',
   substance_overuse: 'Toxic indulgence',
   substance_checkin: 'Honest reckoning',
+  substance_free_day: 'Temperance',
   logged_mobility: 'Tended the hinges',
   logged_cardio_30: 'Scouted the perimeter',
-  substance_free_day: 'Temperance',
+  log_stretch: 'Stretched the sinew',
   hit_protein_target: 'Strong provisions',
   hit_water_target: 'Refreshed the well',
   completed_prayer: 'Lit the lamp',
+  meal_logged: 'Logged a meal',
+  checkin_am: 'Morning check-in',
+  checkin_pm: 'Evening check-in',
+  checkin_weekly: 'Weekly check-in',
+  perfect_day: 'Perfect day',
+  streak_7day: '7-day streak',
 };
 
 export const PENANCE_FLAVORS: Record<Exclude<PenanceKey, 'custom'>, string> = {
   missed_workout: 'A planned session was left undone. The forge cools.',
-  missed_all_dailies: 'Every daily for the day was left unchecked.',
+  missed_all_dailies: 'Every daily for the day was left unchecked. The walls go quiet.',
+  missed_sleep: 'Less than six hours logged. The walls need rest, not you.',
+  late_night_log: 'A log after midnight — the watch was asleep.',
+  broke_streak: 'The streak that held for days is broken. Rebuild.',
   substance_overuse: 'Hardcore caps exceeded — the walls remember.',
   substance_checkin: 'Honest reckoning with what was taken.',
+  substance_free_day: 'A day with no alcohol — clear-headed walls stand stronger.',
   logged_mobility: 'Tendons and joints tended to.',
   logged_cardio_30: '30+ minutes of cardio logged — scouts out the perimeter.',
-  substance_free_day: 'A day with no alcohol — clear-headed walls stand stronger.',
+  log_stretch: 'A dedicated stretch. Sinew remembers, sinew forgives.',
   hit_protein_target: 'Protein target met — strong provisions stocked.',
   hit_water_target: 'Water target met — the well is fresh.',
   completed_prayer: 'Daily prayer completed — the lamp is lit.',
+  meal_logged: 'A meal entry written. The larder is honest.',
+  checkin_am: 'Morning check-in. The walls wake with you.',
+  checkin_pm: 'Evening check-in. The walls close the day with you.',
+  checkin_weekly: 'Weekly check-in. The long view is kept.',
+  perfect_day: 'Every daily, every target, every box. The walls shine.',
+  streak_7day: 'A 7-day streak holds. The walls remember your rhythm.',
 };
 
 /** Map a shield value (0-100) to its tier. */

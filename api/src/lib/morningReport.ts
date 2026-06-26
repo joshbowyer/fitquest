@@ -32,6 +32,7 @@ import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
 import { tickHearts, hardcoreSubstanceCapReason, HARDCORE_SUBSTANCE_CAPS } from './mode.js';
 import { setVolumeKg } from './exerciseVolume.js';
+import { firePenance } from './penance.js';
 import { detectPlateaus, type Plateau } from './plateau.js';
 import { buildMacroNudges, type MacroNudgesResult } from './macroNudges.js';
 import {
@@ -827,6 +828,24 @@ export async function getOrGenerateToday(
   });
   const date = todayInTz(opts.timezone ?? user?.timezone ?? null);
 
+  // End-of-day shield check: if the user has a configured daily list
+  // and NONE of yesterday's dailies were completed, fire
+  // `missed_all_dailies` (default -20). This runs once per date the
+  // user opens the morning report — idempotent because firePenance
+  // is a no-op on a template whose key already fired for the same
+  // day. The check is best-effort: a thrown error here doesn't
+  // block the report itself.
+  await fireMissedAllDailiesPenance(userId, opts.timezone ?? user?.timezone ?? null);
+
+  if (!opts.force) {
+    const existing = await prisma.morningReport.findUnique({
+      where: { userId_date: { userId, date } },
+    });
+    if (existing && existing.general !== null) {
+      return rowToResult(existing, true);
+    }
+  }
+
   if (!opts.force) {
     const existing = await prisma.morningReport.findUnique({
       where: { userId_date: { userId, date } },
@@ -973,4 +992,75 @@ export async function getOrGenerateToday(
   });
 
   return rowToResult(saved, false);
+}
+
+// =============================================================================
+// Missed-all-dailies shield hit
+// =============================================================================
+//
+// Fires `missed_all_dailies` (default -20) if the user has at least
+// one configured daily and NONE of yesterday's dailies were
+// completed. Runs once per morning-report fetch (idempotent —
+// firePenance ignores re-fires of the same key on the same day).
+// Best-effort: a throw here doesn't block the report itself.
+// =============================================================================
+
+async function fireMissedAllDailiesPenance(
+  userId: string,
+  timezone: string | null,
+): Promise<void> {
+  try {
+    // What "yesterday" means depends on tz. Use the same helper the
+    // rest of the morning report uses so the windows line up.
+    const { todayInTz, localMidnightUtc } = await import('./timezone.js');
+    const today = todayInTz(timezone);
+    if (!today) return;
+    // Convert today's YYYY-MM-DD to a UTC Date at midnight in the
+    // user's tz, then back off one calendar day.
+    const todayMidnight = localMidnightUtc(today, timezone ?? 'UTC');
+    const yesterday = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
+    const startOfDay = new Date(yesterday);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(yesterday);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // The user must have at least one daily configured (or a
+    // WORKOUT / SPIRITUAL:* built-in key in their cadence) for
+    // "missed all" to mean anything.
+    const dailies = await prisma.daily.findMany({
+      where: { userId, archived: false },
+      select: { id: true },
+    });
+    const dailyIds = new Set(dailies.map((d) => d.id));
+    const expectedKeys = new Set<string>([
+      ...dailyIds,
+      'WORKOUT',
+    ]);
+    const userRow = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { spiritualDailyPrayers: true },
+    });
+    for (const prayer of userRow?.spiritualDailyPrayers ?? []) {
+      expectedKeys.add(`SPIRITUAL:${prayer}`);
+    }
+    if (expectedKeys.size === 0) return;
+
+    const completedKeys = await prisma.dailyLog.findMany({
+      where: {
+        userId,
+        loggedAt: { gte: startOfDay, lte: endOfDay },
+      },
+      select: { dailyKey: true },
+    });
+    const completed = new Set(completedKeys.map((k) => k.dailyKey));
+
+    // All-missed = expectedKeys is non-empty AND none of them were
+    // completed yesterday.
+    const allMissed = [...expectedKeys].every((k) => !completed.has(k));
+    if (!allMissed) return;
+
+    await firePenance(userId, 'missed_all_dailies', 'daily_missed');
+  } catch (err) {
+    console.warn('[morning-report] missed_all_dailies penance check failed', err);
+  }
 }

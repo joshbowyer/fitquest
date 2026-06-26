@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { Layout, PageHeader } from './Layout';
 import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { PortalLeakCard } from './PortalLeakCard';
 import { classNames } from '@/lib/format';
 import type { HomeBase as HomeBaseData, PenanceEvent, ShieldTier } from '@/lib/types';
 
@@ -139,6 +141,16 @@ export function HomeBasePage() {
     queryFn: () => api<HomeBaseData>('/home-base'),
   });
 
+  // The page renders inside the full Layout (top bar + sidebar) when
+  // navigated to directly, and inside a Modal on the Quest page. The
+  // caller decides which — we just render the content. The Quest
+  // modal passes a width="max-w-3xl" prop, and our content scales
+  // gracefully to either container.
+  //
+  // We embed <PortalLeakCard /> inline so the active leak is
+  // visible right under the shield tier — a leak is "something is
+  // happening in your home base", so it belongs on this page, not
+  // buried in a separate /portal-leak route.
   return (
     <div className="space-y-4">
       <Panel title="Home base" variant="cyan">
@@ -149,7 +161,26 @@ export function HomeBasePage() {
         )}
       </Panel>
       <PenanceTemplatesPanel />
+      <PortalLeakCard />
     </div>
+  );
+}
+
+/**
+ * /home-base as a full page (used when navigated to directly via the
+ * sidebar nav). Wraps HomeBasePage in <Layout> so the top bar +
+ * sidebar are visible — without this the page renders bare and
+ * there's no way to navigate away except browser-back.
+ */
+export function HomeBaseFullPage() {
+  return (
+    <Layout>
+      <PageHeader
+        title="// Home base"
+        subtitle="The shield that protects your engagement. Compromise it and the breach escalates."
+      />
+      <HomeBasePage />
+    </Layout>
   );
 }
 

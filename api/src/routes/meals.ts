@@ -232,6 +232,18 @@ export async function mealRoutes(app: FastifyInstance) {
         loggedAt: body.loggedAt ? new Date(body.loggedAt) : new Date(),
       },
     });
+
+    // Small per-meal shield bump. We don't check the user's enable
+    // toggle here — firePenance does that internally — so a user
+    // who's turned this off won't see the effect, just the others.
+    try {
+      const { firePenance } = await import('../lib/penance.js');
+      await firePenance(me.id, 'meal_logged', 'nutrition_target');
+    } catch (err) {
+      // Penance is best-effort; don't fail the meal log.
+      console.warn('[meals] penance fire failed', err);
+    }
+
     return { entry };
   });
 
