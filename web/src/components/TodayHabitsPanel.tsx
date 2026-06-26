@@ -10,23 +10,15 @@ import { useAuth } from '@/lib/auth';
 
 type HabitStatus = Record<string, { logged: boolean; value: number | null; recordedAt: string | null }>;
 
-// "Today" widget on Dashboard: sleep + wellness only (subjective).
-// Nutrition lives on /nutrition with its own widget, and user-defined
-// habits live on /habits with their own widget.
-const TODAY_METRICS: MetricType[] = [
-  ...METRICS_BY_CATEGORY.SLEEP,
-  ...METRICS_BY_CATEGORY.WELLNESS,
-];
-
-const CATEGORY_ICON: Record<string, string> = {
-  SLEEP: '☾',
-  WELLNESS: '♥',
-};
-
-const CATEGORY_COLOR: Record<string, 'violet' | 'magenta'> = {
-  SLEEP: 'violet',
-  WELLNESS: 'magenta',
-};
+// "Today" widget on Dashboard + /today: shows every check-in
+// metric the user has configured (one row per MetricType). Nutrition
+// lives on /nutrition with its own widget, and user-defined habits
+// live on /habits with their own widget. Grouped by cadence
+// (AM / PM / WEEKLY) so the picker mirrors the /check-ins modal.
+// Source of truth for which metrics surface in this widget +
+// in the CheckInsPickerModal — the cadence table from lib/checkIns.ts.
+// We import rather than re-derive so the two stay in lockstep.
+import { DEFAULT_CADENCE } from '@/lib/checkIns';
 
 export function TodayHabitsPanel() {
   const qc = useQueryClient();
@@ -53,8 +45,8 @@ export function TodayHabitsPanel() {
     },
   });
 
-  const completed = TODAY_METRICS.filter((m) => status[m]?.logged).length;
-  const pct = TODAY_METRICS.length > 0 ? completed / TODAY_METRICS.length : 0;
+  const completed = (Object.keys(DEFAULT_CADENCE) as MetricType[]).filter((m) => status[m]?.logged).length;
+  const pct = (Object.keys(DEFAULT_CADENCE) as MetricType[]).length > 0 ? completed / (Object.keys(DEFAULT_CADENCE) as MetricType[]).length : 0;
 
   function quickLog(m: MetricType) {
     if (!draft) return;
@@ -69,7 +61,7 @@ export function TodayHabitsPanel() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono text-ink-300">
-            {completed}/{TODAY_METRICS.length} logged
+            {completed}/{Object.keys(DEFAULT_CADENCE) as MetricType[]}.length logged
           </div>
           <Link
             to="/today"
@@ -82,87 +74,92 @@ export function TodayHabitsPanel() {
           <div
             className={classNames(
               'h-full transition-all duration-500',
-              completed === TODAY_METRICS.length ? 'bg-neon-lime' : 'bg-neon-cyan'
+              completed === (Object.keys(DEFAULT_CADENCE) as MetricType[]).length ? 'bg-neon-lime' : 'bg-neon-cyan'
             )}
             style={{ width: `${pct * 100}%`, boxShadow: '0 0 6px currentColor' }}
           />
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
-          {(['SLEEP', 'WELLNESS'] as const).map((cat) => {
-            const metrics = METRICS_BY_CATEGORY[cat];
+        <div className="space-y-2 pt-1">
+          {(['AM', 'PM', 'WEEKLY'] as const).map((cad) => {
+            const metrics = (Object.keys(DEFAULT_CADENCE) as MetricType[])
+              .filter((m) => DEFAULT_CADENCE[m] === cad);
             const done = metrics.filter((m) => status[m]?.logged).length;
-            const color = CATEGORY_COLOR[cat];
+            if (metrics.length === 0) return null;
             return (
-              <div
-                key={cat}
-                className={`border border-neon-${color}/30 bg-neon-${color}/5 p-1.5`}
-              >
-                <div className="flex items-center gap-1 text-[10px] font-display tracking-widest">
-                  <span className={`neon-text-${color}`}>{CATEGORY_ICON[cat]}</span>
-                  <span className={`neon-text-${color}`}>{cat}</span>
+              <div key={cad}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-display tracking-widest text-ink-400">
+                    {cad}
+                  </span>
+                  <span className="text-[10px] font-mono text-ink-500">
+                    {done}/{metrics.length}
+                  </span>
                 </div>
-                <div className="text-[10px] font-mono text-ink-300 mt-0.5">
-                  {done}/{metrics.length}
+                <div className="space-y-0.5">
+                  {metrics.map((m) => {
+                    const s = status[m];
+                    const meta = METRICS[m];
+                    const isEditing = editing === m;
+                    return (
+                      <div
+                        key={m}
+                        className={classNames(
+                          'flex items-center justify-between text-xs font-mono py-0.5 px-1.5 border transition-all',
+                          s?.logged
+                            ? 'border-neon-lime/30 bg-neon-lime/5'
+                            : 'border-ink-500/30 hover:border-neon-cyan/40'
+                        )}
+                      >
+                        <div className="flex-1">
+                          <div className={s?.logged ? 'text-neon-lime' : 'text-ink-200'}>
+                            {meta.shortLabel}
+                          </div>
+                          {s?.logged && s.value != null ? (
+                            <div className="text-[9px] font-mono text-ink-500">
+                              {s.value.toFixed(meta.unit === 'g' || meta.unit === 'ml' || meta.unit === 'fl oz' || meta.unit === 'kcal' ? 0 : 1)} {displayUnit(meta.unit, system)}
+                            </div>
+                          ) : null}
+                        </div>
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              type="number"
+                              step="any"
+                              value={draft}
+                              onChange={(e) => setDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') quickLog(m); }}
+                              className="w-16 bg-bg-900 border border-neon-cyan/50 px-1 py-0.5 text-xs font-mono rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => quickLog(m)}
+                              disabled={!draft}
+                              className="px-1.5 py-0.5 text-[10px] font-mono border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 rounded"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditing(null); setDraft(''); }}
+                              className="px-1.5 py-0.5 text-[10px] font-mono border border-ink-500 text-ink-300 rounded"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setEditing(m); setDraft(s?.value != null ? String(s.value) : ''); }}
+                            className="px-1.5 py-0.5 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-neon-cyan/60 hover:text-neon-cyan rounded"
+                          >
+                            + log
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="space-y-1 pt-1">
-          {TODAY_METRICS.map((m) => {
-            const s = status[m];
-            const meta = METRICS[m];
-            const isEditing = editing === m;
-            return (
-              <div
-                key={m}
-                className={classNames(
-                  'flex items-center justify-between text-xs font-mono py-0.5 px-1.5 border transition-all',
-                  s?.logged
-                    ? 'border-neon-lime/30 bg-neon-lime/5'
-                    : 'border-ink-500/30 hover:border-neon-cyan/40'
-                )}
-              >
-                <div className="flex-1">
-                  <div className={s?.logged ? 'text-neon-lime' : 'text-ink-200'}>
-                    {meta.shortLabel}
-                  </div>
-                  {s?.logged && s.value != null ? (
-                    <div className="text-[9px] text-ink-300">
-                      {(() => {
-                        const disp = convertForDisplay(s.value, meta.unit, system);
-                        return `${disp.value.toFixed(meta.unit === 'g' || meta.unit === 'ml' || meta.unit === 'fl oz' || meta.unit === 'kcal' ? 0 : 1)} ${disp.unit}`;
-                      })()} · {s.recordedAt ? formatRelative(s.recordedAt) : ''}
-                    </div>
-                  ) : null}
-                </div>
-                {!s?.logged && (
-                  isEditing ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        autoFocus
-                        className="input-neon w-20 text-xs px-1 py-0.5"
-                        type="number"
-                        step={meta.unit === 'kcal' || meta.unit === 'ml' || meta.unit === 'g' ? 1 : 0.1}
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') quickLog(m);
-                          if (e.key === 'Escape') { setEditing(null); setDraft(''); }
-                        }}
-                        onBlur={() => { if (!draft) setEditing(null); }}
-                        placeholder={displayUnit(meta.unit, system)}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { setEditing(m); setDraft(''); }}
-                      className="text-[10px] font-display tracking-widest text-ink-300 hover:text-neon-cyan"
-                    >
-                      + log
-                    </button>
-                  )
-                )}
               </div>
             );
           })}

@@ -5,7 +5,7 @@ import { Modal } from './Modal';
 import { NeonButton } from './NeonButton';
 import { ActionTile, QuickActionGrid } from './QuickActionGrid';
 import { WorkoutLogger } from './WorkoutLogger';
-import { QuickLogModal as CheckInsQuickLogModal, type DueMetricDto } from './CheckInsPanel';
+import { QuickLogModal as CheckInsQuickLogModal } from './CheckInsPanel';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
@@ -92,9 +92,6 @@ type TrackedItem = {
   } | null;
 };
 
-type CheckInsDueResponse = {
-  byCadence: Record<'AM' | 'PM' | 'WEEKLY', DueMetricDto[]>;
-};
 
 const PRAYER_LABELS: Record<string, string> = {
   ROSARY: 'Rosary',
@@ -124,25 +121,24 @@ const MEAL_LABELS: Record<MealType, string> = {
  * never tried it.
  */
 const CANONICAL_FORMS: Record<string, string[]> = {
+  // Macro-level only. Brand-specific forms (Liquid IV vs LMNT, etc.)
+  // collapsed into "electrolyte packet" so the picker stays scannable.
+  // If the user logs something we don't list, the form string still
+  // gets recorded verbatim so we can grow the macro list over time
+  // from real usage data.
   CAFFEINE: [
-    'espresso', 'coffee', 'cold brew', 'latte', 'cappuccino', 'americano',
-    'green tea', 'black tea', 'matcha', 'energy drink', 'pre-workout',
-    'yerba mate', 'guarana',
+    'coffee', 'tea', 'yerba mate', 'soda', 'pre-workout', 'energy drink',
   ],
   ALCOHOL: [
-    'wine', 'red wine', 'white wine', 'beer', 'ipa', 'lager', 'stout',
-    'whiskey', 'bourbon', 'scotch', 'vodka', 'rum', 'gin', 'tequila',
-    'mezcal', 'cocktail', 'sake', 'cider', 'seltzer',
+    'wine', 'beer', 'liquor', 'mead', 'cocktail',
   ],
   NICOTINE: [
-    'cigarette', 'cigar', 'pipe', 'vape', 'e-cigarette', 'nicotine gum',
-    'nicotine pouch', 'pouch', 'zyn', 'on!', 'chew', 'dip', 'snus',
-    'hookah', 'snuff',
+    'cigarette', 'cigar', 'pipe tobacco', 'nicotine pouch', 'hookah',
+    'dip', 'vape', 'nicotine gum',
   ],
   ELECTROLYTE: [
-    'liquid iv', 'lmnt', 'nuun', 'pedialyte', 'salt tablet', 'potassium',
-    'magnesium', 'sodium bicarb', 'coconut water', 'pickle juice',
-    'sole water',
+    'electrolyte packet', 'sports drink', 'sole water', 'coconut water',
+    'mineral water',
   ],
 };
 
@@ -158,7 +154,6 @@ export function TodayActions() {
   const qc = useQueryClient();
   const [openModal, setOpenModal] = useState<null | 'food' | 'supplements' | 'probiotics' | 'electrolytes' | 'caffeine' | 'alcohol' | 'nicotine' | 'activity' | 'prayer' | 'checkIns'>(null);
   const [prayerType, setPrayerType] = useState<keyof typeof PRAYER_LABELS | null>(null);
-  const [checkInsMetric, setCheckInsMetric] = useState<DueMetricDto | null>(null);
 
   // Listen for the global "open Activity modal" event so other
   // surfaces (e.g. the WORKOUT daily row, the wall-mode shell) can
@@ -172,7 +167,6 @@ export function TodayActions() {
   function close() {
     setOpenModal(null);
     setPrayerType(null);
-    setCheckInsMetric(null);
     // Invalidate any queries that may have changed so the tile
     // summaries refresh next render.
     qc.invalidateQueries({ queryKey: ['today'] });
@@ -249,13 +243,6 @@ export function TodayActions() {
           onClick={() => setOpenModal('prayer')}
           summary={<PrayerSummary />}
         />
-        <ActionTile
-          glyph="✓"
-          label="Check-ins"
-          accent="periwinkle"
-          onClick={() => setOpenModal('checkIns')}
-          summary={<CheckInsSummary onPick={setCheckInsMetric} />}
-        />
       </QuickActionGrid>
 
       {openModal === 'food' && (
@@ -287,19 +274,6 @@ export function TodayActions() {
       )}
       {openModal === 'prayer' && prayerType && (
         <PrayerLogModal open onClose={close} prayerType={prayerType} onSwitch={() => setPrayerType(null)} />
-      )}
-      {openModal === 'checkIns' && (
-        <CheckInsPickerModal open onClose={close} onPick={setCheckInsMetric} />
-      )}
-      {openModal === 'checkIns' && checkInsMetric && (
-        <CheckInsQuickLogModal
-          open
-          item={checkInsMetric}
-          onClose={() => {
-            setCheckInsMetric(null);
-            close();
-          }}
-        />
       )}
     </>
   );
@@ -482,32 +456,6 @@ function PrayerSummary() {
     <span className="text-ink-500">not logged</span>
   );
 }
-
-function CheckInsSummary({ onPick }: { onPick: (m: DueMetricDto) => void }) {
-  const q = useQuery({
-    queryKey: ['check-ins', 'due'],
-    queryFn: () => api<CheckInsDueResponse>('/check-ins/due'),
-  });
-  let total = 0;
-  if (q.data) {
-    total = Object.values(q.data.byCadence).reduce((s, arr) => s + arr.length, 0);
-  }
-  if (total === 0) {
-    return <span className="text-neon-lime">✓ all caught up</span>;
-  }
-  // Tap on the tile summary opens the picker. Provide a small inline
-  // list of the first few overdue items.
-  return (
-    <span className="text-ink-100">
-      {total} due · tap to pick
-    </span>
-  );
-}
-
-/* ============================================================
- * Food log modal: search OFF/USDA + saved foods + Ask AI
- * multi-item entry.
- * ============================================================ */
 
 function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
@@ -1065,7 +1013,7 @@ function SubstanceLogModal({
   label: string;
 }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState('');
+  // No free-form input — modal is now buttons-only.
   const today = (q: { items: Array<{ category: string; loggedAt: string; form: string }> }) =>
     q.items.filter((s) => s.category === category && new Date(s.loggedAt) >= new Date(new Date().setHours(0, 0, 0, 0))).length;
   const recentQ = useQuery({
@@ -1075,10 +1023,10 @@ function SubstanceLogModal({
   const recentForms = Array.from(
     new Set((recentQ.data?.items ?? []).filter((s) => s.category === category).map((s) => s.form)),
   );
-  // Canonical forms per category — shown alongside the user's
-  // recently-logged forms so a first-time entry isn't an empty
-  // picker. The user can also type a free-form value at the
-  // bottom for anything not listed.
+  // Canonical forms per category. Recent user-logged forms are
+  // merged in so previously-used macros surface first; the merge
+  // keeps the picker scannable without making the user re-type
+  // their usual brand every time.
   const canonical = CANONICAL_FORMS[category] ?? [];
   // Merge: recent first (in their original order), then canonical
   // forms not already present. Dedup case-insensitively.
@@ -1097,7 +1045,6 @@ function SubstanceLogModal({
       qc.invalidateQueries({ queryKey: ['substances'] });
       qc.invalidateQueries({ queryKey: ['today'] });
       onClose();
-      setForm('');
     },
   });
   return (
@@ -1134,24 +1081,12 @@ function SubstanceLogModal({
             })}
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={form}
-            onChange={(e) => setForm(e.target.value)}
-            placeholder="form (e.g. espresso, wine, hookah)"
-            autoFocus
-            className="flex-1 bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-sm font-mono rounded"
-          />
-          <button
-            type="button"
-            disabled={logM.isPending || !form.trim()}
-            onClick={() => logM.mutate({ form: form.trim() })}
-            className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-          >
-            Log
-          </button>
-        </div>
+        {/* Macro-only modal: the canonical buttons above are the
+            only way to log. Free-text input was removed because
+            the user wants a scannable picker, not a form. The
+            server still records whatever form string the client
+            sends, so a future macro addition just means adding
+            a button here. */}
       </div>
     </Modal>
   );
@@ -1284,62 +1219,3 @@ function PrayerLogModal({
   );
 }
 
-/* ============================================================
- * Check-ins picker modal — lists due metrics, opens the existing
- * QuickLogModal when one is picked.
- * ============================================================ */
-
-function CheckInsPickerModal({
-  open,
-  onClose,
-  onPick,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onPick: (m: DueMetricDto) => void;
-}) {
-  const q = useQuery({
-    queryKey: ['check-ins', 'due'],
-    queryFn: () => api<CheckInsDueResponse>('/check-ins/due'),
-  });
-  const groups: Array<{ key: 'AM' | 'PM' | 'WEEKLY'; items: DueMetricDto[] }> = [
-    { key: 'AM', items: q.data?.byCadence.AM ?? [] },
-    { key: 'PM', items: q.data?.byCadence.PM ?? [] },
-    { key: 'WEEKLY', items: q.data?.byCadence.WEEKLY ?? [] },
-  ];
-  const totalDue = groups.reduce((s, g) => s + g.items.length, 0);
-  return (
-    <Modal open={open} onClose={onClose} title="Check-ins" width="max-w-md">
-      {totalDue === 0 ? (
-        <div className="text-sm font-mono text-neon-lime py-3 text-center">
-          ✓ all caught up
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {groups.map((g) =>
-            g.items.length === 0 ? null : (
-              <div key={g.key}>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
-                  {g.key}
-                </div>
-                <div className="space-y-1">
-                  {g.items.map((m) => (
-                    <button
-                      key={m.metric}
-                      type="button"
-                      onClick={() => onPick(m)}
-                      className="w-full flex items-center justify-between text-xs font-mono py-1.5 px-2 border border-ink-700/30 hover:border-neon-periwinkle/60 hover:bg-neon-periwinkle/5 rounded text-left"
-                    >
-                      <span className="text-slate-200">{m.label || m.metric}</span>
-                      <span className="text-neon-periwinkle">+ log</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ),
-          )}
-        </div>
-      )}
-    </Modal>
-  );
-}

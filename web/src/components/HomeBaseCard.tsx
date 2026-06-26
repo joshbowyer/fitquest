@@ -160,8 +160,12 @@ export function HomeBasePage() {
           <div className="text-[10px] font-mono text-ink-400">loading…</div>
         )}
       </Panel>
-      <PenanceTemplatesPanel />
+      {/* Leak sits above the penance templates list. The penance list
+          is the longest section on this page; without the leak above
+          it, users who finish editing the shield tier can scroll past
+          the list and miss an active encounter entirely. */}
       <PortalLeakCard />
+      <PenanceTemplatesPanel />
     </div>
   );
 }
