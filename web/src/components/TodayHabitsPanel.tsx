@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
 import { classNames, formatRelative } from '@/lib/format';
+import { useLiveClock } from '@/hooks/useLiveClock';
+import { Modal } from './Modal';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
 
@@ -45,8 +47,27 @@ export function TodayHabitsPanel() {
     },
   });
 
-  const completed = (Object.keys(DEFAULT_CADENCE) as MetricType[]).filter((m) => status[m]?.logged).length;
-  const pct = (Object.keys(DEFAULT_CADENCE) as MetricType[]).length > 0 ? completed / (Object.keys(DEFAULT_CADENCE) as MetricType[]).length : 0;
+  // AM + PM metrics are the daily-cadence surface — that's what the
+  // panel renders inline. Weekly metrics (WAIST, BENCH_1RM, etc.)
+  // live behind a "Weekly checks" button shown on Sundays only.
+  const dailyMetrics = (Object.keys(DEFAULT_CADENCE) as MetricType[])
+    .filter((m) => DEFAULT_CADENCE[m] === 'AM' || DEFAULT_CADENCE[m] === 'PM');
+  const weeklyMetrics = (Object.keys(DEFAULT_CADENCE) as MetricType[])
+    .filter((m) => DEFAULT_CADENCE[m] === 'WEEKLY');
+  const completedDaily = dailyMetrics.filter((m) => status[m]?.logged).length;
+  const completedAm  = dailyMetrics.filter((m) => DEFAULT_CADENCE[m] === 'AM' && status[m]?.logged).length;
+  const completedPm  = dailyMetrics.filter((m) => DEFAULT_CADENCE[m] === 'PM' && status[m]?.logged).length;
+  const completedWeekly = weeklyMetrics.filter((m) => status[m]?.logged).length;
+  const totalAm = dailyMetrics.filter((m) => DEFAULT_CADENCE[m] === 'AM').length;
+  const totalPm = dailyMetrics.filter((m) => DEFAULT_CADENCE[m] === 'PM').length;
+  const pct = dailyMetrics.length > 0 ? completedDaily / dailyMetrics.length : 0;
+
+  // Today in the user's local tz so Sunday detection is right
+  // for shift workers (1am on Monday = still Sunday in some tzs).
+  const now = useLiveClock();
+  const dow = now.getDay(); // 0 = Sun
+  const isSunday = dow === 0;
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
 
   function quickLog(m: MetricType) {
     if (!draft) return;
@@ -61,26 +82,29 @@ export function TodayHabitsPanel() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono text-ink-300">
-            {completed}/{Object.keys(DEFAULT_CADENCE) as MetricType[]}.length logged
+            {completedAm}/{totalAm} AM · {completedPm}/{totalPm} PM
           </div>
-          <Link
-            to="/today"
-            className="text-[10px] font-display tracking-widest neon-text-cyan hover:underline"
-          >
-            → ALL
-          </Link>
+          {isSunday && weeklyMetrics.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setWeeklyOpen(true)}
+              className="text-[10px] font-display tracking-widest neon-text-amber hover:underline"
+            >
+              ◇ Weekly checks ({completedWeekly}/{weeklyMetrics.length})
+            </button>
+          )}
         </div>
         <div className="h-1 bg-bg-700 border border-ink-500/30 overflow-hidden">
           <div
             className={classNames(
               'h-full transition-all duration-500',
-              completed === (Object.keys(DEFAULT_CADENCE) as MetricType[]).length ? 'bg-neon-lime' : 'bg-neon-cyan'
+              completedDaily === dailyMetrics.length ? 'bg-neon-lime' : 'bg-neon-cyan'
             )}
             style={{ width: `${pct * 100}%`, boxShadow: '0 0 6px currentColor' }}
           />
         </div>
         <div className="space-y-2 pt-1">
-          {(['AM', 'PM', 'WEEKLY'] as const).map((cad) => {
+          {(['AM', 'PM'] as const).map((cad) => {
             const metrics = (Object.keys(DEFAULT_CADENCE) as MetricType[])
               .filter((m) => DEFAULT_CADENCE[m] === cad);
             const done = metrics.filter((m) => status[m]?.logged).length;
@@ -171,5 +195,53 @@ export function TodayHabitsPanel() {
         )}
       </div>
     </Panel>
-  );
+  )
+
+      {/* Weekly checks modal — only opens on Sundays via the
+          amber button in the header. Lists the WEEKLY-cadence
+          metrics as buttons; clicking one closes this modal and
+          opens the existing QuickLog flow for that metric. */}
+      {weeklyOpen && (
+        <Modal
+          open
+          onClose={() => setWeeklyOpen(false)}
+          title="Weekly checks"
+          width="max-w-md"
+        >
+          <div className="space-y-2">
+            <div className="text-[10px] font-mono text-ink-400">
+              Weekly metrics for this week. Tap one to log; this
+              counts as your "weekly check" for the cadence.
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {weeklyMetrics.map((m) => {
+                const s = status[m];
+                const meta = METRICS[m];
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setEditing(m);
+                      setDraft(s?.value != null ? String(s.value) : '');
+                      setWeeklyOpen(false);
+                    }}
+                    className={classNames(
+                      'px-2.5 py-2 text-left text-xs font-mono border transition-all',
+                      s?.logged
+                        ? 'border-neon-lime/40 bg-neon-lime/5 text-neon-lime'
+                        : 'border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5',
+                    )}
+                  >
+                    <div className="font-display tracking-wider">{meta.shortLabel}</div>
+                    <div className="text-[9px] font-mono text-ink-500 mt-0.5">
+                      {s?.logged ? '✓ logged' : 'tap to log'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Modal>
+      )};
 }
