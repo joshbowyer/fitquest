@@ -12,6 +12,17 @@ export type SpriteAvatarProps = {
   shirtColor?: string;    // 'black' | 'blue' | 'green' | 'redblue' | 'white' | 'yellow'
   weapon?: string;        // e.g. 'weapon_warrior_0' (without .png)
   shield?: string;        // e.g. 'shield_warrior_1'
+  // Equipped item sprite IDs (relative paths under /sprites, e.g.
+  // 'head/head_warrior_1', 'armor/broad_armor_rogue_2'). When set,
+  // the matching sprite is layered on top of the base avatar. The
+  // shirtColor stays a separate customization — equipped BODY
+  // items paint OVER the chosen shirt like a chestplate.
+  head?: string;
+  body?: string;
+  hands?: string;
+  feet?: string;
+  neck?: string;
+  ring?: string;
   size?: number;
   className?: string;
   accentColor?: string;
@@ -67,6 +78,12 @@ export function SpriteAvatar({
   shirtColor = '#14d6e8',
   weapon,
   shield,
+  head,
+  body,
+  hands,
+  feet,
+  neck,
+  ring,
   size = 140,
   className,
   accentColor,
@@ -76,11 +93,21 @@ export function SpriteAvatar({
   const ringColor = classStripe ?? accentColor ?? '#14d6e8';
   const innerColor = archetypeTint(archetype);
 
-  const skinFile   = `${SPRITE_BASE}/skin/${skinSlug(skinTone)}.png`;
-  const hairFile   = `${SPRITE_BASE}/hair/${HAIR_SPRITE_BASE[hairStyle]}_${hairColorSlug(hairColor)}.png`;
-  const shirtFile  = `${SPRITE_BASE}/shirts/${shirtSlug(shirtColor)}.png`;
-  const weaponFile = weapon ? `${SPRITE_BASE}/weapon/${weapon}.png` : null;
-  const shieldFile = shield ? `${SPRITE_BASE}/shield/${shield}.png` : null;
+  const skinFile    = `${SPRITE_BASE}/skin/${skinSlug(skinTone)}.png`;
+  const hairFile    = `${SPRITE_BASE}/hair/${HAIR_SPRITE_BASE[hairStyle]}_${hairColorSlug(hairColor)}.png`;
+  const shirtFile   = `${SPRITE_BASE}/shirts/${shirtSlug(shirtColor)}.png`;
+  // Equipped item sprites — the file name is the relative path
+  // stored on ItemDef.sprite (e.g. 'head/head_warrior_1.png').
+  // We prepend the /sprites/ base so the consumer doesn't have
+  // to think about it.
+  const headFile    = head    ? `${SPRITE_BASE}/${head}`   : null;
+  const bodyFile    = body    ? `${SPRITE_BASE}/${body}`   : null;
+  const handsFile   = hands   ? `${SPRITE_BASE}/${hands}`  : null;
+  const feetFile    = feet    ? `${SPRITE_BASE}/${feet}`   : null;
+  const neckFile    = neck    ? `${SPRITE_BASE}/${neck}`   : null;
+  const ringFile    = ring    ? `${SPRITE_BASE}/${ring}`   : null;
+  const weaponFile  = weapon  ? `${SPRITE_BASE}/weapon/${weapon}.png`  : null;
+  const shieldFile  = shield  ? `${SPRITE_BASE}/shield/${shield}.png`  : null;
 
   return (
     <svg
@@ -135,15 +162,52 @@ export function SpriteAvatar({
       {/* Sprite stack — each rendered at native 90×90. The natural
           transparency of each sprite lets the layer below show through. */}
       <g clipPath={`url(#disc-clip-${id})`}>
-        <image href={skinFile}   x="0" y="0" width="90" height="90" />
-        <image href={shirtFile}  x="0" y="0" width="90" height="90" />
+        {/* Skin is the body silhouette — the base everything else
+            paints over. */}
+        <image href={skinFile}    x="0" y="0" width="90" height="90" />
+
+        {/* Head piece: rendered before the hair so the hair can
+            paint over the helmet. */}
+        {headFile && (
+          <image href={headFile}  x="0" y="0" width="90" height="90" />
+        )}
+
+        {/* BODY item paints OVER the chosen shirt (e.g. a chestplate
+            covers the underlying plain shirt). The user can still
+            customize shirtColor as the underlayer. */}
+        <image href={shirtFile}   x="0" y="0" width="90" height="90" />
+        {bodyFile && (
+          <image href={bodyFile}   x="0" y="0" width="90" height="90" />
+        )}
+
+        {/* Hands / feet / neck / ring paint over the body but
+            under the hair / weapons so they don't cover the face. */}
+        {neckFile && (
+          <image href={neckFile}   x="0" y="0" width="90" height="90" />
+        )}
+        {handsFile && (
+          <image href={handsFile}  x="0" y="0" width="90" height="90" />
+        )}
+        {feetFile && (
+          <image href={feetFile}   x="0" y="0" width="90" height="90" />
+        )}
+
+        {/* Off-hand shield (LEFT) + main-hand weapon (RIGHT) sit
+            over everything else so the user's weapons stay in
+            front of their body. */}
         {shieldFile && (
           <image href={shieldFile} x="0" y="0" width="90" height="90" />
         )}
         {weaponFile && (
           <image href={weaponFile} x="0" y="0" width="90" height="90" />
         )}
-        <image href={hairFile}   x="0" y="0" width="90" height="90" />
+
+        {/* Ring (cosmetic — small icon overlay) and hair on top so
+            neither gets covered by the weapons. */}
+        {ringFile && (
+          <image href={ringFile}   x="0" y="0" width="90" height="90" />
+        )}
+        <image href={hairFile}    x="0" y="0" width="90" height="90" />
       </g>
 
       {/* Tick marks at cardinal points (Tron identifier) */}

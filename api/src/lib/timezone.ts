@@ -59,3 +59,23 @@ export function localMidnightUtc(localDate: string, timezone: string): Date {
   // care about the offset for that calendar day.
   return new Date(new Date(`${localDate}T00:00:00Z`).getTime() - offsetMin * 60_000);
 }
+
+/// Return the most recent Sunday 00:00 (in the given timezone) as a
+/// UTC Date. Used by the Hardcore heart-regen cron: every Sunday
+/// the user gets +1 heart. Always returns a Sunday at-or-before
+/// `at`, never a future one (so we can compute "weeks elapsed
+/// since last Sunday tick" without worrying about partial weeks).
+export function lastSundayMidnightUtc(
+  timezone: string | null,
+  at: Date = new Date(),
+): Date {
+  const tz = timezone || "UTC";
+  // Local-date for the anchor instant, then the weekday.
+  const localDate = todayInTz(tz, at);
+  const anchor = localMidnightUtc(localDate, tz);
+  // getUTCDay: 0=Sun, 1=Mon, ... 6=Sat. We want the most recent Sun.
+  const dow = anchor.getUTCDay();
+  const daysBack = dow; // 0 on Sun, 1 on Mon, etc.
+  return new Date(anchor.getTime() - daysBack * 24 * 60 * 60 * 1000);
+}
+

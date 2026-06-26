@@ -6,7 +6,7 @@ import { useAuth, type UserAvatar } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
-import { Avatar } from '@/components/Avatar';
+import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { ConstellationMap } from '@/components/ConstellationMap';
 import { HomeBasePage } from '@/components/HomeBaseCard';
 import type { HomeBase as HomeBaseData } from '@/lib/types';

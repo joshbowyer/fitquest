@@ -22,8 +22,8 @@ export function HeartsCard() {
     'cyan';
 
   const message =
-    hearts === 0 ? '⚠ Half rewards until a heart regenerates (~8h).' :
-    hearts <= 2 ? 'Hearts low — try to log a workout soon.' :
+    hearts === 0 ? '⚠ Half rewards until next Sunday tick.' :
+    hearts <= 2 ? 'Hearts low — try to log a workout before Sunday.' :
     'Full hearts. No penalty.';
 
   return (

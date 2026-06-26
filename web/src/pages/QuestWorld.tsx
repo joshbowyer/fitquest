@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
-import { Avatar } from '@/components/Avatar';
+import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { BossCard } from '@/components/BossCard';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {

@@ -6,7 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
-import { Avatar } from '@/components/Avatar';
+import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DeleteButton } from '@/components/DeleteButton';
 import { formatWeight, formatNum } from '@/lib/format';

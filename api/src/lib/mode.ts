@@ -24,18 +24,25 @@
  *
  * Heart regen is computed at *read* time, not via a cron, because the
  * value is bounded (5 max, 0 min) and the math is trivial. We compute
- * `floor((now - heartsLastRegenAt) / 8h)` and add it to the stored
- * value, capped at 5. The last-regen timestamp is bumped forward so
- * the client doesn't "double-dip" on its next read.
+ * `floor((now - heartsLastRegenAt) / 1 week)` and add it to the stored
+ * value, capped at 5. The last-regen timestamp is anchored to local
+ * Sunday-midnight in the user's tz, so a user who lost a heart on
+ * Wednesday gets a new one on Sunday morning (not just "one week
+ * from the loss"). The 8-hour cadence was too forgiving for users
+ * with a single planned workout per day — they'd never lose a heart
+ * in the first place, making Hardcore mode a no-op.
  *
  * The lib is pure-ish — the only DB touchpoints are read/write on
  * `User.hearts` + `User.heartsLastRegenAt`. The rest is computation.
  */
 import { prisma } from './prisma.js';
+import { lastSundayMidnightUtc } from './timezone.js';
 
-/// 8 hours in ms. Public so the UI can show "next heart in 4h 12m"
-/// if we ever want a countdown — for now we just show the total count.
-export const HEART_REGEN_MS = 8 * 60 * 60 * 1000;
+/// 1 week in ms. Hardcore regen cadence: +1 heart per local
+/// Sunday (in the user's tz). Anchored to Sunday midnight rather
+/// than "1 week from the last loss" so users get a predictable
+/// weekly recharge regardless of when they last dropped a heart.
+export const HEART_REGEN_MS = 7 * 24 * 60 * 60 * 1000;
 
 /// Caffeine / alcohol thresholds for Hardcore mode substance caps.
 /// Per-day caffeine, per-week alcohol. Conservative — the point is
@@ -57,7 +64,7 @@ export type UserMode = 'CASUAL' | 'HARDCORE';
 export async function tickHearts(userId: string): Promise<number> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { hearts: true, heartsLastRegenAt: true, mode: true },
+    select: { hearts: true, heartsLastRegenAt: true, mode: true, timezone: true },
   });
   if (!user) return 0;
 
@@ -76,17 +83,36 @@ export async function tickHearts(userId: string): Promise<number> {
     return 5;
   }
 
-  const last = user.heartsLastRegenAt ?? new Date();
-  const elapsed = Date.now() - last.getTime();
-  if (elapsed < HEART_REGEN_MS) {
-    // Not enough time elapsed for even one tick. Return current.
+  // Anchor: the most recent Sunday midnight in the user's tz.
+  // If the user just dropped to 4 hearts on Wednesday, this still
+  // returns the same Sunday they ticked on, so the next regen
+  // happens at the FOLLOWING Sunday — not "one week from the loss".
+  const now = new Date();
+  const lastSunday = lastSundayMidnightUtc(user.timezone, now);
+
+  // Initial value: never ticked. Seed to this Sunday so the next
+  // tick is at most a week away. For a user entering Hardcore
+  // mid-week, their first regen is the upcoming Sunday.
+  const last = user.heartsLastRegenAt ?? lastSunday;
+  if (last.getTime() > now.getTime()) {
+    // Stored value is in the future (legacy / clock skew). Snap to
+    // this Sunday and re-evaluate.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { heartsLastRegenAt: lastSunday },
+    });
     return user.hearts;
   }
-  const ticks = Math.floor(elapsed / HEART_REGEN_MS);
-  const next = Math.min(5, user.hearts + ticks);
-  // Bump the timer by the exact number of ticks we credited, so a
-  // client polling every minute doesn't see phantom regen mid-tick.
-  const newLast = new Date(last.getTime() + ticks * HEART_REGEN_MS);
+
+  const weeksSince = Math.floor((now.getTime() - last.getTime()) / HEART_REGEN_MS);
+  if (weeksSince < 1) {
+    // Same Sunday window — no regen yet. Return current.
+    return user.hearts;
+  }
+  const next = Math.min(5, user.hearts + weeksSince);
+  // Bump the timer to the most recent Sunday (weeksSince back from
+  // now rounded). Next tick is then the following Sunday.
+  const newLast = new Date(now.getTime() - (now.getTime() - last.getTime()) % HEART_REGEN_MS);
   await prisma.user.update({
     where: { id: userId },
     data: { hearts: next, heartsLastRegenAt: newLast },

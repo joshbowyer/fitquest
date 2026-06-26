@@ -24,6 +24,13 @@ export type AvatarProps = {
   /** Sprite variant IDs — used when `sprites` is true. */
   weapon?: string;
   shield?: string;
+  /** Equipped item sprite paths (relative to /sprites). */
+  head?: string;
+  body?: string;
+  hands?: string;
+  feet?: string;
+  neck?: string;
+  ring?: string;
 };
 
 /**
@@ -57,6 +64,12 @@ export function Avatar({
   sprites = false,
   weapon,
   shield,
+  head,
+  body,
+  hands,
+  feet,
+  neck,
+  ring,
 }: AvatarProps) {
   // Branch: sprite-based avatar when `sprites` is enabled and the
   // browser has loaded the sprite assets. We forward skinTone too —
@@ -73,6 +86,12 @@ export function Avatar({
         shirtColor={shirtColor}
         weapon={weapon}
         shield={shield}
+        head={head}
+        body={body}
+        hands={hands}
+        feet={feet}
+        neck={neck}
+        ring={ring}
         size={typeof size === 'number' ? size : 160}
         className={className}
         accentColor={accentColor}
