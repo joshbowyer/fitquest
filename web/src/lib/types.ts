@@ -726,3 +726,47 @@ export const MEAL_TYPE_LABEL: Record<MealType, string> = {
 
 export const MEAL_TYPE_ORDER: MealType[] = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNACK'];
 
+
+// =============================================================================
+// Portal Leak — short-lived home-base encounter spawned when the shield
+// drops below COMPROMISED. Damage comes from workouts matching the leak's
+// preferredTags; defeat grants a pre-rolled loot drop.
+// =============================================================================
+
+export type PortalLeakStatus = 'ACTIVE' | 'DEFEATED' | 'OVERWHELMED' | 'EXPIRED';
+
+export type PortalLeak = {
+  id: string;
+  userId: string;
+  monsterName: string;
+  monsterEmoji: string;
+  monsterColor: string;
+  intro: string;
+  preferredTags: string[];
+  bonusTags: string[];
+  hp: number;
+  maxHp: number;
+  status: PortalLeakStatus;
+  spawnedAt: string;
+  resolvedAt: string | null;
+  itemDrop: string | null;
+  resolvedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LeakDamageEvent = {
+  id: string;
+  userId: string;
+  leakId: string;
+  workoutId: string | null;
+  damage: number;          // negative = healed (mismatched workout)
+  leakHpAfter: number;
+  matchType: 'matched' | 'mismatched' | 'partial' | 'bonus';
+  createdAt: string;
+};
+
+export type PortalLeakResponse = {
+  leak: PortalLeak | null;
+  recent: LeakDamageEvent[];
+};

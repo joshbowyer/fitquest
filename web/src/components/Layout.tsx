@@ -40,6 +40,8 @@ const NAV: NavItem[] = [
   { to: '/skills',       label: 'Skills',     icon: '✦', mobile: false },
   { to: '/party',        label: 'Party',      icon: '⚑', mobile: false },
   { to: '/inventory',    label: 'Inventory',  icon: '⚔', mobile: false },
+  { to: '/home-base',    label: 'HomeBase',   icon: '◉', mobile: false },
+  { to: '/portal-leak',  label: 'Leaks',      icon: '◌', mobile: false },
   { to: '/achievements', label: 'Achieve',    icon: '◆', mobile: false },
   { to: '/profile',      label: 'Profile',    icon: '◉', mobile: false },
   { to: '/settings',     label: 'Settings',   icon: '⚙', mobile: false },

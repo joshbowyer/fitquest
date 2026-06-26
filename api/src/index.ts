@@ -228,6 +228,28 @@ async function main() {
     }, 24 * 60 * 60 * 1000);
   }, corrMs);
 
+  // Portal-leak daily tick — grows active leaks by +8 HP/day so an
+  // un-engaged leak escalates, and marks leaks past the 48h TTL as
+  // EXPIRED. Runs every hour (cheap; just a SELECT + UPDATE per active
+  // leak) so a leak born mid-day sees its +8 growth tick before the
+  // user logs again. Runs at minute-past-the-hour.
+  const leakTick = () => {
+    setTimeout(async () => {
+      try {
+        const { tickLeakGrowth } = await import('./lib/portalLeaks.js');
+        const r = await tickLeakGrowth();
+        if (r.ticked > 0 || r.expired > 0) {
+          app.log.info(r, 'portal leak hourly tick');
+        }
+      } catch (err: any) {
+        app.log.warn({ err: String(err?.message ?? err) }, 'portal leak tick failed');
+      }
+      leakTick();
+    }, 60 * 60 * 1000); // 1h
+  };
+  leakTick();
+  app.log.info('portal leak hourly tick scheduled');
+
   // Plateau snapshot cron — Sunday 22:00 local. Runs detectPlateaus
   // for every active user and persists the result so the dashboard
   // can show a stale-badge count without forcing a morning-report

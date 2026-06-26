@@ -5,6 +5,7 @@ import { RegisterPage } from './pages/Register';
 import { DashboardPage } from './pages/Dashboard';
 import { ActivitiesPage } from './pages/Activities';
 import { RoutinesPage } from './pages/Routines';
+import { PortalLeakPage } from './pages/PortalLeak';
 import { ActivityDetailPage } from './pages/ActivityDetail';
 import { MeasurementsPage } from './pages/Measurements';
 import { InsightsPage } from './pages/Insights';
@@ -92,6 +93,7 @@ export default function App() {
       <Route path="/team-workout/:id" element={<RequireAuth><TeamWorkoutPage /></RequireAuth>} />
       <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />
       <Route path="/home-base" element={<RequireAuth><HomeBasePage /></RequireAuth>} />
+      <Route path="/portal-leak" element={<RequireAuth><PortalLeakPage /></RequireAuth>} />
       <Route path="/achievements" element={<RequireAuth><AchievementsPage /></RequireAuth>} />
       <Route path="/inventory" element={<RequireAuth><InventoryPage /></RequireAuth>} />
       <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />

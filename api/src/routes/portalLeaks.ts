@@ -30,6 +30,23 @@ export async function portalLeakRoutes(app: FastifyInstance) {
     return result;
   });
 
+  // GET /portal-leak/history — recently-resolved leaks (DEFEATED /
+  // OVERWHELMED / EXPIRED), newest first. The dashboard card only
+  // shows the current leak, so this is for the full /portal-leak
+  // page and any future "leak log" elsewhere.
+  app.get('/history', async (req) => {
+    const me = await requireUser(req);
+    const items = await prisma.portalLeak.findMany({
+      where: {
+        userId: me.id,
+        status: { in: ['DEFEATED', 'OVERWHELMED', 'EXPIRED'] },
+      },
+      orderBy: { resolvedAt: 'desc' },
+      take: 25,
+    });
+    return { items };
+  });
+
   // POST /portal-leak/check-spawn — call after any shield-drop
   // event. Reads current shield score, rolls dice based on tier,
   // and spawns a leak if conditions are right.

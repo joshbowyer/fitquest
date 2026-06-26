@@ -35,6 +35,19 @@ export const BREACH_UNLOCK_LEVEL = 10;
 // is the design — but never one.
 export const DAILY_DAMAGE_CAP_RATIO = 1.5;
 
+// Home-base shield tier scales outgoing damage to a boss:
+//   FORTIFIED    0.5×  healthy home base resists the breach
+//   STABLE       1.0×  baseline
+//   COMPROMISED  1.25× slight bump
+//   BREECHED     2.0×  the leak is already in; the breach escalates
+// Heals aren't scaled (the mismatched-heal math doesn't amplify).
+const SHIELD_TIER_DMG_MULT: Record<string, number> = {
+  FORTIFIED: 0.5,
+  STABLE: 1.0,
+  COMPROMISED: 1.25,
+  BREECHED: 2.0,
+};
+
 // Re-encounter rule: same boss after death returns at +25% maxHp.
 // The HP delta is applied per death, so a third death makes it
 // 1.25² = 1.5625× maxHp, etc. Caps at 2.0× to keep it bounded.
@@ -356,12 +369,27 @@ export async function applyWorkoutDamage(
   userId: string,
   workoutId: string,
   prisma: PrismaClient = defaultPrisma
-): Promise<{ dealt: number; matchType: string; bossHpAfter: number; killed: boolean } | null> {
+): Promise<{
+  dealt: number;
+  matchType: string;
+  bossHpAfter: number;
+  killed: boolean;
+  /** Shield-tier multiplier that was applied to this hit (0.5×..2.0×). */
+  shieldMult: number;
+  /** Tier name (FORTIFIED / STABLE / COMPROMISED / BREECHED). */
+  shieldTier: string;
+} | null> {
   const progress = await getOrCreateProgress(userId, prisma);
   if (progress.status !== 'ACTIVE' || !progress.currentBossId) return null;
 
   const boss = await prisma.breachBoss.findUnique({ where: { id: progress.currentBossId } });
   if (!boss) return null;
+
+  // Read the user's current shield tier so we can scale outgoing
+  // damage per the home-base engagement rule. We look it up from
+  // HomeBase which is the source of truth for shield state.
+  const homeBase = await prisma.homeBase.findUnique({ where: { userId } });
+  const userShieldTier = (homeBase?.tier ?? 'STABLE') as keyof typeof SHIELD_TIER_DMG_MULT;
 
   const workout = await prisma.workout.findUnique({
     where: { id: workoutId },
@@ -398,6 +426,16 @@ export async function applyWorkoutDamage(
     damageToday = 0;
     damageDayKey = dayKey;
   }
+
+  // Shield-tier damage modifier. FORTIFIED halves damage (a healthy
+  // home base resists), BREECHED doubles it (the leak is already
+  // in). Heals aren't multiplied — negative damage stays as the
+  // raw mismatched-heal value so the boss can't be healed harder
+  // by a vulnerable home base.
+  const shieldMult = SHIELD_TIER_DMG_MULT[userShieldTier] ?? 1.0;
+  if (appliedDelta > 0) {
+    appliedDelta = Math.round(appliedDelta * shieldMult);
+  }
   if (delta > 0) {
     const cap = Math.round(boss.maxHp * DAILY_DAMAGE_CAP_RATIO);
     const remaining = Math.max(0, cap - damageToday);
@@ -432,7 +470,14 @@ export async function applyWorkoutDamage(
     }),
   ]);
 
-  return { dealt: appliedDelta, matchType, bossHpAfter: newHp, killed };
+  return {
+    dealt: appliedDelta,
+    matchType,
+    bossHpAfter: newHp,
+    killed,
+    shieldMult,
+    shieldTier: userShieldTier,
+  };
 }
 
 // ============================================================

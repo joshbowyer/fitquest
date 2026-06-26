@@ -13,6 +13,7 @@ import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { MorningReportCard } from '@/components/MorningReportCard';
 import { HomeBaseCard } from '@/components/HomeBaseCard';
+import { PortalLeakCard } from '@/components/PortalLeakCard';
 import { CheckInsPanel } from '@/components/CheckInsPanel';
 import { InsightsPanel } from '@/components/InsightsPanel';
 import { FramePanel } from '@/components/FramePanel';
@@ -266,6 +267,13 @@ export function DashboardPage() {
 
         <HeartsCard />
         <HomeBaseCard />
+      </div>
+
+      {/* Portal leak — full-width row right under the top hero so
+          an active leak is impossible to miss. The card collapses
+          to a small status strip when there's no active leak. */}
+      <div className="mb-4 md:mb-6">
+        <PortalLeakCard />
       </div>
 
       {/* Morning briefing (LLM-generated, per-user per-day).
