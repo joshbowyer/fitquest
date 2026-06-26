@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { classNames } from '@/lib/format';
 
 // =============================================================================
@@ -475,16 +476,15 @@ function TemplateEditor({
           <div key={ei} className="border border-ink-500/30 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono text-ink-400 w-6 shrink-0">#{ei + 1}</span>
-              <input
-                type="text"
+              <ExerciseAutocomplete
+                className="flex-1 text-sm"
                 value={ex.name}
-                onChange={(e) => {
+                onChange={(v) => {
                   const copy = [...draft.exercises];
-                  copy[ei] = { ...copy[ei], name: e.target.value };
+                  copy[ei] = { ...copy[ei], name: v };
                   setDraft({ ...draft, exercises: copy });
                 }}
                 placeholder="e.g. Bench Press"
-                className="input-neon flex-1 text-sm"
               />
               {draft.exercises.length > 1 && (
                 <button
