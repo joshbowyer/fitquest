@@ -843,13 +843,39 @@ export function ProfilePage() {
               <div className="text-xs font-mono text-ink-100 mb-1">
                 Timezone
               </div>
-              <input
-                className="input-neon w-full text-xs"
-                value={timezoneDraft}
-                onChange={(e) => setTimezoneDraft(e.target.value)}
-                placeholder="e.g. America/New_York"
-                list="tz-list"
-              />
+              <div className="flex items-stretch gap-2">
+                <input
+                  className="input-neon flex-1 text-xs"
+                  value={timezoneDraft}
+                  onChange={(e) => setTimezoneDraft(e.target.value)}
+                  placeholder="e.g. America/New_York"
+                  list="tz-list"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await api('/users/me', {
+                        method: 'PATCH',
+                        body: { timezone: timezoneDraft || null },
+                      });
+                      // Refresh the auth context so the new timezone
+                      // takes effect everywhere (relative date math,
+                      // today() helpers, streak windows, etc.).
+                      await refresh();
+                      setTimezoneDraft(user?.timezone ?? '');
+                      setSaveResult({ kind: 'saved', message: 'Timezone saved.' });
+                      setTimeout(() => setSaveResult({ kind: 'idle', message: '' }), 3000);
+                    } catch (e: any) {
+                      setSaveResult({ kind: 'error', message: e?.message ?? 'Save failed' });
+                    }
+                  }}
+                  disabled={!timezoneChanged}
+                  className="px-3 h-9 text-[10px] font-mono uppercase tracking-widest border border-neon-cyan text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neon-cyan/5"
+                >
+                  Save
+                </button>
+              </div>
               <datalist id="tz-list">
                 <option value="America/New_York" />
                 <option value="America/Chicago" />
