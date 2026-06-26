@@ -26,6 +26,7 @@ export async function exerciseRoutes(app: FastifyInstance) {
       { name: 'Calf Raise', category: 'HYPERTROPHY' },
       { name: 'Plank', category: 'CALISTHENICS' },
       { name: 'L-Sit', category: 'CALISTHENICS' },
+      { name: 'Dragon Flag', category: 'CALISTHENICS' },
       { name: 'Muscle-Up', category: 'CALISTHENICS' },
       { name: 'Push-up', category: 'CALISTHENICS' },
       { name: 'Dip', category: 'CALISTHENICS' },

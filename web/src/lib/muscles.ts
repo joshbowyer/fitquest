@@ -386,6 +386,17 @@ const EXERCISE_DB: ExerciseMuscles[] = [
     primary: [{ part: 'ABS', priority: 100 }],
     secondary: [{ part: 'HIP_L', priority: 30 }, { part: 'HIP_R', priority: 30 }],
     load: 'BODYWEIGHT', displayName: 'Leg Raise', group: 'core' },
+  // Dragon Flag — full-body lever with abs as the only mover.
+  // Hands grip behind the head and the entire lower body lifts as
+  // one rigid plank, so the abs do basically everything while the
+  // obliques resist rotation and the back / shoulders stabilise the
+  // anchor point. Considered one of the hardest bodyweight core
+  // progressions (after the human flag, hence the name).
+  { matches: ['dragon flag', 'dragon flags'],
+    primary: [{ part: 'ABS', priority: 100 }],
+    secondary: [{ part: 'OBLIQUE_L', priority: 70 }, { part: 'OBLIQUE_R', priority: 70 }, { part: 'HIP_L', priority: 60 }, { part: 'HIP_R', priority: 60 }, { part: 'BACK_LOWER', priority: 60 }],
+    stabilizers: [{ part: 'LAT_L', priority: 50 }, { part: 'LAT_R', priority: 50 }, { part: 'SHOULDER_L', priority: 40 }, { part: 'SHOULDER_R', priority: 40 }],
+    load: 'BODYWEIGHT', displayName: 'Dragon Flag', group: 'core', category: 'CALISTHENICS' },
   { matches: ['ab wheel', 'ab rollout'],
     primary: [{ part: 'ABS', priority: 100 }, { part: 'BACK_LOWER', priority: 60 }],
     secondary: [{ part: 'OBLIQUE_L', priority: 40 }, { part: 'OBLIQUE_R', priority: 40 }],
