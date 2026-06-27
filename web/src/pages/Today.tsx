@@ -11,7 +11,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
 import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
-import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
+import { CheckInsPanel } from '@/components/CheckInsPanel';
 import { type UnitSystem } from '@/lib/units';
 import { useLiveClock } from '@/hooks/useLiveClock';
 
@@ -258,10 +258,12 @@ export function TodayPage() {
               )}
             </div>
 
-            {/* Habits column — reuses the TodayHabitsPanel so the
-                dashboard + today stay in sync. */}
-            <div>
-              <TodayHabitsPanel />
+            {/* Check-ins — same cadence cards as the dashboard,
+                stacked vertically so they fit the narrower right
+                column on the /today page. Each card has its own
+                "View all →" link to /check-ins at the bottom. */}
+            <div className="space-y-3">
+              <CheckInsPanel layout="stack" />
             </div>
           </div>
         </>

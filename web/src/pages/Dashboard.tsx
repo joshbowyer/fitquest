@@ -9,7 +9,6 @@ import { Panel } from '@/components/Panel';
 import { ProgressBar } from '@/components/ProgressBar';
 import { BossBar } from '@/components/BossBar';
 import { WeighInPanel } from '@/components/WeighInPanel';
-import { TodayHabitsPanel } from '@/components/TodayHabitsPanel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { MorningReportCard } from '@/components/MorningReportCard';
 import { HomeBaseCard } from '@/components/HomeBaseCard';
@@ -60,7 +59,7 @@ const monotonicMetricKeys = new Set([
 ]);
 
 // Categories displayed as gauges on the stat sheet. New habit categories
-// (SLEEP/NUTRITION/WELLNESS) are surfaced in TodayHabitsPanel instead.
+// (SLEEP/NUTRITION/WELLNESS) are surfaced in CheckInsPanel instead.
 const STAT_SHEET_CATEGORIES: Array<keyof typeof METRICS_BY_CATEGORY> = [
   'HYPERTROPHY', 'STRENGTH', 'BODY_COMP', 'CARDIO', 'CALISTHENICS',
 ];
@@ -287,10 +286,9 @@ export function DashboardPage() {
         <MorningReportCard withMetricInsights />
       </div>
 
-      {/* Daily weigh-in + today + nutrition + habits — quick indicators. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-4 md:mb-6">
+      {/* Daily weigh-in + nutrition + habits — quick indicators. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-4 md:mb-6">
         <WeighInPanel />
-        <TodayHabitsPanel />
         <NutritionWidget />
         <HabitsWidget />
       </div>

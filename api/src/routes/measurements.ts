@@ -231,9 +231,14 @@ export async function measurementRoutes(app: FastifyInstance) {
       metrics: z.string().optional(), // comma-separated MetricType
     }).parse(req.query);
     const metrics = q.metrics ? q.metrics.split(',') : [
+      // Default habit metrics shown on /today and the dashboard
+      // check-in panel. WEIGHT is included so a weigh-in via the
+      // dashboard's Daily Weigh-In block shows up on the Today
+      // page without a separate refresh.
       'SLEEP_HOURS', 'SLEEP_QUALITY',
       'CALORIES', 'PROTEIN_G', 'WATER_ML',
       'MOOD', 'ENERGY', 'SORENESS', 'STRESS',
+      'WEIGHT',
     ];
     const status = await getTodayHabitStatus(me.id, metrics);
     return { status };

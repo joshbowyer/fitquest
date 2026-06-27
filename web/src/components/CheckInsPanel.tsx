@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { classNames } from '@/lib/format';
 import { Modal } from './Modal';
@@ -21,16 +22,17 @@ import {
 import { convertForStorage, displayUnit } from '@/lib/units';
 
 /**
- * Dashboard check-in panel. Shows up to 3 cadence cards (AM/PM/WEEKLY)
- * whichever have overdue metrics. Each card has inline quick-log
- * buttons for its due metrics; tapping one opens the QuickLogModal
- * which POSTs to /measurements and invalidates the relevant queries.
+ * Check-in cadence panel — used on Dashboard (grid layout) and the
+ * /today page (stack layout). Each cadence (AM / PM / WEEKLY) renders
+ * as its own card with up to 5 inline quick-log rows; tapping one
+ * opens QuickLogModal which POSTs to /measurements and invalidates
+ * the relevant queries.
  *
- * PM card hides itself before 17:00 local — the user shouldn't see
- * "evening check-in" at 9am. WEEKLY card is always visible (no
- * time-of-day gate).
+ * The PM card dims if it's outside the 17:00–24:00 local window so
+ * the user isn't nagged to log "evening" at 9am. WEEKLY has no
+ * time-of-day gate.
  */
-export function CheckInsPanel() {
+export function CheckInsPanel({ layout = 'grid' }: { layout?: 'grid' | 'stack' } = {}) {
   const { user } = useAuth();
   const timezone = user?.timezone ?? null;
   const qc = useQueryClient();
@@ -85,9 +87,14 @@ export function CheckInsPanel() {
     );
   }
 
+  const gridClass =
+    layout === 'stack'
+      ? 'space-y-3'
+      : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3';
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className={gridClass}>
         {visibleCadences.map((cadence) => (
           <CadenceCard
             key={cadence}
@@ -125,6 +132,7 @@ function CadenceCard({
 }) {
   const variant = CADENCE_VARIANT[cadence];
   const glyph = CADENCE_GLYPH[cadence];
+  const overflow = items.length > 5 ? items.length - 5 : 0;
   return (
     <div
       className={classNames(
@@ -155,12 +163,29 @@ function CadenceCard({
         {items.slice(0, 5).map((item) => (
           <CheckInRow key={item.metric} item={item} onClick={() => onQuickLog(item)} />
         ))}
-        {items.length > 5 && (
-          <li className="text-[10px] font-mono text-ink-400 italic">
-            +{items.length - 5} more on the check-ins page
-          </li>
-        )}
       </ul>
+      {/* One consistent CTA at the bottom — takes the user to the
+          full /check-ins page if there are overflow items OR if they
+          just want to browse / re-log earlier entries. Replaces the
+          old "+N more on the check-ins page" inline hint which only
+          showed on overflow and was easy to miss. */}
+      <div className="mt-2 pt-2 border-t border-current/10">
+        <Link
+          to="/check-ins"
+          className={classNames(
+            DOPA_TAP_CLASS,
+            'flex items-center justify-between text-[10px] font-display tracking-widest uppercase',
+            `text-neon-${variant} hover:underline`,
+          )}
+        >
+          <span>
+            {overflow > 0
+              ? `+${overflow} more`
+              : `All ${CADENCE_SHORT[cadence].toLowerCase()} check-ins`}
+          </span>
+          <span aria-hidden>→</span>
+        </Link>
+      </div>
     </div>
   );
 }
