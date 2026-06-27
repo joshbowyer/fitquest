@@ -143,7 +143,7 @@ const CANONICAL_FORMS: Record<string, string[]> = {
 };
 
 function inferMealType(): MealType {
-  const h = new Date().getHours();
+  const h = getLocalHour(new Date(), userTz);
   if (h < 11) return 'BREAKFAST';
   if (h < 15) return 'LUNCH';
   if (h < 21) return 'DINNER';
@@ -286,6 +286,7 @@ export function TodayActions() {
 
 function WaterTile() {
   const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const q = useQuery({
     queryKey: ['today', 'water'],
     queryFn: () => api<MeasurementsResponse>('/measurements?metric=WATER_ML&limit=200'),
@@ -294,8 +295,7 @@ function WaterTile() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
   const system: UnitSystem = (user?.units ?? 'METRIC') as UnitSystem;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   let totalMl = 0;
   for (const m of q.data?.items ?? []) {
     if (new Date(m.recordedAt) >= today) totalMl += m.value;
@@ -429,8 +429,7 @@ function ActivitySummary() {
     queryKey: ['today', 'workout'],
     queryFn: () => api<{ items: any[] }>('/workouts?limit=200'),
   });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   const todayCount = (q.data?.items ?? []).filter((w) => new Date(w.performedAt) >= today).length;
   return todayCount > 0 ? (
     <span className="text-neon-lime">✓ logged today</span>
@@ -447,8 +446,7 @@ function PrayerSummary() {
     queryFn: () => api<{ logs: Array<{ id: string; type: string | null; loggedAt: string }> }>('/spiritual'),
     refetchInterval: 60_000,
   });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   const todayLogs = (q.data?.logs ?? []).filter((l) => new Date(l.loggedAt) >= today);
   return todayLogs.length > 0 ? (
     <span className="text-neon-lime">✓ {todayLogs.length} prayer{todayLogs.length === 1 ? '' : 's'} today</span>
@@ -1015,7 +1013,7 @@ function SubstanceLogModal({
   const qc = useQueryClient();
   // No free-form input — modal is now buttons-only.
   const today = (q: { items: Array<{ category: string; loggedAt: string; form: string }> }) =>
-    q.items.filter((s) => s.category === category && new Date(s.loggedAt) >= new Date(new Date().setHours(0, 0, 0, 0))).length;
+    q.items.filter((s) => s.category === category && new Date(s.loggedAt) >= localTodayStartUtc(userTz)).length;
   const recentQ = useQuery({
     queryKey: ['substances', category, days],
     queryFn: () => api<SubstancesResponse>(`/substances?days=${days}`),

@@ -8,6 +8,7 @@ import { NeonButton } from './NeonButton';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { METRICS, type MetricType } from '@/lib/types';
+import { todayInTz, localTodayStartUtc, localTodayEndUtc, getLocalHour, getLocalDayOfWeek } from '@/lib/timezone';
 
 /**
  * Quick-log blocks for the /today one-stop-shop. Each block is
@@ -159,8 +160,7 @@ function WaterBlock({ system }: { system: UnitSystem }) {
     });
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   let total = 0;
   let lastAt: string | null = null;
   for (const m of q.data?.items ?? []) {
@@ -376,8 +376,7 @@ function SleepBlock({ system }: { system: UnitSystem }) {
       ),
     refetchInterval: 60_000,
   });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   let hours: number | null = null;
   let hoursAt: string | null = null;
   let quality: number | null = null;
@@ -474,8 +473,7 @@ function WeighInBlock({ system }: { system: UnitSystem }) {
     queryFn: () => api<MeasurementsResponse>('/measurements?metric=WEIGHT&limit=200'),
     refetchInterval: 60_000,
   });
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   let lastValue: number | null = null;
   let lastAt: string | null = null;
   for (const m of q.data?.items ?? []) {

@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth';
+import { localTodayStartUtc } from '@/lib/timezone';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -36,6 +38,8 @@ type Measurement = {
  * Fetches via the existing `/measurements?metric=X` endpoint.
  */
 export function SleepOverviewChart({ days = 30 }: { days?: number }) {
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const onsetsQ = useQuery({
     queryKey: ['measurements', 'SLEEP_ONSET', days],
     queryFn: () =>
@@ -84,8 +88,7 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
     };
 
     // Build a date axis covering the last `days` days.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = localTodayStartUtc(userTz);
     const out: Array<{
       day: string;
       onset: number | null;

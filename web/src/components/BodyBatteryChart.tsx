@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth';
+import { localTodayStartUtc } from '@/lib/timezone';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -53,6 +55,8 @@ type Props = {
  * work needed.
  */
 export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const bbQ = useQuery({
     queryKey: ['measurements', 'BODY_BATTERY', days],
     queryFn: () => api<{ items: Measurement[] }>(`/measurements?metric=BODY_BATTERY&limit=200`),
@@ -96,8 +100,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
     const qualityMap = pickLast(qualityQ.data?.items ?? []);
 
     // Build a date axis covering the last `days` days.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = localTodayStartUtc(userTz);
     const out: Array<{
       day: string;
       bb: number | null;

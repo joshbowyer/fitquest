@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/auth';
+import { localTodayStartUtc } from '@/lib/timezone';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
@@ -45,6 +47,7 @@ type MealsTodayResponse = {
  */
 export function NutritionWidget() {
   const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const system: UnitSystem = user?.units ?? 'METRIC';
   const targets = loadTargets();
 
@@ -75,8 +78,7 @@ export function NutritionWidget() {
   }
 
   // Water: sum WATER_ML rows for today.
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = localTodayStartUtc(userTz);
   let waterTotal = 0;
   let waterLastAt: string | null = null;
   for (const m of waterQ.data?.items ?? []) {
