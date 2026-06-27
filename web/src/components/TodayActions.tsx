@@ -305,7 +305,25 @@ function WaterTile() {
   const pct = Math.min(100, Math.round((totalMl / targetMl) * 100));
   // Display in the user's preferred unit. Storage stays in ml.
   const totalDisp = convertForDisplay(totalMl, 'ml', system);
-  const summaryStr = `${totalDisp.value.toFixed(1)} ${totalDisp.unit} · ${pct}%`;
+  const targetDisp = convertForDisplay(targetMl, 'ml', system);
+  // Presets match the Nutrition tab so 8 fl oz logs as 8 fl oz,
+  // not 8.5 (which is what 250ml rounds to).
+  const presets =
+    system === 'IMPERIAL'
+      ? [
+          { ml: 237, label: '+8 oz',   title: 'Small glass (~8 fl oz / 237 ml)' },
+          { ml: 355, label: '+12 oz',  title: 'Tall glass / can (~12 fl oz / 355 ml)' },
+          { ml: 473, label: '+16 oz',  title: 'Large cup / bottle (~16 fl oz / 473 ml)' },
+          { ml: 710, label: '+24 oz',  title: 'Big bottle (~24 fl oz / 710 ml)' },
+        ]
+      : [
+          { ml: 200, label: '+200', title: 'Small cup (~200 ml)' },
+          { ml: 250, label: '+250', title: 'Standard glass (~250 ml)' },
+          { ml: 350, label: '+350', title: 'Tall glass / can (~350 ml)' },
+          { ml: 500, label: '+500', title: 'Bottle (~500 ml)' },
+          { ml: 750, label: '+750', title: 'Large bottle (~750 ml)' },
+        ];
+  const summaryStr = `${totalDisp.value.toFixed(0)} ${totalDisp.unit} · ${pct}%`;
   const logM = useMutation({
     mutationFn: (ml: number) =>
       api<{ id: string }>('/measurements', {
@@ -331,38 +349,73 @@ function WaterTile() {
       />
       <Modal open={open} onClose={() => setOpen(false)} title="Log water" width="max-w-sm">
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {[250, 500, 750, 1000].map((ml) => {
-              // Pill labels show the user's preferred unit. POST
-              // payload always uses ml (storage unit).
-              const disp = convertForDisplay(ml, 'ml', system);
-              const val = disp.value >= 100 ? Math.round(disp.value) : disp.value.toFixed(0);
-              return (
-                <button
-                  key={ml}
-                  type="button"
-                  disabled={logM.isPending}
-                  onClick={() => logM.mutate(ml)}
-                  className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
-                >
-                  +{val} {disp.unit}
-                </button>
-              );
-            })}
+          {/* Progress: current total vs goal, with the same color
+              ladder DailyTotalsBar uses. Keeps the user oriented
+              before they tap a preset. */}
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[10px] font-mono uppercase text-ink-400 tracking-widest">
+                Today
+              </span>
+              <span className="text-xs font-mono text-ink-300">
+                {totalDisp.value.toFixed(0)} {totalDisp.unit}
+                <span className="text-ink-500"> / {targetDisp.value.toFixed(0)} {targetDisp.unit}</span>
+              </span>
             </div>
+            <div className="h-1.5 bg-slate-800 border border-ink-500/30 overflow-hidden">
+              <div
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${pct}%`,
+                  background:
+                    pct >= 100
+                      ? '#9bff5c'
+                      : pct >= 60
+                      ? '#5ec5e8'
+                      : '#3aa0c8',
+                }}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((p) => (
+              <button
+                key={p.ml}
+                type="button"
+                disabled={logM.isPending}
+                onClick={() => logM.mutate(p.ml)}
+                title={p.title}
+                className="px-3 h-8 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center gap-2">
             <input
               type="number"
+              min="1"
+              step="1"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="custom ml"
+              placeholder={system === 'IMPERIAL' ? 'custom fl oz' : 'custom ml'}
               autoFocus
               className="flex-1 bg-bg-900 border border-ink-700/40 px-2 py-1.5 text-sm font-mono rounded"
             />
+            {system === 'IMPERIAL' && (
+              <span className="text-[10px] font-mono text-ink-400">fl oz</span>
+            )}
             <button
               type="button"
               disabled={logM.isPending || !value}
-              onClick={() => logM.mutate(Number(value))}
+              onClick={() => {
+                const n = Number(value);
+                if (!Number.isFinite(n) || n <= 0) return;
+                const ml = system === 'IMPERIAL'
+                  ? Math.round(n * 29.5735)
+                  : Math.round(n);
+                logM.mutate(ml);
+              }}
               className="px-3 py-1.5 text-sm font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
             >
               Log
