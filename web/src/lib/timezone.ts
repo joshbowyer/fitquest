@@ -63,9 +63,12 @@ export function localTodayStartUtc(
   at: Date = new Date(),
 ): Date {
   const dateStr = todayInTz(timezone, at);
+  // Noon-of-local-date in UTC is a DST-safe anchor; from there we
+  // recover local midnight by subtracting both the offset and the
+  // 12-hour noon→midnight shift.
   const noonUtc = new Date(`${dateStr}T12:00:00Z`);
   const offsetMin = tzOffsetMinutes(timezone, noonUtc);
-  return new Date(noonUtc.getTime() - offsetMin * 60_000);
+  return new Date(noonUtc.getTime() - offsetMin * 60_000 - 12 * 60 * 60 * 1000);
 }
 
 /// UTC instant for the END of the user's local today (23:59:59.999).
