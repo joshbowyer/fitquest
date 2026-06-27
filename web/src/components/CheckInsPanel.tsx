@@ -4,6 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { classNames } from '@/lib/format';
 import { Modal } from './Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { useDopamineTap, DOPA_TAP_CLASS } from '@/hooks/useDopamineTap';
 import { useAuth } from '@/lib/auth';
 import { METRICS } from '@/lib/types';
 import {
@@ -34,6 +35,7 @@ export function CheckInsPanel() {
   const timezone = user?.timezone ?? null;
   const qc = useQueryClient();
   const [logMetric, setLogMetric] = useState<DueMetricDto | null>(null);
+  const { onTap } = useDopamineTap();
 
   const dueQ = useQuery({
     queryKey: ['check-ins', 'due'],
@@ -72,7 +74,7 @@ export function CheckInsPanel() {
 
   if (visibleCadences.length === 0) {
     return (
-      <div className="border border-neon-lime/30 bg-neon-lime/5 rounded p-3 text-center">
+      <div className="border border-neon-lime/30 bg-neon-lime/5 rounded p-3 text-center dopa-success">
         <div className="text-neon-lime font-display tracking-widest text-xs uppercase mb-0.5">
           ✓ All caught up
         </div>
@@ -92,7 +94,7 @@ export function CheckInsPanel() {
             cadence={cadence}
             items={dueQ.data!.byCadence[cadence]}
             inWindow={isWithinWindow(cadence, now, timezone)}
-            onQuickLog={(m) => setLogMetric(m)}
+            onQuickLog={(m) => { onTap(); setLogMetric(m); }}
           />
         ))}
       </div>
@@ -149,7 +151,7 @@ function CadenceCard({
           Outside {CADENCE_SHORT[cadence].toLowerCase()} window — log anytime.
         </div>
       )}
-      <ul className="space-y-1">
+      <ul className="space-y-1.5">
         {items.slice(0, 5).map((item) => (
           <CheckInRow key={item.metric} item={item} onClick={() => onQuickLog(item)} />
         ))}
@@ -176,28 +178,35 @@ function CheckInRow({
     : item.overdueByDays === 0
       ? 'logged today'
       : `${item.overdueByDays}d ago`;
+  const overdue = item.isNeverLogged || (item.overdueByDays ?? 0) > 0;
+  // Bigger, color-coded pill: amber for overdue, cyan for "due now",
+  // lime for already logged today. Each gets a press-scale animation
+  // via the shared dopa-tap class.
+  const stateClass = !overdue
+    ? 'border-neon-lime/50 bg-neon-lime/10 text-neon-lime hover:bg-neon-lime/15'
+    : item.isNeverLogged
+      ? 'border-neon-amber/60 bg-neon-amber/10 text-neon-amber hover:bg-neon-amber/20'
+      : 'border-neon-cyan/60 bg-neon-cyan/5 text-neon-cyan hover:bg-neon-cyan/15';
+  const statusGlyph = !overdue ? '✓' : '+';
   return (
     <li>
       <button
         type="button"
         onClick={onClick}
-        className="w-full flex items-center justify-between gap-2 text-left text-[11px] font-mono py-1 px-1.5 hover:bg-bg-700/40 rounded transition-colors"
+        className={classNames(
+          DOPA_TAP_CLASS,
+          'w-full flex items-center justify-between gap-2 text-left text-[11px] font-mono py-1.5 px-2 border rounded transition-colors',
+          stateClass,
+        )}
         title={`Quick-log ${meta.label}`}
       >
-        <span className="text-slate-200 truncate flex-1">{meta.shortLabel}</span>
-        <span
-          className={classNames(
-            'text-[10px] shrink-0',
-            item.isNeverLogged ? 'text-neon-amber' : 'text-ink-400',
-          )}
-        >
-          {lastLabel}
-        </span>
+        <span className="truncate flex-1 font-display tracking-wider">{meta.shortLabel}</span>
+        <span className="text-[10px] shrink-0 opacity-75">{lastLabel}</span>
         <span
           aria-label="Quick log"
-          className="shrink-0 inline-flex items-center justify-center w-5 h-5 border border-neon-cyan/60 text-neon-cyan hover:bg-neon-cyan/10 rounded text-xs leading-none font-bold"
+          className="shrink-0 inline-flex items-center justify-center w-6 h-6 border border-current/60 rounded text-sm leading-none font-bold"
         >
-          +
+          {statusGlyph}
         </span>
       </button>
     </li>
@@ -224,20 +233,30 @@ export function QuickLogModal({
   const [value, setValue] = useState('');
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const { onTap, onSuccess: hapticSuccess, onError: hapticError } = useDopamineTap();
 
   // Reset whenever a new metric is opened.
   useEffect(() => {
     setValue('');
     setNotes('');
     setErr(null);
+    setSaved(false);
   }, [item?.metric]);
 
   const logM = useDelayedMutation<{ id: string }, { metric: string; value: number; unit?: string; notes?: string }>(
     {
       mutationFn: (body) =>
         api<{ id: string }>('/measurements', { method: 'POST', body }),
-      onError: (e) => setErr(e instanceof ApiError ? e.message : 'Log failed'),
-      onSuccess: () => onClose(),
+      onError: (e) => { hapticError(); setErr(e instanceof ApiError ? e.message : 'Log failed'); },
+      onSuccess: () => {
+        hapticSuccess();
+        setSaved(true);
+        // Brief visible-flash before the modal closes so the user
+        // sees the reward land even if they're not looking at the
+        // underlying dashboard tile.
+        setTimeout(onClose, 480);
+      },
     },
     600,
   );
@@ -251,6 +270,7 @@ export function QuickLogModal({
 
   function submit(v: number) {
     setErr(null);
+    onTap();
     // Convert from the user's display unit back to the storage
     // unit. Without this, entering 135.4 in imperial mode
     // (the label says 'lb') would store 135.4 kg, then display
@@ -288,7 +308,8 @@ export function QuickLogModal({
                 onClick={() => submit(n)}
                 disabled={logM.isPending}
                 className={classNames(
-                  'h-9 text-sm font-mono border transition-colors',
+                  DOPA_TAP_CLASS,
+                  'h-10 text-sm font-mono border rounded transition-colors',
                   'border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan hover:bg-neon-cyan/10',
                   logM.isPending && 'opacity-50 cursor-not-allowed',
                 )}
@@ -341,6 +362,7 @@ export function QuickLogModal({
           onClick={() => valid && submit(parsed)}
           disabled={!valid || logM.isPending}
           className={classNames(
+            DOPA_TAP_CLASS,
             'px-3 py-1.5 text-sm border rounded',
             valid && !logM.isPending
               ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
@@ -355,30 +377,52 @@ export function QuickLogModal({
 
   return (
     <Modal open={open} onClose={onClose} title={`Log ${activeMeta.label}`} width="max-w-md">
-      <div className="text-[10px] font-mono text-ink-400 mb-3">
-        {CADENCE_LABEL[activeItem.cadence]}
-        {activeItem.lastLoggedAt && (
-          <> · last logged {new Date(activeItem.lastLoggedAt).toLocaleString([], {
-            weekday: 'short', hour: 'numeric', minute: '2-digit',
-          })}</>
-        )}
-      </div>
-      {renderInput()}
-      <div className="mt-3">
-        <label className="text-[10px] font-mono uppercase tracking-widest text-ink-400 block mb-1">
-          Notes (optional)
-        </label>
-        <input
-          type="text"
-          maxLength={500}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g. post-shower, fasting"
-          className="w-full bg-bg-900 border border-ink-500/40 rounded px-2 py-1.5 text-xs font-mono"
-        />
-      </div>
-      {err && (
-        <div className="mt-3 text-[10px] text-rose-300 font-mono">{err}</div>
+      {saved ? (
+        // Brief reward screen — 1 large ✓ + label, then the modal
+        // closes itself after 480ms (see onSuccess). The pulse +
+        // check pop deliver the dopamine hit before the panel swaps.
+        <div
+          key="saved"
+          className="dopa-success flex flex-col items-center justify-center py-8 text-neon-lime"
+        >
+          <span
+            className="dopa-check text-5xl leading-none"
+            aria-hidden
+          >
+            ✓
+          </span>
+          <div className="mt-3 font-display tracking-widest uppercase text-sm">
+            {activeMeta.label} logged
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="text-[10px] font-mono text-ink-400 mb-3">
+            {CADENCE_LABEL[activeItem.cadence]}
+            {activeItem.lastLoggedAt && (
+              <> · last logged {new Date(activeItem.lastLoggedAt).toLocaleString([], {
+                weekday: 'short', hour: 'numeric', minute: '2-digit',
+              })}</>
+            )}
+          </div>
+          {renderInput()}
+          <div className="mt-3">
+            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-400 block mb-1">
+              Notes (optional)
+            </label>
+            <input
+              type="text"
+              maxLength={500}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. post-shower, fasting"
+              className="w-full bg-bg-900 border border-ink-500/40 rounded px-2 py-1.5 text-xs font-mono"
+            />
+          </div>
+          {err && (
+            <div className="mt-3 text-[10px] text-rose-300 font-mono">{err}</div>
+          )}
+        </>
       )}
     </Modal>
   );
@@ -426,6 +470,7 @@ function SecondsInput({ onSubmit, disabled }: { onSubmit: (seconds: number) => v
           onClick={() => onSubmit(total)}
           disabled={!valid || disabled}
           className={classNames(
+            DOPA_TAP_CLASS,
             'px-3 py-1.5 text-sm border rounded',
             valid && !disabled
               ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'

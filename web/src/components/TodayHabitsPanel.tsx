@@ -6,6 +6,7 @@ import { Panel } from './Panel';
 import { METRICS, METRICS_BY_CATEGORY, type MetricType } from '@/lib/types';
 import { classNames, formatRelative } from '@/lib/format';
 import { useLiveClock } from '@/hooks/useLiveClock';
+import { useDopamineTap, DOPA_TAP_CLASS } from '@/hooks/useDopamineTap';
 import { Modal } from './Modal';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
@@ -26,8 +27,10 @@ export function TodayHabitsPanel() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<MetricType | null>(null);
   const [draft, setDraft] = useState('');
+  const [pulseAt, setPulseAt] = useState<Record<string, number>>({});
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
+  const { onTap, onSuccess: hapticSuccess, onError: hapticError } = useDopamineTap();
 
   const statusQ = useQuery({
     queryKey: ['today', 'status'],
@@ -38,13 +41,23 @@ export function TodayHabitsPanel() {
   const batchM = useMutation({
     mutationFn: (items: Array<{ metric: MetricType; value: number }>) =>
       api('/measurements/batch', { method: 'POST', body: { items } }),
-    onSuccess: () => {
+    onSuccess: (_data, items) => {
+      // Per-row dopamine pulse + haptic. The CSS class is removed
+      // automatically after the animation; the timestamp just lets
+      // us re-trigger if the user logs the same metric again.
+      const ts = hapticSuccess();
+      setPulseAt((prev) => {
+        const next = { ...prev };
+        for (const it of items) next[it.metric] = ts;
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ['today'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
       setEditing(null);
       setDraft('');
     },
+    onError: () => hapticError(),
   });
 
   // AM + PM metrics are the daily-cadence surface — that's what the
@@ -74,6 +87,7 @@ export function TodayHabitsPanel() {
     const value = Number(draft);
     if (!Number.isFinite(value) || value < 0) return;
     const stored = convertForStorage(value, displayUnit(METRICS[m].unit, system), system);
+    onTap();
     batchM.mutate([{ metric: m, value: stored.value }]);
   }
 
@@ -87,8 +101,8 @@ export function TodayHabitsPanel() {
           {isSunday && weeklyMetrics.length > 0 && (
             <button
               type="button"
-              onClick={() => setWeeklyOpen(true)}
-              className="text-[10px] font-display tracking-widest neon-text-amber hover:underline"
+              onClick={() => { onTap(); setWeeklyOpen(true); }}
+              className={`${DOPA_TAP_CLASS} text-[10px] font-display tracking-widest neon-text-amber hover:underline`}
             >
               ◇ Weekly checks ({completedWeekly}/{weeklyMetrics.length})
             </button>
@@ -119,33 +133,51 @@ export function TodayHabitsPanel() {
                     {done}/{metrics.length}
                   </span>
                 </div>
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   {metrics.map((m) => {
                     const s = status[m];
                     const meta = METRICS[m];
                     const isEditing = editing === m;
+                    const pulsing = pulseAt[m] != null;
                     return (
                       <div
                         key={m}
+                        // `dopa-success` triggers the lime pulse
+                        // animation; React reapplies the class on
+                        // each new timestamp, so re-logging the
+                        // same metric replays the celebration.
+                        data-pulse={pulseAt[m] ?? undefined}
                         className={classNames(
-                          'flex items-center justify-between text-xs font-mono py-0.5 px-1.5 border transition-all',
+                          'flex items-center justify-between gap-2 px-2 py-1.5 border rounded transition-colors',
                           s?.logged
-                            ? 'border-neon-lime/30 bg-neon-lime/5'
-                            : 'border-ink-500/30 hover:border-neon-cyan/40'
+                            ? 'border-neon-lime/40 bg-neon-lime/10 text-neon-lime'
+                            : 'border-ink-500/30 bg-bg-700/20 hover:border-neon-cyan/60 hover:bg-neon-cyan/5',
+                          pulsing && 'dopa-success',
                         )}
                       >
-                        <div className="flex-1">
-                          <div className={s?.logged ? 'text-neon-lime' : 'text-ink-200'}>
-                            {meta.shortLabel}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 text-xs font-mono">
+                            {s?.logged && (
+                              <span
+                                key={pulseAt[m]}
+                                className="dopa-check text-neon-lime"
+                                aria-hidden
+                              >
+                                ✓
+                              </span>
+                            )}
+                            <span className={s?.logged ? 'text-neon-lime' : 'text-ink-200'}>
+                              {meta.shortLabel}
+                            </span>
                           </div>
                           {s?.logged && s.value != null ? (
-                            <div className="text-[9px] font-mono text-ink-500">
+                            <div className="text-[10px] font-mono text-ink-500 mt-0.5">
                               {s.value.toFixed(meta.unit === 'g' || meta.unit === 'ml' || meta.unit === 'fl oz' || meta.unit === 'kcal' ? 0 : 1)} {displayUnit(meta.unit, system)}
                             </div>
                           ) : null}
                         </div>
                         {isEditing ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 dopa-tap">
                             <input
                               autoFocus
                               type="number"
@@ -153,20 +185,20 @@ export function TodayHabitsPanel() {
                               value={draft}
                               onChange={(e) => setDraft(e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') quickLog(m); }}
-                              className="w-16 bg-bg-900 border border-neon-cyan/50 px-1 py-0.5 text-xs font-mono rounded"
+                              className="w-16 bg-bg-900 border border-neon-cyan/50 px-1.5 py-1 text-xs font-mono rounded"
                             />
                             <button
                               type="button"
                               onClick={() => quickLog(m)}
-                              disabled={!draft}
-                              className="px-1.5 py-0.5 text-[10px] font-mono border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 rounded"
+                              disabled={!draft || batchM.isPending}
+                              className="px-2 py-1 text-[10px] font-mono border border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10 rounded disabled:opacity-50"
                             >
                               ✓
                             </button>
                             <button
                               type="button"
                               onClick={() => { setEditing(null); setDraft(''); }}
-                              className="px-1.5 py-0.5 text-[10px] font-mono border border-ink-500 text-ink-300 rounded"
+                              className="px-2 py-1 text-[10px] font-mono border border-ink-500 text-ink-300 rounded"
                             >
                               ×
                             </button>
@@ -174,10 +206,21 @@ export function TodayHabitsPanel() {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => { setEditing(m); setDraft(s?.value != null ? String(s.value) : ''); }}
-                            className="px-1.5 py-0.5 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-neon-cyan/60 hover:text-neon-cyan rounded"
+                            onClick={() => {
+                              onTap();
+                              setEditing(m);
+                              setDraft(s?.value != null ? String(s.value) : '');
+                            }}
+                            className={classNames(
+                              DOPA_TAP_CLASS,
+                              'px-2.5 py-1 text-[11px] font-mono border rounded',
+                              s?.logged
+                                ? 'border-neon-lime/50 text-neon-lime hover:bg-neon-lime/10'
+                                : 'border-neon-cyan/60 text-neon-cyan hover:bg-neon-cyan/10',
+                            )}
+                            title={s?.logged ? 'Re-log' : `Log ${meta.label}`}
                           >
-                            + log
+                            {s?.logged ? '↻' : '+ log'}
                           </button>
                         )}
                       </div>
@@ -222,12 +265,14 @@ export function TodayHabitsPanel() {
                     key={m}
                     type="button"
                     onClick={() => {
+                      onTap();
                       setEditing(m);
                       setDraft(s?.value != null ? String(s.value) : '');
                       setWeeklyOpen(false);
                     }}
                     className={classNames(
-                      'px-2.5 py-2 text-left text-xs font-mono border transition-all',
+                      DOPA_TAP_CLASS,
+                      'px-2.5 py-2 text-left text-xs font-mono border rounded transition-colors',
                       s?.logged
                         ? 'border-neon-lime/40 bg-neon-lime/5 text-neon-lime'
                         : 'border-ink-700/40 text-ink-200 hover:border-neon-cyan/60 hover:text-neon-cyan hover:bg-neon-cyan/5',
