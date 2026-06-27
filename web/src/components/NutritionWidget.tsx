@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Panel } from './Panel';
 import { METRICS, type MetricType } from '@/lib/types';
-import { useAuth } from '@/lib/auth';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 
 const DEFAULT_TARGETS: Record<string, number> = {
