@@ -14,6 +14,8 @@ import {
   MEAL_TYPE_LABEL,
   MEAL_TYPE_ORDER,
 } from '@/lib/types';
+import { getLocalHour } from '@/lib/timezone';
+import { useAuth } from '@/lib/auth';
 
 // crypto.randomUUID() is gated to secure contexts (HTTPS +
 // localhost). LAN access via http://10.0.0.59:5173 is NOT
@@ -544,6 +546,8 @@ function AskAiModal({
   onLogged: () => void;
 }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const [draft, setDraft] = useState('');
   const valid = draft.trim().length >= 3;
 
@@ -551,7 +555,7 @@ function AskAiModal({
   // (BREAKFAST < 10, LUNCH < 14, DINNER < 21, else SNACK). Same
   // defaulting policy as LogMealModal so the experience is
   // consistent.
-  const hour = new Date().getHours();
+  const hour = getLocalHour(new Date(), userTz);
   const defaultMeal: MealType =
     hour < 10 ? 'BREAKFAST' : hour < 14 ? 'LUNCH' : hour < 21 ? 'DINNER' : 'SNACK';
   const [meal, setMeal] = useState<MealType>(defaultMeal);
@@ -1549,6 +1553,8 @@ function SavedFoodRow({
   logging: boolean;
   onLog: (meal: MealType) => void;
 }) {
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const todayQ = useQuery({
     queryKey: ['meals', 'today'],
     queryFn: () => api<TodayMealsResponse>('/meals/today'),
@@ -1562,7 +1568,7 @@ function SavedFoodRow({
   // Default meal by hour: a quick-log without picking just goes
   // to whatever section "now" is in.
   const defaultMeal: MealType = (() => {
-    const h = new Date().getHours();
+    const h = getLocalHour(new Date(), userTz);
     return h < 10 ? 'BREAKFAST' : h < 14 ? 'LUNCH' : h < 21 ? 'DINNER' : 'SNACK';
   })();
 
@@ -1716,9 +1722,11 @@ function LogMealModal({
   onClose: () => void;
   onLogged: () => void;
 }) {
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   // Default the meal based on the time of day: morning = BREAKFAST,
   // midday = LUNCH, evening = DINNER, late = SNACK.
-  const hour = new Date().getHours();
+  const hour = getLocalHour(new Date(), userTz);
   const defaultMeal: MealType =
     hour < 10 ? 'BREAKFAST' : hour < 14 ? 'LUNCH' : hour < 21 ? 'DINNER' : 'SNACK';
 

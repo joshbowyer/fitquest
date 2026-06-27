@@ -8,7 +8,7 @@ import { NeonButton } from './NeonButton';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { METRICS, type MetricType } from '@/lib/types';
-import { todayInTz, localTodayStartUtc, localTodayEndUtc, getLocalHour, getLocalDayOfWeek } from '@/lib/timezone';
+import { localTodayStartUtc } from '@/lib/timezone';
 
 /**
  * Quick-log blocks for the /today one-stop-shop. Each block is
@@ -118,6 +118,7 @@ function QuickLogForm({
 function WaterBlock({ system }: { system: UnitSystem }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const targetMl = user?.targets?.waterGoalMl ?? 2500;
   const q = useQuery({
     queryKey: ['today', 'water'],
@@ -368,6 +369,8 @@ function WaterQuickLogRow({
  */
 function SleepBlock({ system }: { system: UnitSystem }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const q = useQuery({
     queryKey: ['today', 'sleep'],
     queryFn: () =>
@@ -468,6 +471,8 @@ function QualityPills({ disabled, onSubmit }: { disabled?: boolean; onSubmit: (v
  */
 function WeighInBlock({ system }: { system: UnitSystem }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const q = useQuery({
     queryKey: ['today', 'weight'],
     queryFn: () => api<MeasurementsResponse>('/measurements?metric=WEIGHT&limit=200'),

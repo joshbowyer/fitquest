@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
+import { getLocalHour, localTodayStartUtc } from '@/lib/timezone';
 
 /**
  * Window event the parent page dispatches when a non-tile UI
@@ -142,7 +143,7 @@ const CANONICAL_FORMS: Record<string, string[]> = {
   ],
 };
 
-function inferMealType(): MealType {
+function inferMealType(userTz: string | null): MealType {
   const h = getLocalHour(new Date(), userTz);
   if (h < 11) return 'BREAKFAST';
   if (h < 15) return 'LUNCH';
@@ -425,6 +426,8 @@ function SubstanceSummary({ category, days }: { category: string; days: number }
 }
 
 function ActivitySummary() {
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const q = useQuery({
     queryKey: ['today', 'workout'],
     queryFn: () => api<{ items: any[] }>('/workouts?limit=200'),
@@ -441,6 +444,8 @@ function ActivitySummary() {
 function PrayerSummary() {
   // /spiritual returns the last 30 prayer logs (newest first).
   // Filter to today for the tile summary.
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   const q = useQuery({
     queryKey: ['spiritual', 'logs'],
     queryFn: () => api<{ logs: Array<{ id: string; type: string | null; loggedAt: string }> }>('/spiritual'),
@@ -457,6 +462,8 @@ function PrayerSummary() {
 
 function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   // Default to Ask AI — the LLM-direct path handles multi-item
   // recipes well (vanilla protein shake, smoothie bowls, mixed
   // salads) without needing every ingredient in OFF/USDA. Search
@@ -464,7 +471,7 @@ function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void })
   // paste or to log a known brand product, but the LLM path is
   // the more common case.
   const [mode, setMode] = useState<'search' | 'ask'>('ask');
-  const [meal, setMeal] = useState<MealType>(inferMealType());
+  const [meal, setMeal] = useState<MealType>(inferMealType(userTz));
 
   return (
     <Modal open={open} onClose={onClose} title="Log food" width="max-w-2xl">
@@ -1011,6 +1018,8 @@ function SubstanceLogModal({
   label: string;
 }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const userTz = user?.timezone ?? null;
   // No free-form input — modal is now buttons-only.
   const today = (q: { items: Array<{ category: string; loggedAt: string; form: string }> }) =>
     q.items.filter((s) => s.category === category && new Date(s.loggedAt) >= localTodayStartUtc(userTz)).length;

@@ -108,7 +108,8 @@ export type ClassAbility =
   | { tag: '+EVA'; label: string }
   | { tag: '+CRIT'; label: string }
   | { tag: '+HEAL'; label: string }
-  | { tag: '+DISC'; label: string };
+  | { tag: '+DISC'; label: string }
+  | { tag: '+BURST'; label: string };
 
 export const PRIMARY_METRICS_BY_CLASS: Record<string, MetricType[]> = {
   JUGGERNAUT: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'POWERLIFT_TOTAL'],
