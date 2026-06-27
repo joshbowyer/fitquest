@@ -375,8 +375,8 @@ model User {
   lockedUntil           DateTime?
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
-  PortalLeak            PortalLeak[]
-  PortalLeakDamageEvent PortalLeakDamageEvent[]
+  portalLeaks            PortalLeak[]
+  portalLeakDamageEvents PortalLeakDamageEvent[]
 
   @@index([email])
   @@index([username])
