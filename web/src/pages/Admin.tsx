@@ -12,7 +12,6 @@ import { Modal } from '@/components/Modal';
 type AdminUser = {
   id: string;
   username: string;
-  email: string;
   isAdmin: boolean;
   twoFactorEnabled: boolean;
   class: string | null;

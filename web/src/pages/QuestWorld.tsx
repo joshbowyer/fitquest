@@ -6,6 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { BossCard } from '@/components/BossCard';
+import { BossUnlockModal, useBossUnlock } from '@/components/BossUnlockModal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   type World,
@@ -60,6 +61,11 @@ export function QuestWorldPage() {
   const meta = ARCHETYPE_META[archetype];
   const completed = world.levels.filter((l) => l.completed).length;
   const activeLevel = levelId ? world.levels.find((l) => l.id === levelId) : null;
+  // One-time unlock celebration when all 5 levels are first cleared.
+  // `unlock.shouldShow` flips true on the first such view; ack()
+  // dismisses + persists the "seen" flag in localStorage so
+  // navigating back doesn't re-trigger.
+  const unlock = useBossUnlock(worldId, completed === world.levels.length);
 
   return (
     <Layout>
@@ -193,13 +199,24 @@ export function QuestWorldPage() {
             </div>
           </Panel>
 
-          {/* Boss — unlocks once all 5 levels are cleared */}
+          {/* Boss — unlocks once all 5 levels are cleared. The
+              one-time unlock modal fires on the first such view. */}
           <BossCard
             worldId={world.id}
             bossName={world.boss.name}
             bossGlyph={world.boss.glyph}
+            bossLore={world.boss.lore}
             worldColor={world.color}
             allCleared={completed === world.levels.length}
+          />
+          <BossUnlockModal
+            worldId={world.id}
+            bossName={world.boss.name}
+            bossGlyph={world.boss.glyph}
+            lore={world.boss.lore}
+            color={WORLD_COLOR_HEX[world.color]}
+            open={unlock.shouldShow}
+            onClose={unlock.ack}
           />
 
           <Panel title="HOW IT WORKS" variant="violet">

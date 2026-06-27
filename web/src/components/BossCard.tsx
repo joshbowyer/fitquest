@@ -24,11 +24,13 @@ type Props = {
   worldId: string;
   bossName: string;
   bossGlyph: string;
+  /** Lore line shown in the unlock modal. Optional. */
+  bossLore?: string;
   worldColor: keyof typeof WORLD_COLOR_HEX;
   allCleared: boolean;
 };
 
-export function BossCard({ worldId, bossName, bossGlyph, worldColor, allCleared }: Props) {
+export function BossCard({ worldId, bossName, bossGlyph, bossLore, worldColor, allCleared }: Props) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['bosses'],
@@ -70,6 +72,17 @@ export function BossCard({ worldId, bossName, bossGlyph, worldColor, allCleared 
           amount: r.rewards.xp,
           source: 'raid',
         });
+        if (r.rewards.itemDrop) {
+          // Equipment drop floater — uses the same overlay system
+          // as portal-leak loot, so the user already knows what
+          // the colors mean.
+          emitReward({
+            kind: 'loot',
+            id: nextRewardId('loot'),
+            itemName: r.rewards.itemDrop.name,
+            rarity: r.rewards.itemDrop.rarity as any,
+          });
+        }
       }
       qc.invalidateQueries({ queryKey: ['bosses'] });
       qc.invalidateQueries({ queryKey: ['user'] });

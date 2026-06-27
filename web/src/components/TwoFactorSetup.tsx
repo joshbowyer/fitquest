@@ -162,7 +162,6 @@ export function TwoFactorSetup() {
   return (
     <Panel title="Account" variant="amber">
       <div className="space-y-3 text-xs font-mono">
-        <Field k="Email" v={user?.email ?? ''} />
         <Field k="Username" v={user?.username ?? ''} />
         <Field
           k="2FA"

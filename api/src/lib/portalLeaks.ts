@@ -277,7 +277,7 @@ export async function maybeSpawnLeak(
   return { spawned: true, leakId: leak.id };
 }
 
-async function pickItemOfRarity(
+export async function pickItemOfRarity(
   prisma: PrismaClient,
   rarity: string,
   fallback = 3,

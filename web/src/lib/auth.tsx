@@ -29,12 +29,13 @@ export type UserAvatar = {
 
 export type User = {
   id: string;
-  email: string;
   username: string;
   level: number;
   xp: number;
   gold: number;
   soulstones: number;
+  // (email removed from client type — DB still has the column for
+  // historical data, but the UI doesn't surface it anywhere.)
   class: ClassName | null;
   // Class evolution: 3 stages per line, derived from level.
   // Stage 1 (Lv 1-9): beginner name (e.g., Bruiser)

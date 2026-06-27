@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { WORLDS, getWorld } from '../lib/worlds.js';
+import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
 
 const damageSchema = z.object({
   damage: z.number().int().min(1).max(10000),
@@ -115,7 +116,20 @@ export async function bossRoutes(app: FastifyInstance) {
         },
       });
 
-      let rewards: { xp: number; gold: number; soulstones: number } | null = null;
+      let rewards: {
+        xp: number;
+        gold: number;
+        soulstones: number;
+        itemDrop: {
+          id: string;
+          itemDefId: string;
+          name: string;
+          slot: string;
+          color: string;
+          rarity: string;
+          sprite: string;
+        } | null;
+      } | null = null;
       if (defeated && !boss.defeatedAt) {
         // First-time defeat rewards
         const xp = 500;
@@ -129,7 +143,41 @@ export async function bossRoutes(app: FastifyInstance) {
             soulstones: { increment: soulstones },
           },
         });
-        rewards = { xp, gold, soulstones };
+
+        // Roll an equipment drop. Higher level = better odds. Reuses
+        // the same roll/pick helpers the portal-leak system uses so
+        // the user sees consistent rarity across both drop sources.
+        const rarity = rollLootRarity(me.level ?? 1);
+        const def = await pickItemOfRarity(prisma, rarity);
+        let itemDrop: typeof rewards extends infer R
+          ? R extends { itemDrop: infer D }
+            ? D
+            : never
+          : never
+          = null;
+        if (def) {
+          const inv = await prisma.inventoryItem.create({
+            data: {
+              userId: me.id,
+              itemDefId: def.id,
+            },
+          });
+          // Re-fetch the full def so the response includes name/rarity/sprite.
+          const full = await prisma.itemDef.findUnique({ where: { id: def.id } });
+          if (full) {
+            itemDrop = {
+              id: inv.id,
+              itemDefId: full.id,
+              name: full.name,
+              slot: full.slot,
+              color: full.color,
+              rarity: full.rarity,
+              sprite: full.sprite,
+            };
+          }
+        }
+
+        rewards = { xp, gold, soulstones, itemDrop };
       }
 
       return {
