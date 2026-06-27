@@ -1,23 +1,14 @@
 -- Rename ShieldTier enum value BREECHED -> BREACHED.
 --
--- Postgres DOES support DROP VALUE for enums as of v16, but the
--- Debian 13 build of Postgres 17.10 ships with the parse-time hook
--- disabled ("dropping an enum value is not implemented"). The
--- workaround: don't drop. The old BREECHED label stays in the enum
--- but is never written by the app (Prisma client only knows the
--- 4 current values). The Prisma schema regenerates the type without
--- the old value on the next migrate reset / fresh-DB path; the
--- extra label is a no-op.
+-- Split across two migrations because Postgres refuses to use a
+-- newly-added enum value within the same transaction that added it
+-- (error 55P04: "unsafe use of new value"). So this file only
+-- does the ADD VALUE. The companion migration
+-- "20260627000000_breached_data_migration" runs after this and
+-- performs the UPDATE on a separate transaction.
 --
--- Net effect on existing DBs:
---   1. Add new value BREACHED
---   2. Migrate any rows that still have BREECHED
--- That's it. The legacy value hangs around in the enum but is
--- unreferenced. Cheap, reversible, and forward-compatible.
-
--- Step 1: add the new enum value.
+-- Old BREECHED label stays in the enum (Debian Postgres 17.10 build
+-- has DROP VALUE disabled). The Prisma client only knows the 4
+-- current values, so the legacy value is unreferenced. New DBs on
+-- a future reset get a clean enum.
 ALTER TYPE "ShieldTier" ADD VALUE IF NOT EXISTS 'BREACHED';
-
--- Step 2: migrate any existing data from the typo'd value.
-UPDATE "HomeBase" SET tier = 'BREACHED' WHERE tier = 'BREECHED';
-UPDATE "PenanceEvent" SET "tierAfter" = 'BREACHED' WHERE "tierAfter" = 'BREECHED';
