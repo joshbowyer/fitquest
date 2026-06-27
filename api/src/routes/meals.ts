@@ -145,11 +145,18 @@ export async function mealRoutes(app: FastifyInstance) {
         servings: e.servings,
         note: e.note,
         loggedAt: e.loggedAt.toISOString(),
+        // Same food shape /meals/today returns. The frontend's
+        // `mealToMatch()` in FoodPanel.tsx needs source+sourceId so
+        // a re-log from the Recent list works; servingSizeG is
+        // needed for the LogMeal unit picker.
         food: {
           id: e.food.id,
+          source: e.food.source,
+          sourceId: e.food.sourceId,
           name: e.food.name,
           brand: e.food.brand,
           imageUrl: e.food.imageUrl,
+          servingSizeG: e.food.servingSizeG,
         },
         served: scaleTotals(e.food, e.servings),
       })),

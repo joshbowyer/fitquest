@@ -286,6 +286,7 @@ export function TodayActions() {
  * ============================================================ */
 
 function WaterTile() {
+  const qc = useQueryClient();
   const { user } = useAuth();
   const userTz = user?.timezone ?? null;
   const q = useQuery({
@@ -295,6 +296,7 @@ function WaterTile() {
   });
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
+  const [logErr, setLogErr] = useState<string | null>(null);
   const system: UnitSystem = (user?.units ?? 'METRIC') as UnitSystem;
   const today = localTodayStartUtc(userTz);
   let totalMl = 0;
@@ -336,7 +338,9 @@ function WaterTile() {
       qc.invalidateQueries({ queryKey: ['nutrition', 'water', 'today'] });
       setOpen(false);
       setValue('');
+      setLogErr(null);
     },
+    onError: (e: any) => setLogErr(e?.message ?? 'Log failed'),
   });
   return (
     <>
@@ -349,6 +353,11 @@ function WaterTile() {
       />
       <Modal open={open} onClose={() => setOpen(false)} title="Log water" width="max-w-sm">
         <div className="space-y-3">
+          {logErr && (
+            <div className="text-[10px] font-mono text-rose-300 border border-rose-500/40 bg-rose-500/10 px-2 py-1 rounded">
+              {logErr}
+            </div>
+          )}
           {/* Progress: current total vs goal, with the same color
               ladder DailyTotalsBar uses. Keeps the user oriented
               before they tap a preset. */}
