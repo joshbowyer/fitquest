@@ -301,6 +301,7 @@ function TrackedItemsPanel({
       )}
       {adding && (
         <AddTrackedItemModal
+          open
           defaultCategory={categoryFilter === 'PROBIOTIC_ONLY' ? 'PROBIOTIC' : 'VITAMIN'}
           onClose={() => setAdding(false)}
           onAdded={() => {
@@ -320,10 +321,12 @@ function formatUnitShort(u: string): string {
 }
 
 function AddTrackedItemModal({
+  open,
   defaultCategory,
   onClose,
   onAdded,
 }: {
+  open: boolean;
   defaultCategory: TrackedItemCategory;
   onClose: () => void;
   onAdded: () => void;
@@ -353,7 +356,22 @@ function AddTrackedItemModal({
     },
   }, 500);
   const valid = name.trim().length > 0 && Number(dose) > 0 && Number(dose) <= 100000;
-  return (
+  // Render via portal so the modal escapes the surrounding Panel's
+  // backdrop-blur stacking context. Without this, the modal's z-index
+  // is relative to the ProbioticsPanel, and the next-sibling
+  // SubstancesPanel stacks on top of it visually.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-bg-800 border border-neon-violet/40 max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
