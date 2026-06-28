@@ -23,6 +23,7 @@ import {
 } from '@/lib/types';
 import { classNames, formatRelative } from '@/lib/format';
 import { getFrameArchetype } from '@/lib/frame';
+import { primaryColorForClass } from '@/lib/quest';
 
 type Catalog = ItemDef[];
 
@@ -314,8 +315,26 @@ export function InventoryPage() {
                         {def.name}
                       </div>
                       <div className="flex items-center justify-between mt-0.5">
-                        <span className="text-[8px] font-mono text-ink-300 uppercase tracking-widest">
-                          {RARITY_LABEL[def.rarity]}
+                        <span className="flex items-center gap-1">
+                          <span className="text-[8px] font-mono text-ink-300 uppercase tracking-widest">
+                            {RARITY_LABEL[def.rarity]}
+                          </span>
+                          {/* Class-lock badge — small, class-colored.
+                              Only shown when the item is restricted
+                              to a specific class so the user can see
+                              at a glance which items are for them. */}
+                          {def.classRestriction && (
+                            <span
+                              className="text-[8px] font-mono uppercase tracking-widest px-1 py-px border"
+                              style={{
+                                color: primaryColorForClass(def.classRestriction),
+                                borderColor: primaryColorForClass(def.classRestriction),
+                              }}
+                              title={`Class-locked to ${def.classRestriction}`}
+                            >
+                              {def.classRestriction}
+                            </span>
+                          )}
                         </span>
                         <span className={classNames(
                           'text-[8px] font-mono',
