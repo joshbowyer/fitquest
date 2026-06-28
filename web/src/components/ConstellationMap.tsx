@@ -17,7 +17,7 @@ import { Avatar } from './Avatar';
  * at (620, 300). The left half (x: 0..340) is the home base panel.
  */
 
-type Props = {
+export type ConstellationMapProps = {
   worlds: World[];
   archetype: FrameArchetype;
   playerLevel: number;
@@ -125,7 +125,7 @@ export function ConstellationMap({
   onSelectHomeBase,
   breach,
   onSelectBreach,
-}: Props) {
+}: ConstellationMapProps) {
   const stars = useMemo(() => seededStars(110, 7919), []);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [hoveredHomeBase, setHoveredHomeBase] = useState(false);
