@@ -15,6 +15,7 @@
  */
 
 import { prisma } from './prisma.js';
+import { maybeSpawnBreachLeak } from './portalLeaks.js';
 import type { Prisma } from '@prisma/client';
 
 export type MawVariant = {
@@ -140,5 +141,21 @@ export async function resetBreachIfDefeated(
     },
   });
 
+  // Breach → Raid integration: beating the Maw opens the wound.
+  // Spawn a breach-themed portal leak so the Breach world bleeds
+  // into the homebase defense loop. The leak's worldSource field
+  // tags it as 'BREACH' so the UI can highlight it.
+  await maybeSpawnBreachLeaked(userId, client);
+
   return { reset: true, cycle: nextCycle, variant };
+}
+
+async function maybeSpawnBreachLeaked(
+  userId: string,
+  client: Prisma.TransactionClient | typeof prisma,
+): Promise<void> {
+  // Run outside any explicit transaction — the leak create is a
+  // single Prisma call. maybeSpawnBreachLeak handles the active-leak
+  // check + loot roll internally.
+  await maybeSpawnBreachLeak(userId, client as typeof prisma);
 }

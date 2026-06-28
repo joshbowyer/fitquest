@@ -31,6 +31,10 @@ export const LEAK_TTL_MS = 48 * 60 * 60 * 1000;            // 48h to resolve bef
 export const OVERWHELM_CAP_MULT = 1.5;                     // leak feeds up to 150% of maxHp
 export const LEAK_BASE_HP_MIN = 80;
 export const LEAK_BASE_HP_MAX = 160;
+// Breach-themed leaks are slightly tougher so the user feels the
+// consequence of clearing the Breach world.
+export const BREACH_LEAK_HP_MIN = 120;
+export const BREACH_LEAK_HP_MAX = 200;
 export const LEAK_DAILY_GROWTH = 8;                         // leak grows +8 HP/day if untouched
 
 // Damage values. Smaller than Breach (which deals 60+) because
@@ -280,6 +284,48 @@ export async function maybeSpawnLeak(
       hp: maxHp,
       maxHp,
       itemDrop: item?.id ?? null,
+    },
+  });
+  return { spawned: true, leakId: leak.id };
+}
+
+// Breach-themed leaks. The monster pool is the same LEAK_MONSTERS
+// (random cosmic horror vibes), but the worldSource field on the
+// leak row is set to 'BREACH' so the UI can highlight them. These
+// are spawned when the user defeats the Maw — the Breach world
+// "bleeds" into the homebase defense loop.
+export async function maybeSpawnBreachLeak(
+  userId: string,
+  prisma: PrismaClient = defaultPrisma,
+): Promise<{ spawned: boolean; leakId?: string }> {
+  // No spawn if an active leak exists (any source).
+  const active = await prisma.portalLeak.findFirst({
+    where: { userId, status: 'ACTIVE' },
+  });
+  if (active) return { spawned: false, leakId: active.id };
+
+  const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
+  // Breach leaks are slightly tougher (taller HP range) so the
+  // user feels the consequence of clearing the Breach world.
+  const maxHp = Math.floor(
+    BREACH_LEAK_HP_MIN + Math.random() * (BREACH_LEAK_HP_MAX - BREACH_LEAK_HP_MIN)
+  );
+  const lootRarity = rollLootRarity((await prisma.user.findUnique({ where: { id: userId }, select: { level: true } }))?.level ?? 1);
+  const item = await pickItemOfRarity(prisma, lootRarity);
+
+  const leak = await prisma.portalLeak.create({
+    data: {
+      userId,
+      monsterName: monster.name,
+      monsterEmoji: monster.emoji,
+      monsterColor: monster.color,
+      intro: `${monster.intro} It came out of the Breach when the Maw was beaten.`,
+      preferredTags: monster.preferredTags,
+      bonusTags: monster.bonusTags,
+      hp: maxHp,
+      maxHp,
+      itemDrop: item?.id ?? null,
+      worldSource: 'BREACH',
     },
   });
   return { spawned: true, leakId: leak.id };

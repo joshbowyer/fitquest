@@ -1006,10 +1006,22 @@ model PortalLeak {
   resolvedReason        String?
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
+  /// Where this leak came from. 'AMBIENT' (default) — the existing
+  /// random spawn when the homebase shield drops. 'BREACH' — a
+  /// leak that escaped from the Breach world (e.g. user defeated
+  /// the Maw and the wound bled). Lets the UI show a special
+  /// banner and the /breach raid page filter for them.
+  worldSource           PortalLeakSource      @default(AMBIENT)
   PortalLeakDamageEvent PortalLeakDamageEvent[]
 
   @@index([userId, status])
   @@index([userId, spawnedAt])
+  @@index([userId, worldSource])
+}
+
+enum PortalLeakSource {
+  AMBIENT // regular homebase-shield leak
+  BREACH   // escaped from the Breach world
 }
 
 model PortalLeakDamageEvent {
