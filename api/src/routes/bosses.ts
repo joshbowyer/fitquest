@@ -180,10 +180,22 @@ export async function bossRoutes(app: FastifyInstance) {
         rewards = { xp, gold, soulstones, itemDrop };
       }
 
+      // Breach world resets on Maw defeat. The reset deletes the
+      // cycle-N progress rows, picks a new Maw variant, and resets
+      // the boss's HP to full so the next cycle starts fresh.
+      let breachReset: Awaited<ReturnType<typeof import('../lib/breachReset.js').resetBreachIfDefeated>> | null = null;
+      if (defeated) {
+        const { resetBreachIfDefeated } = await import('../lib/breachReset.js');
+        breachReset = await resetBreachIfDefeated(me.id, worldId);
+      }
+
       return {
         boss: updated,
         actualDamage,
         rewards,
+        breachReset: breachReset && breachReset.reset
+          ? { cycle: breachReset.cycle, variant: breachReset.variant }
+          : null,
       };
     },
   );

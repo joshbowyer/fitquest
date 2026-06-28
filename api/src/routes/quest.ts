@@ -24,8 +24,23 @@ export async function questRoutes(app: FastifyInstance) {
     const sleepHistory = await loadSleepHistory(me.id);
     const recoveryHistory = await loadRecoveryHistory(me.id);
     const progress = await prisma.userWorldProgress.findMany({ where: { userId: me.id } });
+    // WorldBoss rows hold the per-world current cycle. Static
+    // worlds (spire, glade, etc.) never reset so their cycle is
+    // always 1. Breach cycles each time the user kills the Maw.
+    const bossRows = await prisma.worldBoss.findMany({ where: { userId: me.id } });
+    const cycleByWorld = new Map<string, number>(
+      bossRows.map((b: { worldId: string; cycle: number }) => [b.worldId, b.cycle]),
+    );
 
-    return WORLDS.map((w) => attachProgress(w, me, recentWorkouts, sleepHistory, recoveryHistory, progress));
+    return WORLDS.map((w) => attachProgress(
+      w,
+      cycleByWorld.get(w.id) ?? 1,
+      me,
+      recentWorkouts,
+      sleepHistory,
+      recoveryHistory,
+      progress,
+    ));
   });
 
   // GET /worlds/:id — single world with full levels + progress
@@ -46,7 +61,19 @@ export async function questRoutes(app: FastifyInstance) {
     const progress = await prisma.userWorldProgress.findMany({
       where: { userId: me.id, levelId: { startsWith: `${id}-` } },
     });
-    return attachProgress(world, me, recentWorkouts, sleepHistory, recoveryHistory, progress);
+    const bossRow = await prisma.worldBoss.findUnique({
+      where: { userId_worldId: { userId: me.id, worldId: id } },
+      select: { cycle: true },
+    });
+    return attachProgress(
+      world,
+      bossRow?.cycle ?? 1,
+      me,
+      recentWorkouts,
+      sleepHistory,
+      recoveryHistory,
+      progress,
+    );
   });
 
   // POST /check — re-check all levels after a workout / sleep log /
@@ -123,7 +150,7 @@ async function loadSleepHistory(userId: string) {
     orderBy: { recordedAt: 'desc' },
     take: 90,
   });
-  return sleeps.map((s) => ({
+  return sleeps.map((s: { recordedAt: Date; value: number }) => ({
     date: s.recordedAt.toISOString().slice(0, 10),
     hours: s.value,
   }));
@@ -138,9 +165,13 @@ async function loadRecoveryHistory(userId: string) {
   return [];
 }
 
-// Helper: attach user progress to a world
+// Helper: attach user progress to a world. `cycle` is the current
+// world-cycle the user is on (1 for static worlds, 1..N for the
+// Breach world where the Maw resets). Progress rows for OTHER
+// cycles are kept for history but ignored here.
 function attachProgress(
   world: World,
+  cycle: number,
   user: { id: string; level: number; weightKg: number | null; bodyweightKg?: number | null },
   recentWorkouts: Array<{
     exercises: Array<{
@@ -150,11 +181,14 @@ function attachProgress(
   }>,
   sleepHistory: Array<{ date: string; hours: number }>,
   recoveryHistory: Array<{ date: string; score: number }>,
-  progress: Array<{ levelId: string; completed: boolean; completedAt: Date | null; attempts: number; bestScore: number }>,
+  progress: Array<{ levelId: string; cycle: number; completed: boolean; completedAt: Date | null; attempts: number; bestScore: number }>,
 ): World & {
   levels: Array<WorldLevel & { progress: RequirementProgress | null; completed: boolean; completedAt: string | null }>;
+  cycle: number;
 } {
-  const progressByLevel = new Map(progress.map((p) => [p.levelId, p]));
+  // Filter progress to just the current cycle for this world
+  const progressForCycle = progress.filter((p) => p.cycle === cycle);
+  const progressByLevel = new Map(progressForCycle.map((p) => [p.levelId, p]));
   const levels = world.levels.map((lvl) => {
     const reqProgress = computeRequirementProgress(
       lvl.requirement,
@@ -172,5 +206,5 @@ function attachProgress(
       completedAt: existing?.completedAt?.toISOString() ?? null,
     };
   });
-  return { ...world, levels };
+  return { ...world, levels, cycle };
 }

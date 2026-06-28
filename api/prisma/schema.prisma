@@ -1301,13 +1301,19 @@ model UserWorldProgress {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   levelId     String // static key, e.g. "spire-1"
+  /// World cycle this progress belongs to. Defaults to 1. For the
+  /// Breach world, increments each time the user defeats the Maw and
+  /// the world regenerates — so a single user has up to N progress
+  /// rows per breach level (one per cycle). Old cycles are kept for
+  /// history; the quest UI shows the most recent.
+  cycle       Int       @default(1)
   completed   Boolean   @default(false)
   attempts    Int       @default(0)
   bestScore   Int       @default(0)
   completedAt DateTime?
   updatedAt   DateTime  @updatedAt
 
-  @@unique([userId, levelId])
+  @@unique([userId, levelId, cycle])
   @@index([userId])
 }
 
@@ -1414,6 +1420,13 @@ model WorldBoss {
   bossHp     Int // current HP (decreases as damaged)
   bossMaxHp  Int // total HP
   status     WorldBossStatus @default(LOCKED)
+  /// Cycle counter. Increments each time the user defeats this
+  /// world's boss and the world resets. For the Breach world
+  /// this means a new Maw variant + new level requirements. For
+  /// other worlds it's always 1 (no reset behavior). Used in the
+  /// UI to disambiguate old vs new world progress (e.g. "Cleared
+  /// during the Maw Reborn cycle (3)").
+  cycle      Int             @default(1)
   unlockedAt DateTime?
   defeatedAt DateTime?
   createdAt  DateTime        @default(now())
