@@ -123,7 +123,7 @@ const ITEMS: SeedItem[] = [
   { id: 'tron_phantom_weapon',    name: 'Twin Daggers',        slot: 'MAIN', sprite: 'gear/weapons/phantom.png',    color: '#9bff5c', rarity: 'UNCOMMON', stats: { '+DMG': 12, '+EVA': 0.10, '+CRIT': 0.08 },  classRestriction: 'PHANTOM',   setId: 'tron_set' },
   { id: 'tron_tracer_weapon',     name: 'Short Sword',         slot: 'MAIN', sprite: 'gear/weapons/tracer.png',     color: '#ff8c00', rarity: 'UNCOMMON', stats: { '+DMG': 14, '+BURST': 0.12 },             classRestriction: 'TRACER',    setId: 'tron_set' },
   { id: 'tron_scout_weapon',      name: 'Recurve Bow',         slot: 'MAIN', sprite: 'gear/weapons/scout.png',      color: '#ffc34d', rarity: 'UNCOMMON', stats: { '+DMG': 13, '+CRIT': 0.10 },              classRestriction: 'SCOUT',     setId: 'tron_set' },
-  { id: 'tron_oracle_weapon',     name: 'Glowing Orb',         slot: 'MAIN', sprite: 'gear/weapons/oracle.png',     color: '#7d7bff', rarity: 'UNCOMMON', stats: { '+HEAL': 0.15, '+DMG': 8 },                classRestriction: 'ORACLE',    setId: 'tron_set' },
+  { id: 'tron_oracle_weapon',     name: 'Glowing Orb',         slot: 'MAIN', sprite: 'items/tron_oracle_weapon.png', color: '#7d7bff', rarity: 'UNCOMMON', stats: { '+HEAL': 0.15, '+DMG': 8 },                classRestriction: 'ORACLE',    setId: 'tron_set' },
 
   // ============================================================
   // LEGACY ITEMS — kept around because users may own them from
