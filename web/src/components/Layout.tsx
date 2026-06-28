@@ -21,13 +21,12 @@ type NavItem = { to: string; label: string; icon: string; mobile?: boolean; requ
 // decisions on desktop (e.g. badge for admin-only).
 const NAV: NavItem[] = [
   { to: '/dashboard',    label: 'Dashboard',  icon: '◆', mobile: true },
-  { to: '/quest',        label: 'Quest',      icon: '◇', mobile: true },
+  { to: '/home-base',    label: 'HomeBase',   icon: '◉', mobile: true },
   { to: '/status',       label: 'Status',     icon: '◊', mobile: true },
   { to: '/today',        label: 'Today',      icon: '◐', mobile: true },
   { to: '/activities',   label: 'Activity',   icon: '▣', mobile: true },
   { to: '/routines',     label: 'Routines',   icon: '☰', mobile: false },
   { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
-  { to: '/breach',       label: 'Breach',     icon: '◉', mobile: true },
   { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },
   { to: '/import',       label: 'Import',     icon: '↥', mobile: false },
   { to: '/nutrition',    label: 'Nutrition',  icon: '⌬', mobile: false },
@@ -40,11 +39,9 @@ const NAV: NavItem[] = [
   { to: '/skills',       label: 'Skills',     icon: '✦', mobile: false },
   { to: '/party',        label: 'Party',      icon: '⚑', mobile: false },
   { to: '/inventory',    label: 'Inventory',  icon: '⚔', mobile: false },
-  { to: '/home-base',    label: 'HomeBase',   icon: '◉', mobile: false },
-  { to: '/portal-leak',  label: 'Leaks',      icon: '◌', mobile: false },
   { to: '/achievements', label: 'Achieve',    icon: '◆', mobile: false },
   { to: '/profile',      label: 'Profile',    icon: '◉', mobile: false },
-  { to: '/settings',     label: 'Settings',   icon: '⚙', mobile: false },
+  { to: '/settings',     label: 'Settings',    icon: '⚙', mobile: false },
   { to: '/admin',        label: 'Admin',      icon: '★', mobile: false, requiresAdmin: true },
 ];
 
