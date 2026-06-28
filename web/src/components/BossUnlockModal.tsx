@@ -18,6 +18,8 @@ type Props = {
   lore: string;
   /** Color of the world (red/orange/lime/cyan/etc) — drives the glow. */
   color: string;
+  /** Path (under /sprites) to a 256×256 transparent boss portrait. */
+  portraitSrc: string;
   /** When false, the modal hides itself. */
   open: boolean;
   onClose: () => void;
@@ -39,7 +41,7 @@ type Props = {
  * Background uses the world's accent color for the bloom so each
  * world feels distinct (red for Spire, orange for The Gap, etc).
  */
-export function BossUnlockModal({ worldId, bossName, bossGlyph, lore, color, open, onClose }: Props) {
+export function BossUnlockModal({ worldId, bossName, bossGlyph, lore, color, portraitSrc, open, onClose }: Props) {
   // Hide on Escape.
   useEffect(() => {
     if (!open) return;
@@ -66,6 +68,27 @@ export function BossUnlockModal({ worldId, bossName, bossGlyph, lore, color, ope
         onClick={(e) => e.stopPropagation()}
         style={{ borderColor: `${color}88`, boxShadow: `0 0 40px ${color}33` }}
       >
+        {/* Boss portrait — fades in ahead of the glyph, behind the text */}
+        {portraitSrc && (
+          <div
+            className="unlock-rise unlock-rise-0 mx-auto mb-3"
+            style={{
+              width: 192,
+              height: 192,
+              filter: `drop-shadow(0 0 16px ${color}88)`,
+            }}
+          >
+            <img
+              src={portraitSrc}
+              alt={bossName}
+              width={192}
+              height={192}
+              className="block mx-auto unlock-bloom"
+              style={{ maxWidth: '100%', maxHeight: '100%' }}
+            />
+          </div>
+        )}
+
         {/* Big glyph */}
         <div
           className="unlock-glyph unlock-bloom text-8xl leading-none"

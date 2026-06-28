@@ -146,8 +146,31 @@ export function PortalLeakBody({
   recent: Array<{ id: string; damage: number; matchType: string; createdAt: string }>;
   compact?: boolean;
 }) {
+  // Map the display name (e.g. "The Crawler") to the sprite slug
+  // (e.g. "crawler"). Both come from the same LEAK_MONSTERS list
+  // in api/src/lib/portalLeaks.ts so this mapping is stable.
+  const monsterSlug = leak.monsterName.toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '') || 'unknown';
   return (
     <div className="space-y-3">
+      {/* Monster portrait — square 96px, sits above the intro.
+          The image is transparent so the dark panel background
+          shows through, and a soft drop-shadow uses the monster's
+          signature color for a tinted glow. */}
+      <div className="flex justify-center">
+        <img
+          src={`/sprites/monsters/${monsterSlug}.png`}
+          alt={leak.monsterName}
+          width={96}
+          height={96}
+          className="block"
+          style={{
+            width: 96,
+            height: 96,
+            filter: `drop-shadow(0 0 12px ${leak.monsterColor}88)`,
+            imageRendering: 'pixelated',
+          }}
+        />
+      </div>
       <div className="text-[11px] font-mono italic text-ink-300 leading-snug">
         {leak.intro}
       </div>

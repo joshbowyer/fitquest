@@ -131,14 +131,24 @@ export function BossCard({ worldId, bossName, bossGlyph, bossLore, worldColor, a
         variant="amber"
         action={<span className="text-base">🏆</span>}
       >
-        <div className="text-center py-2">
-          <div className="text-3xl mb-1" style={{ color: '#ffc34d', textShadow: '0 0 12px #ffc34d' }}>
-            {bossGlyph}
-          </div>
+        <div className="text-center py-2 space-y-2">
+          <img
+            src={`/sprites/bosses/${worldId}.png`}
+            alt={boss.bossName}
+            width={128}
+            height={128}
+            className="block mx-auto"
+            style={{
+              width: 128,
+              height: 128,
+              filter: 'drop-shadow(0 0 12px #ffc34d88)',
+              imageRendering: 'pixelated',
+            }}
+          />
           <div className="font-display tracking-widest neon-text-amber text-lg uppercase">
             {boss.bossName}
           </div>
-          <div className="text-[10px] font-mono text-ink-400 mt-1">
+          <div className="text-[10px] font-mono text-ink-400">
             Defeated {boss.defeatedAt && new Date(boss.defeatedAt).toLocaleDateString()}
           </div>
         </div>
@@ -163,17 +173,19 @@ export function BossCard({ worldId, bossName, bossGlyph, bossLore, worldColor, a
     >
       <div className="space-y-3">
         <div className="flex items-center gap-4">
-          <div
-            className="w-20 h-20 grid place-items-center text-4xl border-2 shrink-0"
+          <img
+            src={`/sprites/bosses/${worldId}.png`}
+            alt={boss.bossName}
+            width={80}
+            height={80}
+            className="shrink-0"
             style={{
-              borderColor: hex,
-              color: hex,
-              textShadow: `0 0 16px ${hex}`,
-              background: `radial-gradient(circle at center, ${hex}33, transparent 70%)`,
+              width: 80,
+              height: 80,
+              filter: `drop-shadow(0 0 8px ${hex}88)`,
+              imageRendering: 'pixelated',
             }}
-          >
-            {bossGlyph}
-          </div>
+          />
           <div className="flex-1 min-w-0">
             <div className="font-display tracking-widest text-base neon-text-magenta">
               {boss.bossName}

@@ -90,6 +90,37 @@ export function QuestWorldPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">
         <div className="space-y-4">
+          {/* Class portrait — shows the user's current class at a
+              glance. New sprite set sits in /sprites/class-portraits/.
+              Sits above the world description so the relationship
+              between class + world is obvious. */}
+          {user.class && (
+            <Panel title="Your class" variant={worldColorToVariant(world.color)}>
+              <div className="flex items-center gap-4">
+                <img
+                  src={`/sprites/class-portraits/${user.class.toLowerCase()}.png`}
+                  alt={user.class}
+                  width={96}
+                  height={96}
+                  className="block shrink-0"
+                  style={{
+                    width: 96,
+                    height: 96,
+                    filter: `drop-shadow(0 0 8px ${hex}88)`,
+                    imageRendering: 'pixelated',
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-display tracking-widest text-base uppercase">
+                    {user.class}
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-400 mt-0.5">
+                    {meta.tagline}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          )}
           <Panel title={world.affiliation} variant={worldColorToVariant(world.color)}>
             <p className="text-xs text-ink-200 font-mono leading-relaxed">{world.description}</p>
           </Panel>
@@ -215,6 +246,7 @@ export function QuestWorldPage() {
             bossGlyph={world.boss.glyph}
             lore={world.boss.lore}
             color={WORLD_COLOR_HEX[world.color]}
+            portraitSrc={`/sprites/bosses/${world.id}.png`}
             open={unlock.shouldShow}
             onClose={unlock.ack}
           />
