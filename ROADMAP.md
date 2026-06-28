@@ -2,87 +2,104 @@
 
 ## Active (in progress)
 
-## High Priority — Promised but not done
+- Breach ↔ Raid integration. Breach world has monsters that escape
+  and feed the existing /breach raid encounter. Schema change to
+  PortalLeak to track `worldId` source, plus an in-world "Seal the
+  Wound" action in the Breach world that creates a leak. Out of scope
+  for the first commit — set up the worlds, build the integration next.
 
-1. **Tie quest boss unlocks to world completion.** When all 5
-   levels in a world are cleared, a "boss" unlocks — single-player
-   encounter with its own HP bar. Mechanic could be: complete a
-   specific achievement (e.g., set a new PR) to deal damage, then
-   once defeated, grants a class-skill point or a Soulstone.
-2. **More worlds.** Add Nexus (high-level, multi-class) and The
-   Breach (raid-themed solo content). Stretches the endgame so
-   the threshold-based system has long-term goals.
+- Breach world reset on Maw defeat. Boss defeat should regenerate
+  the 5 levels with new IDs + new Maw variant. Needs a reset
+  endpoint + a way to roll new Maw names/variants per cycle.
+
+## High Priority — completed in this session
+
+- ✅ **Tie quest boss unlocks to world completion.** BossCard +
+  BossUnlockModal + /bosses/:worldId/damage endpoint + auto-create
+  WorldBoss on clear + first-defeat rewards (xp, gold, soulstone,
+  equipment drop). All from prior sessions.
+- ✅ **More worlds — Nexus + Breach.** Nexus (cyan, lvl 10,
+  multi-class convergence, "The Multitude" boss) and Breach (violet,
+  lvl 12, raid-themed descent, "The Maw" boss). 9 worlds total.
 
 ## Medium Priority — Security & Data
 
-3. **2FA / TOTP.** speakeasy + QR code + recovery codes.
-4. **Email verification + password reset.** depends on 2FA.
-5. **Medical metrics.** cholesterol, testosterone, blood pressure,
-   resting heart rate trend (already track RHR via metric, but no
-   UI for medical history).
-6. **Data export.** CSV / JSON download of all user data.
+- ✅ **2FA / TOTP.** speakeasy + QR code + recovery codes.
+  api/src/lib/totp.ts + web/src/components/TwoFactorSetup.tsx.
+- ~~Email verification + password reset.~~ **DROPPED** per user
+  direction (no email integration in this app).
+- ✅ **Data export.** /export/info + /export/json + /export/csv (zip).
+- **Medical metrics.** cholesterol, testosterone, blood pressure,
+  resting heart rate trend (already track RHR via metric, but no
+  UI for medical history).
+- **Insight rule improvements** — better correlations between
+  sleep / stress / recovery / pain.
 
 ## Medium Priority — Polish
 
-7. **Equipment drops / loot.** common enemy drops for raids so
-   raids aren't just "deal damage". Could be cosmetic items
-   (custom avatars), XP boosts, or class items.
-8. **Mobile polish.** Already done basic pass — could iterate on:
-   - Long-press to multi-select on history
-   - Pull-to-refresh on Dashboard
-   - Haptic feedback on rest timer completion
+- **Equipment drops / loot.** common enemy drops for raids so
+  raids aren't just "deal damage". Could be cosmetic items
+  (custom avatars), XP boosts, or class items.
+- **Mobile polish.** Already done basic pass — could iterate on:
+  - Long-press to multi-select on history
+  - Pull-to-refresh on Dashboard
+  - Haptic feedback on rest timer completion
 
 ## Stretch / Future
 
-9. **Nutrition tracker** (FoodYou-style)
-   - Use OpenFoodFacts API for food search + barcode lookup
-   - Daily macro tracking (already have CALORIES / PROTEIN_G /
-     WATER_ML metrics, just need the entry UI)
-   - Reference: https://github.com/FoodYou-wants-to-be-programmer/FoodYou
-10. **Gadgetbridge integration**
-    - Wearable data sync (HR, sleep, steps)
-    - Reference PR: https://codeberg.org/Freeyourgadget/Gadgetbridge/pulls/5809
-    - Would feed: RESTING_HR, HRV, SLEEP_HOURS automatically
-11. **FIT / GPX file imports** (Endurain-style)
-    - Upload a FIT file from a Garmin / Wahoo / etc.
-    - Extract: distance, time, pace, HR, elevation, laps
-    - Auto-log as a CARDIO workout with all the juicy metrics
-    - Reference: https://github.com/fmager/Endurain (community fork)
-12. **3D avatar / STATUS hologram polish**
-    - Pinch-to-zoom (done)
-    - Better touch targets for body parts (done)
-    - Animations on level completion
-    - Animated "worked" pulse when a workout is logged
-13. **Personal records page** — all PRs in one view, with charts
-    over time.
-14. **Body composition timeline chart** — BF% / LBM over time
-15. **Insight rule improvements** — better correlations between
-    sleep / stress / recovery / pain
-16. **AI HUD agent** — Cortana-style assistant that knows your
-    data and can answer questions ("how did I sleep this week?")
+- **Nutrition tracker** (FoodYou-style)
+  - Use OpenFoodFacts API for food search + barcode lookup
+  - Daily macro tracking (already have CALORIES / PROTEIN_G /
+    WATER_ML metrics, just need the entry UI)
+  - Reference: https://github.com/FoodYou-wants-to-be-programmer/FoodYou
+- **Gadgetbridge integration**
+  - Wearable data sync (HR, sleep, steps)
+  - Reference PR: https://codeberg.org/Freeyourgadget/Gadgetbridge/pulls/5809
+  - Would feed: RESTING_HR, HRV, SLEEP_HOURS automatically
+- **FIT / GPX file imports** (Endurain-style)
+  - Upload a FIT file from a Garmin / Wahoo / etc.
+  - Extract: distance, time, pace, HR, elevation, laps
+  - Auto-log as a CARDIO workout with all the juicy metrics
+  - Reference: https://github.com/fmager/Endurain (community fork)
+- **3D avatar / STATUS hologram polish**
+  - Pinch-to-zoom (done)
+  - Better touch targets for body parts (done)
+  - Animations on level completion
+  - Animated "worked" pulse when a workout is logged
+- **Personal records page** — all PRs in one view, with charts
+  over time.
+- **Body composition timeline chart** — BF% / LBM over time
+- **AI HUD agent** — Cortana-style assistant that knows your
+  data and can answer questions ("how did I sleep this week?")
 
 ## Recently Fixed / Resolved
 
+- ✅ All sprite assets updated (af0ca09 → 91d5edb chain). 91 catalog
+  sprites + 9 boss portraits + 15 monster portraits all use the
+  green-screen + isnet-soft pipeline. No halo / shadow / smudge
+  artifacts.
+- ✅ Walking cane / plain cotton / sabatons specifically regenerated
+  via green-screen after procedural attempt was rejected as "shit".
+- ✅ Walking cane wired to BOTH possible paths
+  (items/weapon_healer_1.png AND gear/weapons/oracle.png).
+- ✅ Per-item sprite manifest regenerated by `npm run sprites:manifest`.
 - ✅ Quest threshold-based auto-completion
 - ✅ Routine + streak system (consistency bonus, no penalty)
 - ✅ Rest timer + copy-last-session + history filters
 - ✅ Workout form polish (autocomplete, bodyweight detection,
-     unit conversion, muscle preview)
+   unit conversion, muscle preview)
 - ✅ 3D body hologram with pain/worked/recovery overlays
 - ✅ Mobile polish (bottom nav, responsive grids, safe-area insets)
 - ✅ Tron identity disc avatar
 - ✅ Quest overworld with animations
 - ✅ Pain logging system
+- ✅ 5571-minute walking-session insight bug (Workout.duration
+  unit fix, migration 20260627090000_fix_fit_duration_units)
+- ✅ Class-lock badge color fix (oracle now periwinkle, not gray)
+- ✅ Walking cane path mismatch (seed file pointed at the wrong
+  per-item path vs the shared path)
 
 ## Nice-to-haves (backlog)
 
 - Dark/light theme toggle (currently only dark)
 - Sound effects on level up, raid damage, etc.
-- Achievements gallery (we have 40+ achievements but no gallery)
-- Friend system / leaderboards
-- Apple Health / Google Fit integration (similar to Gadgetbridge
-  but per-platform)
-- Periodic check-ins (weekly weigh-in reminder, monthly photo
-  upload, etc.)
-- Custom workout templates (save a routine as a template)
-- Macro/meal planning beyond just logging
