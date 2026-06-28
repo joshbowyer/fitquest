@@ -105,3 +105,21 @@ export function portalLayoutFor(worlds: World[]): PortalTile[] {
     return { world: w, cx: d.cx, cy: d.cy, pathCells: cells };
   });
 }
+
+/**
+ * Map a class short-name to the world color it visually pairs with
+ * for accent purposes. Mirrors the logic in QuestWorld.tsx but
+ * exported so other pages (e.g. inventory class-lock badges) can
+ * share the same color assignments without duplicating the mapping.
+ */
+export type ClassAccent = 'magenta' | 'lime' | 'goldenrod' | 'periwinkle';
+export function primaryColorForClass(c: string): ClassAccent {
+  switch (c) {
+    case 'JUGGERNAUT':
+    case 'BERSERKER': return 'magenta';
+    case 'PHANTOM':
+    case 'SCOUT':     return 'lime';
+    case 'ORACLE':    return 'periwinkle';
+    default:          return 'goldenrod';
+  }
+}

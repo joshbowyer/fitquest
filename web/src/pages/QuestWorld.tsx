@@ -13,6 +13,7 @@ import {
   type WorldLevel,
   WORLD_COLOR_HEX,
   type RequirementProgress,
+  primaryColorForClass,
 } from '@/lib/quest';
 import { getFrameArchetype, ARCHETYPE_META } from '@/lib/frame';
 import { classNames } from '@/lib/format';
@@ -439,17 +440,6 @@ function formatProgress(current: number, target: number, units: 'METRIC' | 'IMPE
     return `${Math.round(current)}m / ${Math.round(target)}m`;
   }
   return `${Math.round(current)} / ${Math.round(target)}`;
-}
-
-function primaryColorForClass(c: string): 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' {
-  switch (c) {
-    case 'JUGGERNAUT':
-    case 'BERSERKER': return 'magenta';
-    case 'PHANTOM':
-    case 'SCOUT':     return 'lime';
-    case 'ORACLE':    return 'periwinkle';
-    default:          return 'goldenrod';
-  }
 }
 
 function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan'):
