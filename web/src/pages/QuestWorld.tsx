@@ -48,6 +48,14 @@ export function QuestWorldPage() {
     },
   }, 800);
 
+  // One-time unlock celebration when all 5 levels are first cleared.
+  // Called BEFORE the early-return below so the hooks order is
+  // stable across renders (Rules of Hooks). `useBossUnlock` only
+  // reads worldId + allCleared; both are defined here.
+  const allLevelsCompleted =
+    !!world && world.levels.length > 0 && world.levels.every((l) => l.completed);
+  const unlock = useBossUnlock(worldId ?? '', allLevelsCompleted);
+
   if (isLoading || !user || !world) {
     return (
       <Layout>
@@ -61,11 +69,6 @@ export function QuestWorldPage() {
   const meta = ARCHETYPE_META[archetype];
   const completed = world.levels.filter((l) => l.completed).length;
   const activeLevel = levelId ? world.levels.find((l) => l.id === levelId) : null;
-  // One-time unlock celebration when all 5 levels are first cleared.
-  // `unlock.shouldShow` flips true on the first such view; ack()
-  // dismisses + persists the "seen" flag in localStorage so
-  // navigating back doesn't re-trigger.
-  const unlock = useBossUnlock(worldId, completed === world.levels.length);
 
   return (
     <Layout>
