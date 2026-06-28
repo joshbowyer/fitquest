@@ -1,36 +1,12 @@
 import type { FrameArchetype } from '@/lib/frame';
-import { SpriteAvatar } from './SpriteAvatar';
-
-export type AvatarHairStyle = 'SHORT' | 'LONG' | 'MOHAWK' | 'BUZZ' | 'PONYTAIL' | 'PIXIE';
 
 export type AvatarProps = {
   archetype: FrameArchetype;
   bodyFatPct?: number | null;
-  hairStyle?: AvatarHairStyle;
-  hairColor?: string;
-  skinTone?: string;
-  shirtColor?: string;
-  pantsColor?: string;
   accentColor?: string;
   size?: number | string;
   className?: string;
   classStripe?: string | null;
-  /**
-   * When true, render the layered sprite avatar (Habitica pixel art)
-   * inside the Tron disc. Falls back to the geometric silhouette
-   * when `sprites` is false (the original behavior).
-   */
-  sprites?: boolean;
-  /** Sprite variant IDs — used when `sprites` is true. */
-  weapon?: string;
-  shield?: string;
-  /** Equipped item sprite paths (relative to /sprites). */
-  head?: string;
-  body?: string;
-  hands?: string;
-  feet?: string;
-  neck?: string;
-  ring?: string;
 };
 
 /**
@@ -47,9 +23,10 @@ export type AvatarProps = {
  * - Glow filter on the ring
  * - Background grid pattern hinting at the digital world
  *
- * The Avatar DB row keeps the hair/skin/shirt/pants customizations
- * for forward-compat (we can overlay hair later), but they don't
- * affect the disc rendering.
+ * Sprites are gone — the catalog now ships Tron-style gear icons
+ * under /sprites/gear/ and the class portrait under
+ * /sprites/class-portraits/. Those are rendered as separate <img>
+ * tags at call sites, not layered into this disc.
  */
 export function Avatar({
   archetype,
@@ -57,49 +34,7 @@ export function Avatar({
   className,
   accentColor,
   classStripe,
-  hairStyle,
-  hairColor,
-  skinTone,
-  shirtColor,
-  sprites = false,
-  weapon,
-  shield,
-  head,
-  body,
-  hands,
-  feet,
-  neck,
-  ring,
 }: AvatarProps) {
-  // Branch: sprite-based avatar when `sprites` is enabled and the
-  // browser has loaded the sprite assets. We forward skinTone too —
-  // the DB has it per-user (avatars.ts) and dropping it here is
-  // what made the Quest constellation map fall back to the default
-  // brown tint (#915533) regardless of the user's customization.
-  if (sprites) {
-    return (
-      <SpriteAvatar
-        archetype={archetype}
-        hairStyle={hairStyle}
-        hairColor={hairColor}
-        skinTone={skinTone}
-        shirtColor={shirtColor}
-        weapon={weapon}
-        shield={shield}
-        head={head}
-        body={body}
-        hands={hands}
-        feet={feet}
-        neck={neck}
-        ring={ring}
-        size={typeof size === 'number' ? size : 160}
-        className={className}
-        accentColor={accentColor}
-        classStripe={classStripe}
-      />
-    );
-  }
-
   const ringColor = classStripe ?? accentColor ?? '#14d6e8';
   const innerColor = archetypeTint(archetype);
 

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { FrameArchetype } from '@/lib/frame';
-import type { UserAvatar } from '@/lib/auth';
 import type { World } from '@/lib/quest';
 import { WORLD_COLOR_HEX, type WorldColor } from '@/lib/quest';
 import { CLASS_META, type ClassName } from '@/lib/types';
@@ -21,7 +20,6 @@ import { Avatar } from './Avatar';
 type Props = {
   worlds: World[];
   archetype: FrameArchetype;
-  avatar: UserAvatar | null;
   playerLevel: number;
   accentColor: string;
   classStripe: string | null;
@@ -116,7 +114,6 @@ function polar(cx: number, cy: number, r: number, deg: number) {
 export function ConstellationMap({
   worlds,
   archetype,
-  avatar,
   playerLevel,
   accentColor,
   classStripe,
@@ -491,13 +488,6 @@ export function ConstellationMap({
           <g transform="translate(-60, -60)">
             <Avatar
               archetype={archetype}
-              hairStyle={avatar?.hairStyle ?? 'SHORT'}
-              hairColor={avatar?.hairColor ?? 'brown'}
-              skinTone={avatar?.skinTone ?? '#915533'}
-              shirtColor={avatar?.shirtColor ?? '#14d6e8'}
-              sprites
-              weapon="weapon_warrior_2"
-              shield="shield_warrior_1"
               size={120}
               accentColor={accentColor}
               classStripe={classStripe ?? undefined}

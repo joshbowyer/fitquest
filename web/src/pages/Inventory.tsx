@@ -115,10 +115,6 @@ export function InventoryPage() {
   const totals = statsQ.data?.totals ?? {};
   const setCounts = statsQ.data?.setCounts ?? {};
 
-  // Compute derived: which sprites are currently equipped?
-  const equippedWeapon = equipped.MAIN?.itemDef.sprite ?? null;
-  const equippedShield = equipped.OFF?.itemDef.sprite ?? null;
-
   // Filter catalog by rarity + slot
   const filteredCatalog = (catalogQ.data?.items ?? []).filter((it) => {
     if (rarityFilter !== 'ALL' && it.rarity !== rarityFilter) return false;
@@ -539,12 +535,12 @@ export function InventoryPage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  'shirt_starter_universal',
-                  'weapon_warrior_1',
-                  'shield_warrior_1',
-                  'ring_iron_band',
-                  'neck_amber',
-                  'head_basic_hood',
+                  'tron_juggernaut_body',
+                  'tron_juggernaut_weapon',
+                  'tron_juggernaut_off',
+                  'tron_juggernaut_ring',
+                  'tron_juggernaut_neck',
+                  'tron_juggernaut_head',
                 ].map((id) => (
                   <button
                     key={id}

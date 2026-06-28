@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useAuth, type UserAvatar } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
@@ -54,15 +54,6 @@ export function StatusPage() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<BodyPartMeta | null>(null);
   const [hovered, setHovered] = useState<BodyPartMeta | null>(null);
-
-  // Load the user's avatar customization so the small sprite in
-  // the Identity panel matches the rest of the app (skin tone,
-  // hair, shirt, pants).
-  const { data: avatarData } = useQuery({
-    queryKey: ['avatar'],
-    queryFn: () => api<{ avatar: UserAvatar }>('/avatar'),
-  });
-  const avatar = avatarData?.avatar ?? null;
 
   const { data, isLoading } = useQuery({
     queryKey: ['status'],
@@ -134,7 +125,6 @@ export function StatusPage() {
           setHovered={setHovered}
           archive={archive}
           archetype={archetype}
-          avatar={avatar}
           meta={meta}
           bf={bf}
           weight={weight}
@@ -173,7 +163,6 @@ function StatusBody({
   setHovered,
   archive,
   archetype,
-  avatar,
   meta,
   bf,
   weight,
@@ -199,7 +188,6 @@ function StatusBody({
   setHovered: (v: BodyPartMeta | null) => void;
   archive: ReturnType<typeof useDelayedMutation<{ ok: boolean }, string>>;
   archetype: ReturnType<typeof getFrameArchetype> | null;
-  avatar: UserAvatar | null;
   meta: typeof ARCHETYPE_META[keyof typeof ARCHETYPE_META];
   bf: number | null;
   weight: number | null;
@@ -269,11 +257,6 @@ function StatusBody({
                 archetype={archetype ?? 'SPRITE'}
                 accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
                 size={64}
-                sprites
-                hairStyle={avatar?.hairStyle ?? 'SHORT'}
-                hairColor={avatar?.hairColor ?? 'brown'}
-                skinTone={avatar?.skinTone ?? '#915533'}
-                shirtColor={avatar?.shirtColor ?? '#14d6e8'}
                 classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               />
               <div className="text-xs font-mono">

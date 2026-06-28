@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useAuth, type UserAvatar } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
@@ -38,12 +38,6 @@ export function QuestPage() {
     queryKey: ['home-base'],
     queryFn: () => api<HomeBaseData>('/home-base'),
   });
-
-  const { data: avatarData } = useQuery({
-    queryKey: ['avatar'],
-    queryFn: () => api<{ avatar: UserAvatar }>('/avatar'),
-  });
-  const avatar = avatarData?.avatar ?? null;
 
   // Breach state for the constellation black hole overlay.
   // Only fetched when the user is at or near the unlock level —
@@ -85,9 +79,8 @@ export function QuestPage() {
             <ConstellationMap
               worlds={portals}
               archetype={archetype}
-              avatar={avatar}
               playerLevel={user.level}
-              accentColor={avatar?.accentColor ?? '#14d6e8'}
+              accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
               classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
               onSelect={(id) => navigate(`/quest/${id}`)}
               onSelectNexus={(id) => navigate(`/quest/${id}`)}
@@ -134,19 +127,13 @@ export function QuestPage() {
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="w-20 shrink-0">
-                    {avatar && (
+                    {user && (
                       <Avatar
                         archetype={archetype}
                         bodyFatPct={bf}
-                        hairStyle={avatar.hairStyle}
-                        hairColor={avatar.hairColor}
-                        skinTone={avatar.skinTone}
-                        shirtColor={avatar.shirtColor}
-                        pantsColor={avatar.pantsColor}
-                        accentColor={avatar.accentColor}
+                        accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
                         classStripe={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : null}
                         size={80}
-                        sprites
                       />
                     )}
                   </div>
