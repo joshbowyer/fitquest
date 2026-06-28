@@ -101,15 +101,6 @@ export function InventoryPage() {
     },
   }, 800);
 
-  const grantM = useDelayedMutation({
-    mutationFn: (itemDefId: string) =>
-      api<{ item: InventoryItem }>('/inventory/grant', {
-        method: 'POST',
-        body: { itemDefId, source: 'STARTER_KIT' },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory'] }),
-  }, 800);
-
   const items = invQ.data?.items ?? [];
   const equipped = invQ.data?.equipped ?? ({} as Record<EquipSlot, InventoryItem | null>);
   const totals = statsQ.data?.totals ?? {};
@@ -505,16 +496,9 @@ export function InventoryPage() {
                       </NeonButton>
                     )
                   ) : (
-                    <NeonButton
-                      size="sm"
-                      variant="violet"
-                      onClick={() => grantM.run(selectedDef.id)}
-                      loading={grantM.isPending}
-                      icon="+"
-                      loadingText="Granting…"
-                    >
-                      Grant (dev)
-                    </NeonButton>
+                    <div className="text-[10px] font-mono text-ink-400 italic">
+                      Not yet in your inventory — drops come from monsters and bosses.
+                    </div>
                   )}
                 </div>
 
@@ -526,35 +510,6 @@ export function InventoryPage() {
               </div>
             </Panel>
           )}
-
-          {/* Dev helper: grant a starter kit */}
-          <Panel title="DEV: STARTER KIT" variant="violet">
-            <div className="space-y-2">
-              <div className="text-[10px] font-mono text-ink-300">
-                Grant a starter item for testing. Real drops come from monsters/bosses (Phase D).
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  'tron_juggernaut_body',
-                  'tron_juggernaut_weapon',
-                  'tron_juggernaut_off',
-                  'tron_juggernaut_ring',
-                  'tron_juggernaut_neck',
-                  'tron_juggernaut_head',
-                ].map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => grantM.run(id)}
-                    disabled={grantM.isPending}
-                    className="px-2 py-1 text-[9px] font-mono border border-ink-500/40 hover:border-neon-violet text-ink-200 hover:text-neon-violet"
-                  >
-                    + {id}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </Panel>
         </div>
       </div>
     </Layout>

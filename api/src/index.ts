@@ -49,6 +49,7 @@ import { mealRoutes } from './routes/meals.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
 import { seedItems } from './lib/seedItems.js';
+import { remapLegacyItemSprites } from './lib/remapItemSprites.js';
 import { ensureDefaultAdmin } from './lib/seedAdmin.js';
 
 async function build() {
@@ -139,6 +140,13 @@ async function main() {
   await ensureAchievementsSeeded();
   await ensureSkillsSeeded();
   await seedItems();
+  // One-shot: remap any ItemDef row whose sprite still points at a
+  // deleted /sprites/<old-folder>/... path to the new
+  // /sprites/gear/<slot>/<class>.png equivalent. Idempotent — a
+  // second run is a no-op. Logs the count so prod deploys can
+  // verify the remap actually fired.
+  const remap = await remapLegacyItemSprites();
+  console.log(`[remap] ${remap.updated} ItemDef rows updated, ${remap.skipped} skipped`);
   // System-default penance templates live as constants in
   // api/src/lib/penance.ts (PENANCE_DELTAS + PENANCE_LABELS +
   // PENANCE_FLAVORS). No DB seed needed — the constants are

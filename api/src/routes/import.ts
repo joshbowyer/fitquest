@@ -43,7 +43,12 @@ async function persist(
 
   if (fit.workouts && fit.workouts.length > 0) {
     for (const w of fit.workouts) {
-      const duration = w.durationSec;
+      // FIT totalTimerTime is seconds; Workout.duration is stored as
+      // minutes (matches the manual /workouts POST path which uses
+      // minutes and the schema doc). Round to the nearest minute so a
+      // 92m48s walk reads as 93m in the UI rather than 92.8m with a
+      // float showing up everywhere.
+      const duration = Math.round(w.durationSec / 60);
       const notes = [
         w.subSport ? `${w.sport}/${w.subSport}` : w.sport,
         w.distanceMeters ? `${(w.distanceMeters / 1000).toFixed(2)} km` : null,
@@ -104,7 +109,7 @@ async function persist(
       created.push({
         kind: 'workout',
         id: created_row.id,
-        summary: `${w.sport} · ${Math.round(duration / 60)}m`,
+        summary: `${w.sport} · ${duration}m`,
       });
 
       // Infer standard race distances from CARDIO activities. We only
