@@ -167,10 +167,11 @@ export function ConstellationMap({
   const ringHex = classStripe ?? accentColor ?? '#14d6e8';
 
   return (
-    <div className="w-full">
+    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center">
       <svg
         viewBox="0 0 1000 600"
-        className="w-full h-auto"
+        className="w-full h-full max-w-full max-h-full"
+        style={{ maxWidth: '100%', maxHeight: '100%' }}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Overworld constellation"

@@ -121,7 +121,7 @@ export function GalaxyMapOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[9999] bg-bg-900/95 backdrop-blur-sm overflow-auto"
+      className="fixed inset-0 z-[9999] bg-bg-900/95 backdrop-blur-sm overflow-hidden"
       onClick={onClose}
     >
       {/* Close button */}
@@ -133,9 +133,13 @@ export function GalaxyMapOverlay({
         ✕ close · esc
       </button>
 
-      {/* Click on the SVG itself doesn't close — only the backdrop */}
+      {/* Click on the SVG itself doesn't close — only the backdrop.
+          Layout: full-viewport flex container, SVG scales to fit via
+          preserveAspectRatio + max-w/max-h so the entire constellation
+          is visible without scrolling. On mobile, scales to width; on
+          desktop, scales to height (taller than wide). */}
       <div
-        className="w-full h-full min-h-screen p-4"
+        className="w-full h-full flex items-center justify-center p-12 md:p-16"
         onClick={(e) => e.stopPropagation()}
       >
         <ConstellationMap
@@ -155,12 +159,15 @@ export function GalaxyMapOverlay({
             status: breachData.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
           } : null}
           onSelect={(id) => {
-            onSelectWorld(id);
+            // Close the overlay first, then navigate. The user
+            // opened the map from /home-base so browser-back from
+            // the world page naturally returns to homebase.
             onClose();
+            onSelectWorld(id);
           }}
           onSelectNexus={(id) => {
-            onSelectWorld(id);
             onClose();
+            onSelectWorld(id);
           }}
           onSelectHomeBase={() => {
             onClose();

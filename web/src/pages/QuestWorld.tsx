@@ -76,7 +76,7 @@ export function QuestWorldPage() {
         title={world.name}
         subtitle={
           <span className="flex items-center gap-3 flex-wrap">
-            <Link to="/quest" className="text-neon-cyan hover:underline">← overworld</Link>
+            <Link to="/home-base" className="text-neon-cyan hover:underline">← homebase</Link>
             <span style={{ color: hex }}>{world.theme}</span>
             <span className="text-ink-400">·</span>
             <span className="text-ink-400">{completed}/{world.levels.length} cleared</span>
