@@ -142,8 +142,13 @@ export function ConstellationMap({
     return m;
   }, [worlds]);
 
+  // The central Nexus hub prefers the Nexus world (post-game
+  // convergence). Falls back to any NEUTRAL world for legacy
+  // layouts where Nexus doesn't exist yet.
   const nexusWorld = useMemo(
-    () => worlds.find((w) => w.affiliation === 'NEUTRAL') ?? null,
+    () => worlds.find((w) => w.id === 'nexus')
+      ?? worlds.find((w) => w.affiliation === 'NEUTRAL')
+      ?? null,
     [worlds],
   );
 

@@ -49,6 +49,10 @@ export function QuestPage() {
     staleTime: 60_000,
   });
   const breachUnlocked = breach?.progress.status !== 'LOCKED' && breach?.boss != null;
+  // The Breach world is gated by player level 12 (its levelRequired).
+  // The raid node on the constellation links to the world (not the
+  // /breach raid page) so this gating reflects world access.
+  const breachWorldUnlocked = (user?.level ?? 0) >= 12;
 
   const portals = worlds ?? [];
   const archetype = user ? (getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE') : 'SPRITE';
@@ -87,16 +91,22 @@ export function QuestPage() {
               shieldTier={homeBase?.tier}
               shield={homeBase?.shield}
               recentEvents={homeBase?.recentEvents}
-              onSelectHomeBase={() => setHomeBaseOpen(true)}
-              breach={breachUnlocked ? {
-                unlocked: true,
-                bossName: breach!.boss!.name,
-                bossHp: breach!.progress.bossHp,
-                bossMaxHp: breach!.progress.bossMaxHp,
-                status: breach!.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
-              } : null}
-              onSelectBreach={() => navigate('/breach')}
-            />
+onSelectHomeBase={() => setHomeBaseOpen(true)}
+               breach={breachUnlocked ? {
+                 unlocked: true,
+                 bossName: breach!.boss!.name,
+                 bossHp: breach!.progress.bossHp,
+                 bossMaxHp: breach!.progress.bossMaxHp,
+                 status: breach!.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
+               } : null}
+               // Click on the breach constellation node → enter the
+               // Breach world (NOT the raid). Visible when user level
+// >= 12 (the Breach world's levelRequired) OR has
+                // already cleared it. The raid page (/breach) is still
+                // reachable via direct URL + via the in-world panels
+                // once inside the Breach world.
+                onSelectBreach={breachWorldUnlocked ? () => navigate('/quest/breach') : undefined}
+              />
           </Panel>
 
           <div className="space-y-4">

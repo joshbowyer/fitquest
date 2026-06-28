@@ -37,7 +37,7 @@ export type RequirementProgress = {
 };
 
 export type WorldColor = 'red' | 'orange' | 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan';
-export type WorldAffiliation = 'JUGGERNAUT' | 'PHANTOM' | 'SCOUT' | 'BERSERKER' | 'ORACLE' | 'NEUTRAL';
+export type WorldAffiliation = 'JUGGERNAUT' | 'PHANTOM' | 'SCOUT' | 'BERSERKER' | 'TRACER' | 'ORACLE' | 'NEUTRAL';
 
 export type WorldLevel = {
   id: string;            // e.g. "spire-1"
@@ -375,6 +375,119 @@ export const WORLDS: World[] = [
         xp: 300, gold: 120, requiredLevelId: 'gap-4', playerLevelRequired: 5,
         requirement: { kind: 'CARDIO_5K', maxSeconds: 1320 },
         requirementSummary: '5K under 22:00 (elite anaerobic + aerobic blend)' },
+    ],
+  },
+  // ============================================================
+  // NEXUS — high-level multi-class convergence world
+  // ============================================================
+  // Gated by player level 10 so users have done enough of the other
+  // worlds first. Levels test multiple domains at once: strength +
+  // cardio + recovery in the same encounter. The boss is a synthesis
+  // of every class energy the user has invested in.
+  {
+    id: 'nexus',
+    name: 'The Nexus',
+    theme: 'NEXUS',
+    color: 'cyan',
+    affiliation: 'NEUTRAL',
+    description: 'Where every path converges. At the center of the overworld, a doorway that was not built — it remembered itself into being. Past it, a synthesis of every training domain you have ever touched.',
+    levelRequired: 10,
+    icon: '◈',
+    boss: {
+      name: 'The Multitude',
+      glyph: '✺',
+      maxHp: 2500,
+      lore: 'At the Nexus, every path you have ever walked comes back at once — not as memory, but as an enemy. The Multitude is you, refracted through every class you have ever held. Beat it and the path stays open. Fail and it closes until next cycle.',
+    },
+    // Multi-domain thresholds — high numbers because Nexus is
+    // post-game. Bodyweight multipliers stay relevant for the lift
+    // tests; absolute seconds for the cardio ones.
+    levels: [
+      // L1: heavy squat + easy 5K — the foundation.
+      { id: 'nexus-1', order: 1, name: 'The Synthesis', description: 'You step through the doorway and the floor hums with every exercise you have ever done.', enemy: 'The First Echo', enemyGlyph: '◇',
+        xp: 220, gold: 80, requiredLevelId: null, playerLevelRequired: 10,
+        requirement: { kind: 'WEIGHT_BODYWEIGHT_MULT', exercise: 'Squat', multiplier: 1.5, reps: 5 },
+        requirementSummary: 'Squat 1.5× bodyweight × 5 reps' },
+      // L2: 5K + recovery streak — body + recovery together.
+      { id: 'nexus-2', order: 2, name: 'The Convergence', description: 'Every path blurs into one. Strength bleeds into endurance. Rest bleeds into readiness.', enemy: 'The Bleed', enemyGlyph: '✦',
+        xp: 280, gold: 100, requiredLevelId: 'nexus-1', playerLevelRequired: 11,
+        requirement: { kind: 'CARDIO_5K', maxSeconds: 1380 },
+        requirementSummary: '5K under 23:00' },
+      // L3: bench + plank — push + stability.
+      { id: 'nexus-3', order: 3, name: 'The Push', description: 'A wall that resists. Push it. Hold it.', enemy: 'The Wall', enemyGlyph: '▤',
+        xp: 340, gold: 120, requiredLevelId: 'nexus-2', playerLevelRequired: 12,
+        requirement: { kind: 'WEIGHT_BODYWEIGHT_MULT', exercise: 'Bench Press', multiplier: 1.25, reps: 5 },
+        requirementSummary: 'Bench Press 1.25× bodyweight × 5 reps' },
+      // L4: sprint + sleep streak — anaerobic + recovery.
+      { id: 'nexus-4', order: 4, name: 'The Whole Body', description: 'You are not strong. You are not fast. You are everything at once.', enemy: 'The Whole Self', enemyGlyph: '✺',
+        xp: 420, gold: 150, requiredLevelId: 'nexus-3', playerLevelRequired: 13,
+        requirement: { kind: 'SPRINT_DISTANCE', minMeters: 400, maxSeconds: 75 },
+        requirementSummary: '400m sprint under 75 seconds' },
+      // L5: deadlift bodyweight + 14d sleep streak — peak + sustained.
+      { id: 'nexus-5', order: 5, name: 'The Multitude', description: 'Every class you have ever held converges here. The Multitude is you — refracted.', enemy: 'The Multitude', enemyGlyph: '✺',
+        xp: 600, gold: 220, requiredLevelId: 'nexus-4', playerLevelRequired: 14,
+        requirement: { kind: 'WEIGHT_BODYWEIGHT_MULT', exercise: 'Deadlift', multiplier: 2.0, reps: 3 },
+        requirementSummary: 'Deadlift 2× bodyweight × 3 reps' },
+    ],
+  },
+  // ============================================================
+  // BREACH — raid-themed solo world. Resets on defeat.
+  // ============================================================
+  // Distinct from the level-10 /breach raid page (which spawns
+  // random bosses from a pool). This world is a structured 5-floor
+  // descent into a tear in reality. Beating The Maw opens the
+  // wound wider — monsters escape into /breach (the raid) until
+  // the user clears it again. Cycle: defeat The Maw → reset world →
+  // new Maw variant → fresh level IDs.
+  //
+  // For now the reset is metadata-only — the actual re-issuance of
+  // new levels happens via a separate /breach-world/reset endpoint
+  // (out of scope for the initial cut).
+  {
+    id: 'breach',
+    name: 'The Breach',
+    theme: 'BREACH',
+    color: 'violet',
+    affiliation: 'NEUTRAL',
+    description: 'A wound in the world. Black at the edges. The Breach breathes — every monster that escapes through it goes looking for the user in the overworld. The only way to seal it is to walk all the way down, find The Maw, and beat it from the inside.',
+    levelRequired: 12,
+    icon: '✺',
+    boss: {
+      name: 'The Maw',
+      glyph: '✺',
+      maxHp: 3000,
+      lore: 'At the bottom of the Breach is The Maw — a black hole with intent. It does not eat to feed. It eats to multiply. Beat it and the wound narrows. Beat it a second time and it closes a little more. Beat it enough times and the overworld becomes quiet.',
+    },
+    // Breach levels are intentionally hard — they test every domain
+    // at once, and the requirements are tuned for player level 12+.
+    // The first cycle is the canonical "defeat The Maw once" run;
+    // after defeat the user can re-enter and the world resets.
+    levels: [
+      // L1: easy entry — show the user the breach feels different.
+      { id: 'breach-1', order: 1, name: 'The Tear', description: 'The first step inside the Breach. Everything echoes. The air is thin and tastes like static.', enemy: 'The Echo', enemyGlyph: '✦',
+        xp: 260, gold: 90, requiredLevelId: null, playerLevelRequired: 12,
+        requirement: { kind: 'CARDIO_DISTANCE', minMeters: 5000 },
+        requirementSummary: '5K distance in a single session (any pace)' },
+      // L2: heavy deadlift — the Breach resists with weight.
+      { id: 'breach-2', order: 2, name: 'The Anchor', description: 'A weight at the bottom of the wound. It wants to drag you down. Lift it.', enemy: 'The Anchor', enemyGlyph: '▣',
+        xp: 320, gold: 110, requiredLevelId: 'breach-1', playerLevelRequired: 12,
+        requirement: { kind: 'WEIGHT_BODYWEIGHT_MULT', exercise: 'Deadlift', multiplier: 1.75, reps: 5 },
+        requirementSummary: 'Deadlift 1.75× bodyweight × 5 reps' },
+      // L3: 10K — sustained endurance inside the breach.
+      { id: 'breach-3', order: 3, name: 'The Long Descent', description: 'Down. There is no horizon, only the floor approaching.', enemy: 'The Depth', enemyGlyph: '✦',
+        xp: 400, gold: 140, requiredLevelId: 'breach-2', playerLevelRequired: 13,
+        requirement: { kind: 'CARDIO_DISTANCE', minMeters: 10000 },
+        requirementSummary: '10K distance in a single session' },
+      // L4: 800m sprint — fast in tight space.
+      { id: 'breach-4', order: 4, name: 'The Narrow', description: 'The walls close in. There is room for one stride.', enemy: 'The Compression', enemyGlyph: '◆',
+        xp: 480, gold: 170, requiredLevelId: 'breach-3', playerLevelRequired: 13,
+        requirement: { kind: 'SPRINT_DISTANCE', minMeters: 800, maxSeconds: 180 },
+        requirementSummary: '800m in under 3:00 (interval-style, fast)' },
+      // L5: bench + recovery streak + sleep — the final gate.
+      { id: 'breach-5', order: 5, name: 'The Maw', description: 'At the bottom. The Maw opens. You step in.', enemy: 'The Maw', enemyGlyph: '✺',
+        xp: 700, gold: 250, requiredLevelId: 'breach-4', playerLevelRequired: 14,
+        requirement: { kind: 'WEIGHT_BODYWEIGHT_MULT', exercise: 'Bench Press', multiplier: 1.5, reps: 5 },
+        requirementSummary: 'Bench Press 1.5× bodyweight × 5 reps' },
     ],
   },
 ];
