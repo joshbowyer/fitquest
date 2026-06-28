@@ -310,13 +310,19 @@ export function InventoryPage() {
                           {/* Class-lock badge — small, class-colored.
                               Only shown when the item is restricted
                               to a specific class so the user can see
-                              at a glance which items are for them. */}
+                              at a glance which items are for them.
+                              `primaryColorForClass` returns a hex via
+                              `WORLD_COLOR_HEX[...]` so the CSS color
+                              resolves correctly (the previous version
+                              passed the bare key name like 'periwinkle'
+                              which CSS doesn't recognize — it fell
+                              back to the inherited gray). */}
                           {def.classRestriction && (
                             <span
                               className="text-[8px] font-mono uppercase tracking-widest px-1 py-px border"
                               style={{
-                                color: primaryColorForClass(def.classRestriction),
-                                borderColor: primaryColorForClass(def.classRestriction),
+                                color: WORLD_COLOR_HEX[primaryColorForClass(def.classRestriction)],
+                                borderColor: WORLD_COLOR_HEX[primaryColorForClass(def.classRestriction)],
                               }}
                               title={`Class-locked to ${def.classRestriction}`}
                             >

@@ -38,7 +38,10 @@ export default {
           lime: '#56e88e',
           amber: '#ffaa3a',
           goldenrod: '#daa520',
-          periwinkle: '#8b9eff',
+          // Matches WORLD_COLOR_HEX.periwinkle in web/src/lib/quest.ts
+          // (and .neon-text-periwinkle in web/src/index.css). The old
+          // #8b9eff read as washed-out gray on dark backgrounds.
+          periwinkle: '#7d7bff',
           violet: '#9a6cf2',
         },
         ink: {

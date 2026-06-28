@@ -137,8 +137,12 @@ body {
   text-shadow: 0 0 6px rgba(218,165,32,0.7), 0 0 14px rgba(218,165,32,0.4);
 }
 .neon-text-periwinkle {
-  color: #8b9eff;
-  text-shadow: 0 0 6px rgba(139,158,255,0.7), 0 0 14px rgba(139,158,255,0.4);
+  /* Matches WORLD_COLOR_HEX.periwinkle in web/src/lib/quest.ts so
+     the oracle class reads as periwinkle everywhere — class stripe,
+     inventory badge, quest map, profile, etc. Used to be #8b9eff
+     which read as washed-out gray on dark backgrounds. */
+  color: #7d7bff;
+  text-shadow: 0 0 6px rgba(125,123,255,0.7), 0 0 14px rgba(125,123,255,0.4);
 }
 
 /* Scrollbar */
