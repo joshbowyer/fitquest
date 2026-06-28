@@ -401,6 +401,7 @@ export function InventoryPage() {
                   </div>
                 )}
               </div>
+              </div>
           </Panel>
 
           {/* Rolled stats */}
