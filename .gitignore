@@ -34,3 +34,7 @@ api/prisma/migrations/dev.db*
 
 # misc
 *.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
