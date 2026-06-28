@@ -2,11 +2,7 @@
 
 ## Active (in progress)
 
-- **Breach ↔ Raid integration.** Schema add `worldSource: 'AMBIENT' | 'BREACH'`
-  to `PortalLeak`. When the user defeats the Maw, also spawn a
-  breach-flavored portal leak so the Breach world actively
-  contributes to the homebase defense loop. The existing /breach
-  raid page draws from a new "breach anomaly" pool.
+(none — all high-priority items shipped this session)
 
 ## High Priority — done in this session
 
@@ -24,6 +20,15 @@
   from a 10-entry pool (excluding the 3 most recent to avoid repeats),
   wipes all breach progress rows, and resets the WorldBoss to ACTIVE
   with full HP. Static worlds (spire, glade, etc.) never reset.
+- ✅ **Breach ↔ Raid integration.** `PortalLeak.worldSource`
+  (PortalLeakSource enum) added — 'AMBIENT' for the existing
+  random shield-drops, 'BREACH' for monsters that escape the
+  Breach world. `maybeSpawnBreachLeak()` spawns a leak tagged
+  'BREACH' on Maw defeat, with tougher HP (120-200 vs ambient
+  80-160) and a "came out of the Breach when the Maw was beaten"
+  intro suffix. UI work remaining: badge the worldSource on the
+  homebase leak alert and filter BREACH leaks on the /breach
+  raid page.
 
 ## Medium Priority — Security & Data
 
