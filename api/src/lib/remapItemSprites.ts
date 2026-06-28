@@ -72,6 +72,13 @@ function remapForItem(oldSprite: string, slot: string, classRestriction: string 
 // Patterns of old sprite paths that need remapping. Anything not
 // matching one of these prefixes is left alone (e.g. the new
 // /sprites/gear/... paths from the Tron set).
+//
+// We also remap the bare `<slot>/<file>` family — that was an
+// earlier seed convention where ItemDef.sprite was just the
+// basename without a `gear/` prefix. Even older rows carry a
+// `legacy/` prefix (a previous public-sprite folder convention
+// that's gone); those get remapped the same way since we read
+// the slot/class off the row itself, not the path.
 const OLD_SPRITE_PREFIXES = [
   'shirts/',
   'armor/',
@@ -82,6 +89,7 @@ const OLD_SPRITE_PREFIXES = [
   'neck/',
   'hands/',
   'feet/',
+  'legacy/',
 ];
 
 function isOldSprite(sprite: string): boolean {
