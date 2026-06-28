@@ -20,7 +20,7 @@ import { QuestWorldPage } from './pages/QuestWorld';
 import { BreachPage } from './pages/Breach';
 import { SpiritualPage } from './pages/Spiritual';
 import { AchievementsPage } from './pages/Achievements';
-import { HomeBaseFullPage, HomeBasePage } from './components/HomeBaseCard';
+import { HomeBaseFullPage, HomeBasePage } from './components/HomeBaseNew';
 import { InventoryPage } from './pages/Inventory';
 import { TodayPage } from './pages/Today';
 import { HabitsPage } from './pages/Habits';

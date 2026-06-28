@@ -241,7 +241,7 @@ function HomeBaseDetail({ data }: { data: HomeBaseData }) {
   );
 }
 
-function PenanceTemplatesPanel() {
+export function PenanceTemplatesPanel() {
   const q = useQuery({
     queryKey: ['home-base', 'penances'],
     queryFn: () => api<{
