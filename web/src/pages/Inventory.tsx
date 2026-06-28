@@ -3,9 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
+import { useAuth } from '@/lib/auth';
 import { NeonButton } from '@/components/NeonButton';
-import { SpriteAvatar } from '@/components/SpriteAvatar';
-import { useAuth, type UserAvatar } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import {
   EQUIP_SLOTS,
@@ -22,7 +21,7 @@ import {
   type ItemSource,
 } from '@/lib/types';
 import { classNames, formatRelative } from '@/lib/format';
-import { getFrameArchetype } from '@/lib/frame';
+
 import { primaryColorForClass, WORLD_COLOR_HEX } from '@/lib/quest';
 
 type Catalog = ItemDef[];
@@ -59,10 +58,7 @@ function fmtStatValue(key: string, v: number): string {
 export function InventoryPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const archetype = useMemo(() => {
-    if (!user) return 'SPRITE' as const;
-    return getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE';
-  }, [user]);
+  if (!user) return null;
 
   const invQ = useQuery({
     queryKey: ['inventory'],
@@ -75,12 +71,6 @@ export function InventoryPage() {
   const statsQ = useQuery({
     queryKey: ['inventory', 'stats'],
     queryFn: () => api<StatsResponse>('/inventory/stats'),
-  });
-  // Pull saved avatar customization so the preview matches the
-  // user's chosen hair / skin / shirt colors.
-  const avatarQ = useQuery({
-    queryKey: ['avatar'],
-    queryFn: () => api<{ avatar: UserAvatar }>('/avatar'),
   });
 
   const [rarityFilter, setRarityFilter] = useState<ItemRarity | 'ALL'>('ALL');
@@ -164,7 +154,9 @@ export function InventoryPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
         <div className="space-y-4">
-          {/* Equipped loadout */}
+          {/* Equipped loadout — text only when empty, item icon when
+              filled. No more default slot-glyph fallback that made
+              every slot look the same. */}
           <Panel title="EQUIPPED LOADOUT" variant="cyan">
             <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
               {EQUIP_SLOTS.map((slot) => {
@@ -178,16 +170,25 @@ export function InventoryPage() {
                       'flex flex-col items-center p-2 border aspect-square transition-all',
                       it
                         ? 'border-neon-cyan/40 bg-neon-cyan/5 hover:border-neon-cyan cursor-pointer'
-                        : 'border-ink-500/30 bg-bg-900/40 cursor-default',
+                        : 'border-ink-500/20 bg-transparent cursor-default',
                     )}
                     title={it ? `${EQUIP_SLOT_LABEL[slot]}: ${it.itemDef.name}` : `${EQUIP_SLOT_LABEL[slot]} (empty)`}
                   >
-                    <span className="text-[10px] font-mono text-ink-300 tracking-widest uppercase">
+                    <span className="text-[10px] font-mono text-ink-400 tracking-widest uppercase">
                       {EQUIP_SLOT_LABEL[slot]}
                     </span>
-                    <span className="text-2xl my-1" style={{ color: it ? RARITY_COLOR[it.itemDef.rarity] : '#585868' }}>
-                      {EQUIP_SLOT_GLYPH[slot]}
-                    </span>
+                    {it ? (
+                      <img
+                        src={`/sprites/${it.itemDef.sprite.endsWith('.png') ? it.itemDef.sprite : it.itemDef.sprite + '.png'}`}
+                        alt={it.itemDef.name}
+                        width={48}
+                        height={48}
+                        className="my-1 object-contain"
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    ) : (
+                      <span className="text-[10px] font-mono text-ink-600 italic my-1">empty</span>
+                    )}
                     <span className="text-[9px] font-mono text-center truncate w-full" style={{ color: it ? RARITY_COLOR[it.itemDef.rarity] : '#585868' }}>
                       {it ? it.itemDef.name : '—'}
                     </span>
@@ -351,57 +352,29 @@ export function InventoryPage() {
           </Panel>
         </div>
 
-        {/* Right column: avatar preview + stats panel */}
+        {/* Right column: stats panel. The preview used to show a
+            SpriteAvatar here; it was the habitica layered sprite
+            system and is removed. Just show the class portrait. */}
         <div className="space-y-4">
           <Panel title="PREVIEW" variant="cyan">
             <div className="flex flex-col items-center">
-              <div className="flex flex-col items-center">
-                {/* Class portrait — the new tron-style full-body
-                    sprite. Always shown as the primary preview. */}
-                <img
-                  src={`/sprites/class-portraits/${(user.class || 'PHANTOM').toLowerCase()}.png`}
-                  alt={user.class || 'class portrait'}
-                  width={180}
-                  height={180}
-                  className="block"
-                  style={{
-                    width: 180,
-                    height: 180,
-                    filter: `drop-shadow(0 0 12px ${user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}88)`,
-                    imageRendering: 'pixelated',
-                  }}
-                />
-                {/* Small SpriteAvatar in the corner shows the
-                    layered sprite system (hair / skin / shirt / weapon)
-                    with whatever is currently equipped. Toggles when
-                    you equip different items so you can see the
-                    layered system react to your changes. */}
-                <div className="mt-2 flex items-center gap-2">
-                  <SpriteAvatar
-                    archetype={archetype}
-                    hairStyle={avatarQ.data?.avatar.hairStyle ?? 'SHORT'}
-                    hairColor={avatarQ.data?.avatar.hairColor ?? '#6b4226'}
-                    shirtColor={avatarQ.data?.avatar.shirtColor ?? '#14d6e8'}
-                    skinTone={avatarQ.data?.avatar.skinTone ?? '#915533'}
-                    weapon={equippedWeapon}
-                    shield={equippedShield}
-                    size={64}
-                  />
-                  <div className="text-[9px] font-mono">
-                    <div className="text-ink-300 uppercase tracking-widest">equipped</div>
-                    <div className="text-ink-500 text-[8px]">layered sprite system</div>
-                  </div>
-                </div>
-                <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
-                  Live preview reflects equipped gear
-                </div>
-                {!avatarQ.data && (
-                  <div className="text-[9px] font-mono text-ink-400 mt-1 italic">
-                    (using defaults — save avatar in /profile to customize)
-                  </div>
-                )}
+              <img
+                src={`/sprites/class-portraits/${(user.class || 'PHANTOM').toLowerCase()}.png`}
+                alt={user.class || 'class portrait'}
+                width={180}
+                height={180}
+                className="block"
+                style={{
+                  width: 180,
+                  height: 180,
+                  filter: `drop-shadow(0 0 12px ${user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}88)`,
+                  imageRendering: 'pixelated',
+                }}
+              />
+              <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
+                {user.class ?? 'no class selected'}
               </div>
-              </div>
+            </div>
           </Panel>
 
           {/* Rolled stats */}
