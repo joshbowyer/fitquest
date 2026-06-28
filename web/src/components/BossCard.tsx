@@ -92,16 +92,36 @@ export function BossCard({ worldId, bossName, bossGlyph, bossLore, worldColor, a
   if (!allCleared) {
     return (
       <Panel title="Boss (locked)" variant="cyan">
-        <div className="text-center py-3">
-          <div className="text-3xl text-ink-700 mb-2" style={{ textShadow: '0 0 6px rgba(255,255,255,0.1)' }}>
-            🔒
+        <div className="text-center py-2 space-y-2">
+          {/* Show the boss portrait dimmed so the user can see what
+              they're working toward. The lock overlay signals it's
+              still locked. */}
+          <div className="relative inline-block">
+            <img
+              src={`/sprites/bosses/${worldId}.png`}
+              alt={bossName}
+              width={96}
+              height={96}
+              className="block mx-auto"
+              style={{
+                width: 96,
+                height: 96,
+                filter: 'grayscale(0.7) brightness(0.5)',
+                imageRendering: 'pixelated',
+              }}
+            />
+            <div
+              className="absolute inset-0 flex items-center justify-center text-3xl"
+              style={{ textShadow: '0 0 6px rgba(0,0,0,0.8)' }}
+            >
+              🔒
+            </div>
           </div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-            Boss locked
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+            {bossName} locked
           </div>
           <div className="text-[10px] font-mono text-ink-500">
-            Clear all 5 levels in this world to unlock{' '}
-            <span className="text-ink-50">{bossName}</span>.
+            Clear all 5 levels to unlock.
           </div>
         </div>
       </Panel>

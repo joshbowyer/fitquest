@@ -201,16 +201,27 @@ export function QuestWorldPage() {
         <div className="space-y-4">
           <Panel title="YOU" variant="amber">
             <div className="flex items-center gap-3">
-              <Avatar
-                archetype={archetype}
-                accentColor={user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}
-                size={64}
+              {/* New Tron-style class portrait from /sprites/class-portraits/.
+                  Replaces the layered EquippedAvatar for the YOU panel —
+                  the avatar remains in use for the 3D body hologram. */}
+              <img
+                src={`/sprites/class-portraits/${(user.class || 'PHANTOM').toLowerCase()}.png`}
+                alt={user.class || 'no class'}
+                width={64}
+                height={64}
+                className="block shrink-0"
+                style={{
+                  width: 64,
+                  height: 64,
+                  filter: `drop-shadow(0 0 8px ${hex}88)`,
+                  imageRendering: 'pixelated',
+                }}
               />
               <div className="text-xs font-mono">
                 <div className="text-ink-50 font-display tracking-widest">{user.username}</div>
                 <div className="text-ink-300">Lvl {user.level}</div>
                 <div className="text-ink-400 text-[10px] mt-1">
-                  {meta.label} · {meta.tagline}
+                  {user.class} · {meta.tagline}
                 </div>
               </div>
             </div>
