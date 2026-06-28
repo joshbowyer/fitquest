@@ -341,8 +341,12 @@ export function LiveWorkoutLogger({
       setCurrentSetIndex(0);
       seedFromPlanned(exercises[nextExerciseIndex + 1].sets[0]);
     } else {
-      // Workout done — no more sets.
+      // Workout done — no more sets. Fire the commit so the
+      // server persists the capturedSets. onSuccess will reset
+      // phase back to 'setup' (via confirmDiscard), so the
+      // "Wrapping up…" fallback never renders in the happy path.
       setPhase('done');
+      createM.run(undefined);
       return;
     }
 
