@@ -178,6 +178,14 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     bonusTags: [],
   },
   {
+    name: 'The Gains Goblin',
+    emoji: '✦',
+    color: '#84cc16',
+    intro: 'A small, cackling green thing that hovers near your equipment rack. It only wants one thing: gains. It will not stop until you have more of them than yesterday. If you beat it, it drops a small piece of loot. If it beats you, it steals a single stat point and laughs. The lore says it cannot be killed — only out-trained. The lore is wrong.',
+    preferredTags: ['chest', 'bicep', 'tricep', 'shoulder'],
+    bonusTags: ['PR', 'BODY_COMP'],
+  },
+  {
     name: 'The Thorn',
     emoji: '✧',
     color: '#fb7185',

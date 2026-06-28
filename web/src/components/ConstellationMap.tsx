@@ -544,8 +544,6 @@ export function ConstellationMap({
               <span style={{ color: world ? color : '#787888' }}>
                 {slot.id}
               </span>
-              <span className="text-ink-400">·</span>
-              <span className="text-ink-300">{slot.energy}</span>
             </span>
           );
         })}
