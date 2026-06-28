@@ -1,10 +1,14 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
+import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
+import { WorkoutLogger } from '@/components/WorkoutLogger';
 import { PortalLeakBody } from '@/components/PortalLeakCard';
 import type {
   PortalLeak as PortalLeakData,
@@ -32,6 +36,7 @@ export function PortalLeakPage() {
 
   const leak = leakQ.data?.leak ?? null;
   const recent = leakQ.data?.recent ?? [];
+  const [attackOpen, setAttackOpen] = useState(false);
 
   return (
     <Layout>
@@ -42,7 +47,13 @@ export function PortalLeakPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Current leak */}
-        <ActiveLeakCard leak={leak} recent={recent} onChange={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })} />
+        <ActiveLeakCard
+          leak={leak}
+          recent={recent}
+          onChange={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
+          attackOpen={attackOpen}
+          setAttackOpen={setAttackOpen}
+        />
 
         {/* History */}
         <Panel variant="cyan" title="Recent leaks">
@@ -63,6 +74,18 @@ export function PortalLeakPage() {
           )}
         </Panel>
       </div>
+
+      {/* Attack-the-leak modal. Opens from the ActiveLeakCard's
+          "Log a workout to attack" button. Auto-fires the leak
+          damage endpoint on commit and closes. */}
+      {leak && leak.status === 'ACTIVE' && (
+        <AttackLeakModal
+          open={attackOpen}
+          onClose={() => setAttackOpen(false)}
+          leakId={leak.id}
+          onDamage={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
+        />
+      )}
     </Layout>
   );
 }
@@ -71,10 +94,14 @@ function ActiveLeakCard({
   leak,
   recent,
   onChange,
+  attackOpen,
+  setAttackOpen,
 }: {
   leak: PortalLeakData | null;
   recent: PortalLeakResponse['recent'];
   onChange: () => void;
+  attackOpen: boolean;
+  setAttackOpen: (b: boolean) => void;
 }) {
   const navigate = useNavigate();
   const dismissM = useDelayedMutation<{ ok: boolean }, string>({
@@ -115,7 +142,7 @@ function ActiveLeakCard({
       <PortalLeakBody leak={leak} pct={pct} recent={recent} />
       <div className="border-t border-ink-700/30 mt-3 pt-3 flex flex-wrap gap-2">
         {leak.status === 'ACTIVE' && (
-          <NeonButton variant="cyan" size="sm" onClick={() => navigate('/activities')}>
+          <NeonButton variant="cyan" size="sm" onClick={() => setAttackOpen(true)}>
             ← Log a workout to attack
           </NeonButton>
         )}
@@ -183,6 +210,45 @@ function ClaimLootButton({
     >
       Claim loot
     </NeonButton>
+  );
+}
+
+/**
+ * AttackLeakModal — opens the WorkoutLogger inline. On commit, fire
+ * the leak-damage endpoint (best-effort) and close. If the user
+ * closes the modal without committing, the leak is untouched.
+ */
+function AttackLeakModal({
+  open,
+  onClose,
+  leakId,
+  onDamage,
+}: {
+  open: boolean;
+  onClose: () => void;
+  leakId: string;
+  onDamage: (workoutId: string) => void;
+}) {
+  const { user } = useAuth();
+  return (
+    <Modal open={open} onClose={onClose} title="Log workout to attack leak" width="max-w-3xl">
+      <WorkoutLogger
+        user={user}
+        units={user?.units ?? 'METRIC'}
+        onCommit={(workoutId) => {
+          // Apply leak damage now that the workout is committed.
+          // Fire-and-forget — the leak-damage endpoint is best-effort
+          // and the user already saved their workout regardless.
+          api<{ skipped?: boolean; reason?: string }>(
+            `/workouts/${workoutId}/leak-damage`,
+            { method: 'POST' },
+          )
+            .then(() => onDamage(workoutId))
+            .catch(() => onDamage(workoutId));
+          onClose();
+        }}
+      />
+    </Modal>
   );
 }
 
