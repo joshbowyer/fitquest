@@ -16,7 +16,8 @@
     "db:seed": "npm --workspace api run db:seed",
     "typecheck": "npm --workspace api run typecheck && npm --workspace web run typecheck",
     "test": "npm --workspace api run test",
-    "test:watch": "npm --workspace api run test:watch"
+    "test:watch": "npm --workspace api run test:watch",
+    "sprites:manifest": "tsx scripts/buildSpriteManifest.ts"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"
