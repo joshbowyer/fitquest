@@ -112,14 +112,19 @@ export function portalLayoutFor(worlds: World[]): PortalTile[] {
  * exported so other pages (e.g. inventory class-lock badges) can
  * share the same color assignments without duplicating the mapping.
  */
-export type ClassAccent = 'magenta' | 'lime' | 'goldenrod' | 'periwinkle';
+export type ClassAccent = 'red' | 'magenta' | 'lime' | 'orange' | 'goldenrod' | 'periwinkle';
 export function primaryColorForClass(c: string): ClassAccent {
+  // 1-to-1 mapping — each class gets its own distinctive accent so
+  // class-lock badges and sprite stripes don't look identical for
+  // different classes. Matches the world color scheme in
+  // WORLD_COLOR_HEX above.
   switch (c) {
-    case 'JUGGERNAUT':
-    case 'BERSERKER': return 'magenta';
-    case 'PHANTOM':
-    case 'SCOUT':     return 'lime';
-    case 'ORACLE':    return 'periwinkle';
-    default:          return 'goldenrod';
+    case 'JUGGERNAUT': return 'red';
+    case 'BERSERKER':  return 'magenta';
+    case 'PHANTOM':    return 'lime';
+    case 'TRACER':     return 'orange';
+    case 'SCOUT':      return 'goldenrod';
+    case 'ORACLE':     return 'periwinkle';
+    default:          return 'cyan';
   }
 }

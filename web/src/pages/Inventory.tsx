@@ -23,7 +23,7 @@ import {
 } from '@/lib/types';
 import { classNames, formatRelative } from '@/lib/format';
 import { getFrameArchetype } from '@/lib/frame';
-import { primaryColorForClass } from '@/lib/quest';
+import { primaryColorForClass, WORLD_COLOR_HEX } from '@/lib/quest';
 
 type Catalog = ItemDef[];
 
@@ -355,25 +355,52 @@ export function InventoryPage() {
         <div className="space-y-4">
           <Panel title="PREVIEW" variant="cyan">
             <div className="flex flex-col items-center">
-              <SpriteAvatar
-                archetype={archetype}
-                hairStyle={avatarQ.data?.avatar.hairStyle ?? 'SHORT'}
-                hairColor={avatarQ.data?.avatar.hairColor ?? '#6b4226'}
-                shirtColor={avatarQ.data?.avatar.shirtColor ?? '#14d6e8'}
-                skinTone={avatarQ.data?.avatar.skinTone ?? '#915533'}
-                weapon={equippedWeapon}
-                shield={equippedShield}
-                size={180}
-              />
-              <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
-                Live preview reflects equipped gear
-              </div>
-              {!avatarQ.data && (
-                <div className="text-[9px] font-mono text-ink-400 mt-1 italic">
-                  (using defaults — save avatar in /profile to customize)
+              <div className="flex flex-col items-center">
+                {/* Class portrait — the new tron-style full-body
+                    sprite. Always shown as the primary preview. */}
+                <img
+                  src={`/sprites/class-portraits/${(user.class || 'PHANTOM').toLowerCase()}.png`}
+                  alt={user.class || 'class portrait'}
+                  width={180}
+                  height={180}
+                  className="block"
+                  style={{
+                    width: 180,
+                    height: 180,
+                    filter: `drop-shadow(0 0 12px ${user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}88)`,
+                    imageRendering: 'pixelated',
+                  }}
+                />
+                {/* Small SpriteAvatar in the corner shows the
+                    layered sprite system (hair / skin / shirt / weapon)
+                    with whatever is currently equipped. Toggles when
+                    you equip different items so you can see the
+                    layered system react to your changes. */}
+                <div className="mt-2 flex items-center gap-2">
+                  <SpriteAvatar
+                    archetype={archetype}
+                    hairStyle={avatarQ.data?.avatar.hairStyle ?? 'SHORT'}
+                    hairColor={avatarQ.data?.avatar.hairColor ?? '#6b4226'}
+                    shirtColor={avatarQ.data?.avatar.shirtColor ?? '#14d6e8'}
+                    skinTone={avatarQ.data?.avatar.skinTone ?? '#915533'}
+                    weapon={equippedWeapon}
+                    shield={equippedShield}
+                    size={64}
+                  />
+                  <div className="text-[9px] font-mono">
+                    <div className="text-ink-300 uppercase tracking-widest">equipped</div>
+                    <div className="text-ink-500 text-[8px]">layered sprite system</div>
+                  </div>
                 </div>
-              )}
-            </div>
+                <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
+                  Live preview reflects equipped gear
+                </div>
+                {!avatarQ.data && (
+                  <div className="text-[9px] font-mono text-ink-400 mt-1 italic">
+                    (using defaults — save avatar in /profile to customize)
+                  </div>
+                )}
+              </div>
           </Panel>
 
           {/* Rolled stats */}
