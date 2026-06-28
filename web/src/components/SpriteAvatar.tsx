@@ -100,12 +100,12 @@ export function SpriteAvatar({
   // stored on ItemDef.sprite (e.g. 'head/head_warrior_1.png').
   // We prepend the /sprites/ base so the consumer doesn't have
   // to think about it.
-  const headFile    = head    ? `${SPRITE_BASE}/${head}`   : null;
-  const bodyFile    = body    ? `${SPRITE_BASE}/${body}`   : null;
-  const handsFile   = hands   ? `${SPRITE_BASE}/${hands}`  : null;
-  const feetFile    = feet    ? `${SPRITE_BASE}/${feet}`   : null;
-  const neckFile    = neck    ? `${SPRITE_BASE}/${neck}`   : null;
-  const ringFile    = ring    ? `${SPRITE_BASE}/${ring}`   : null;
+  const headFile    = head    ? `${SPRITE_BASE}/${head.endsWith('.png') ? head : head + '.png'}`   : null;
+  const bodyFile    = body    ? `${SPRITE_BASE}/${body.endsWith('.png') ? body : body + '.png'}`   : null;
+  const handsFile   = hands   ? `${SPRITE_BASE}/${hands.endsWith('.png') ? hands : hands + '.png'}`  : null;
+  const feetFile    = feet    ? `${SPRITE_BASE}/${feet.endsWith('.png') ? feet : feet + '.png'}`   : null;
+  const neckFile    = neck    ? `${SPRITE_BASE}/${neck.endsWith('.png') ? neck : neck + '.png'}`   : null;
+  const ringFile    = ring    ? `${SPRITE_BASE}/${ring.endsWith('.png') ? ring : ring + '.png'}`   : null;
   const weaponFile  = weapon  ? `${SPRITE_BASE}/weapon/${weapon}.png`  : null;
   const shieldFile  = shield  ? `${SPRITE_BASE}/shield/${shield}.png`  : null;
 
