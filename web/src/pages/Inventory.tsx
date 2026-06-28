@@ -282,7 +282,7 @@ export function InventoryPage() {
                         style={{ minHeight: '70px' }}
                       >
                         <img
-                          src={`/sprites/${def.sprite}`}
+                          src={`/sprites/${def.sprite.endsWith('.png') ? def.sprite : def.sprite + '.png'}`}
                           alt={def.name}
                           width={90}
                           height={90}
@@ -397,7 +397,7 @@ export function InventoryPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-16 h-16 flex-shrink-0 bg-bg-800/60 border border-ink-500/30 p-1 relative overflow-hidden">
                     <img
-                      src={`/sprites/${selectedDef.sprite}`}
+                      src={`/sprites/${selectedDef.sprite.endsWith('.png') ? selectedDef.sprite : selectedDef.sprite + '.png'}`}
                       alt={selectedDef.name}
                       width={90}
                       height={90}
