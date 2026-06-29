@@ -24,15 +24,7 @@
 
 ### Polish
 
-- **Morning popup modal (Habitica-style).** When the user opens
-  the app the morning after, show a modal that:
-  - Lists unchecked dailies from yesterday with one-tap "mark
-    done" actions to avoid the missed-all-dailies heart loss.
-  - Animates any health loss (heart counter decrementing) or
-    level gain from the day.
-  - Shows a basic digest (workout logged, sleep duration,
-    weigh-in status, recovery score, substance caps).
-  - Dismissable; should NOT block other UI once dismissed.
+- **Morning popup modal (Habitica-style).** ✅ Done — see commit `8e18c3d`.
 - **Supersets in the live workout.** ✅ Done — see commit `1a731e2`.
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
@@ -97,6 +89,33 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ USCCB readings: stale UI message + diagnostic endpoint. The
+  "No USCCB reading available right now" message was stale (didn't
+  mention EWTN, which has been the primary source since the
+  redesign). New `GET /spiritual/readings-status` endpoint probes
+  each source independently (cache / EWTN / RSS / Wayback) and
+  returns ok/error/empty per source with a reason string. New
+  `POST /spiritual/readings-reseed?date=YYYY-MM-DD` endpoint
+  force-refreshes the cascade and returns the new status. The
+  SpiritualDirectorCard error path now:
+  - updates the message to name all 4 sources in the cascade
+  - adds a "Force reseed" button that hits the new endpoint +
+    invalidates the director query
+  - adds a "Diagnose" expandable chip that pulls the status
+    endpoint and shows ✓/✗ per source with the failure reason.
+- ✅ Morning popup modal (Habitica-style). Auto-shows once per day
+  on /today (localStorage-dismissed per local-date). Shows heart
+  counter animation (Hardcore only) that counts down from 5 to
+  current value over 1.2s with ease-out cubic, the heart-loss
+  reasons from yesterday (each of the 6 triggers), a 4-cell
+  recap (workout/sleep/weigh-in/recovery, green or rose per
+  floor), and a list of unchecked dailies with one-tap
+  "mark done" buttons (idempotent — uses the existing
+  /dailies/:id/complete endpoint). Backend: new
+  `GET /dailies/morning-popup?date=YYYY-MM-DD` endpoint bundles
+  the full payload. Tests in
+  `api/src/__tests__/morningPopupPayload.test.ts` lock the
+  response shape.
 - ✅ Supersets in the live workout. New `groupIndex Int?` column
   on `WorkoutTemplateExercise` + `Exercise` (migration
   `20260703090000_superset_group_index`). Routines page got a
