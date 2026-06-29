@@ -12,13 +12,14 @@
 
 ### Bugs / data-correctness
 
-- **Do hearts actually decrease with missed workouts?** Verify
-  the heart/health loss logic for missed workouts — confirm
-  that hearts (HP / lives / health bar) actually decrement
-  when a workout is skipped past its due date, vs. just being
-  a passive stat. If it doesn't decrement, add the logic
-  (scheduled job + UI feedback). If it does, document the
-  formula + decay rate.
+- **Sleep onset not being logged from FIT files.** The FIT
+  parser only emits `SLEEP_HOURS` and `SLEEP_QUALITY` — never
+  `SLEEP_ONSET`. The chart, the body-battery overlay, and
+  three correlation engines all expect `SLEEP_ONSET` rows;
+  the missing parser branch silently broke them. (FIXED:
+  parseSleep now emits SLEEP_ONSET with fractional-hour value
+  + night-of-sleep recordedAt bucketed to local midnight via
+  the user's tz.)
 
 ### Polish
 
@@ -85,6 +86,34 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Hardcore-mode heart-loss system wired up. `loseHeart()`
+  had zero callers until this commit. New
+  `fireHardcoreHeartPenalties()` runs alongside
+  `fireMissedAllDailiesPenance()` in the morning-report sweep.
+  6 triggers, each can independently cost a heart on a given
+  local day: MISSED_WORKOUT, MISSED_ALL_DAILIES,
+  SUBSTANCE_CAFFEINE, SUBSTANCE_ALCOHOL, SUBSTANCE_NICOTINE,
+  ZERO_SPIRITUAL. Nicotine cap added (2/week — most
+  restrictive of the three). HeartLossEvent table +
+  HeartLossTrigger enum + unique (userId, kind, sourceDate)
+  index for natural idempotency. Tests in heartLoss.test.ts
+  (11/11 pass).
+- ✅ Sleep onset FIT parser. parseSleep now emits a
+  SLEEP_ONSET Measurement row with the fractional-hour of
+  the start event bucketed to local midnight of the
+  night-of-sleep (post-midnight starts → previous calendar
+  day so the chart's X-axis matches how the user thinks
+  about it). parseFit now accepts an optional tz arg that
+  threads through to the parser. /import/summary now
+  includes recentSleepOnset in the response. Two new
+  timezone helpers (hoursSinceLocalMidnightInTz,
+  localNightStartInTz) hoisted into api/src/lib/timezone.ts
+  so the parser and the correlation engines share one
+  implementation. The original sleepOnsetDate.test.ts was
+  vacuously passing (`if (!onset) continue;` skipped the
+  assertions when no onset was found) and used a wrong
+  function signature — rewritten with deterministic
+  timezone-helper unit tests.
 - ✅ Pain entries on Today (was: "persist silently on Status").
   New `PainCard` component surfaces the most-recent active pain
   log (intensity > 0) on Today with a 14-day "is it going down?"
