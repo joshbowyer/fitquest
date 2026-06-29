@@ -36,11 +36,9 @@ export type MetricMeta = {
 export const METRICS: Record<MetricType, MetricMeta> = {
   BICEP: { type: 'BICEP', category: 'HYPERTROPHY', label: 'Bicep Circumference', shortLabel: 'Bicep', unit: 'cm', defaultMin: 30, description: 'Flexed bicep circumference.' },
   CHEST: { type: 'CHEST', category: 'HYPERTROPHY', label: 'Chest Circumference', shortLabel: 'Chest', unit: 'cm', defaultMin: 90, description: 'Chest circumference at nipple line.' },
-  // SHOULDER is shoulder-to-shoulder BREADTH (the "biacromial
-  // breadth"), NOT the deltoid circumference.
-  SHOULDER: { type: 'SHOULDER', category: 'HYPERTROPHY', label: 'Shoulder Width', shortLabel: 'Shoulder', unit: 'cm', defaultMin: 38, description: 'Shoulder-to-shoulder breadth (biacromial).' },
+  SHOULDER: { type: 'SHOULDER', category: 'HYPERTROPHY', label: 'Shoulder Circumference', shortLabel: 'Shoulder', unit: 'cm', defaultMin: 89, description: 'Deltoid circumference around the bulge. Realistic adult-male floor ~35in (89cm).' },
   QUAD: { type: 'QUAD', category: 'HYPERTROPHY', label: 'Quad Circumference', shortLabel: 'Quad', unit: 'cm', defaultMin: 50, description: 'Quad circumference 15cm above patella.' },
-  CALF: { type: 'CALF', category: 'HYPERTROPHY', label: 'Calf Circumference', shortLabel: 'Calf', unit: 'cm', defaultMin: 35, description: 'Calf circumference at widest point.' },
+  CALF: { type: 'CALF', category: 'HYPERTROPHY', label: 'Calf Circumference', shortLabel: 'Calf', unit: 'cm', defaultMin: 30, description: 'Calf circumference at widest point. Floor accommodates slim builds (12in+).' },
   FOREARM: { type: 'FOREARM', category: 'HYPERTROPHY', label: 'Forearm Circumference', shortLabel: 'Forearm', unit: 'cm', defaultMin: 27, description: 'Forearm circumference, flexed.' },
   NECK: { type: 'NECK', category: 'HYPERTROPHY', label: 'Neck Circumference', shortLabel: 'Neck', unit: 'cm', defaultMin: 35, description: 'Neck circumference.' },
   WAIST: { type: 'WAIST', category: 'BODY_COMP', label: 'Waist Circumference', shortLabel: 'Waist', unit: 'cm', defaultMin: 70, description: 'Waist circumference at navel.' },
@@ -54,13 +52,13 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   // the UI but never logged directly. The Measurements page and
   // WeighIn panel hide the entry UI for this metric.
   LEAN_MASS: { type: 'LEAN_MASS', category: 'BODY_COMP', label: 'Lean Mass (auto)', shortLabel: 'Lean Mass', unit: 'kg', defaultMin: 50, description: 'Auto-calculated: weight × (1 − body fat %).' },
-  FFMI: { type: 'FFMI', category: 'BODY_COMP', label: 'FFMI', shortLabel: 'FFMI', unit: '', defaultMin: 18, description: 'Fat-Free Mass Index (auto).' },
+  FFMI: { type: 'FFMI', category: 'BODY_COMP', label: 'FFMI', shortLabel: 'FFMI', unit: '', defaultMin: 15, description: 'Fat-Free Mass Index (auto). Sedentary floor ~15.' },
   WEIGHT: { type: 'WEIGHT', category: 'BODY_COMP', label: 'Body Weight', shortLabel: 'Weight', unit: 'kg', defaultMin: 50, description: 'Total body weight.' },
   VO2_MAX: { type: 'VO2_MAX', category: 'CARDIO', label: 'VO2 Max', shortLabel: 'VO2 Max', unit: 'ml/kg/min', defaultMin: 30, description: 'Maximal oxygen uptake.' },
   RESTING_HR: { type: 'RESTING_HR', category: 'CARDIO', label: 'Resting Heart Rate', shortLabel: 'Resting HR', unit: 'bpm', defaultMin: 50, description: 'Resting heart rate.' },
   HRV: { type: 'HRV', category: 'CARDIO', label: 'HRV (RMSSD)', shortLabel: 'HRV', unit: 'ms', defaultMin: 30, description: 'Heart rate variability.' },
-  FIVE_K_TIME: { type: 'FIVE_K_TIME', category: 'CARDIO', label: '5K Time', shortLabel: '5K', unit: 's', defaultMin: 1500, description: 'Best 5K run time in seconds.' },
-  ONE_MILE_TIME: { type: 'ONE_MILE_TIME', category: 'CARDIO', label: '1 Mile Time', shortLabel: '1 Mile', unit: 's', defaultMin: 360, description: 'Best 1 mile run time in seconds.' },
+  FIVE_K_TIME: { type: 'FIVE_K_TIME', category: 'CARDIO', label: '5K Time', shortLabel: '5K', unit: 's', defaultMin: 900, description: 'Best 5K run time in seconds. Elite ~13min; 15min is realistic max floor.' },
+  ONE_MILE_TIME: { type: 'ONE_MILE_TIME', category: 'CARDIO', label: '1 Mile Time', shortLabel: '1 Mile', unit: 's', defaultMin: 240, description: 'Best 1 mile run time in seconds. Elite ~4min.' },
   PLANK_HOLD: { type: 'PLANK_HOLD', category: 'CALISTHENICS', label: 'Plank Hold', shortLabel: 'Plank', unit: 's', defaultMin: 30, description: 'Longest plank hold.' },
   L_SIT_HOLD: { type: 'L_SIT_HOLD', category: 'CALISTHENICS', label: 'L-Sit Hold', shortLabel: 'L-Sit', unit: 's', defaultMin: 5, description: 'Longest L-sit hold.' },
   PUSHUP_MAX: { type: 'PUSHUP_MAX', category: 'CALISTHENICS', label: 'Push-ups in a Row', shortLabel: 'Push-ups', unit: 'reps', defaultMin: 5, description: 'Max push-ups in a single unbroken set.' },
