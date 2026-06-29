@@ -48,6 +48,11 @@ export function WeighInPanel() {
       qc.invalidateQueries({ queryKey: ['weigh-in'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['achievements'] });
+      // Refresh the Morning / Evening / Weekly checkin cards so the
+      // WEIGHT row clears once today's log lands. Without this, the
+      // dashboard's checkin tile keeps showing weight as due even
+      // after the user just weighed in.
+      qc.invalidateQueries({ queryKey: ['check-ins'] });
       if (r.unlocked && r.unlocked.length > 0) {
         setUnlockedToast(r.unlocked);
         setTimeout(() => setUnlockedToast(null), 4000);

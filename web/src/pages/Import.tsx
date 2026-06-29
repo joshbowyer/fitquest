@@ -97,6 +97,10 @@ export function ImportPage() {
         qc.invalidateQueries({ queryKey: ['achievements'] });
         qc.invalidateQueries({ queryKey: ['recovery'] });
         qc.invalidateQueries({ queryKey: ['import', 'summary'] });
+        // A FIT import can create Measurement rows for sleep / HRV /
+        // stress / soreness. The dashboard's Morning checkin cards
+        // derive from those — refresh so today's logs clear.
+        qc.invalidateQueries({ queryKey: ['check-ins'] });
       } catch (e: any) {
         setError(e instanceof Error ? e.message : 'Upload failed');
       } finally {
