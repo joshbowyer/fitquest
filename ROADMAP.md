@@ -6,23 +6,12 @@
 
 ## Active (in progress)
 
-(none — high-priority items shipped, picking from the backlog)
+(none — picking from the backlog next)
 
 ## Backlog (from user notes, in priority order)
 
 ### Bugs / data-correctness
 
-- **Portal-leak queueing behaviour.** Currently `maybeSpawnLeak`
-  short-circuits if an active leak exists — the new spawn is
-  silently dropped. Should the new one queue so the user gets a
-  "next up" indicator, or get rolled into a 24h cumulative
-  timer, or stay dropped? Need a clear product decision.
-- **Morning Checkins block not linked to weight log.** The user
-  can log weight via the dashboard weigh-in block, but the
-  Morning checkin panel doesn't pick it up. Same problem for
-  sleep quality from .fit uploads → Sleep Q checkin. Likely the
-  "where does today's data come from" routing is wrong; both
-  should query the same `Measurements` table by `recordedAt::date`.
 - **Genetic Max minimums are wrong.** Several metrics have
   minimums so far below realistic that the field is unusable.
   Audit + fix:
@@ -77,20 +66,6 @@
 - **Skills page revisit** — the page exists but the user wants
   to walk through it again. (Scope: see what currently works,
   identify gaps.)
-- **Inventory: drop Preview block, move Stats From Equipment.**
-  The PREVIEW panel (which used to show a SpriteAvatar) is now
-  just the class portrait. Since we're not overlaying equipped
-  items onto a sprite, the block has no purpose. The "Stats From
-  Equipment" panel currently lives in the right column under
-  Preview — it should move to the left column ABOVE the item
-  catalogue, BELOW the equipped loadout panel.
-
-### More monsters for spiritual + recovery penalties (not just
-workouts). The Penance engine currently has a few workout-themed
-penalty templates; the spiritual + recovery tracks lack any.
-Add a roster of monsters/events per track (e.g. "missed Sunday
-mass", "skipped the examen", "didn't log a recovery metric for a
-week") that fire as portal leaks with thematic tags.
 
 ### Identity / auth
 
@@ -126,14 +101,29 @@ week") that fire as portal leaks with thematic tags.
   restaurant menu scan, etc. The base tracker is live (AI
   estimated macros from free-text descriptions).
 - **3D avatar / STATUS hologram polish.**
-- **Body composition timeline chart** ✅ already implemented in
-  BodyComp.tsx (30d/90d/6mo/1yr windows).
-- **FIT / GPX file imports** ✅ fully implemented in
-  `api/src/lib/fit.ts` + `api/src/routes/import.ts`.
-- **Nutrition tracker** ✅ Foods/Meals routes + Nutrition page.
 
 ## Recently Fixed / Resolved
 
+- ✅ Inventory: drop Preview panel + move Stats From Equipment to
+  the left column (between Equipped Loadout and Item Catalogue).
+  Right column is item-detail only.
+- ✅ Morning Checkins cache invalidation bug: WeighInPanel +
+  Import page now `qc.invalidateQueries({ queryKey: ['check-ins'] })`
+  after their writes, so the dashboard's check-in cards refresh
+  with today's data instead of showing the stale "due" list.
+- ✅ Spiritual + recovery penance events (7 new PenanceKey
+  entries): `missed_spiritual_week`, `missed_examen`,
+  `missed_recovery_week`, `missed_hrv` (damage) and
+  `completed_spiritual_day`, `logged_recovery_week`,
+  `logged_sleep_8h` (repair). Each has a label + flavor text.
+  Tests in `penanceEvents.test.ts` (25/25 pass).
+- ✅ Portal-leak stacking: `maybeSpawnLeak` no longer
+  short-circuits if an active leak exists. `getLeakForUser` now
+  returns all active leaks oldest-first + per-leak recent damage
+  events. The frontend shows a "× N" queue badge on the
+  homebase alert and a "#N of M" queue index on /portal-leak.
+  The user explicitly requested: "if ive been slipping and have
+  earned three monsters there should be three active".
 - ✅ 3 new insight rules: `plateau_detected`, `water_low_recent`,
   `sleep_recovery_mismatch` (tests in `insightRulesExtended.test.ts`).
 - ✅ All sprite assets updated. 91 catalog sprites + 9 boss
@@ -176,6 +166,8 @@ week") that fire as portal leaks with thematic tags.
 - ✅ FIT / GPX imports
 - ✅ Gadgetbridge ingest (upload-only)
 - ✅ Nutrition tracker (Foods/Meals routes + Nutrition page)
+- ✅ Body composition timeline chart
+  (BodyComp.tsx with 30d/90d/6mo/1yr windows)
 
 ## Nice-to-haves (backlog)
 
