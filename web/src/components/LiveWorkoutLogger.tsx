@@ -11,6 +11,11 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import {
+  buildRoundRobinOrder,
+  currentPositionLabel,
+  type RoundEntry,
+} from '@/lib/supersetRoundRobin';
+import {
   emptyExercise,
   TYPE_OPTIONS,
   kgToLb,
@@ -68,6 +73,9 @@ export type LiveWorkoutLoggerProps = {
     type?: WorkoutType;
     exercises?: Array<{
       name: string;
+      /// Superset pairing. Optional in the type so older callers
+      /// (or hand-rolled prefill objects) don't have to provide it.
+      groupIndex?: number | null;
       sets: Array<{
         targetReps: number;
         targetDuration?: number | null;
@@ -89,6 +97,12 @@ type PlannedSet = {
 
 type PlannedExercise = {
   name: string;
+  /// Superset pairing. Two exercises sharing the same groupIndex
+  /// are walked round-robin by the live logger (1A → 1B → 2A → 2B).
+  /// Null = walk linearly. Set by the Routines page when the user
+  /// clicks "Pair with next"; carried through to the live logger
+  /// via templatePrefill.
+  groupIndex: number | null;
   sets: PlannedSet[];
 };
 
@@ -138,11 +152,13 @@ export function LiveWorkoutLogger({
 
   // ── Setup-phase state ────────────────────────────────────────────────
   // When the parent passes `templatePrefill`, seed exercises/type/notes
-  // from it. The parent should remount this component (via key prop)
-  // when the user picks a different template so we always start clean.
+// from it. The parent should remount this component (via key prop)
+// when the user picks a different template so we always start clean.
   const seedExercises: PlannedExercise[] = templatePrefill?.exercises?.length
     ? templatePrefill.exercises.map((ex) => ({
         name: ex.name,
+        // Superset pairing flows through verbatim. Null = linear.
+        groupIndex: ex.groupIndex ?? null,
         // targetWeight stays 0 — the user said "leave weight blank".
         // targetDuration carries through (for cardio / timed types).
         sets: ex.sets.map((s) => ({
@@ -151,7 +167,7 @@ export function LiveWorkoutLogger({
           targetDuration: s.targetDuration ?? 0,
         })),
       }))
-    : [{ name: '', sets: [{ targetReps: 8, targetWeight: 0, targetDuration: 0 }] }];
+    : [{ name: '', groupIndex: null, sets: [{ targetReps: 8, targetWeight: 0, targetDuration: 0 }] }];
 
   const [type, setType] = useState<WorkoutType>(templatePrefill?.type ?? initialType);
   const [name, setName] = useState(templatePrefill?.name ?? '');
@@ -165,6 +181,14 @@ export function LiveWorkoutLogger({
 
   // ── Live-phase state ─────────────────────────────────────────────────
   const [phase, setPhase] = useState<Phase>('setup');
+  // Round-robin walk order. Recomputed whenever the exercises array
+  // changes (so editing the plan in setup re-flows the order). The
+  // current position is a single integer index into this flat list;
+  // currentExerciseIndex + currentSetIndex are kept in sync as derived
+  // state so the rest of the JSX (which reads them by name) doesn't
+  // need to know about the round-robin walker.
+  const roundOrder = useMemo(() => buildRoundRobinOrder(exercises), [exercises]);
+  const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [capturedSets, setCapturedSets] = useState<CapturedSet[]>([]);
@@ -345,19 +369,18 @@ export function LiveWorkoutLogger({
       return [...prev.slice(0, -1), updated];
     });
 
-    // Move to the next set or exercise.
-    const nextSetIndex = currentSetIndex + 1;
-    const nextExerciseIndex = currentExerciseIndex;
-
-    if (nextSetIndex < exercises[nextExerciseIndex].sets.length) {
-      // Same exercise, next set.
-      setCurrentSetIndex(nextSetIndex);
-      seedFromPlanned(exercises[nextExerciseIndex].sets[nextSetIndex]);
-    } else if (nextExerciseIndex + 1 < exercises.length) {
-      // Next exercise, first set.
-      setCurrentExerciseIndex(nextExerciseIndex + 1);
-      setCurrentSetIndex(0);
-      seedFromPlanned(exercises[nextExerciseIndex + 1].sets[0]);
+    // Move to the next set. Walks the round-robin order rather than
+    // the raw exercises[] array so paired exercises alternate
+    // (1A → 1B → 2A → 2B). Linear (un-paired) exercises walk in
+    // their array order; the round-robin walker produces the same
+    // order for them.
+    const nextRoundIdx = currentRoundIndex + 1;
+    if (nextRoundIdx < roundOrder.length) {
+      const next = roundOrder[nextRoundIdx];
+      setCurrentRoundIndex(nextRoundIdx);
+      setCurrentExerciseIndex(next.exerciseIndex);
+      setCurrentSetIndex(next.setIndex);
+      seedFromPlanned(exercises[next.exerciseIndex].sets[next.setIndex]);
     } else {
       // Workout done — no more sets. Fire the commit so the
       // server persists the capturedSets. onSuccess will reset
@@ -392,6 +415,7 @@ export function LiveWorkoutLogger({
     setConfirmingDiscard(false);
     // Reset all state and return to setup.
     setPhase('setup');
+    setCurrentRoundIndex(0);
     setCurrentExerciseIndex(0);
     setCurrentSetIndex(0);
     setCapturedSets([]);
@@ -464,6 +488,12 @@ export function LiveWorkoutLogger({
             musclesWorked: musclesForExercise(ex.name),
             startedAt: exStart,
             completedAt: exEnd,
+            // Superset pairing carries through to the persisted
+            // Exercise row so the live round-robin walking can be
+            // reconstructed from a saved workout (e.g. for replay /
+            // analytics). Null = linear walk, same as if no pairing
+            // had ever been set.
+            groupIndex: ex.groupIndex ?? null,
             sets: exSets.map((s, j) => {
               let weight: number | undefined;
               const bodyweight = user?.weightKg ?? null;
@@ -767,6 +797,7 @@ export function LiveWorkoutLogger({
                   ...exercises,
                   {
                     name: '',
+                    groupIndex: null,
                     sets: [{
                       targetReps: isStrength ? 8 : 0,
                       targetWeight: 0,
@@ -869,9 +900,15 @@ export function LiveWorkoutLogger({
             />
           </div>
 
-          {/* Exercise context (which exercise we're on, which set) */}
+          {/* Exercise context (which exercise we're on, which set).
+              The 1A/1B pair label prefixes the exercise name when the
+              current exercise is part of a superset, so the user
+              always knows which side of the pair they're on. */}
           <div className="text-[10px] font-mono text-ink-400 uppercase tracking-widest">
-            Exercise {currentExerciseIndex + 1} of {exercises.length} · Target {currentPlannedSet.targetReps} reps{showWeight ? ` @ ${currentPlannedSet.targetWeight} ${weightUnitLabel(units)}` : ''}
+            {(() => {
+              const pairLabel = roundOrder[currentRoundIndex]?.label ?? null;
+              return pairLabel ? `${pairLabel} · ` : '';
+            })()}{currentExercise.name} · Set {currentSetIndex + 1} of {currentExercise.sets.length} · Target {currentPlannedSet.targetReps} reps{showWeight ? ` @ ${currentPlannedSet.targetWeight} ${weightUnitLabel(units)}` : ''}
           </div>
 
           {/* Captured-sets history strip. Each row is read-only by
@@ -1065,24 +1102,20 @@ export function LiveWorkoutLogger({
                 </div>
               </div>
 
-              {/* Show the next set preview if any */}
+              {/* Show the next set preview if any. Walks the round-robin
+                  order so paired exercises get the "1B" / "2A" labels. */}
               {(() => {
-                const nextSetIndex = currentSetIndex + 1;
-                const hasMoreSetsInExercise = nextSetIndex < currentExercise.sets.length;
-                const nextExerciseIndex = currentExerciseIndex + 1;
-                const hasMoreExercises = nextExerciseIndex < exercises.length;
+                const nextRoundIdx = currentRoundIndex + 1;
+                const isFinalSet = nextRoundIdx >= roundOrder.length;
                 let nextLabel = '';
-                let isFinalSet = false;
-                if (hasMoreSetsInExercise) {
-                  const next = currentExercise.sets[nextSetIndex];
-                  nextLabel = `Next: set ${nextSetIndex + 1} · target ${next.targetReps} reps${showWeight ? ` @ ${next.targetWeight} ${weightUnitLabel(units)}` : ''}`;
-                } else if (hasMoreExercises) {
-                  const nextEx = exercises[nextExerciseIndex];
-                  const next = nextEx.sets[0];
-                  nextLabel = `Next: ${nextEx.name} · set 1 · target ${next.targetReps} reps${showWeight ? ` @ ${next.targetWeight} ${weightUnitLabel(units)}` : ''}`;
+                if (!isFinalSet) {
+                  const next = roundOrder[nextRoundIdx];
+                  const nextEx = exercises[next.exerciseIndex];
+                  const nextPlanned = nextEx.sets[next.setIndex];
+                  const positionLabel = next.label ? `${next.label} · ` : '';
+                  nextLabel = `Next: ${positionLabel}${nextEx.name} · set ${next.setIndex + 1} · target ${nextPlanned.targetReps} reps${showWeight ? ` @ ${nextPlanned.targetWeight} ${weightUnitLabel(units)}` : ''}`;
                 } else {
                   nextLabel = 'Next: finish workout';
-                  isFinalSet = true;
                 }
                 return (
                   <>
@@ -1127,10 +1160,22 @@ export function LiveWorkoutLogger({
                   // commit (idempotent at the server but slow at the
                   // wire).
                   if (createM.isPending) return 'Committing…';
-                  const hasMoreSetsInExercise = currentSetIndex + 1 < currentExercise.sets.length;
-                  const hasMoreExercises = currentExerciseIndex + 1 < exercises.length;
-                  if (hasMoreSetsInExercise) return 'Next set →';
-                  if (hasMoreExercises) return 'Next exercise →';
+                  const hasNext = currentRoundIndex + 1 < roundOrder.length;
+                  const nextEntry = hasNext ? roundOrder[currentRoundIndex + 1] : null;
+                  if (hasNext && nextEntry) {
+                    // Differentiate "next set" (same exercise, set+1)
+                    // from "next exercise" (different exercise). The
+                    // round-robin walker flips back to a paired exercise
+                    // on every set, so "next exercise" is the common
+                    // case for supersets — pair label included so the
+                    // user sees "Next: 1B" not just "Next: Bench Press".
+                    const nextEx = exercises[nextEntry.exerciseIndex];
+                    const isSameEx = nextEntry.exerciseIndex === currentExerciseIndex;
+                    const prefix = nextEntry.label ? `${nextEntry.label} ` : '';
+                    return isSameEx
+                      ? `Next set → ${prefix}${nextEx.name}`
+                      : `Next exercise → ${prefix}${nextEx.name}`;
+                  }
                   return 'Finish workout ✓';
                 })()}
               </button>

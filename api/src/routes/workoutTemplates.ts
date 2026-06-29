@@ -49,6 +49,13 @@ const SetInput = z.object({
 const ExerciseInput = z.object({
   name: z.string().min(1).max(100),
   order: z.number().int().min(0),
+  /// Superset pairing. Two or more exercises sharing the same
+  /// groupIndex are walked round-robin by the live logger
+  /// (1A → 1B → 2A → 2B). Null = linear walk. The Routines page
+  /// assigns groupIndex when the user clicks "Pair with next";
+  /// the field is null on every existing template (migration
+  /// is backwards-compatible).
+  groupIndex: z.number().int().min(1).optional().nullable(),
   sets: z.array(SetInput).min(1),
 });
 
@@ -116,6 +123,7 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
           create: body.exercises.map((ex) => ({
             name: ex.name,
             order: ex.order,
+            groupIndex: ex.groupIndex ?? null,
             sets: {
               create: ex.sets.map((s) => ({
                 order: s.order,
@@ -163,6 +171,7 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
             create: body.exercises.map((ex) => ({
               name: ex.name,
               order: ex.order,
+              groupIndex: ex.groupIndex ?? null,
               sets: {
                 create: ex.sets.map((s) => ({
                   order: s.order,
@@ -223,6 +232,7 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
           create: source.exercises.map((ex) => ({
             name: ex.name,
             order: ex.order,
+            groupIndex: ex.groupIndex,
             sets: {
               create: ex.sets.map((s) => ({
                 order: s.order,

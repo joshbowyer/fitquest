@@ -16,7 +16,16 @@ export type DraftSet = {
   rpe: number;
 };
 
-export type DraftExercise = { name: string; sets: DraftSet[] };
+export type DraftExercise = {
+  name: string;
+  /// Superset pairing. Carried through from the template prefill so
+  /// the bulk-mode logger can show "1A / 1B" labels next to paired
+  /// exercise names — the bulk mode doesn't walk them round-robin
+  /// (you fill in all sets up front) but the visual pairing indicator
+  /// + the persisted `groupIndex` keep the data flowing correctly.
+  groupIndex?: number | null;
+  sets: DraftSet[];
+};
 
 export function emptyExercise(): DraftExercise {
   return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0 }] };

@@ -127,6 +127,10 @@ const ExerciseInput = z.object({
   // musclesWorked is set client-side from the name; we trust it
   // because it comes from the same static rule list the user sees.
   musclesWorked: z.array(z.string()).optional(),
+  // Superset pairing. Mirrors WorkoutTemplateExercise.groupIndex:
+  // exercises sharing the same groupIndex were walked round-robin
+  // by the live logger and persisted as a pair. Null = linear.
+  groupIndex: z.number().int().min(1).optional().nullable(),
   sets: z.array(SetInput).min(1),
   // Live-mode timing at the exercise level. Both optional for the
   // same reason as Set.startedAt / completedAt — bulk-mode workouts
@@ -273,6 +277,10 @@ export async function workoutRoutes(app: FastifyInstance) {
               order: ex.order,
               notes: ex.notes,
               musclesWorked: (ex.musclesWorked ?? []) as any,
+              // Superset pairing from the live logger (1A / 1B / etc.).
+              // Null = linear walk; same convention as the template
+              // schema.
+              groupIndex: ex.groupIndex ?? null,
               // Live-mode exercise timing. Spread after the literal
               // fields so a future field collision can't accidentally
               // overwrite the client's value with undefined.

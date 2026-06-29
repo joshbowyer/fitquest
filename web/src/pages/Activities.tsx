@@ -82,6 +82,7 @@ export function ActivitiesPage() {
       exercises: Array<{
         name: string;
         order: number;
+        groupIndex?: number | null;
         sets: Array<{ order: number; targetReps: number; targetDuration: number | null }>;
       }>;
     }>(`/workout-templates/${selectedTemplateId}`),
@@ -272,7 +273,11 @@ export function ActivitiesPage() {
                         type: selectedTemplateQ.data.type as any,
                         exercises: selectedTemplateQ.data.exercises.map((ex) => ({
                           name: ex.name,
-                          sets: ex.sets.map((s) => ({ targetReps: s.targetReps })),
+                          groupIndex: ex.groupIndex ?? null,
+                          sets: ex.sets.map((s) => ({
+                            targetReps: s.targetReps,
+                            targetDuration: s.targetDuration ?? undefined,
+                          })),
                         })),
                       }
                     : null
@@ -292,7 +297,11 @@ export function ActivitiesPage() {
                         type: selectedTemplateQ.data.type as any,
                         exercises: selectedTemplateQ.data.exercises.map((ex) => ({
                           name: ex.name,
-                          sets: ex.sets.map((s) => ({ targetReps: s.targetReps })),
+                          groupIndex: ex.groupIndex ?? null,
+                          sets: ex.sets.map((s) => ({
+                            targetReps: s.targetReps,
+                            targetDuration: s.targetDuration ?? undefined,
+                          })),
                         })),
                       }
                     : null

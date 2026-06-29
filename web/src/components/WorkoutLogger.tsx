@@ -65,6 +65,9 @@ export type WorkoutLoggerProps = {
     type?: WorkoutType;
     exercises?: Array<{
       name: string;
+      /// Superset pairing. Optional in the type so older callers
+      /// (or hand-rolled prefill objects) don't have to provide it.
+      groupIndex?: number | null;
       sets: Array<{
         targetReps: number;
         targetDuration?: number | null;
@@ -98,6 +101,7 @@ export function WorkoutLogger({
     if (templatePrefill?.exercises?.length) {
       return templatePrefill.exercises.map((ex) => ({
         name: ex.name,
+        groupIndex: ex.groupIndex ?? null,
         sets: ex.sets.map((s) => ({
           reps: s.targetReps,
           // Weight intentionally blank — the user said "leave weight blank"
@@ -156,6 +160,10 @@ export function WorkoutLogger({
               name: e.name,
               order: i,
               musclesWorked: musclesForExercise(e.name),
+              // Superset pairing flows through from the template
+              // prefill. Null when the user typed the exercise fresh
+              // or un-paired it.
+              groupIndex: e.groupIndex ?? null,
               sets: e.sets
                 .filter((s) => s.reps > 0 || s.duration > 0)
                 .map((s, j) => {
@@ -286,9 +294,32 @@ export function WorkoutLogger({
               const bodyweightDisplay = units === 'IMPERIAL'
                 ? Math.round(kgToLb(user?.weightKg ?? 0))
                 : Math.round(user?.weightKg ?? 0);
-              return (
+              // Pair label for paired bulk-mode exercises. Mirrors the Routines
+  // page rendering — position within the group is rendered-order,
+  // so the user always sees 1A then 1B (in array order) regardless
+  // of which one they typed first. Hidden for un-paired exercises.
+  const groupLabelAt = (idx: number): string | null => {
+    const ex = exercises[idx];
+    if (!ex || ex.groupIndex == null) return null;
+    const pos = exercises
+      .map((e, i) => ({ e, i }))
+      .filter((x) => x.e.groupIndex === ex.groupIndex)
+      .findIndex((x) => x.i === idx);
+    if (pos < 0) return null;
+    return `${ex.groupIndex}${String.fromCharCode(65 + pos)}`;
+  };
+
+  return (
                 <div key={i} className="border border-ink-500/30 p-2 space-y-2">
                   <div className="flex items-center gap-2">
+                    {groupLabelAt(i) && (
+                      <span
+                        className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest bg-neon-magenta/20 border border-neon-magenta/50 text-neon-magenta shrink-0"
+                        title={`Pair #${exercises[i].groupIndex} — round-robin walked by the live logger`}
+                      >
+                        {groupLabelAt(i)}
+                      </span>
+                    )}
                     <ExerciseAutocomplete
                       className="flex-1"
                       value={ex.name}

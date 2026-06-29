@@ -521,6 +521,10 @@ model Exercise {
   // so users see the right muscles on the body without having to
   // tag exercises manually.
   musclesWorked BodyPart[] @default([])
+  /// Superset pairing. Mirrors WorkoutTemplateExercise.groupIndex:
+  /// exercises sharing the same groupIndex are paired and walked
+  /// round-robin by the live logger. Null = linear.
+  groupIndex    Int?
   sets          Set[]
   // Live-mode timestamps: when the user opened this exercise's first
   // set entry, and when they finished the last set of this exercise.
@@ -528,6 +532,8 @@ model Exercise {
   // workout where the user opted into the bulk flow).
   startedAt   DateTime?
   completedAt DateTime?
+
+  @@index([workoutId, groupIndex])
 }
 
 /// Why a set was not performed. Logged on the Set itself rather than
@@ -614,9 +620,17 @@ model WorkoutTemplateExercise {
   // Exercise name (free text — same lookup as the live logger).
   name       String
   order      Int              @default(0)
+  /// Superset pairing. Two or more exercises that share the same
+  /// groupIndex are paired — the live logger walks them round-robin
+  /// (1A → 1B → 2A → 2B → ...) so the user alternates between
+  /// exercises the way a real superset works. Null = walk linearly
+  /// (no superset). The pairing is opt-in: bulk-mode + existing
+  /// templates leave it null.
+  groupIndex Int?
   sets       WorkoutTemplateSet[]
 
   @@index([templateId])
+  @@index([templateId, groupIndex])
 }
 
 model WorkoutTemplateSet {

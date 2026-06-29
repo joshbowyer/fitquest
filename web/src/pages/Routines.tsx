@@ -24,6 +24,10 @@ type TemplateSet = {
 type TemplateExercise = {
   name: string;
   order: number;
+  /// Superset pairing. Two exercises sharing the same groupIndex
+  /// are walked round-robin by the live logger (1A → 1B → 2A → 2B).
+  /// Null = walk linearly (no pairing).
+  groupIndex: number | null;
   sets: TemplateSet[];
 };
 
@@ -64,6 +68,7 @@ function emptyTemplate(): { name: string; type: WorkoutType; notes: string; exer
       {
         name: '',
         order: 0,
+        groupIndex: null,
         sets: [{ order: 0, targetReps: 8, targetDuration: null }],
       },
     ],
@@ -106,6 +111,11 @@ export function RoutinesPage() {
         exercises: draft.exercises.map((ex, ei) => ({
           ...ex,
           order: ei,
+          // groupIndex flows through verbatim. The server validates
+          // it's a non-negative integer; we also normalize null to
+          // undefined so the JSON wire doesn't carry `groupIndex:
+          // null` for the un-paired case (saves 2 chars per row).
+          groupIndex: ex.groupIndex ?? undefined,
           sets: ex.sets.map((s, si) => ({
             ...s,
             order: si,
@@ -131,6 +141,7 @@ export function RoutinesPage() {
         exercises: draft.exercises.map((ex, ei) => ({
           ...ex,
           order: ei,
+          groupIndex: ex.groupIndex ?? undefined,
           sets: ex.sets.map((s, si) => ({
             ...s,
             order: si,
@@ -188,6 +199,7 @@ export function RoutinesPage() {
       exercises: t.exercises.map((ex) => ({
         name: ex.name,
         order: ex.order,
+        groupIndex: ex.groupIndex ?? null,
         sets: ex.sets.map((s) => ({
           order: s.order,
           targetReps: s.targetReps,
@@ -460,6 +472,7 @@ function TemplateEditor({
                   {
                     name: '',
                     order: draft.exercises.length,
+                    groupIndex: null,
                     // Carry the previous exercise's rep target so quick
                     // additions don't reset to a generic 8.
                     sets: [{ order: 0, targetReps: lastEx?.sets[0]?.targetReps ?? 8, targetDuration: null }],
@@ -472,10 +485,47 @@ function TemplateEditor({
             + Add exercise
           </button>
         </div>
-        {draft.exercises.map((ex, ei) => (
-          <div key={ei} className="border border-ink-500/30 p-3 space-y-2">
+        {draft.exercises.map((ex, ei) => {
+          const isPaired = ex.groupIndex != null;
+          const pairLabel = (() => {
+            if (ex.groupIndex == null) return null;
+            const members = draft.exercises.filter((e) => e.groupIndex === ex.groupIndex);
+            const posInGroup = members.findIndex((e) => e === ex);
+            return `${ex.groupIndex}${String.fromCharCode(65 + posInGroup)}`;
+          })();
+          // Smallest unused groupIndex (or max+1, or 1). Used when
+          // the user clicks "+ Pair with next" so the new pair gets
+          // a fresh number and never collides with an existing group.
+          const nextPairGroupIndex = (() => {
+            const used = new Set(
+              draft.exercises
+                .map((e) => e.groupIndex)
+                .filter((g): g is number => g != null),
+            );
+            let candidate = 1;
+            while (used.has(candidate)) candidate++;
+            return candidate;
+          })();
+          return (
+          <div
+            key={ei}
+            className={classNames(
+              'border p-3 space-y-2',
+              isPaired
+                ? 'border-neon-magenta/50 bg-neon-magenta/5'
+                : 'border-ink-500/30',
+            )}
+          >
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono text-ink-400 w-6 shrink-0">#{ei + 1}</span>
+              {pairLabel && (
+                <span
+                  className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-widest bg-neon-magenta/20 border border-neon-magenta/50 text-neon-magenta"
+                  title={`Pair #${ex.groupIndex} — round-robin walked by the live logger`}
+                >
+                  {pairLabel}
+                </span>
+              )}
               <ExerciseAutocomplete
                 className="flex-1 text-sm"
                 value={ex.name}
@@ -487,6 +537,46 @@ function TemplateEditor({
                 }}
                 placeholder="e.g. Bench Press"
               />
+              {/* Pair / unpair control. Only show "Pair with next" when
+                  (a) this exercise isn't already paired AND (b) there's
+                  actually a next exercise to pair with. */}
+              {!isPaired && ei < draft.exercises.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Pair this exercise + the next one under a fresh
+                    // groupIndex. The "1A" / "1B" labels auto-assign
+                    // by render-order so we don't need to track
+                    // position explicitly.
+                    const newGroup = nextPairGroupIndex;
+                    const copy = [...draft.exercises];
+                    copy[ei] = { ...copy[ei], groupIndex: newGroup };
+                    copy[ei + 1] = { ...copy[ei + 1], groupIndex: newGroup };
+                    setDraft({ ...draft, exercises: copy });
+                  }}
+                  className="px-2 h-9 text-[10px] font-mono border border-neon-magenta/40 text-neon-magenta hover:bg-neon-magenta/10"
+                  title="Mark this + the next exercise as a superset pair (round-robin walked by the live logger)"
+                >
+                  + Pair with next
+                </button>
+              )}
+              {isPaired && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Unpair this exercise alone. Leaves the rest of
+                    // the group intact (pair → unpaired + 1 leftover
+                    // becomes a singleton).
+                    const copy = [...draft.exercises];
+                    copy[ei] = { ...copy[ei], groupIndex: null };
+                    setDraft({ ...draft, exercises: copy });
+                  }}
+                  className="px-2 h-9 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+                  title="Remove from pair (this exercise will walk linearly again)"
+                >
+                  Unpair
+                </button>
+              )}
               {draft.exercises.length > 1 && (
                 <button
                   type="button"
@@ -588,7 +678,8 @@ function TemplateEditor({
               </button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ---------- Save / Cancel ---------- */}
