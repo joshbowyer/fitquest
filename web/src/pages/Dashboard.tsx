@@ -86,8 +86,8 @@ export function DashboardPage() {
     queryFn: () => api<{ items: GeneticMax[] }>('/genetic-max'),
   });
   const prsQ = useQuery({
-    queryKey: ['prs', 'best'],
-    queryFn: () => api<{ items: any[] }>('/prs/best'),
+    queryKey: ['prs', 'recent'],
+    queryFn: () => api<{ items: any[] }>('/prs'),
   });
   const achievementsQ = useQuery({
     queryKey: ['achievements'],
@@ -472,7 +472,7 @@ export function DashboardPage() {
 
       {/* Recent PRs + Achievements */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Panel variant="lime" title="Recent PRs">
+        <Panel variant="lime" title="Estimated 1RM peaks">
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {(prsQ.data?.items || []).slice(0, 10).map((p) => {
               // PR weight is stored in kg; convert at the edge for
@@ -513,7 +513,7 @@ export function DashboardPage() {
               );
             })}
             {(prsQ.data?.items || []).length === 0 && (
-              <div className="text-xs text-ink-300 font-mono text-center py-4">No PRs logged yet.</div>
+              <div className="text-xs text-ink-300 font-mono text-center py-4">No 1RM peaks yet — log a workout to start.</div>
             )}
           </div>
         </Panel>

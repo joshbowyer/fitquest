@@ -60,6 +60,16 @@ export function StatusPage() {
     queryFn: () => api<StatusResponse>('/status'),
   });
 
+  // Today's weigh-in (tz-aware via the same endpoint WeighInPanel uses).
+  // Falls back to user.weightKg when no weigh-in has been logged today
+  // so the Identity block still shows *something* meaningful.
+  const weighInQ = useQuery({
+    queryKey: ['weigh-in', 'status'],
+    queryFn: () => api<{ today: { logged: boolean; value: number | null }; streak: any }>(
+      '/measurements/weigh-in/status'
+    ),
+  });
+
   const archive = useDelayedMutation<
     { ok: boolean },
     string
@@ -84,7 +94,10 @@ export function StatusPage() {
     : [];
 
   const bf = user.bodyFatPct ?? null;
-  const weight = user.weightKg ?? null;
+  // Prefer today's weigh-in; fall back to the user-table column for
+  // users who never log weigh-ins (or haven't yet today).
+  const todayWeight = weighInQ.data?.today.logged ? weighInQ.data.today.value : null;
+  const weight = todayWeight ?? user.weightKg ?? null;
   const height = user.heightCm ?? null;
   // Creatine: water-weight subtraction kicks in only when the user has
   // logged Creatine on ≥3 of the last 7 days. The auto-derived flag

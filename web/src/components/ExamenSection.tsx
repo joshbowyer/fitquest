@@ -61,7 +61,7 @@ export function ExamenSection() {
           <p className="text-[11px] font-mono text-ink-300 leading-relaxed">
             Sunday-evening review of the week. Three prompts:
             what consoled you, what desolated you, and where was God
-            in neither. One paragraph each is plenty.
+            in all this. One paragraph each is plenty.
           </p>
           {currentWeekResponse ? (
             <CurrentWeekSummary r={currentWeekResponse} />
@@ -105,7 +105,7 @@ function CurrentWeekSummary({ r }: { r: ExamenResponse }) {
       </div>
       <ExamenLine label="Consoled" text={r.consoled} accent="lime" />
       <ExamenLine label="Desolated" text={r.desolated} accent="red" />
-      <ExamenLine label="God in neither" text={r.godsPresence} accent="cyan" />
+      <ExamenLine label="God in all this" text={r.godsPresence} accent="cyan" />
       {r.notes && (
         <div className="pt-2 mt-2 border-t border-violet-500/15 text-[11px] font-mono text-ink-300 italic leading-relaxed">
           {r.notes}
@@ -147,7 +147,7 @@ function PastEntry({ r }: { r: ExamenResponse }) {
       <div className="mt-2 pt-2 border-t border-ink-500/15 space-y-1.5">
         <ExamenLine label="Consoled" text={r.consoled} accent="lime" />
         <ExamenLine label="Desolated" text={r.desolated} accent="red" />
-        <ExamenLine label="God in neither" text={r.godsPresence} accent="cyan" />
+        <ExamenLine label="God in all this" text={r.godsPresence} accent="cyan" />
         {r.notes && (
           <div className="text-[10px] font-mono text-ink-400 italic mt-1">{r.notes}</div>
         )}
@@ -221,7 +221,7 @@ function ExamenModal({
           placeholder="Struggles, frustrations, times you felt distant…"
         />
         <ExamenField
-          label="Where was God in neither?"
+          label="Where was God in all this?"
           accent="cyan"
           value={godsPresence}
           onChange={setGodsPresence}

@@ -208,14 +208,14 @@ export function InsightsPage() {
             the stressor. When both drop together, life-stress.
           </div>
         </Panel>
-        <Panel variant="amber" title={`Body weight · ${overlayDays}d`}>
-          <OverlayTrendChart
-            days={overlayDays}
-            units={system}
-            series={overlaySeries2}
-            history={history}
-            yPad={20}
-          />
+<Panel variant="amber" title={`Body weight · ${overlayDays}d`}>
+        <OverlayTrendChart
+          days={overlayDays}
+          units={system}
+          series={overlaySeries2}
+          history={history}
+          yPad={10}
+        />
           <div className="text-[10px] font-mono text-slate-400 mt-1">
             Daily weigh-ins reveal the trend beneath the noise.
           </div>
