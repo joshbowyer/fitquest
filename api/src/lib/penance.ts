@@ -47,6 +47,17 @@ export type PenanceKey =
   | 'checkin_am'             // morning check-in completed
   | 'checkin_pm'             // evening check-in completed
   | 'checkin_weekly'         // weekly check-in completed
+  // New (spiritual + recovery tracks). The user flagged the
+  // existing penance menu as too workout-centric — these add
+  // events for the spiritual and recovery domains so the shield
+  // is also pressured (or repaired) by those tracks.
+  | 'missed_spiritual_week'   // no spiritual practice logged for a week
+  | 'missed_examen'           // skipped Sunday's examen
+  | 'completed_spiritual_day' // daily spiritual practice done
+  | 'logged_recovery_week'    // 7-day recovery streak
+  | 'missed_recovery_week'   // no mobility/stretch in 7 days
+  | 'logged_sleep_8h'         // 8+ hours sleep logged
+  | 'missed_hrv'              // 7 days without an HRV reading
   | 'custom';
 
 export const PENANCE_DELTAS: Record<Exclude<PenanceKey, 'custom'>, number> = {
@@ -73,6 +84,17 @@ export const PENANCE_DELTAS: Record<Exclude<PenanceKey, 'custom'>, number> = {
   checkin_weekly: 5,           // weekly check-in
   perfect_day: 12,             // all dailies + workout + targets
   streak_7day: 8,              // 7-day streak milestone
+  // Spiritual + recovery events (new — added because the user
+  // noted the existing penance menu was too workout-centric).
+  // Spirituals are mostly damaging (avoidance penalties),
+  // recoveries are mostly repairing (good habits).
+  missed_spiritual_week: -14,  // a week without a prayer/examen/mass
+  missed_examen: -8,           // skipped last Sunday's examen
+  completed_spiritual_day: 5,  // daily spiritual practice done
+  logged_recovery_week: 10,    // hit a 7-day recovery streak
+  missed_recovery_week: -12,   // no mobility/stretch in 7 days
+  logged_sleep_8h: 5,          // 8+ hours sleep logged (recovery)
+  missed_hrv: -8,              // 7 days without an HRV reading
 };
 
 export const PENANCE_LABELS: Record<Exclude<PenanceKey, 'custom'>, string> = {
@@ -96,6 +118,14 @@ export const PENANCE_LABELS: Record<Exclude<PenanceKey, 'custom'>, string> = {
   checkin_weekly: 'Weekly check-in',
   perfect_day: 'Perfect day',
   streak_7day: '7-day streak',
+  // Spiritual + recovery labels (matches the new PenanceKey entries).
+  missed_spiritual_week: 'The lamp dimmed',
+  missed_examen: 'Skipped the examen',
+  completed_spiritual_day: 'Lit the lamp',
+  logged_recovery_week: 'A week tended',
+  missed_recovery_week: 'The hinges rusted',
+  logged_sleep_8h: 'Long rest',
+  missed_hrv: 'No pulse taken',
 };
 
 export const PENANCE_FLAVORS: Record<Exclude<PenanceKey, 'custom'>, string> = {
@@ -119,6 +149,14 @@ export const PENANCE_FLAVORS: Record<Exclude<PenanceKey, 'custom'>, string> = {
   checkin_weekly: 'Weekly check-in. The long view is kept.',
   perfect_day: 'Every daily, every target, every box. The walls shine.',
   streak_7day: 'A 7-day streak holds. The walls remember your rhythm.',
+  // Spiritual + recovery flavors.
+  missed_spiritual_week: 'A week without prayer or examen. The lamp is cold; the walls are quiet.',
+  missed_examen: 'The Sunday examen passed without a record. The week holds more than the log shows.',
+  completed_spiritual_day: 'The daily spiritual practice is logged. The lamp burns steady.',
+  logged_recovery_week: 'A full week of mobility, sleep, and HRV logged. The body is being held.',
+  missed_recovery_week: 'No mobility or stretch in seven days. The hinges are getting stiff.',
+  logged_sleep_8h: 'Eight hours of sleep logged. The body gets to repair.',
+  missed_hrv: 'Seven days without a pulse reading. The signals are getting stale.',
 };
 
 /** Map a shield value (0-100) to its tier. */
