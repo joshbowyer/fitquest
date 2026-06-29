@@ -157,8 +157,9 @@ function parseDeviceLabel(req: any): string {
 export async function authRoutes(app: FastifyInstance) {
   app.post('/register', async (req, reply) => {
     const body = RegisterSchema.parse(req.body);
+    const usernameLower = body.username.toLowerCase();
     const exists = await prisma.user.findFirst({
-      where: { username: body.username },
+      where: { usernameLower },
       select: { id: true, username: true },
     });
     if (exists) {
@@ -167,13 +168,14 @@ export async function authRoutes(app: FastifyInstance) {
     const passwordHash = await hashPassword(body.password);
     // Generate a stable placeholder email so the User model's NOT NULL
     // email column is satisfied. Real emails are off the table for now.
-    const placeholderEmail = `${body.username.toLowerCase()}@local.fitquest`;
+    const placeholderEmail = `${usernameLower}@local.fitquest`;
     // The default admin user (admin) is created by ensureDefaultAdmin()
     // on first boot. After that, regular registrations are never admin.
     const user = await prisma.user.create({
       data: {
         email: placeholderEmail,
         username: body.username,
+        usernameLower,
         passwordHash,
         isAdmin: false,
       },
@@ -207,7 +209,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
 
     const user = await prisma.user.findUnique({
-      where: { username: body.identifier },
+      where: { usernameLower: body.identifier.toLowerCase() },
     });
 
     // Always run bcrypt even on missing user — constant-time-ish so

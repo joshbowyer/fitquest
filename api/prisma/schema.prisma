@@ -235,6 +235,11 @@ model User {
   id                    String                  @id @default(cuid())
   email                 String                  @unique
   username              String                  @unique
+  /// Case-folded copy of `username` for case-insensitive login +
+  /// unique-by-case uniqueness. Login routes look up by this
+  /// column. `username` is preserved as the display name (whatever
+  /// case the user typed at registration).
+  usernameLower         String                  @unique
   passwordHash          String
   class                 ClassName?
   level                 Int                     @default(1)

@@ -94,9 +94,10 @@ export async function partyRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Not a member of this party' });
     }
 
-    // Find the invitee by username (case-insensitive)
+    // Find the invitee by username (case-insensitive lookup via
+    // the User.usernameLower unique column).
     const invitee = await prisma.user.findUnique({
-      where: { username: body.username },
+      where: { usernameLower: body.username.toLowerCase() },
     });
 
     // Prevent inviting yourself or someone already in the party

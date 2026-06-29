@@ -23,6 +23,10 @@ export async function ensureDefaultAdmin() {
     data: {
       email: `${DEFAULT_ADMIN_USERNAME}@local.fitquest`,
       username: DEFAULT_ADMIN_USERNAME,
+      // Case-folded copy of username — required by the login route
+      // for case-insensitive lookup. The default admin username is
+      // already lowercase so this is a no-op for the seed case.
+      usernameLower: DEFAULT_ADMIN_USERNAME.toLowerCase(),
       passwordHash,
       isAdmin: true,
     },

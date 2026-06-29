@@ -24,16 +24,6 @@
 
 ### Bugs / data-correctness
 
-- **USCCB readings broken.** The USCCB redesigned their site in
-  mid-2026 and stopped shipping reading text in their RSS feed;
-  per-day pages are now JavaScript-rendered and Wayback snapshots
-  don't always have the readings either. The cache falls back to
-  legacy .cfm snapshots when possible but coverage is spotty.
-  Need: an alternate daily-reading source (e.g. Magnificat,
-  iBreviary, OR cache more aggressively + serve from a CDN),
-  OR surface a "no reading today" UI affordance so users aren't
-  staring at "No USCCB reading available right now." indefinitely.
-
 ### Polish
 
 - **Morning popup modal (Habitica-style).** ✅ Done — see commit `8e18c3d`.
@@ -158,6 +148,15 @@
   toggle so accidental taps can't overwrite mid-workout. (6th bug,
   supersets, deferred — needs schema migration + state-machine
   rewrite.)
+- ✅ USCCB readings: EWTN is the new primary source (replaced
+  USCCB's broken RSS feed). The api walks the cascade
+  cache → EWTN → USCCB RSS → Wayback on every miss. New
+  `GET /spiritual/readings-status` endpoint probes each source
+  independently with a reason; `POST /spiritual/readings-reseed`
+  force-refreshes. SpiritualDirectorCard now has a "Diagnose"
+  chip that shows per-source ✓/✗ so the user can see which leg
+  of the cascade is broken instead of staring at a generic
+  "no reading" message.
 - ✅ Hardcore-mode heart-loss system wired up. `loseHeart()`
   had zero callers until this commit. New
   `fireHardcoreHeartPenalties()` runs alongside
