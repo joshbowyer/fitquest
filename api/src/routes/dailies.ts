@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { DayOfWeek, DailyCategory } from '../lib/prisma.js';
-import { prisma } from '../lib/prisma.js';
+import { DayOfWeek, DailyCategory, prisma } from '../lib/prisma.js';
+import type { DayOfWeek as DayOfWeekType } from '@prisma/client';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 
@@ -29,7 +29,7 @@ const updateSchema = createSchema.partial().extend({
 
 // Day-of-week index for JavaScript getDay() (0=Sun..6=Sat).
 // We use the same enum values on both sides so this lookup is direct.
-function todayDay(): DayOfWeek {
+function todayDay(): DayOfWeekType {
   return ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()] as DayOfWeek;
 }
 
@@ -39,12 +39,12 @@ function todayDay(): DayOfWeek {
 const BUILTIN_KEYS = ['WORKOUT'] as const;
 
 function buildBuiltins(opts: {
-  routineDays: Array<{ day: DayOfWeek; workout: boolean; notes: string | null }>;
+  routineDays: Array<{ day: DayOfWeekType; workout: boolean; notes: string | null }>;
 }): Array<{
   id: string;
   name: string;
   category: 'WORKOUT';
-  days: DayOfWeek[];
+  days: DayOfWeekType[];
   notes: string | null;
   goldReward: number;
   xpReward: number;
@@ -91,83 +91,202 @@ export async function dailyRoutes(app: FastifyInstance) {
   // GET /dailies/today — dailies due today with completion status.
   // Combines user-defined dailies + built-in WORKOUT + built-in
   // SPIRITUAL (prayers the user committed to daily).
-  app.get('/today', async (req) => {
-    const me = await requireUser(req);
-    const startOfDay = new Date();
+  /**
+ * Internal helper — fetch dailies + completion status for a given
+ * local date (YYYY-MM-DD in the user's tz). Used by both the
+ * /today endpoint and the /morning-popup endpoint (which queries
+ * yesterday's state to drive the recovery UI).
+ */
+async function fetchDailiesForDate(
+  userId: string,
+  timezone: string | null,
+  dateStr: string | null,
+) {
+  const { localMidnightUtc, todayInTz } = await import('../lib/timezone.js');
+  const tz = timezone ?? 'UTC';
+  let startOfDay: Date;
+  let tomorrow: Date;
+  let today: DayOfWeekType;
+  if (dateStr) {
+    startOfDay = localMidnightUtc(dateStr, tz);
+    tomorrow = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    const targetLocalDate = todayInTz(tz, startOfDay);
+    const dt = new Date(`${targetLocalDate}T12:00:00Z`);
+    const dow = ['SUN','MON','TUE','WED','THU','FRI','SAT'][dt.getUTCDay()];
+    today = dow as DayOfWeek;
+  } else {
+    startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(startOfDay);
+    tomorrow = new Date(startOfDay);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const today = todayDay();
+    today = todayDay();
+  }
 
-    const [userDailies, routineDays, todayLogs, recentWorkout] = await Promise.all([
-      prisma.daily.findMany({
-        // Only dailies the user has marked as "show on /today".
-        // Custom practices with isDaily=false are still loggable
-        // (visible in the prayer picker on /spiritual) but don't
-        // auto-appear in the daily checklist. This mirrors the
-        // built-in PrayerType toggle on User.spiritualDailyPrayers.
-        where: { userId: me.id, archived: false, isDaily: true },
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+  const [userDailies, routineDays, todayLogs, recentWorkout] = await Promise.all([
+    prisma.daily.findMany({
+      where: { userId, archived: false, isDaily: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.routineDay.findMany({ where: { userId } }),
+    prisma.dailyLog.findMany({
+      where: { userId, loggedAt: { gte: startOfDay, lt: tomorrow } },
+    }),
+    prisma.workout.count({
+      where: { userId, performedAt: { gte: startOfDay, lt: tomorrow } },
+    }),
+  ]);
+
+  const dueUserDailies = userDailies.filter(
+    (d) => d.days.length === 0 || d.days.includes(today),
+  );
+
+  const loggedKeys = new Set(todayLogs.map((l) => l.dailyKey));
+  const userDailiesCompleted = dueUserDailies.filter((d) => loggedKeys.has(d.id)).length;
+
+  const workoutDayRow = routineDays.find((r) => r.day === today);
+  const isWorkoutDay = workoutDayRow?.workout ?? false;
+  const builtins = buildBuiltins({ routineDays }).map((b) => ({
+    ...b,
+    todayDone: b.id === 'WORKOUT' ? recentWorkout > 0 : loggedKeys.has(b.id),
+  }));
+
+  const me = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { spiritualDailyPrayers: true },
+  });
+  const spiritualDailies = (me?.spiritualDailyPrayers ?? []).map((p) => ({
+    id: `SPIRITUAL:${p}`,
+    name: prayerLabel(p),
+    category: 'SPIRITUAL' as const,
+    days: [today] as DayOfWeekType[],
+    notes: null,
+    goldReward: 0,
+    xpReward: 0,
+    sortOrder: -50,
+    todayDone: loggedKeys.has(`SPIRITUAL:${p}`),
+    prayerType: p,
+  }));
+
+  const userDailiesWithStatus = dueUserDailies.map((d) => ({
+    ...d,
+    todayDone: loggedKeys.has(d.id),
+  }));
+
+  return {
+    date: dateStr ?? null,
+    today,
+    userDailies: userDailiesWithStatus,
+    builtins,
+    spiritualDailies,
+    counts: {
+      total: dueUserDailies.length + builtins.length + spiritualDailies.length,
+      completed:
+        userDailiesCompleted +
+        builtins.filter((b) => b.todayDone).length +
+        spiritualDailies.filter((s) => s.todayDone).length,
+      isWorkoutDay,
+    },
+  };
+}
+
+app.get('/today', async (req) => {
+    const me = await requireUser(req);
+    const q = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
+    return fetchDailiesForDate(me.id, me.timezone, q.date ?? null);
+});
+
+  /**
+   * GET /dailies/morning-popup?date=YYYY-MM-DD
+   *
+   * Bundled payload for the morning popup modal. Combines:
+   *   - the user's dailies for `date` (default: yesterday) with
+   *     completion status, so missed items are easy to tick off
+   *     and avoid the MISSED_ALL_DAILIES heart-loss trigger
+   *   - a one-shot yesterday recap (workout logged, sleep duration,
+   *     weigh-in status, recovery score)
+   *   - any Hardcore-mode heart-loss events that fired yesterday
+   *     (so the popup can animate the count down)
+   *
+   * The popup dismisses itself and re-fetches on demand, so we
+   * don't bother with caching.
+   */
+  app.get<{ Querystring: { date?: string } }>('/morning-popup', async (req) => {
+    const me = await requireUser(req);
+    const q = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
+    const { localMidnightUtc, todayInTz } = await import('../lib/timezone.js');
+    const tz = me.timezone ?? 'UTC';
+
+    // Default date = yesterday in the user's tz.
+    const nowLocal = todayInTz(tz);
+    const targetDate = q.date ?? (() => {
+      const todayMidnight = localMidnightUtc(nowLocal, tz);
+      const yesterday = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
+      return todayInTz(tz, yesterday);
+    })();
+
+    const startOfDay = localMidnightUtc(targetDate, tz);
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+    // Dailies for the target date (use the shared helper directly
+    // — no need to round-trip through app.inject in a route).
+    const dailiesForDate = await fetchDailiesForDate(me.id, tz, targetDate);
+
+    // Yesterday recap: workout + sleep + weigh-in + recovery.
+    const [workouts, sleep, latestWeight, recovery, heartLoss] = await Promise.all([
+      prisma.workout.findMany({
+        where: { userId: me.id, performedAt: { gte: startOfDay, lt: endOfDay } },
+        select: { id: true, name: true, type: true, duration: true, performedAt: true },
+        orderBy: { performedAt: 'asc' },
       }),
-      prisma.routineDay.findMany({ where: { userId: me.id } }),
-      prisma.dailyLog.findMany({
-        where: { userId: me.id, loggedAt: { gte: startOfDay, lt: tomorrow } },
+      prisma.measurement.findFirst({
+        where: { userId: me.id, metric: 'SLEEP_HOURS', recordedAt: { gte: startOfDay, lt: endOfDay } },
+        orderBy: { recordedAt: 'desc' },
+        select: { value: true, recordedAt: true },
       }),
-      prisma.workout.count({
-        where: { userId: me.id, performedAt: { gte: startOfDay, lt: tomorrow } },
+      prisma.measurement.findFirst({
+        where: { userId: me.id, metric: 'WEIGHT' },
+        orderBy: { recordedAt: 'desc' },
+        select: { value: true, recordedAt: true },
+      }),
+      // Recovery score is server-computed; re-use the engine.
+      import('../lib/recovery.js').then((m) => m.computeRecovery(me.id)).catch(() => ({ score: null })),
+      prisma.heartLossEvent.findMany({
+        where: { userId: me.id, sourceDate: startOfDay },
+        select: { id: true, kind: true, details: true, sourceDate: true },
       }),
     ]);
 
-    // Filter user dailies to ones due today (empty days[] = every day)
-    const dueUserDailies = userDailies.filter(
-      (d) => d.days.length === 0 || d.days.includes(today),
-    );
-
-    // Logged keys for fast lookup
-    const loggedKeys = new Set(todayLogs.map((l) => l.dailyKey));
-    const userDailiesCompleted = dueUserDailies.filter((d) => loggedKeys.has(d.id)).length;
-
-    // Built-in: WORKOUT (auto-completes if a workout was logged today)
-    const workoutDayRow = routineDays.find((r) => r.day === today);
-    const isWorkoutDay = workoutDayRow?.workout ?? false;
-    const builtins = buildBuiltins({ routineDays }).map((b) => ({
-      ...b,
-      todayDone: b.id === 'WORKOUT' ? recentWorkout > 0 : loggedKeys.has(b.id),
-    }));
-
-    // Built-in: SPIRITUAL dailies (prayers the user committed to)
-    const spiritualDailies = (me.spiritualDailyPrayers ?? []).map((p) => ({
-      id: `SPIRITUAL:${p}`,
-      name: prayerLabel(p),
-      category: 'SPIRITUAL' as const,
-      days: [today] as DayOfWeek[],
-      notes: null,
-      goldReward: 0,
-      xpReward: 0,
-      sortOrder: -50,
-      todayDone: loggedKeys.has(`SPIRITUAL:${p}`),
-      prayerType: p,
-    }));
-
-    // Look up the logged dailyIds for user-dailies too
-    const userDailiesWithStatus = dueUserDailies.map((d) => ({
-      ...d,
-      todayDone: loggedKeys.has(d.id),
-    }));
+    // Levels: read-only from user. XP-to-next-level uses the same
+    // formula as the rest of the app.
+    const user = await prisma.user.findUnique({
+      where: { id: me.id },
+      select: { level: true, xp: true, mode: true, hearts: true, heartsLastRegenAt: true },
+    });
 
     return {
-      today,
-      userDailies: userDailiesWithStatus,
-      builtins,
-      spiritualDailies,
-      counts: {
-        total: dueUserDailies.length + builtins.length + spiritualDailies.length,
-        completed:
-          userDailiesCompleted +
-          builtins.filter((b) => b.todayDone).length +
-          spiritualDailies.filter((s) => s.todayDone).length,
-        isWorkoutDay,
+      date: targetDate,
+      mode: user?.mode ?? 'CASUAL',
+      level: user?.level ?? 1,
+      xp: user?.xp ?? 0,
+      hearts: user?.hearts ?? 5,
+      // Missed dailies = not yet completed on the target date. User
+      // can tap to mark them done (recovers from the missed-all-dailies
+      // heart-loss trigger). Skipped dailies are NOT surfaced as
+      // missed — those are legitimate opt-outs.
+      dailies: dailiesForDate,
+      recap: {
+        workoutLogged: workouts.length > 0,
+        workoutCount: workouts.length,
+        workoutNames: workouts.map((w) => w.name ?? w.type).slice(0, 3),
+        sleepHours: sleep?.value ?? null,
+        weighInLogged: latestWeight
+          ? latestWeight.recordedAt.getTime() >= startOfDay.getTime()
+            && latestWeight.recordedAt.getTime() < endOfDay.getTime()
+          : false,
+        latestWeightKg: latestWeight?.value ?? null,
+        recoveryScore: recovery?.score ?? null,
       },
+      heartLoss,
     };
   });
 

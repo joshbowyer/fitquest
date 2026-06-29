@@ -14,6 +14,7 @@ import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
 import { CheckInsPanel } from '@/components/CheckInsPanel';
 import { RecoveryPracticesPanel } from '@/components/RecoveryPracticesPanel';
 import { PainCard } from '@/components/PainCard';
+import { MorningPopup } from '@/components/MorningPopup';
 import { type UnitSystem } from '@/lib/units';
 import { useLiveClock } from '@/hooks/useLiveClock';
 
@@ -315,6 +316,9 @@ export function TodayPage() {
 
   return (
     <Layout>
+      {/* Morning popup — Habitica-style. Auto-shows once per day
+          (localStorage-dismissed) on the first /today visit. */}
+      <MorningPopup />
       <PageHeader
         title="// Today"
         subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
