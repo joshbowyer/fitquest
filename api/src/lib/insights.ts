@@ -1,5 +1,6 @@
 import { computeRecovery, type RecoveryScore, type RecoveryComponent } from './recovery.js';
 import { computeCorrelations, type Correlation } from './correlations.js';
+import { detectPlateaus, type Plateau } from './plateau.js';
 import { prisma } from './prisma.js';
 
 export type Insight = {
@@ -10,7 +11,10 @@ export type Insight = {
     | 'strong_corr'
     | 'coverage_gap'
     | 'streak_at_risk'
-    | 'no_data';
+    | 'no_data'
+    | 'plateau_detected'
+    | 'water_low_recent'
+    | 'sleep_recovery_mismatch';
   severity: 'info' | 'positive' | 'warning';
   icon: string;
   title: string;
@@ -147,7 +151,78 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     }
   }
 
-  return tips.slice(0, 5);
+  // ---- Plateau detection ----
+  // Surface the most actionable plateau from the existing
+  // detectPlateaus() function. The morning report cron already
+  // runs this for its "today" panel; this makes the same signal
+  // available in the daily /insights endpoint too.
+  const plateaus = await detectPlateaus(userId);
+  if (plateaus.length > 0) {
+    // Prefer scolds over warns (more actionable), then take the
+    // first one. The notes are already user-readable.
+    const sorted = [...plateaus].sort(
+      (a, b) => (a.severity === b.severity ? 0 : a.severity === 'scold' ? -1 : 1),
+    );
+    const p = sorted[0]!;
+    tips.push({
+      type: 'plateau_detected',
+      severity: p.severity === 'scold' ? 'warning' : 'info',
+      icon: p.severity === 'scold' ? '⚠' : '↓',
+      title: p.label,
+      message: p.note,
+    });
+  }
+
+  // ---- Water coverage ----
+  // More specific than the generic `coverage_gap` rule. The user
+  // might be logging sleep/HRV but forget to log hydration. This
+  // surfaces hydration specifically and at a tighter threshold
+  // (3+ days vs the generic 4+) because water is high-frequency.
+  const waterDays = await daysSince(userId, 'WATER_ML');
+  if (waterDays != null && waterDays >= 3) {
+    tips.push({
+      type: 'water_low_recent',
+      severity: waterDays >= 7 ? 'warning' : 'info',
+      icon: '💧',
+      title: 'Hydration gap',
+      message: `No water log in ${waterDays} days. Hydration is the cheapest recovery multiplier — log a glass, even on rest days.`,
+      metric: 'WATER_ML',
+    });
+  }
+
+  // ---- Sleep ↔ recovery mismatch ----
+  // When sleep is in the top quartile but recovery is below 50,
+  // something other than sleep is dragging recovery down. Surface
+  // the worst component so the user can investigate.
+  if (
+    recovery.score != null && recovery.score < 50
+    && recovery.components.length > 0
+  ) {
+    // Find sleep component
+    const sleep = recovery.components.find((c) => c.metric === 'SLEEP_HOURS');
+    if (sleep?.subscore != null && sleep.subscore >= 75) {
+      // Sleep is fine — surface the worst non-sleep drag
+      const otherComponents = recovery.components
+        .filter((c) => c.available && c.subscore != null && c.metric !== 'SLEEP_HOURS');
+      const worst = otherComponents.reduce<RecoveryComponent>(
+        (min, c) => ((c.subscore ?? 0) < (min.subscore ?? 0) ? c : min),
+        otherComponents[0]!,
+      );
+      if ((worst.subscore ?? 0) < 50) {
+        tips.push({
+          type: 'sleep_recovery_mismatch',
+          severity: 'info',
+          icon: '↕',
+          title: 'Sleep OK, but recovery is low',
+          message: `Your sleep is fine (${sleep.subscore}/100) but your recovery is ${recovery.score}/100. ${habitName(worst.metric).replace(/^./, (s) => s.toUpperCase())} is the real drag (${worst.subscore}/100). ${worst.reason}.`,
+          metric: worst.metric,
+          value: worst.subscore ?? undefined,
+        });
+      }
+    }
+  }
+
+  return tips.slice(0, 6);
 }
 
 export async function getInsightsSummary(userId: string) {
