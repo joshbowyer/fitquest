@@ -92,6 +92,9 @@ export function RoutinesPage() {
   // ----- Edit modal -----
   const [editingId, setEditingId] = useState<string | null>(editId ?? null);
   const [draft, setDraft] = useState(emptyTemplate());
+  // Surface errors from openEdit so the user sees what went wrong
+  // instead of clicking a routine and getting silent nothing.
+  const [openError, setOpenError] = useState<string | null>(null);
 
   // Open editor when ?editId is in the URL (deep-link from /activities).
   useEffect(() => {
@@ -191,24 +194,36 @@ export function RoutinesPage() {
 
   // ----- Load a template into the editor -----
   async function openEdit(tid: string) {
-    const t = await api<TemplateDetail>(`/workout-templates/${tid}`);
-    setDraft({
-      name: t.name,
-      type: t.type,
-      notes: t.notes ?? '',
-      exercises: t.exercises.map((ex) => ({
-        name: ex.name,
-        order: ex.order,
-        groupIndex: ex.groupIndex ?? null,
-        sets: ex.sets.map((s) => ({
-          order: s.order,
-          targetReps: s.targetReps,
-          targetDuration: s.targetDuration,
+    try {
+      const t = await api<TemplateDetail>(`/workout-templates/${tid}`);
+      setDraft({
+        name: t.name,
+        type: t.type,
+        notes: t.notes ?? '',
+        exercises: t.exercises.map((ex) => ({
+          name: ex.name,
+          order: ex.order,
+          groupIndex: ex.groupIndex ?? null,
+          sets: ex.sets.map((s) => ({
+            order: s.order,
+            targetReps: s.targetReps,
+            targetDuration: s.targetDuration,
+          })),
         })),
-      })),
-    });
-    setEditingId(tid);
-    navigate(`/routines/${tid}`);
+      });
+      setEditingId(tid);
+      setOpenError(null);
+      navigate(`/routines/${tid}`);
+    } catch (err: any) {
+      // Surface the failure to the user instead of swallowing it —
+      // the common cause is a missing migration on the api (the
+      // /workout-templates/:id route's `includeShape` references the
+      // groupIndex column that was added in
+      // 20260703090000_superset_group_index).
+      const msg = String(err?.message ?? err);
+      setOpenError(`Couldn't load routine: ${msg}`);
+      console.error('[routines] openEdit failed', err);
+    }
   }
 
   function openNew() {
@@ -248,6 +263,18 @@ export function RoutinesPage() {
         >
           {listQ.isLoading && (
             <div className="text-xs text-ink-300 font-mono">⏳ Loading…</div>
+          )}
+          {openError && (
+            <div className="mb-2 px-2 py-1.5 border border-rose-500/40 bg-rose-500/5 text-[10px] font-mono text-rose-300">
+              {openError}
+              <button
+                type="button"
+                onClick={() => setOpenError(null)}
+                className="ml-2 text-ink-400 hover:text-rose-300"
+              >
+                ✕
+              </button>
+            </div>
           )}
           {listQ.data && listQ.data.items.length === 0 && (
             <div className="text-xs text-ink-300 font-mono py-4 text-center border border-dashed border-ink-700/30">
