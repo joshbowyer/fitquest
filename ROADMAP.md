@@ -12,17 +12,43 @@
 
 ### Bugs / data-correctness
 
-- **Sleep onset not being logged from FIT files.** The FIT
-  parser only emits `SLEEP_HOURS` and `SLEEP_QUALITY` — never
-  `SLEEP_ONSET`. The chart, the body-battery overlay, and
-  three correlation engines all expect `SLEEP_ONSET` rows;
-  the missing parser branch silently broke them. (FIXED:
-  parseSleep now emits SLEEP_ONSET with fractional-hour value
-  + night-of-sleep recordedAt bucketed to local midnight via
-  the user's tz.)
+- **USCCB readings broken.** The USCCB redesigned their site in
+  mid-2026 and stopped shipping reading text in their RSS feed;
+  per-day pages are now JavaScript-rendered and Wayback snapshots
+  don't always have the readings either. The cache falls back to
+  legacy .cfm snapshots when possible but coverage is spotty.
+  Need: an alternate daily-reading source (e.g. Magnificat,
+  iBreviary, OR cache more aggressively + serve from a CDN),
+  OR surface a "no reading today" UI affordance so users aren't
+  staring at "No USCCB reading available right now." indefinitely.
 
 ### Polish
 
+- **Morning popup modal (Habitica-style).** When the user opens
+  the app the morning after, show a modal that:
+  - Lists unchecked dailies from yesterday with one-tap "mark
+    done" actions to avoid the missed-all-dailies heart loss.
+  - Animates any health loss (heart counter decrementing) or
+    level gain from the day.
+  - Shows a basic digest (workout logged, sleep duration,
+    weigh-in status, recovery score, substance caps).
+  - Dismissable; should NOT block other UI once dismissed.
+- **Live workout feature is broken in several ways.**
+  - Predefined routine selection doesn't pre-fill any exercises
+    or sets — user has to re-enter everything from scratch.
+  - First field auto-focuses, which pops up the on-screen
+    keyboard on mobile. Should be no auto-focus on the form.
+  - No "Edit This Set" toggle — the set editor is always live;
+    accidentally tapping a value mid-set overwrites it.
+  - No superset support: can't pair two exercises so the live
+    workout interleaves them (set 1A → set 1B → set 2A → set 2B).
+  - "Finish Workout" reportedly doesn't fire on commit
+    (already supposedly fixed once per the Recently Fixed list,
+    may have regressed — needs a fresh audit of
+    `advanceToNextSet`'s "no more sets" branch).
+  - Notes section is only available pre-workout. Should ALSO
+    be available post-workout for logging how the session went
+    (vs. just preflight conditions).
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
   UI (no "history of resting HR" chart, no BP log form, etc).
