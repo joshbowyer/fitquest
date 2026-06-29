@@ -33,18 +33,7 @@
   - Shows a basic digest (workout logged, sleep duration,
     weigh-in status, recovery score, substance caps).
   - Dismissable; should NOT block other UI once dismissed.
-- **Supersets in the live workout.** Schema migration needed
-  (groupIndex on WorkoutTemplateExercise + Exercise), then
-  a "Pair with next exercise" button in the Routines page, and
-  a rewrite of `advanceToNextSet` in LiveWorkoutLogger to
-  round-robin through grouped exercises (1A → 1B → 2A → 2B).
-  Bulk mode can stay linear because users fill in the full log
-  at once. (5 of the 6 sub-bugs in the original "live workout
-  feature is broken" item were fixed in commit `65ed0ed`:
-  autofocus removed, Finish-Workout isPending guard added,
-  prefill race gated on selectedTemplateQ.isSuccess, post-
-  workout notes added, Edit-This-Set toggle shipped. Only
-  supersets remain.)
+- **Supersets in the live workout.** ✅ Done — see commit `1a731e2`.
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
   UI (no "history of resting HR" chart, no BP log form, etc).
@@ -108,6 +97,20 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Supersets in the live workout. New `groupIndex Int?` column
+  on `WorkoutTemplateExercise` + `Exercise` (migration
+  `20260703090000_superset_group_index`). Routines page got a
+  "Pair with next" button and a neon-magenta pair label (1A/1B/2A
+  ...). Live logger walks exercises round-robin via a new pure
+  `buildRoundRobinOrder` helper (`web/src/lib/supersetRoundRobin.ts`),
+  with 12 unit tests covering empty input, linear singletons,
+  paired alternation, asymmetric set counts, 3-exercise groups,
+  multi-pair ordering, mixed paired/un-paired, zero-set members,
+  and singleton groupIndex. API extended to accept/persist
+  `groupIndex` on both template and workout create paths;
+  backwards-compatible (null = linear). Bulk logger shows the
+  pair label as a visual indicator only (bulk mode doesn't walk
+  in real-time).
 - ✅ Live workout — 5 of 6 reported bugs fixed. `autoFocus` on the
   weight input removed (mobile keyboard no longer pops unprompted).
   "Finish workout" gets a belt-and-suspenders `disabled` guard on
