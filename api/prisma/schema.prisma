@@ -421,6 +421,7 @@ model Measurement {
   /// confidence (see api/src/lib/measurementSource.ts).
   source     MeasurementSource @default(UNKNOWN)
 
+  @@unique([userId, metric, recordedAt])
   @@index([userId, metric, recordedAt])
   @@index([userId, metric, source, recordedAt])
 }

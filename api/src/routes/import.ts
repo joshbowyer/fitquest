@@ -125,14 +125,31 @@ async function persist(
 
   if (fit.measurements && fit.measurements.length > 0) {
     for (const m of fit.measurements) {
-      const created_row = await prisma.measurement.create({
-        data: {
+      // Upsert on the unique (userId, metric, recordedAt) tuple so
+      // re-importing the same .fit file (or its mirror backup) is a
+      // no-op rather than piling up duplicate rows. If a row already
+      // exists for this triple, update the value/unit/notes — the
+      // FIT file is treated as the source of truth on conflict.
+      const created_row = await prisma.measurement.upsert({
+        where: {
+          userId_metric_recordedAt: {
+            userId,
+            metric: m.metric as any,
+            recordedAt: m.recordedAt,
+          },
+        },
+        create: {
           userId,
           metric: m.metric as any,
           value: m.value,
           unit: unitFor(m.metric),
           notes: m.notes ?? null,
           recordedAt: m.recordedAt,
+        },
+        update: {
+          value: m.value,
+          unit: unitFor(m.metric),
+          notes: m.notes ?? null,
         },
       });
       created.push({
