@@ -247,7 +247,19 @@ export function ActivitiesPage() {
               )}
             </div>
 
-            {logMode === 'live' ? (
+            {/* Gate the logger on selectedTemplateQ.isSuccess so it
+                never mounts with templatePrefill=null after the user
+                clicked a template chip. Previously the logger remounted
+                on chip-click but selectedTemplateQ was still loading,
+                so the useState(seedExercises) snapshot captured null and
+                the logger fell into the empty fallback. Showing a brief
+                "Loading routine…" placeholder keeps the mount order
+                deterministic. */}
+            {selectedTemplateId && !selectedTemplateQ.isSuccess ? (
+              <div className="text-[11px] font-mono text-ink-300 italic py-3 px-2 border border-dashed border-ink-700/40">
+                Loading routine…
+              </div>
+            ) : logMode === 'live' ? (
               <LiveWorkoutLogger
                 key={`live-${selectedTemplateId ?? 'none'}`}
                 user={user}

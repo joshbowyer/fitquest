@@ -151,6 +151,10 @@ const CreateWorkoutSchema = z.object({
   name: z.string().max(100).optional(),
   duration: z.number().int().min(0).max(60 * 24).optional(),
   notes: z.string().max(2000).optional(),
+  /// Post-session reflection. Distinct from `notes` (preflight).
+  /// Captured on the Finish screen so the user can log how the
+  /// workout went, not just how they expected it to go.
+  postNotes: z.string().max(2000).optional(),
   performedAt: z.string().datetime().optional(),
   // Non-set cardio block. Optional. Lets the user log a hike / run /
   // cycle / row / swim as a single distance + duration + pace entry
@@ -249,6 +253,7 @@ export async function workoutRoutes(app: FastifyInstance) {
           name: body.name,
           duration,
           notes: body.notes,
+          postNotes: body.postNotes ?? null,
           performedAt: body.performedAt ? new Date(body.performedAt) : new Date(),
           // Non-set cardio block. Prisma Json? column — pass `null`
           // (not undefined) when the user didn't fill it in so the

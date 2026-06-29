@@ -86,6 +86,11 @@ export function WorkoutLogger({
   const [name, setName] = useState(templatePrefill?.name ?? '');
   const [duration, setDuration] = useState(60);
   const [notes, setNotes] = useState(templatePrefill?.notes ?? '');
+  // Post-session reflection. Bulk mode doesn't have a "rest between
+  // sets" phase to gate on, so we render the textarea inline below
+  // the preflight notes — same row, distinct label so the user
+  // knows they capture different intent.
+  const [postNotes, setPostNotes] = useState('');
   const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
   const [cardio, setCardio] = useState<DraftCardio>(emptyCardio());
   const [cardioOpen, setCardioOpen] = useState(false);
@@ -139,6 +144,7 @@ export function WorkoutLogger({
           name: name || undefined,
           duration,
           notes: compact ? undefined : (notes || undefined),
+          postNotes: compact ? undefined : (postNotes.trim() || undefined),
           // Compact mode forces "now" so the team session timeline
           // stays clean. Full mode honors the picker.
           performedAt: compact ? new Date().toISOString() : localInputToIso(performedAt),
@@ -528,17 +534,32 @@ export function WorkoutLogger({
         </div>
 
         {!compact && (
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
-              Notes
-            </label>
-            <textarea
-              className="input-neon"
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Felt strong, elbow a bit tweaky…"
-            />
+          <div className="space-y-2">
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                Notes (preflight)
+              </label>
+              <textarea
+                className="input-neon"
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Felt strong, elbow a bit tweaky…"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                How did it go? (post-session, optional)
+              </label>
+              <textarea
+                className="input-neon"
+                rows={2}
+                value={postNotes}
+                onChange={(e) => setPostNotes(e.target.value)}
+                placeholder="Left shoulder pain got sharper on set 3, will back off next time."
+                maxLength={2000}
+              />
+            </div>
           </div>
         )}
 

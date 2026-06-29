@@ -457,6 +457,12 @@ model Workout {
   /// rows by 60.
   duration               Int?
   notes                  String?
+  /// Post-session reflection. Distinct from `notes` which the live
+  /// logger treats as preflight conditions logged before the first
+  /// set. Surfaced only on the Finish screen so the user can capture
+  /// how the workout went (not just how they expected it to go).
+  /// Same string length budget — textareas cap at 2000 chars.
+  postNotes              String?
   performedAt            DateTime                @default(now())
   createdAt              DateTime                @default(now())
   exercises              Exercise[]

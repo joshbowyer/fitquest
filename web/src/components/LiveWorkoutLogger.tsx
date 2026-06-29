@@ -113,6 +113,13 @@ type CapturedSet = {
   // excluded from PR/volume math, same as bulk-mode skipped sets.
   skipped?: boolean;
   skipReason?: 'INJURY' | 'ILLNESS' | 'FATIGUE' | 'EQUIPMENT' | 'SCHEDULE' | 'OTHER';
+  // UI lock. When true, the captured-set row is rendered read-only
+  // so a stray tap on the inputs can't overwrite the value mid-workout.
+  // Per-set, not global — the user can edit earlier sets and lock
+  // later ones (or vice versa) depending on how confident they are
+  // in the entry. Defaults to true (capture moment is sacred — the
+  // user explicitly tapped Continue, that's the lock).
+  locked: boolean;
 };
 
 type Phase = 'setup' | 'live' | 'done';
@@ -149,6 +156,10 @@ export function LiveWorkoutLogger({
   const [type, setType] = useState<WorkoutType>(templatePrefill?.type ?? initialType);
   const [name, setName] = useState(templatePrefill?.name ?? '');
   const [notes, setNotes] = useState(templatePrefill?.notes ?? '');
+  // Post-session reflection. Distinct from `notes` (preflight). Captured
+  // on the rest screen of the FINAL set so the user can record how the
+  // workout actually went (vs. how they expected it to go pre-session).
+  const [postNotes, setPostNotes] = useState('');
   const [performedAt, setPerformedAt] = useState<string>(() => toLocalInput(new Date()));
   const [exercises, setExercises] = useState<PlannedExercise[]>(seedExercises);
 
@@ -277,6 +288,11 @@ export function LiveWorkoutLogger({
       // restSeconds is filled in when the NEXT set is entered (or at
       // commit for the final set, where it stays null).
       restSeconds: null,
+      // Lock by default — the moment the user taps Continue, the
+      // captured values are sacred. They can tap ✎ Edit on the
+      // history strip below to unlock + edit if they fat-fingered
+      // a value.
+      locked: true,
     };
     setCapturedSets((prev) => [...prev, set]);
     // Enter rest state — the Continue tap doubles as "rest starts now".
@@ -302,6 +318,8 @@ export function LiveWorkoutLogger({
       restSeconds: null,
       skipped: true,
       skipReason: reason,
+      // Skipped sets are always locked — no value to fix anyway.
+      locked: true,
     };
     setCapturedSets((prev) => [...prev, set]);
     setCurrentSetStartedAt(null);
@@ -356,6 +374,16 @@ export function LiveWorkoutLogger({
     setCurrentSetStartedAt(now);
   }
 
+  // Per-set lock toggle on the captured-sets history strip. Unlocks
+  // the row so the user can edit (e.g. they typo'd 135 instead of 145
+  // and want to fix without scrolling back through the workout).
+  function toggleCapturedLock(idx: number) {
+    setCapturedSets((prev) => prev.map((s, i) => (i === idx ? { ...s, locked: !s.locked } : s)));
+  }
+  function patchCaptured(idx: number, patch: Partial<CapturedSet>) {
+    setCapturedSets((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
+  }
+
   function tapAbortWorkout() {
     setConfirmingDiscard(true);
   }
@@ -407,6 +435,7 @@ export function LiveWorkoutLogger({
           name: name || undefined,
           duration,
           notes: notes || undefined,
+          postNotes: postNotes.trim() || undefined,
           performedAt: localInputToIso(performedAt),
           exercises: exPayload,
         },
@@ -845,6 +874,72 @@ export function LiveWorkoutLogger({
             Exercise {currentExerciseIndex + 1} of {exercises.length} · Target {currentPlannedSet.targetReps} reps{showWeight ? ` @ ${currentPlannedSet.targetWeight} ${weightUnitLabel(units)}` : ''}
           </div>
 
+          {/* Captured-sets history strip. Each row is read-only by
+              default (the user explicitly tapped Continue, the row
+              is locked). Tap ✎ to unlock and edit a single value if
+              needed (typo, mid-set adjustment, etc.) — the lock
+              prevents accidental overwrites from a stray tap on
+              the live entry below. */}
+          {capturedSets.length > 0 && (
+            <div className="space-y-1 max-h-44 overflow-y-auto border border-ink-700/40 p-1.5 bg-bg-900/40">
+              <div className="text-[9px] font-mono text-ink-400 uppercase tracking-widest px-1 pt-0.5">
+                Captured sets ({capturedSets.length})
+              </div>
+              {capturedSets.map((cs, idx) => {
+                const ex = exercises[cs.exerciseIndex];
+                return (
+                  <div
+                    key={`${cs.exerciseIndex}-${cs.setIndex}-${idx}`}
+                    className={classNames(
+                      'flex items-center gap-2 px-1.5 py-1 text-[10px] font-mono border',
+                      cs.locked
+                        ? 'border-ink-700/30 text-ink-200 bg-bg-700/30'
+                        : 'border-neon-amber/60 text-ink-100 bg-neon-amber/5',
+                      cs.skipped && 'opacity-60 line-through',
+                    )}
+                  >
+                    <span className="text-ink-400 shrink-0">
+                      {ex?.name?.slice(0, 14) ?? 'ex'} s{cs.setIndex + 1}
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={cs.locked}
+                      value={cs.reps || ''}
+                      onChange={(e) => patchCaptured(idx, { reps: Number(e.target.value) })}
+                      className="w-12 bg-transparent border-b border-ink-700/40 px-1 text-right disabled:text-ink-400"
+                      title="Reps"
+                    />
+                    <span className="text-ink-500">×</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      disabled={cs.locked}
+                      value={cs.weight || ''}
+                      onChange={(e) => patchCaptured(idx, { weight: Number(e.target.value) })}
+                      className="w-14 bg-transparent border-b border-ink-700/40 px-1 text-right disabled:text-ink-400"
+                      title={`Weight (${weightUnitLabel(units)})`}
+                    />
+                    <span className="text-ink-500 text-[9px]">{weightUnitLabel(units)}</span>
+                    <button
+                      type="button"
+                      onClick={() => toggleCapturedLock(idx)}
+                      className={classNames(
+                        'ml-auto text-[10px] px-1.5 py-0.5 border shrink-0',
+                        cs.locked
+                          ? 'border-ink-500/40 text-ink-300 hover:border-neon-amber hover:text-neon-amber'
+                          : 'border-neon-amber/60 text-neon-amber hover:border-ink-500/40 hover:text-ink-300',
+                      )}
+                      title={cs.locked ? 'Unlock to edit' : 'Lock this row'}
+                    >
+                      {cs.locked ? '✎ Edit' : '✓ Lock'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {!inRest ? (
             // ── Set entry ──
             <div className="space-y-3">
@@ -861,7 +956,6 @@ export function LiveWorkoutLogger({
                       value={currentWeight || ''}
                       onChange={(e) => setCurrentWeight(Number(e.target.value))}
                       className="input-neon mt-1 text-lg font-display"
-                      autoFocus
                     />
                     {isWeightedBw && (
                       <div className="text-[9px] font-mono text-ink-400 mt-1">
@@ -978,6 +1072,7 @@ export function LiveWorkoutLogger({
                 const nextExerciseIndex = currentExerciseIndex + 1;
                 const hasMoreExercises = nextExerciseIndex < exercises.length;
                 let nextLabel = '';
+                let isFinalSet = false;
                 if (hasMoreSetsInExercise) {
                   const next = currentExercise.sets[nextSetIndex];
                   nextLabel = `Next: set ${nextSetIndex + 1} · target ${next.targetReps} reps${showWeight ? ` @ ${next.targetWeight} ${weightUnitLabel(units)}` : ''}`;
@@ -987,21 +1082,51 @@ export function LiveWorkoutLogger({
                   nextLabel = `Next: ${nextEx.name} · set 1 · target ${next.targetReps} reps${showWeight ? ` @ ${next.targetWeight} ${weightUnitLabel(units)}` : ''}`;
                 } else {
                   nextLabel = 'Next: finish workout';
+                  isFinalSet = true;
                 }
                 return (
-                  <div className="text-[10px] font-mono text-ink-300 text-center uppercase tracking-widest">
-                    {nextLabel}
-                  </div>
+                  <>
+                    <div className="text-[10px] font-mono text-ink-300 text-center uppercase tracking-widest">
+                      {nextLabel}
+                    </div>
+                    {/* Post-session reflection. Rendered only on the
+                        rest screen of the FINAL set so the user can
+                        log how the workout went (vs. the preflight
+                        notes they typed in setup). The field is
+                        optional — empty values are dropped before
+                        commit. */}
+                    {isFinalSet && (
+                      <div className="mt-2 pt-2 border-t border-ink-700/40">
+                        <label className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 block mb-1">
+                          How did it go? (optional)
+                        </label>
+                        <textarea
+                          value={postNotes}
+                          onChange={(e) => setPostNotes(e.target.value)}
+                          rows={3}
+                          maxLength={2000}
+                          placeholder="Left shoulder pain got sharper on set 3, will back off next time."
+                          className="input-neon w-full text-xs"
+                        />
+                      </div>
+                    )}
+                  </>
                 );
               })()}
 
               <button
                 type="button"
                 onClick={advanceToNextSet}
-                className="w-full h-14 text-lg font-display tracking-widest uppercase border-2 border-neon-lime text-neon-lime bg-neon-lime/10 hover:bg-neon-lime/20"
+                disabled={createM.isPending}
+                className="w-full h-14 text-lg font-display tracking-widest uppercase border-2 border-neon-lime text-neon-lime bg-neon-lime/10 hover:bg-neon-lime/20 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ boxShadow: '0 0 8px rgba(86,232,142,0.4)' }}
               >
                 {(() => {
+                  // While commit is in flight, lock the label so the
+                  // user can't tap a 2nd or 3rd time and re-fire the
+                  // commit (idempotent at the server but slow at the
+                  // wire).
+                  if (createM.isPending) return 'Committing…';
                   const hasMoreSetsInExercise = currentSetIndex + 1 < currentExercise.sets.length;
                   const hasMoreExercises = currentExerciseIndex + 1 < exercises.length;
                   if (hasMoreSetsInExercise) return 'Next set →';
