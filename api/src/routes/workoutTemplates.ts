@@ -30,12 +30,119 @@ import { randomUuid } from '../lib/randomUuid.js';
 
 // Wire-shape returned to the client. Mirrors the prisma include so the
 // frontend can render without further hydration.
+// Explicit `select` (not `include`) so we don't query the
+// `groupIndex` column. That column was added in migration
+// 20260703090000_superset_group_index. If a user pulls the
+// latest image but the migration hasn't been applied yet
+// (e.g. they restarted only the web service, not the api with
+// the Dockerfile's `migrate deploy` step), Prisma would
+// query a non-existent column and 500. By NOT selecting
+// groupIndex, the endpoints work regardless of migration
+// state. The client already treats `ex.groupIndex` as
+// `?? null` so the missing field is handled gracefully.
+//
+// Once the migration is reliably applied across all installs,
+// flip the `groupIndex: true` back in (TODO: track with a
+// version flag) and remove the `as any` cast on the response
+// in the routes that depend on this shape.
 const includeShape = {
   exercises: {
-    include: { sets: { orderBy: { order: 'asc' as const } } },
+    select: {
+      id: true,
+      templateId: true,
+      name: true,
+      order: true,
+      sets: {
+        select: {
+          id: true,
+          order: true,
+          targetReps: true,
+          targetDuration: true,
+        },
+        orderBy: { order: 'asc' as const },
+      },
+    },
     orderBy: { order: 'asc' as const },
   },
 } as const;
+
+/**
+ * Create or replace the nested exercises+sets for a template.
+ * Tries to write `groupIndex` (added in migration
+ * 20260703090000_superset_group_index) and falls back to skipping
+ * it if the column doesn't exist. Lets a user keep creating +
+ * editing templates even when the migration is pending — the
+ * only loss is the superset pairing data, which they can re-set
+ * once they migrate.
+ */
+async function createOrUpdateTemplate(
+  userId: string,
+  body: z.infer<typeof CreateTemplateSchema>,
+  isCreate: boolean,
+  log: { warn: (obj: any, msg: string) => void } | null,
+  templateId?: string,
+) {
+  const data: any = {
+    exercises: {
+      create: body.exercises.map((ex) => ({
+        name: ex.name,
+        order: ex.order,
+        // groupIndex is conditional — only included if the value
+        // is non-null. The Prisma client would fail the whole write
+        // if we tried to write to a missing column, so we catch.
+        ...(ex.groupIndex != null ? { groupIndex: ex.groupIndex } : {}),
+        sets: {
+          create: ex.sets.map((s) => ({
+            order: s.order,
+            targetReps: s.targetReps,
+            targetDuration: s.targetDuration ?? null,
+          })),
+        },
+      })),
+    },
+  };
+  if (isCreate) {
+    Object.assign(data, {
+      userId,
+      name: body.name,
+      type: body.type,
+      notes: body.notes ?? null,
+    });
+  } else {
+    Object.assign(data, {
+      name: body.name,
+      type: body.type,
+      notes: body.notes ?? null,
+    });
+  }
+  try {
+    return isCreate
+      ? await prisma.workoutTemplate.create({ data, include: includeShape })
+      : await prisma.workoutTemplate.update({ where: { id: templateId! }, data, include: includeShape });
+  } catch (err: any) {
+    // If the failure is the missing groupIndex column, retry
+    // without it. The user can re-pair the routines after the
+    // migration runs (the API endpoint POST /workout-templates
+    // with a paired payload will succeed once the column exists).
+    const msg = String(err?.message ?? err);
+    if (err?.code === 'P2010' || /groupIndex|column.*does not exist/i.test(msg)) {
+      log?.warn?.({ err: msg }, 'groupIndex column missing — retrying create without it (run migration 20260703090000_superset_group_index to enable supersets)');
+      const dataNoGroup = {
+        ...data,
+        exercises: {
+          create: data.exercises.create.map((ex: any) => {
+            const { groupIndex, ...rest } = ex;
+            return rest;
+          }),
+        },
+      };
+      return isCreate
+        ? await prisma.workoutTemplate.create({ data: dataNoGroup, include: includeShape })
+        : await prisma.workoutTemplate.update({ where: { id: templateId! }, data: dataNoGroup, include: includeShape });
+    }
+    throw err;
+  }
+}
 
 const SetInput = z.object({
   // No id in input — server generates. We always re-create sets on
@@ -113,29 +220,7 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
   app.post('/', async (req, reply) => {
     const me = await requireUser(req);
     const body = CreateTemplateSchema.parse(req.body);
-    const created = await prisma.workoutTemplate.create({
-      data: {
-        userId: me.id,
-        name: body.name,
-        type: body.type,
-        notes: body.notes ?? null,
-        exercises: {
-          create: body.exercises.map((ex) => ({
-            name: ex.name,
-            order: ex.order,
-            groupIndex: ex.groupIndex ?? null,
-            sets: {
-              create: ex.sets.map((s) => ({
-                order: s.order,
-                targetReps: s.targetReps,
-                targetDuration: s.targetDuration ?? null,
-              })),
-            },
-          })),
-        },
-      },
-      include: includeShape,
-    });
+    const created = await createOrUpdateTemplate(me.id, body, /* create */ true, req.log);
     return reply.code(201).send(created);
   });
 
@@ -156,39 +241,10 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
     });
     if (!existing) return reply.code(404).send({ error: 'Template not found' });
 
-    // Two-step: delete nested rows (cascade handles this if we
-    // delete the template, but we want to preserve the template id).
-    // Easier: delete the exercises explicitly — that cascades to sets.
     await prisma.$transaction([
       prisma.workoutTemplateExercise.deleteMany({ where: { templateId: id } }),
-      prisma.workoutTemplate.update({
-        where: { id },
-        data: {
-          name: body.name,
-          type: body.type,
-          notes: body.notes ?? null,
-          exercises: {
-            create: body.exercises.map((ex) => ({
-              name: ex.name,
-              order: ex.order,
-              groupIndex: ex.groupIndex ?? null,
-              sets: {
-                create: ex.sets.map((s) => ({
-                  order: s.order,
-                  targetReps: s.targetReps,
-                  targetDuration: s.targetDuration ?? null,
-                })),
-              },
-            })),
-          },
-        },
-      }),
     ]);
-
-    const updated = await prisma.workoutTemplate.findUnique({
-      where: { id },
-      include: includeShape,
-    });
+    const updated = await createOrUpdateTemplate(me.id, body, /* create */ false, req.log, id);
     return reply.send(updated);
   });
 

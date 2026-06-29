@@ -174,13 +174,35 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
     onDismiss?.();
   }
 
+  // Dailies the user has marked done in this popup session. Resets
+  // when the popup re-opens (next day's first visit). The visual
+  // lock + green tint happen instantly on click so the user gets
+  // immediate feedback; the network refetch follows.
+  const [locallyCompleted, setLocallyCompleted] = useState<Set<string>>(new Set());
+  // Reset the lock set whenever a new popup payload arrives — the
+  // server's `todayDone` is now the source of truth, so rows the
+  // server already marks done don't need our local override.
+  useEffect(() => {
+    if (q.data) setLocallyCompleted(new Set());
+  }, [q.data?.date]);
+
   // Mark a single daily done (idempotent on the server side — the
   // POST handler upserts). Refetches the popup payload so the
   // completed counter increments and the row gets the ✓ badge.
   const completeM = useMutation({
     mutationFn: (dailyId: string) =>
       api(`/dailies/${encodeURIComponent(dailyId)}/complete`, { method: 'POST' }),
-    onSuccess: () => {
+    onSuccess: (_, dailyId) => {
+      // Flip the local lock first so the row turns green + becomes
+      // unclickable before the refetch lands. The refetch below
+      // eventually replaces the local state when it sees the
+      // server-side todayDone=true and excludes the row from the
+      // missedDailies list entirely.
+      setLocallyCompleted((prev) => {
+        const next = new Set(prev);
+        next.add(dailyId);
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ['dailies', 'morning-popup'] });
       qc.invalidateQueries({ queryKey: ['dailies', 'today'] });
       setRevealedCount((c) => c + 1);
@@ -300,25 +322,40 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
               <div className="space-y-1 max-h-44 overflow-y-auto border border-ink-700/30 p-1.5 bg-bg-900/40">
                 {missedDailies.map((d) => {
                   const pending = completeM.isPending && completeM.variables === d.id;
+                  // The local lock flips instantly on click so the row
+                  // turns green + becomes unclickable before the
+                  // network refetch lands. Server's todayDone is the
+                  // source of truth on the next payload fetch.
+                  const done = locallyCompleted.has(d.id);
                   return (
                     <button
                       key={d.id}
                       type="button"
                       onClick={() => completeM.mutate(d.id)}
-                      disabled={pending}
+                      disabled={pending || done}
                       className={classNames(
                         'w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px] font-mono border transition-all',
-                        pending
-                          ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/5'
-                          : 'border-ink-700/30 text-ink-200 hover:border-neon-cyan/40 hover:bg-neon-cyan/5',
+                        done
+                          ? 'border-neon-lime/60 bg-neon-lime/10 text-neon-lime cursor-default'
+                          : pending
+                            ? 'border-neon-cyan/60 text-neon-cyan bg-neon-cyan/5'
+                            : 'border-ink-700/30 text-ink-200 hover:border-neon-cyan/40 hover:bg-neon-cyan/5',
                       )}
                     >
-                      <span className="text-ink-400 shrink-0">
-                        {pending ? '…' : '○'}
+                      <span className={classNames(
+                        'shrink-0',
+                        done ? 'text-neon-lime' : 'text-ink-400',
+                      )}>
+                        {pending ? '…' : done ? '✓' : '○'}
                       </span>
-                      <span className="flex-1 truncate">{d.name}</span>
+                      <span className={classNames(
+                        'flex-1 truncate',
+                        done && 'line-through text-ink-500',
+                      )}>
+                        {d.name}
+                      </span>
                       <span className="text-[9px] text-ink-500 shrink-0">
-                        +{d.xpReward}xp
+                        {done ? 'done' : `+${d.xpReward}xp`}
                       </span>
                     </button>
                   );
