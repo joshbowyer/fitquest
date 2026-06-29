@@ -153,6 +153,11 @@ function unitFor(metric: string): string {
       return 'h';
     case 'SLEEP_QUALITY':
       return '/10';
+    // SLEEP_ONSET is fractional hours (e.g. 22.5 = 10:30 PM). The
+    // chart treats it as unitless clock time, but we record the
+    // canonical unit so future "what unit is this?" lookups resolve.
+    case 'SLEEP_ONSET':
+      return 'h';
     case 'HRV':
       return 'ms';
     case 'RESTING_HR':
@@ -193,7 +198,7 @@ export async function importRoutes(app: FastifyInstance) {
     if (!isFitBuffer(buf)) {
       return reply.code(400).send({ error: 'Not a FIT file (bad header)' });
     }
-    const fit = parseFit(buf);
+    const fit = parseFit(buf, me.timezone ?? 'UTC');
     const created = await persist(me.id, fit);
     const fileResult: FileResult = {
       filename: 'upload.fit',
@@ -242,7 +247,7 @@ export async function importRoutes(app: FastifyInstance) {
           });
           continue;
         }
-        const fit = parseFit(buf);
+        const fit = parseFit(buf, me.timezone ?? 'UTC');
         const created = await persist(me.id, fit);
         results.push({
           filename: f.filename,
@@ -267,7 +272,7 @@ export async function importRoutes(app: FastifyInstance) {
   // GET /import/summary — recent imports for the UI
   app.get('/summary', async (req) => {
     const me = await requireUser(req);
-    const [recentWorkouts, recentSleep, recentHrv] = await Promise.all([
+    const [recentWorkouts, recentSleep, recentSleepOnset, recentHrv] = await Promise.all([
       prisma.workout.findMany({
         where: { userId: me.id, notes: { startsWith: '[FIT]' } },
         orderBy: { performedAt: 'desc' },
@@ -281,13 +286,19 @@ export async function importRoutes(app: FastifyInstance) {
         select: { id: true, value: true, recordedAt: true },
       }),
       prisma.measurement.findMany({
+        where: { userId: me.id, metric: 'SLEEP_ONSET' },
+        orderBy: { recordedAt: 'desc' },
+        take: 7,
+        select: { id: true, value: true, recordedAt: true },
+      }),
+      prisma.measurement.findMany({
         where: { userId: me.id, metric: 'HRV' },
         orderBy: { recordedAt: 'desc' },
         take: 7,
         select: { id: true, value: true, recordedAt: true, notes: true },
       }),
     ]);
-    return { recentWorkouts, recentSleep, recentHrv };
+    return { recentWorkouts, recentSleep, recentSleepOnset, recentHrv };
   });
 
   // ============================================================

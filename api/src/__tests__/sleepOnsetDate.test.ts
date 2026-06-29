@@ -1,61 +1,89 @@
 /**
- * Tests for localNightStart — the FIT sleep-on-night-of-sleep
- * date computation. Critical for the chart + correlation: post-
- * midnight sleep must be bucketed to the PREVIOUS calendar day
- * (Mon 11:30pm → Tue 1am is "Mon night sleep", not "Tue nap").
+ * Tests for the FIT sleep parser's night-of-sleep date assignment.
+ *
+ * `SLEEP_ONSET` Measurement rows store the local fractional hour of
+ * the start event (22.5 = 10:30 PM) and bucket the `recordedAt` to
+ * local midnight of the calendar day that "owns" this sleep. Post-
+ * midnight starts (e.g. 12:30 AM Monday) are bucketed to the previous
+ * calendar day (Sunday) so the chart's X-axis renders the sleep on
+ * the row the user thinks of ("Monday's sleep started Sunday night").
+ *
+ * Pure-logic helpers (`localNightStartInTz`, `hoursSinceLocalMidnightInTz`)
+ * are tested directly with synthetic UTC instants so the assertions
+ * are deterministic and don't depend on the local clock.
  */
 import { describe, it, expect } from 'vitest';
-import { parseFit } from '../lib/fit';
+import {
+  hoursSinceLocalMidnightInTz,
+  localNightStartInTz,
+} from '../lib/timezone';
 
-describe('parseSleep night-of-sleep date assignment', () => {
-  function getSleepMeasurements(buf: Buffer, tz: string) {
-    const result = parseFit(buf, tz);
-    return (result.measurements ?? []).filter((m) =>
-      m.metric === 'SLEEP_HOURS' || m.metric === 'SLEEP_ONSET' || m.metric === 'SLEEP_QUALITY',
+describe('hoursSinceLocalMidnightInTz', () => {
+  it('returns the fractional hour of a UTC instant in the given tz', () => {
+    // 2026-06-22 02:30:00 UTC == 22:30 previous day in America/New_York (EDT, UTC-4)
+    const at = new Date('2026-06-22T02:30:00Z');
+    expect(hoursSinceLocalMidnightInTz(at, 'America/New_York')).toBeCloseTo(22.5, 1);
+  });
+
+  it('handles UTC tz as a passthrough', () => {
+    const at = new Date('2026-06-22T15:45:00Z');
+    expect(hoursSinceLocalMidnightInTz(at, 'UTC')).toBeCloseTo(15.75, 2);
+  });
+
+  it('handles half-hour offsets (Asia/Kolkata UTC+5:30)', () => {
+    // 2026-06-22 00:30 UTC == 06:00 IST
+    const at = new Date('2026-06-22T00:30:00Z');
+    expect(hoursSinceLocalMidnightInTz(at, 'Asia/Kolkata')).toBeCloseTo(6.0, 1);
+  });
+
+  it('falls back to UTC offset on invalid tz', () => {
+    const at = new Date('2026-06-22T15:45:00Z');
+    expect(hoursSinceLocalMidnightInTz(at, 'Not/A/Zone')).toBeCloseTo(15.75, 2);
+  });
+});
+
+describe('localNightStartInTz', () => {
+  // Reference: 2026-06-22 (Monday) in America/New_York
+  const mondayLocalMidnightUtc = new Date('2026-06-22T04:00:00Z'); // == 2026-06-22 00:00 EDT
+  const sundayLocalMidnightUtc = new Date('2026-06-22T04:00:00Z').getTime() - 24 * 3600_000;
+
+  it('buckets 10pm Mon (22:00) → same calendar day (Mon)', () => {
+    // 2026-06-22 22:00 EDT == 2026-06-23 02:00 UTC
+    const at = new Date('2026-06-23T02:00:00Z');
+    expect(localNightStartInTz(at, 'America/New_York').toISOString()).toBe(
+      mondayLocalMidnightUtc.toISOString(),
     );
-  }
+  });
 
-  /**
-   * Build a synthetic FIT buffer with sleep start (event=74 start)
-   * and stop (event=74 stop) at the given UTC timestamps.
-   */
-  function buildSyntheticSleepFit(startUtcIso: string, stopUtcIso: string): Buffer {
-    const start = new Date(startUtcIso);
-    const stop = new Date(stopUtcIso);
-    const hours = (stop.getTime() - start.getTime()) / 3600000;
-    // Minimal FIT file: file_id + definition + data + definition + data + crc
-    // Easier: hand-craft a tiny FIT binary. Skipped for this test
-    // (we test the helper indirectly via the chart code).
-    return Buffer.alloc(0);
-  }
+  it('buckets 1am Mon (01:00) → previous calendar day (Sun)', () => {
+    // 2026-06-22 01:00 EDT == 2026-06-22 05:00 UTC
+    const at = new Date('2026-06-22T05:00:00Z');
+    expect(localNightStartInTz(at, 'America/New_York').toISOString()).toBe(
+      new Date(sundayLocalMidnightUtc).toISOString(),
+    );
+  });
 
-  it('produces the correct date for evening onset (10pm Mon → 6am Tue)', () => {
-    // We can't easily construct a FIT buffer in a unit test, so
-    // verify the date logic via the orchestrator: import a real
-    // FIT file from /tmp/gadgetbridge and check its recordedAt is
-    // local-midnight of the night-of-sleep.
-    const fs = require('fs');
-    const path = require('path');
-    const dir = '/tmp/gadgetbridge/SLEEP/2026';
-    if (!fs.existsSync(dir)) {
-      // Skip if no test data available.
-      return;
-    }
-    const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('.fit')).slice(0, 5);
-    for (const f of files) {
-      const buf = fs.readFileSync(path.join(dir, f));
-      const result = parseFit(buf, 'America/New_York');
-      const onset = (result.measurements ?? []).find((m: any) => m.metric === 'SLEEP_ONSET');
-      if (!onset) continue;
-      // Verify the recordedAt date matches what localNightStart would
-      // produce for the startTime. We don't have direct access to
-      // startTime here so we just sanity-check that recordedAt is
-      // a midnight-ish UTC timestamp (local midnight varies by tz).
-      const recordedAt = new Date(onset.recordedAt);
-      const hours = recordedAt.getUTCHours();
-      const minutes = recordedAt.getUTCMinutes();
-      expect(minutes).toBe(0);
-      expect(hours === 0 || hours === 4 || hours === 5).toBe(true);
-    }
+  it('buckets 3pm Mon (afternoon nap) → same day', () => {
+    // 2026-06-22 15:00 EDT == 2026-06-22 19:00 UTC
+    const at = new Date('2026-06-22T19:00:00Z');
+    expect(localNightStartInTz(at, 'America/New_York').toISOString()).toBe(
+      mondayLocalMidnightUtc.toISOString(),
+    );
+  });
+
+  it('buckets 11:59pm Mon → same day', () => {
+    // 2026-06-22 23:59 EDT == 2026-06-23 03:59 UTC
+    const at = new Date('2026-06-23T03:59:00Z');
+    expect(localNightStartInTz(at, 'America/New_York').toISOString()).toBe(
+      mondayLocalMidnightUtc.toISOString(),
+    );
+  });
+
+  it('buckets 12:00am exactly → previous day (the boundary is 12:00 not 00:00)', () => {
+    // 2026-06-22 00:00 EDT == 2026-06-22 04:00 UTC
+    const at = new Date('2026-06-22T04:00:00Z');
+    expect(localNightStartInTz(at, 'America/New_York').toISOString()).toBe(
+      new Date(sundayLocalMidnightUtc).toISOString(),
+    );
   });
 });

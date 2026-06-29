@@ -1,4 +1,5 @@
 import { Decoder, Stream } from '@garmin/fitsdk';
+import { hoursSinceLocalMidnightInTz, localNightStartInTz } from './timezone.js';
 import type {
   SessionMesg,
   RecordMesg,
@@ -87,6 +88,7 @@ export type ParsedMeasurement = {
   metric:
     | 'SLEEP_HOURS'
     | 'SLEEP_QUALITY'
+    | 'SLEEP_ONSET'
     | 'HRV'
     | 'RESTING_HR'
     | 'STRESS'
@@ -116,7 +118,7 @@ export function detectFitKind(typeValue: unknown): FitKind {
   return 'unknown';
 }
 
-export function parseFit(buf: Buffer): FitImportResult {
+export function parseFit(buf: Buffer, tz: string = 'UTC'): FitImportResult {
   let decoded: { messages: any; errors: any[] };
   try {
     const stream = Stream.fromBuffer(buf);
@@ -149,7 +151,7 @@ export function parseFit(buf: Buffer): FitImportResult {
     case 'activity':
       return { kind, sourceTimestamp, ...parseActivity(decoded.messages), skipped: skipped.length ? skipped : undefined };
     case 'sleep':
-      return { kind, sourceTimestamp, ...parseSleep(decoded.messages), skipped: skipped.length ? skipped : undefined };
+      return { kind, sourceTimestamp, ...parseSleep(decoded.messages, tz), skipped: skipped.length ? skipped : undefined };
     case 'hrv':
       return { kind, sourceTimestamp, ...parseHrv(decoded.messages), skipped: skipped.length ? skipped : undefined };
     case 'monitor':
@@ -339,7 +341,7 @@ function subSportName(sub: unknown): string | undefined {
 // Sleep parser
 // ============================================================
 
-function parseSleep(messages: any): Pick<FitImportResult, 'measurements'> {
+function parseSleep(messages: any, tz: string = 'UTC'): Pick<FitImportResult, 'measurements'> {
   const events = (messages.eventMesgs ?? []) as any[];
   const assessments = (messages.sleepAssessmentMesgs ?? []) as SleepAssessmentMesg[];
 
@@ -380,6 +382,22 @@ function parseSleep(messages: any): Pick<FitImportResult, 'measurements'> {
         notes: `FIT overallSleepScore=${score}/100`,
       });
     }
+  }
+
+  // Sleep onset: local fractional hour of the start event, bucketed
+  // to the calendar day that "owns" this sleep (post-midnight starts
+  // belong to the previous day). The chart's X-axis uses the row's
+  // recordedAt, so a 12:30 AM Monday sleep starts shows on Monday.
+  if (startTime) {
+    const start = new Date(startTime);
+    const onsetValue = hoursSinceLocalMidnightInTz(start, tz);
+    const nightStart = localNightStartInTz(start, tz);
+    measurements.push({
+      metric: 'SLEEP_ONSET',
+      value: onsetValue,
+      recordedAt: nightStart,
+      notes: `FIT sleep start · local ${tz}`,
+    });
   }
 
   if (measurements.length === 0) {

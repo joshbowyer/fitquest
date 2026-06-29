@@ -79,3 +79,61 @@ export function lastSundayMidnightUtc(
   return new Date(anchor.getTime() - daysBack * 24 * 60 * 60 * 1000);
 }
 
+/// Fractional hours since local midnight for the given instant in
+/// the given IANA timezone. e.g. 22:30 local → 22.5. Used by the
+/// FIT sleep parser to store the onset time as a fractional-hour
+/// number (22.5 = 10:30 PM) in the `SLEEP_ONSET` Measurement row.
+export function hoursSinceLocalMidnightInTz(
+  at: Date,
+  timezone: string | null,
+): number {
+  const tz = timezone || 'UTC';
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    const parts = dtf.formatToParts(at);
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? '0');
+    const hh = get('hour');
+    const mm = get('minute');
+    const ss = get('second');
+    return Math.round((hh * 3600 + mm * 60 + ss) / 36) / 100;
+  } catch {
+    return at.getUTCHours() + at.getUTCMinutes() / 60;
+  }
+}
+
+/// Return the local midnight (as a UTC Date) of the calendar day
+/// that "owns" a sleep onset at the given instant. Convention:
+/// onsets between local 18:00 and 23:59 belong to that same calendar
+/// day; onsets between local 00:00 and 11:59 belong to the previous
+/// calendar day; onsets between 12:00 and 17:59 are daytime and we
+/// bucket to the same day (post-lunch nap → that day).
+///
+/// The chart's X-axis uses the returned Date as the row label, so
+/// a sleep that starts at 12:30 AM Monday shows on the Monday row,
+/// not Sunday. That matches how the user thinks about it ("Monday's
+/// sleep started Sunday night").
+export function localNightStartInTz(
+  at: Date,
+  timezone: string | null,
+): Date {
+  const tz = timezone || 'UTC';
+  const localHour = hoursSinceLocalMidnightInTz(at, tz);
+  // Date-only string in the user's tz for `at`.
+  const localDate = todayInTz(tz, at);
+  // Post-midnight (00:00 – 11:59) → previous calendar day.
+  // Daytime (12:00 – 17:59) → same day (unusual but possible for naps).
+  // Evening (18:00 – 23:59) → same day.
+  let nightDate: string;
+  if (localHour < 12) {
+    const prev = new Date(localMidnightUtc(localDate, tz).getTime() - 24 * 60 * 60 * 1000);
+    nightDate = todayInTz(tz, prev);
+  } else {
+    nightDate = localDate;
+  }
+  return localMidnightUtc(nightDate, tz);
+}
+
