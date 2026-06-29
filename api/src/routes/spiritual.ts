@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { getOrGenerateReflection, type SpiritualReflection } from '../lib/spiritualDirector.js';
-import { refreshUsccbCache } from '../lib/usccb.js';
+import { refreshUsccbCache, getReadingsStatus, seedReading } from '../lib/usccb.js';
 
 // XP awarded per prayer type (base, before Ordained boost).
 const PRAYER_XP: Record<PrayerType, number> = {
@@ -241,5 +241,28 @@ const logSchema = z.union([
   app.post('/refresh-readings', async () => {
     const result = await refreshUsccbCache();
     return result;
+  });
+
+  // GET /spiritual/readings-status?date=YYYY-MM-DD — diagnostic.
+  // Probes every readings source (cache, EWTN, USCCB RSS, Wayback)
+  // for the given date and returns which succeeded. Useful when the
+  // user sees "No USCCB reading available" and we need to figure
+  // out which leg of the cascade is failing.
+  app.get<{ Querystring: { date?: string } }>('/readings-status', async (req) => {
+    const me = await requireUser(req);
+    const date = req.query.date ?? new Date().toISOString().slice(0, 10);
+    const status = await getReadingsStatus(date);
+    return { ...status, requestedFor: me.username };
+  });
+
+  // POST /spiritual/readings-reseed?date=YYYY-MM-DD — manual force
+  // refresh for a specific date. Walks the full cascade (cache →
+  // EWTN → RSS → Wayback) and returns the resulting status so the
+  // user can see whether the reseed produced a reading.
+  app.post<{ Querystring: { date?: string } }>('/readings-reseed', async (req) => {
+    const date = req.query.date ?? new Date().toISOString().slice(0, 10);
+    const reading = await seedReading(date);
+    const status = await getReadingsStatus(date);
+    return { ...status, persisted: !!reading };
   });
 }

@@ -763,3 +763,105 @@ export async function seedUpcomingReadings(days: number, today: Date = new Date(
 export async function getDailyReading(date: string): Promise<DailyReading | null> {
   return seedReading(date);
 }
+
+/**
+ * Status report for the readings pipeline. Probes each source
+ * independently so the UI can tell the user which leg of the
+ * cascade is failing (EWTN? RSS? Wayback?). Returns one
+ * ReadingSourceStatus per source attempted.
+ *
+ * Sources probed in order:
+ *   - cache  — instant DB read (no network)
+ *   - ewtn    — primary since USCCB redesigned their site in mid-2026
+ *   - rss     — USCCB's bible.usccb.org/readings.rss (still ships
+ *               description blocks, but text is sometimes missing)
+ *   - wayback — last resort, snapshots exist for almost every date
+ *
+ * Each source reports either ok/error/empty so the operator can
+ * tell whether the failure is "site changed shape" vs "date is
+ * genuinely unavailable".
+ */
+export type ReadingSourceStatus =
+  | { source: 'cache'; ok: true; fetchedAt: Date; readingSource: string }
+  | { source: 'ewtn' | 'rss' | 'wayback'; ok: boolean; reason?: string };
+
+export async function getReadingsStatus(date: string): Promise<{
+  date: string;
+  overallOk: boolean;
+  cacheHit: boolean;
+  sources: ReadingSourceStatus[];
+}> {
+  const sources: ReadingSourceStatus[] = [];
+
+  // Cache probe — instant, no network
+  const cached = await prisma.usccbDailyReading.findUnique({
+    where: { date },
+    select: { id: true, source: true, fetchedAt: true },
+  });
+  if (cached) {
+    sources.push({
+      source: 'cache',
+      ok: true,
+      fetchedAt: cached.fetchedAt,
+      readingSource: cached.source,
+    });
+  } else {
+    sources.push({ source: 'cache', ok: false, reason: 'not cached yet' });
+  }
+
+  // EWTN probe — primary source
+  try {
+    const { fetchEwtnReading } = await import('./ewtn.js');
+    const r = await fetchEwtnReading(date);
+    sources.push({
+      source: 'ewtn',
+      ok: r != null,
+      reason: r == null ? 'fetch or parse failed (see server logs)' : undefined,
+    });
+  } catch (err: any) {
+    sources.push({ source: 'ewtn', ok: false, reason: String(err?.message ?? err) });
+  }
+
+  // USCCB RSS probe — checks if any item in the RSS matches the date.
+  // Doesn't save to cache so this is a read-only diagnostic.
+  try {
+    const xml = await fetchRssFeed();
+    const items = parseRss(xml);
+    const match = items.find((i) => i.date === date);
+    if (!match) {
+      sources.push({ source: 'rss', ok: false, reason: 'date not in current RSS window (~10 days)' });
+    } else {
+      const parsed = parseDescription(match.description);
+      if (!parsed.firstReading.trim() && !parsed.gospel.trim()) {
+        sources.push({
+          source: 'rss',
+          ok: false,
+          reason: 'RSS has the date but description is navigation-only (USCCB redesign path)',
+        });
+      } else {
+        sources.push({ source: 'rss', ok: true });
+      }
+    }
+  } catch (err: any) {
+    sources.push({ source: 'rss', ok: false, reason: `fetch: ${err?.message ?? err}` });
+  }
+
+  // Wayback probe — calls fetchReadingByWayback but does NOT save.
+  try {
+    const r = await fetchReadingByWayback(date);
+    sources.push({
+      source: 'wayback',
+      ok: r != null,
+      reason: r == null ? 'no snapshot or parse failed' : undefined,
+    });
+  } catch (err: any) {
+    sources.push({ source: 'wayback', ok: false, reason: String(err?.message ?? err) });
+  }
+
+  return {
+    date,
+    overallOk: sources.some((s) => s.ok),
+    cacheHit: !!cached,
+    sources,
+  };
+}

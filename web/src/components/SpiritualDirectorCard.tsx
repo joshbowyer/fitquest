@@ -159,24 +159,43 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
       <Panel title="Spiritual director" variant="violet">
         <div className="space-y-2 py-1">
           <div className="text-sm text-slate-300 font-mono">
-            No USCCB reading available right now.
+            No readings available right now.
           </div>
           <div className="text-[11px] font-mono text-ink-400 leading-relaxed">
-            The USCCB redesigned their site in mid-2026 and stopped
-            shipping reading text in their RSS feed — the per-day
-            pages are now JavaScript-rendered and Wayback snapshots
-            don't always have the readings either. Our cache falls
-            back to the legacy <code>.cfm</code> snapshots when
-            possible. If this persists past a day, the readings
-            are genuinely unreachable from a server-side fetch.
+            The cache is empty and all live sources failed for
+            today. The fetcher walks a cascade:{' '}
+            <span className="text-violet-300">cache → EWTN → USCCB RSS → Wayback Machine</span>.
+            EWTN is the primary source since USCCB redesigned
+            their site in mid-2026; USCCB's RSS still ships
+            navigation blocks instead of readings; Wayback
+            snapshots don't exist for every date.
           </div>
-          <button
-            type="button"
-            onClick={() => qc.invalidateQueries({ queryKey: ['spiritual', 'director'] })}
-            className="text-[10px] font-mono text-violet-300 hover:underline"
-          >
-            ↻ Re-check
-          </button>
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => qc.invalidateQueries({ queryKey: ['spiritual', 'director'] })}
+              className="text-[10px] font-mono text-violet-300 hover:underline"
+            >
+              ↻ Re-check
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                // Force a reseed via the dedicated endpoint (walks the
+                // full cascade + persists on success) then re-pull the
+                // director. Lets the user recover from a fresh
+                // USCCB / EWTN outage without waiting for the daily
+                // cron at 04:30.
+                await api('/spiritual/readings-reseed', { method: 'POST' });
+                qc.invalidateQueries({ queryKey: ['spiritual', 'director'] });
+              }}
+              className="text-[10px] font-mono text-violet-300 hover:underline"
+              title="Walk the cache → EWTN → RSS → Wayback cascade for today and save the result"
+            >
+              ↻ Force reseed
+            </button>
+            <ReadingsStatusLink />
+          </div>
         </div>
       </Panel>
     );
@@ -241,5 +260,64 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
         </div>
       </div>
     </Panel>
+  );
+}
+
+/**
+ * Diagnostic chip — pulls `GET /spiritual/readings-status` for today
+ * and surfaces which leg of the cascade (cache → EWTN → RSS → Wayback)
+ * failed. Helps the user (and me, debugging) figure out where the
+ * reading pipeline is broken when the director card shows the
+ * "No readings available" placeholder.
+ */
+function ReadingsStatusLink() {
+  const [open, setOpen] = useState(false);
+  const q = useQuery({
+    queryKey: ['spiritual', 'readings-status'],
+    queryFn: () => api<{
+      date: string;
+      overallOk: boolean;
+      cacheHit: boolean;
+      sources: Array<{ source: string; ok: boolean; reason?: string; fetchedAt?: string; readingSource?: string }>;
+    }>('/spiritual/readings-status'),
+    enabled: open,
+    staleTime: 30_000,
+  });
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="text-[10px] font-mono text-ink-400 hover:text-violet-300"
+        title="Show which readings sources are working for today"
+      >
+        {open ? '▾ Hide diagnostics' : '▸ Diagnose'}
+      </button>
+      {open && (
+        <div className="mt-2 border border-ink-700/40 p-2 text-[10px] font-mono bg-bg-900/40 space-y-1">
+          {q.isLoading && <div className="text-ink-400">Probing sources…</div>}
+          {q.isError && <div className="text-rose-300">Couldn't probe: {String((q.error as any)?.message ?? q.error)}</div>}
+          {q.data && (
+            <>
+              <div className={q.data.overallOk ? 'text-neon-lime' : 'text-rose-300'}>
+                {q.data.overallOk ? '✓' : '✗'} overall · {q.data.cacheHit ? 'cached' : 'uncached'}
+              </div>
+              {q.data.sources.map((s) => (
+                <div key={s.source} className="flex items-start gap-2">
+                  <span className={s.ok ? 'text-neon-lime' : 'text-rose-300 shrink-0'}>
+                    {s.ok ? '✓' : '✗'}
+                  </span>
+                  <span className="text-ink-300">
+                    <span className="text-violet-300">{s.source}</span>
+                    {s.readingSource && <> · cached from <span className="text-violet-300">{s.readingSource}</span></>}
+                    {!s.ok && s.reason && <> · <span className="text-ink-400 italic">{s.reason}</span></>}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </>
   );
 }
