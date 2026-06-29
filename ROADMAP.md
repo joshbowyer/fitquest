@@ -12,31 +12,6 @@
 
 ### Bugs / data-correctness
 
-- **Recent PRs block shows calculated 1RM, not real PRs.** The
-  Dashboard "Recent PRs" panel currently surfaces the user's
-  estimated 1RM peaks (Epley formula on every set) and calls
-  them "PRs". A PR is a deliberate breakthrough, not every set.
-  Either rename to "Estimated 1RM peaks" or filter to only true
-  PR rows (the `Pr` table).
-- **Status page Identity block weight not updated from weigh-ins.**
-  The Identity block shows `user.weightKg` which is the column
-  value, but weigh-ins go into `Measurement` rows. The displayed
-  value should be the latest `Measurement(weightKg)` for today.
-- **Pain entries persist silently on Status.** Pain logs should
-  appear on the Today page with a "is it going down?" trend
-  card + a "pain is gone" quick-action. Currently the user has
-  to dig into the Status page to see them.
-- **Recovery practices should be on Today.** The card is worded
-  as daily ("today's recovery stack") and the user has to
-  navigate to Recovery to see it. Move the block to Today.
-- **Weekly Examen copy typo.** "where was God in neither"
-  appears in both the daily reflection prompt AND the weekly
-  review. The weekly version is the one that needs fixing
-  (should be "either" or "where was God in all this"). Clarify
-  with the user which wording is intended, then fix.
-- **Body weight graph zoom too tight on Insights.** Change
-  `yPad` from 20 above/below the recorded weight max/min to 10
-  so the line shows a bit more dynamism in the chart.
 - **Do hearts actually decrease with missed workouts?** Verify
   the heart/health loss logic for missed workouts — confirm
   that hearts (HP / lives / health bar) actually decrement
@@ -110,6 +85,38 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Pain entries on Today (was: "persist silently on Status").
+  New `PainCard` component surfaces the most-recent active pain
+  log (intensity > 0) on Today with a 14-day "is it going down?"
+  sparkline, a "Pain is gone" quick-action that posts
+  intensity=0 for the same body part, and an Update button
+  re-opening the log modal at the active part. Empty-state copy
+  points users to the body map on /status for full logging.
+- ✅ Recovery practices → Today (was: "should be on Today").
+  Extracted the checklist + state + helpers into a new
+  `RecoveryPracticesPanel` component, rendered on Today between
+  the quick-action grid and the dailies/check-ins columns.
+  State persists in localStorage (`fitquest:recovery:practiceLog`)
+  so it stays in sync if the user navigates to /recovery too.
+  Removed the block from /recovery; dropped the now-unused
+  `completedPractices` PageHeader highlight check.
+- ✅ Weekly Examen copy typo. "where was God in neither" →
+  "where was God in all this" (Ignatian phrasing the user
+  picked). Touches panel intro, both summary labels, and the
+  modal field label. No DB / test changes.
+- ✅ Body weight graph zoom (Insights). `yPad` 20 → 10 so the
+  line shows more dynamism within the recorded range instead
+  of being squashed to the bottom of the plot area.
+- ✅ Status page Identity block weight from weigh-ins. Now
+  prefers today's tz-aware weigh-in (`/measurements/weigh-in/
+  status`, same endpoint WeighInPanel uses) and falls back to
+  `user.weightKg` when no weigh-in has been logged today.
+- ✅ Recent PRs block — rename + data source. Title "Recent
+  PRs" → "Estimated 1RM peaks" (matches what the panel
+  actually shows — the Epley estimate, not raw PR weight).
+  Endpoint `/prs/best` (max ever per exercise) → `/prs`
+  (chronological recent Pr rows). "Recent" now actually means
+  recent instead of "max ever, in insertion order".
 - ✅ Equipment drops / loot (world → loot table mapping). Added
   `classForWorld()` helper; Spire drops Juggernaut gear, Glade
   drops Phantom gear, Citadel drops Berserker gear, etc. NEUTRAL
