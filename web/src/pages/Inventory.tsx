@@ -343,34 +343,12 @@ export function InventoryPage() {
               </div>
             )}
           </Panel>
-        </div>
 
-        {/* Right column: stats panel. The preview used to show a
-            SpriteAvatar here; it was the habitica layered sprite
-            system and is removed. Just show the class portrait. */}
-        <div className="space-y-4">
-          <Panel title="PREVIEW" variant="cyan">
-            <div className="flex flex-col items-center">
-              <img
-                src={`/sprites/class-portraits/${(user.class || 'PHANTOM').toLowerCase()}.png`}
-                alt={user.class || 'class portrait'}
-                width={180}
-                height={180}
-                className="block"
-                style={{
-                  width: 180,
-                  height: 180,
-                  filter: `drop-shadow(0 0 12px ${user.class ? WORLD_COLOR_HEX[primaryColorForClass(user.class)] : '#14d6e8'}88)`,
-                  imageRendering: 'pixelated',
-                }}
-              />
-              <div className="text-[10px] font-mono text-ink-300 mt-2 uppercase tracking-widest">
-                {user.class ?? 'no class selected'}
-              </div>
-            </div>
-          </Panel>
-
-          {/* Rolled stats */}
+          {/* Rolled stats from the equipped loadout. Moved up here
+              from the right column — sits between Equipped Loadout
+              and Item Catalogue so the user sees the cumulative
+              effect of whatever was just equipped before browsing
+              for the next item. */}
           <Panel title="STATS FROM EQUIPMENT" variant="amber">
             <div className="space-y-2">
               {Object.keys(totals).length === 0 ? (
@@ -402,6 +380,13 @@ export function InventoryPage() {
               )}
             </div>
           </Panel>
+        </div>
+
+        {/* Right column: item detail panel only (was: stats + PREVIEW).
+            PREVIEW was the class portrait which is on the homebase
+            dashboard already, so we drop it here. STATS moved up to
+            the left column under the equipped loadout. */}
+        <div className="space-y-4">
 
           {/* Item detail / actions */}
           {selectedDef && (
