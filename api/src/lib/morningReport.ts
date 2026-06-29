@@ -349,6 +349,30 @@ async function spiritualDomain(userId: string, since7: Date) {
   };
 }
 
+/**
+ * Recent Hardcore-mode heart-loss events. Reads the last 7 days
+ * (one source row per kind per day, thanks to the unique index
+ * on HeartLossEvent). Returned in chronological order so the
+ * penalty ledger reads naturally as a timeline.
+ */
+async function heartLossDomain(userId: string): Promise<Array<{
+  kind: string;
+  sourceDate: string;
+  details: string | null;
+}>> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const rows = await prisma.heartLossEvent.findMany({
+    where: { userId, firedAt: { gte: since } },
+    orderBy: [{ sourceDate: 'asc' }, { firedAt: 'asc' }],
+    select: { kind: true, sourceDate: true, details: true },
+  });
+  return rows.map((r) => ({
+    kind: r.kind,
+    sourceDate: r.sourceDate.toISOString().slice(0, 10),
+    details: r.details,
+  }));
+}
+
 export type ReportPayload = {
   generatedAt: string; // ISO
   user: { class: string | null; level: number; xp: number; ordained: boolean };
@@ -390,6 +414,15 @@ export type ReportPayload = {
   /// typos (e.g. 1350 lb instead of 135) before they pollute the
   /// LLM narrative as fake PRs.
   impossibleValues: ImpossibleValueItem[];
+  /// Recent Hardcore-mode heart-loss events (last 7 days). Surfaced
+  /// in the penalty ledger via buildPenalties so the user can see
+  /// exactly which triggers fired and when, instead of just
+  /// "hearts: 2".
+  heartLossEvents: Array<{
+    kind: string;
+    sourceDate: string;       // YYYY-MM-DD in user's tz
+    details: string | null;
+  }>;
   /// Ignatian-examen trend over the last 5 Sundays. The full
   /// responses live on /examen; this is just the rollup so the
   /// LLM can mention "logged 4 of 5" in the spiritual section.
@@ -441,7 +474,7 @@ export async function gatherReportData(
   const [
     sleep, sleepQuality, hrv, weight, bodyFat, workouts, habits, supplements, spiritual,
     substanceCounts, streak, plateaus, nudges, sleepOverlap, bodyBattery, bodyFatSources,
-    impossibleValues, examenTrend,
+    impossibleValues, examenTrend, heartLossEvents,
   ] = await Promise.all([
     metricDomain(userId, 'SLEEP_HOURS', since7, since14),
     metricDomain(userId, 'SLEEP_QUALITY', since7, since14),
@@ -461,6 +494,7 @@ export async function gatherReportData(
     bodyFatSourcesDomain(userId, since7),
     impossibleValuesDomain(userId, now),
     examenTrendDomain(userId, tz, 5),
+    heartLossDomain(userId),
   ]);
 
   return {
@@ -495,6 +529,7 @@ export async function gatherReportData(
     bodyFatSources,
     impossibleValues,
     examenTrend,
+    heartLossEvents,
   };
 }
 
@@ -636,7 +671,7 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     out.push({
       label: 'Hearts',
       severity: 'scold',
-      note: '0 hearts. XP, gold, and raid damage are halved until a heart regenerates (~8h).',
+      note: '0 hearts. XP, gold, and raid damage are halved until the next Sunday regen (~7 days).',
     });
   } else if (payload.hearts <= 2) {
     out.push({
@@ -686,7 +721,59 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     });
   }
 
+  // Hardcore-mode heart-loss ledger. Surface every HeartLossEvent
+  // from the last 7 days as a scold/warn entry so the user can see
+  // *why* their hearts are low, not just the final count. Recent
+  // entries (yesterday / today) sort first so the most actionable
+  // items are at the top of the list.
+  if (payload.heartLossEvents.length > 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    const sorted = [...payload.heartLossEvents].sort((a, b) => {
+      const aRecent = a.sourceDate >= today ? 1 : 0;
+      const bRecent = b.sourceDate >= today ? 1 : 0;
+      if (aRecent !== bRecent) return bRecent - aRecent;
+      return b.sourceDate.localeCompare(a.sourceDate);
+    });
+    // Aggregate by kind so we don't dump 7 identical "missed workout"
+    // entries; show the latest occurrence date + count.
+    const byKind = new Map<string, { count: number; lastDate: string; details: string | null }>();
+    for (const e of sorted) {
+      const cur = byKind.get(e.kind);
+      if (cur) {
+        cur.count++;
+        if (e.sourceDate > cur.lastDate) {
+          cur.lastDate = e.sourceDate;
+          cur.details = e.details;
+        }
+      } else {
+        byKind.set(e.kind, { count: 1, lastDate: e.sourceDate, details: e.details });
+      }
+    }
+    for (const [kind, agg] of byKind.entries()) {
+      out.push({
+        label: 'Heart loss',
+        severity: agg.count > 1 ? 'scold' : 'warn',
+        note: `${prettyHeartLossLabel(kind)} × ${agg.count} this week (last: ${agg.lastDate})${agg.details ? ` — ${agg.details}` : ''}`,
+      });
+    }
+  }
+
   return out;
+}
+
+/// Map the internal HeartLossTrigger enum to a user-friendly label
+/// for the penalty ledger. Centralized so the UI doesn't have to
+/// know about the raw enum values.
+function prettyHeartLossLabel(kind: string): string {
+  switch (kind) {
+    case 'MISSED_WORKOUT':     return 'Missed planned workout';
+    case 'MISSED_ALL_DAILIES': return 'All dailies missed';
+    case 'SUBSTANCE_CAFFEINE': return 'Caffeine cap exceeded';
+    case 'SUBSTANCE_ALCOHOL':  return 'Alcohol cap exceeded';
+    case 'SUBSTANCE_NICOTINE': return 'Nicotine cap exceeded';
+    case 'ZERO_SPIRITUAL':     return 'No spiritual activity';
+    default:                  return kind;
+  }
 }
 
 // ---- Public API ----

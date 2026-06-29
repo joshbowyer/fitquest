@@ -14,8 +14,8 @@ import {
 } from '../lib/mode';
 
 describe('HEART_REGEN_MS', () => {
-  it('is 8 hours in ms', () => {
-    expect(HEART_REGEN_MS).toBe(8 * 60 * 60 * 1000);
+  it('is 1 week in ms (Sunday-anchored regeneration per mode.ts)', () => {
+    expect(HEART_REGEN_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
 });
 

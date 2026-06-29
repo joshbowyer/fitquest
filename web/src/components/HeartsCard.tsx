@@ -85,7 +85,8 @@ export function HeartsCard() {
       )}>
         {message}
         <div className="mt-0.5 text-ink-500">
-          Regen: 1 heart per 8h. Lose: 1 heart per missed planned workout.
+          Regen: 1 heart per Sunday (week-anchored). Loss: missed workout,
+          all-dailies miss, caffeine/alcohol/nicotine overuse, zero spiritual.
         </div>
       </div>
     </div>

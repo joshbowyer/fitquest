@@ -336,7 +336,8 @@ function ModeSection() {
           title="Hardcore"
           subtitle={current === 'HARDCORE' ? 'Active' : 'Engages penalty ladder'}
           features={[
-            '5 hearts — lose 1 per missed planned workout, regen 1 per 8h',
+            '5 hearts — lose 1 per missed planned workout, missed all-dailies, substance overuse (caffeine/alcohol/nicotine), or zero spiritual activity',
+            'Regen: 1 heart per Sunday (week-anchored)',
             'At 0 hearts: −50% XP, −50% gold, −50% raid damage',
             'Missed-week routine resets the streak (no silent freeze)',
             'Substance caps flag in the morning report',
@@ -466,7 +467,10 @@ function HardcoreConfirmBody({
       </p>
       <ul className="text-xs font-mono text-ink-300 space-y-1 list-disc pl-5">
         <li>Missed planned workouts cost a heart</li>
-        <li>0 hearts = −50% XP, gold, raid damage until regen</li>
+        <li>All-dailies-missed costs a heart (recoverable via morning popup)</li>
+        <li>Substance overuse costs a heart (caffeine 3/day, alcohol 5/wk, nicotine 2/wk)</li>
+        <li>Zero spiritual activity costs a heart</li>
+        <li>0 hearts = −50% XP, gold, raid damage until next Sunday regen</li>
         <li>Missed-week routines break the streak (no silent freeze)</li>
         <li>Substance over-use gets flagged in the morning report</li>
       </ul>

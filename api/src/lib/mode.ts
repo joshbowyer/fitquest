@@ -127,10 +127,10 @@ export async function tickHearts(userId: string): Promise<number> {
 }
 
 /**
- * Decrement hearts by 1 when a planned workout is missed.
- * Called by the workout-commit hook after `checkRoutineProgress`
- * when the user just completed a workout, OR by the cron-like
- * background sweep that runs daily.
+ * Decrement hearts by 1 in Hardcore mode. Called from the morning-
+ * report sweep (`fireHardcoreHeartPenalties` in morningReport.ts)
+ * once per (user, local-date, trigger-kind) — the HeartLossEvent
+ * unique constraint makes re-fires within the same day a no-op.
  *
  * Clamped at 0. Returns the new count. Silent no-op in Casual mode.
  */
@@ -142,8 +142,9 @@ export async function loseHeart(userId: string, opts?: { reason?: string }): Pro
   if (!user || user.mode === 'CASUAL') return user?.hearts ?? 5;
   const next = Math.max(0, user.hearts - 1);
   // When dropping to 0, reset the regen timer so the next tick is a
-  // full 8h away — preserves the cadence so a 0-heart user sees the
-  // "next heart in" counter reset visually.
+  // full regen-window away — preserves the cadence so a 0-heart user
+  // sees the "next heart in" counter reset visually. Regen cadence
+  // is weekly (HEART_REGEN_MS = 7d); see tickHearts for details.
   await prisma.user.update({
     where: { id: userId },
     data: {
