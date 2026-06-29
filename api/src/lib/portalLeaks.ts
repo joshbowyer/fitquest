@@ -228,8 +228,11 @@ export function rollLootRarity(userLevel: number): string {
 
 // ============================================================
 // Spawn check — called after every penance fire. Rolls the dice
-// based on shield tier. No-op if an active leak exists or 24h
-// cooldown hasn't elapsed.
+// based on shield tier. Leaks STACK: the user can have multiple
+// active leaks at once if they've been slipping. The 24h cooldown
+// is on a per-resolved-leak basis — if the user just resolved a
+// leak, no new ones spawn for 24h. But existing active leaks stay
+// active and queued.
 // ============================================================
 
 export async function maybeSpawnLeak(
@@ -243,13 +246,8 @@ export async function maybeSpawnLeak(
   if (probability === 0) return { spawned: false };
   if (Math.random() > probability) return { spawned: false };
 
-  // No spawn if an active leak exists.
-  const active = await prisma.portalLeak.findFirst({
-    where: { userId, status: 'ACTIVE' },
-  });
-  if (active) return { spawned: false, leakId: active.id };
-
-  // No spawn within 24h of last resolved leak (cooldown).
+  // Cooldown: no spawn within 24h of the last resolved leak.
+  // Existing active leaks do NOT block new spawns — they stack.
   const cooldownCutoff = new Date(Date.now() - LEAK_COOLDOWN_MS);
   const recent = await prisma.portalLeak.findFirst({
     where: {
@@ -508,22 +506,59 @@ export async function claimLeakLoot(
 // ============================================================
 // Get current leak + recent damage feed for the user.
 // ============================================================
+// Stacking — multiple leaks can be active at once. When the user has
+// been slipping, each shield-drop rolls the spawn dice independently
+// so the queue grows. The user picks which leak to attack next;
+// they all share the same recent-damage feed and the dashboard
+// shows them oldest-first as a queue.
+// ============================================================
 
+/**
+ * All active leaks for a user, oldest first (the natural order
+ * to fight them in). Each leak can be attacked + claimed + dismissed
+ * independently. The shape change from "single leak" to "array of
+ * leaks" is the main API-surface change for the stacking feature.
+ */
 export async function getLeakForUser(
   userId: string,
   prisma: PrismaClient = defaultPrisma,
-) {
-  const active = await prisma.portalLeak.findFirst({
+): Promise<{
+  leaks: Array<{
+    leak: Awaited<ReturnType<typeof prisma.portalLeak.findFirst>>;
+    recent: Awaited<ReturnType<typeof prisma.portalLeakDamageEvent.findMany>>;
+  }>;
+  recentDamage: Awaited<ReturnType<typeof prisma.portalLeakDamageEvent.findMany>>;
+}> {
+  const activeLeaks = await prisma.portalLeak.findMany({
     where: { userId, status: 'ACTIVE' },
+    orderBy: { spawnedAt: 'asc' },
   });
-  if (!active) return { leak: null, recent: [] };
 
-  const recent = await prisma.portalLeakDamageEvent.findMany({
-    where: { leakId: active.id },
+  if (activeLeaks.length === 0) {
+    return { leaks: [], recentDamage: [] };
+  }
+
+  // Per-leak recent damage events, then aggregate for the global
+  // recent-damage feed. The dashboard's "Last 36h" feed is across
+  // all leaks.
+  const leakDetails = await Promise.all(
+    activeLeaks.map(async (leak) => {
+      const recent = await prisma.portalLeakDamageEvent.findMany({
+        where: { leakId: leak.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      return { leak, recent };
+    }),
+  );
+
+  const recentDamage = await prisma.portalLeakDamageEvent.findMany({
+    where: { leakId: { in: activeLeaks.map((l) => l.id) } },
     orderBy: { createdAt: 'desc' },
     take: 25,
   });
-  return { leak: active, recent };
+
+  return { leaks: leakDetails, recentDamage };
 }
 
 // ============================================================

@@ -64,9 +64,21 @@ export function PortalLeakCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const leak = leakQ.data?.leak ?? null;
-  const recent = leakQ.data?.recent ?? [];
+  const leaks = leakQ.data?.leaks ?? [];
+  const recentDamage = leakQ.data?.recentDamage ?? [];
   const tier = shieldQ.data?.tier;
+
+  // Stacking — the homebase alert highlights the OLDEST active
+  // leak (the head of the queue) but shows the queue size so
+  // the user knows there are more behind it. The dashboard
+  // component is the at-a-glance status; /portal-leak is the
+  // detailed queue view.
+  const firstActive = leaks.find((e) => e.leak.status === 'ACTIVE')?.leak ?? null;
+  const firstEntry = leaks[0] ?? null;
+  const leak = firstActive ?? firstEntry?.leak ?? null;
+  const recent = firstEntry?.recent ?? [];
+  const queueSize = leaks.length;
+  const isStacking = queueSize > 1;
 
   // ACTIVE: render the leak card with HP bar + recent feed.
   if (leak && leak.status === 'ACTIVE') {
@@ -79,6 +91,14 @@ export function PortalLeakCard() {
           <div className="flex items-center gap-2">
             <span style={{ color: leak.monsterColor }}>{leak.monsterEmoji}</span>
             <span>{leak.monsterName}</span>
+            {isStacking && (
+              <span
+                className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-neon-cyan/40 text-neon-cyan/80"
+                title={`${queueSize} leaks stacked. Click → see the queue.`}
+              >
+                × {queueSize}
+              </span>
+            )}
             {isBreach && (
               <span
                 className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-violet-400/70 text-violet-300/90 bg-violet-500/10"

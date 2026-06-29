@@ -77,26 +77,56 @@ export function PortalLeakPage() {
     ),
   });
 
-  const leak = leakQ.data?.leak ?? null;
-  const recent = leakQ.data?.recent ?? [];
-  const [attackOpen, setAttackOpen] = useState(false);
+  // Stacking — multiple leaks can be active at once. We render
+  // them as a list, oldest-first. The user picks which to attack.
+  const activeLeaks = leakQ.data?.leaks ?? [];
+  const firstLeak = activeLeaks[0]?.leak ?? null;
+  const [attackingLeakId, setAttackingLeakId] = useState<string | null>(null);
 
   return (
     <Layout>
       <PageHeader
-        title="// Portal Leaks"
-        subtitle="1-shot home-base encounters. Match the leak's preferred muscles in your workouts to deal damage and claim loot."
+        title={`// Portal Leaks${activeLeaks.length > 1 ? ` (× ${activeLeaks.length})` : ''}`}
+        subtitle={
+          activeLeaks.length > 1
+            ? `You have ${activeLeaks.length} leaks stacked. Each shield-drop rolled the dice. Pick one to fight — the others queue behind it.`
+            : '1-shot home-base encounters. Match the leak\'s preferred muscles in your workouts to deal damage and claim loot.'
+        }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Current leak */}
-        <ActiveLeakCard
-          leak={leak}
-          recent={recent}
-          onChange={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
-          attackOpen={attackOpen}
-          setAttackOpen={setAttackOpen}
-        />
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+        {/* Active leaks (stacking). Oldest first. */}
+        <div className="space-y-3">
+          {activeLeaks.length === 0 ? (
+            <ActiveLeakCard
+              leak={null}
+              recent={[]}
+              onChange={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
+              attackOpen={false}
+              setAttackOpen={() => {}}
+            />
+          ) : (
+            <>
+              {activeLeaks.length > 1 && (
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 border-l-2 border-neon-magenta/40 pl-2">
+                  Queue ({activeLeaks.length} stacked)
+                </div>
+              )}
+              {activeLeaks.map((entry, idx) => (
+                <ActiveLeakCard
+                  key={entry.leak.id}
+                  leak={entry.leak}
+                  recent={entry.recent}
+                  onChange={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
+                  attackOpen={attackingLeakId === entry.leak.id}
+                  setAttackOpen={(b) => setAttackingLeakId(b ? entry.leak.id : null)}
+                  queueIndex={idx + 1}
+                  queueTotal={activeLeaks.length}
+                />
+              ))}
+            </>
+          )}
+        </div>
 
         {/* History */}
         <Panel variant="cyan" title="Recent leaks">
@@ -126,12 +156,15 @@ export function PortalLeakPage() {
       {/* Attack-the-leak modal. Opens from the ActiveLeakCard's
           "Log a workout to attack" button. Auto-fires the leak
           damage endpoint on commit and closes. */}
-      {leak && leak.status === 'ACTIVE' && (
+      {attackingLeakId && (
         <AttackLeakModal
-          open={attackOpen}
-          onClose={() => setAttackOpen(false)}
-          leakId={leak.id}
-          onDamage={() => qc.invalidateQueries({ queryKey: ['portal-leak'] })}
+          open={!!attackingLeakId}
+          onClose={() => setAttackingLeakId(null)}
+          leakId={attackingLeakId}
+          onDamage={() => {
+            qc.invalidateQueries({ queryKey: ['portal-leak'] });
+            setAttackingLeakId(null);
+          }}
         />
       )}
     </Layout>
@@ -144,12 +177,16 @@ function ActiveLeakCard({
   onChange,
   attackOpen,
   setAttackOpen,
+  queueIndex,
+  queueTotal,
 }: {
   leak: PortalLeakData | null;
   recent: PortalLeakResponse['recent'];
   onChange: () => void;
   attackOpen: boolean;
   setAttackOpen: (b: boolean) => void;
+  queueIndex?: number;
+  queueTotal?: number;
 }) {
   const navigate = useNavigate();
   const dismissM = useDelayedMutation<{ ok: boolean }, string>({
@@ -181,6 +218,11 @@ function ActiveLeakCard({
         <div className="flex items-center gap-2">
           <span style={{ color: leak.monsterColor }}>{leak.monsterEmoji}</span>
           <span>{leak.monsterName}</span>
+          {queueIndex && queueTotal && queueTotal > 1 && (
+            <span className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-neon-cyan/40 text-neon-cyan/80">
+              #{queueIndex} of {queueTotal}
+            </span>
+          )}
           {leak.worldSource === 'BREACH' && (
             <span
               className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-violet-400/70 text-violet-300/90 bg-violet-500/10"

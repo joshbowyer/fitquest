@@ -772,7 +772,17 @@ export type LeakDamageEvent = {
   createdAt: string;
 };
 
+/**
+ * Stacking — multiple leaks can be active at once. The API returns
+ * an array of {leak, recent} pairs (one per active leak) plus a
+ * flat recentDamage list across all active leaks for the dashboard
+ * feed. Backwards-compat note: the `leak` field is kept for the
+ * single-leak-fallback path; new code should use `leaks` (plural).
+ */
 export type PortalLeakResponse = {
+  leaks: Array<{ leak: PortalLeak; recent: LeakDamageEvent[] }>;
+  recentDamage: LeakDamageEvent[];
+  /** @deprecated use `leaks[0].leak` for the first/oldest active leak */
   leak: PortalLeak | null;
   recent: LeakDamageEvent[];
 };

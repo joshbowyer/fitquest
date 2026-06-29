@@ -23,11 +23,20 @@ import {
 import { tierForShield } from '../lib/penance.js';
 
 export async function portalLeakRoutes(app: FastifyInstance) {
-  // GET /portal-leak — current leak state.
+  // GET /portal-leak — current leak state. The `leaks` array is
+  // the canonical stacking-aware list; `leak` and `recent` are
+  // populated for backwards-compat with the homebase dashboard's
+  // single-leak view (head of the queue).
   app.get('/', async (req) => {
     const me = await requireUser(req);
     const result = await getLeakForUser(me.id);
-    return result;
+    const head = result.leaks[0] ?? null;
+    return {
+      ...result,
+      // Backwards-compat — homebase alert reads these.
+      leak: head?.leak ?? null,
+      recent: head?.recent ?? [],
+    };
   });
 
   // GET /portal-leak/history — recently-resolved leaks (DEFEATED /
