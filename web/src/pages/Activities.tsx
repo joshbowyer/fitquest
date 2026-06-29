@@ -248,19 +248,26 @@ export function ActivitiesPage() {
               )}
             </div>
 
-            {/* Gate the logger on selectedTemplateQ.isSuccess so it
-                never mounts with templatePrefill=null after the user
-                clicked a template chip. Previously the logger remounted
-                on chip-click but selectedTemplateQ was still loading,
-                so the useState(seedExercises) snapshot captured null and
-                the logger fell into the empty fallback. Showing a brief
-                "Loading routine…" placeholder keeps the mount order
-                deterministic. */}
-            {selectedTemplateId && !selectedTemplateQ.isSuccess ? (
+            {/* Pre-load gate: while selectedTemplateQ is still pending
+                show a brief placeholder so the logger doesn't mount
+                with templatePrefill=null. On error we ALSO show the
+                logger (with null prefill) so the user can still log a
+                session — but also surface the error so they know the
+                routine didn't load. Without this, a 404 / network
+                failure on the template route hangs "Loading routine…"
+                forever and the user can't proceed. */}
+            {selectedTemplateId && selectedTemplateQ.isPending && (
               <div className="text-[11px] font-mono text-ink-300 italic py-3 px-2 border border-dashed border-ink-700/40">
                 Loading routine…
               </div>
-            ) : logMode === 'live' ? (
+            )}
+            {selectedTemplateId && selectedTemplateQ.isError && (
+              <div className="text-[11px] font-mono text-rose-300/80 italic py-3 px-2 border border-dashed border-rose-700/40">
+                Couldn't load that routine — showing an empty logger. Try
+                editing the template first, or pick a different routine.
+              </div>
+            )}
+            {logMode === 'live' ? (
               <LiveWorkoutLogger
                 key={`live-${selectedTemplateId ?? 'none'}`}
                 user={user}
