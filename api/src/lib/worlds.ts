@@ -1,3 +1,5 @@
+import { ClassName } from './prisma.js';
+
 // Static quest content. Worlds and levels are baked in — only
 // the user's progress is in the DB.
 //
@@ -498,6 +500,23 @@ for (const w of WORLDS) _byId.set(w.id, w);
 
 export function getWorld(id: string): World | undefined {
   return _byId.get(id);
+}
+
+/**
+ * Map a world → its class for loot filtering. Returns `null` when
+ * the world doesn't map to a single class (NEUTRAL worlds drop
+ * items from any class).
+ *
+ * Used by the drop tables so e.g. The Spire drops Juggernaut gear,
+ * Shadow Glade drops Phantom gear, etc. NEUTRAL worlds (crossroads,
+ * nexus, breach) intentionally return null so they fall through to
+ * the unfiltered pool.
+ */
+export function classForWorld(id: string): ClassName | null {
+  const w = _byId.get(id);
+  if (!w) return null;
+  if (w.affiliation === 'NEUTRAL') return null;
+  return w.affiliation as ClassName;
 }
 
 export function getLevel(id: string): { world: World; level: WorldLevel } | undefined {

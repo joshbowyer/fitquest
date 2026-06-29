@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-import { WORLDS, getWorld } from '../lib/worlds.js';
+import { WORLDS, getWorld, classForWorld } from '../lib/worlds.js';
 import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
 
 const damageSchema = z.object({
@@ -147,8 +147,11 @@ export async function bossRoutes(app: FastifyInstance) {
         // Roll an equipment drop. Higher level = better odds. Reuses
         // the same roll/pick helpers the portal-leak system uses so
         // the user sees consistent rarity across both drop sources.
+        // Theme the drop by world: Spire drops Juggernaut gear, Glade
+        // drops Phantom gear, etc. NEUTRAL worlds (crossroads, nexus)
+        // pass null = unfiltered pool.
         const rarity = rollLootRarity(me.level ?? 1);
-        const def = await pickItemOfRarity(prisma, rarity);
+        const def = await pickItemOfRarity(prisma, rarity, classForWorld(worldId));
         let itemDrop: typeof rewards extends infer R
           ? R extends { itemDrop: infer D }
             ? D

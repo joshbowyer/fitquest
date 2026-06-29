@@ -5,11 +5,13 @@ import {
   WORLDS,
   getWorld,
   getLevel,
+  classForWorld,
   computeRequirementProgress,
   type World,
   type WorldLevel,
   type RequirementProgress,
 } from '../lib/worlds.js';
+import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
 
 export async function questRoutes(app: FastifyInstance) {
   // GET /worlds — list all worlds with the user's progress attached
@@ -89,7 +91,7 @@ export async function questRoutes(app: FastifyInstance) {
     const sleepHistory = await loadSleepHistory(me.id);
     const recoveryHistory = await loadRecoveryHistory(me.id);
 
-    const results: Array<{ levelId: string; cleared: boolean; progress: RequirementProgress }> = [];
+    const results: Array<{ levelId: string; cleared: boolean; progress: RequirementProgress; dropId?: string | null }> = [];
     for (const world of WORLDS) {
       for (const lvl of world.levels) {
         const progress = computeRequirementProgress(
@@ -128,7 +130,38 @@ export async function questRoutes(app: FastifyInstance) {
               gold: { increment: lvl.gold },
             },
           });
-          results.push({ levelId: lvl.id, cleared: true, progress });
+          // Themed equipment drop on first clear — ~25% chance so
+          // the user sees loot trickle in as they progress through
+          // worlds, without flooding their inventory. Drop is
+          // filtered by the world's class affiliation so Glade
+          // drops Phantom gear, Spire drops Juggernaut gear, etc.
+          let dropId: string | null = null;
+          if (Math.random() < 0.25) {
+            const worldId = lvl.id.split('-')[0] ?? '';
+            const rarity = rollLootRarity(me.level ?? 1);
+            const def = await pickItemOfRarity(
+              prisma,
+              rarity,
+              classForWorld(worldId),
+            );
+            if (def) {
+              const inv = await prisma.inventoryItem.create({
+                data: {
+                  userId: me.id,
+                  itemDefId: def.id,
+                  source: 'QUEST_REWARD',
+                  notes: `Drop from ${world.name} — ${lvl.name}`,
+                },
+              });
+              dropId = inv.id;
+            }
+          }
+          results.push({
+            levelId: lvl.id,
+            cleared: true,
+            progress,
+            dropId,
+          });
         } else {
           results.push({
             levelId: lvl.id,

@@ -19,7 +19,7 @@
 // ============================================================
 
 import type { Prisma, PrismaClient } from './prisma.js';
-import { prisma as defaultPrisma } from './prisma.js';
+import { ClassName, prisma as defaultPrisma } from './prisma.js';
 import { tierForShield } from './penance.js';
 
 // ============================================================
@@ -226,6 +226,51 @@ export function rollLootRarity(userLevel: number): string {
   return weights[0][0];
 }
 
+// Drop-table filter helper. When `classFilter` is provided, restricts
+// the candidate pool to items whose `classRestriction` matches (or
+// whose classRestriction is null = universal). Used by the world →
+// loot mapping: Glade drops Phantom gear, Spire drops Juggernaut
+// gear, etc. NEUTRAL worlds / ANY-affinity bosses pass null so the
+// pool stays unfiltered.
+
+export function buildItemWhere(rarity: string, classFilter: ClassName | null) {
+  const where: any = { rarity: rarity as any };
+  if (classFilter) {
+    where.OR = [
+      { classRestriction: classFilter },
+      { classRestriction: null },
+    ];
+  }
+  return where;
+}
+
+// Look up the user's most-recently-cleared world level and return
+// the class it maps to (so leaks spawned from world activity drop
+// themed gear). Returns null when:
+//   - user has never cleared a level
+//   - the most recent cleared level is in a NEUTRAL world
+//   - any lookup error occurs (fail-open: unfiltered drops still work)
+async function lastClearedWorldClass(
+  userId: string,
+  prisma: PrismaClient,
+): Promise<ClassName | null> {
+  try {
+    const recent = await prisma.userWorldProgress.findFirst({
+      where: { userId, completed: true },
+      orderBy: { updatedAt: 'desc' },
+      select: { levelId: true },
+    });
+    if (!recent) return null;
+    // levelId is "worldId-N" — extract the world prefix
+    const worldId = recent.levelId.split('-')[0] ?? '';
+    if (!worldId) return null;
+    const { classForWorld } = await import('./worlds.js');
+    return classForWorld(worldId);
+  } catch {
+    return null;
+  }
+}
+
 // ============================================================
 // Spawn check — called after every penance fire. Rolls the dice
 // based on shield tier. Leaks STACK: the user can have multiple
@@ -259,16 +304,22 @@ export async function maybeSpawnLeak(
   });
   if (recent) return { spawned: false };
 
-  // Spawn!
+// Spawn!
   const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
   const maxHp = Math.floor(
     LEAK_BASE_HP_MIN + Math.random() * (LEAK_BASE_HP_MAX - LEAK_BASE_HP_MIN)
   );
   const lootRarity = rollLootRarity((await prisma.user.findUnique({ where: { id: userId }, select: { level: true } }))?.level ?? 1);
 
+  // World-themed drop: pull the user's most-recently-cleared world
+  // level and pick an item from that world's class. If the user has
+  // never cleared a world level (or the most recent one is NEUTRAL),
+  // classFilter is null and the pool stays unfiltered.
+  const classFilter = await lastClearedWorldClass(userId, prisma);
+
   // Find an item of that rarity to drop. If none exist, fall
   // back to a lower rarity so the user always gets something.
-  const item = await pickItemOfRarity(prisma, lootRarity);
+  const item = await pickItemOfRarity(prisma, lootRarity, classFilter);
 
   const leak = await prisma.portalLeak.create({
     data: {
@@ -309,7 +360,9 @@ export async function maybeSpawnBreachLeak(
     BREACH_LEAK_HP_MIN + Math.random() * (BREACH_LEAK_HP_MAX - BREACH_LEAK_HP_MIN)
   );
   const lootRarity = rollLootRarity((await prisma.user.findUnique({ where: { id: userId }, select: { level: true } }))?.level ?? 1);
-  const item = await pickItemOfRarity(prisma, lootRarity);
+  // Breach is NEUTRAL — classForWorld('breach') returns null so the
+  // pool stays unfiltered (drops universal + any-class gear).
+  const item = await pickItemOfRarity(prisma, lootRarity, null);
 
   const leak = await prisma.portalLeak.create({
     data: {
@@ -332,13 +385,14 @@ export async function maybeSpawnBreachLeak(
 export async function pickItemOfRarity(
   prisma: PrismaClient,
   rarity: string,
+  classFilter?: ClassName | null,
   fallback = 3,
 ): Promise<{ id: string } | null> {
   for (let i = 0; i < fallback; i++) {
     const tiers = ['EPIC', 'RARE', 'UNCOMMON', 'COMMON'];
     const targetTier = tiers[Math.min(tiers.indexOf(rarity) + i, tiers.length - 1)];
     const item = await prisma.itemDef.findFirst({
-      where: { rarity: targetTier as any },
+      where: buildItemWhere(targetTier, classFilter ?? null),
       // Skip the user (since users won't have one yet for the
       // first leak, this just narrows the seed pool).
     });

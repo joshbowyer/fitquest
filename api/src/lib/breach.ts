@@ -26,6 +26,7 @@
 
 import type { Prisma, PrismaClient, WorkoutType } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
+import { pickItemOfRarity } from './portalLeaks.js';
 
 export const BREACH_UNLOCK_LEVEL = 10;
 
@@ -538,15 +539,14 @@ export async function claimKill(
   if (!user) return null;
   const reward = rewardForKill(boss, user.level);
 
-  // Roll item if applicable.
+  // Roll item if applicable. Filter by boss class affinity so
+  // e.g. a JUGGERNAUT-affinity breach boss drops Juggernaut gear
+  // (plus universals). ANY affinity = unfiltered pool.
   let itemId: string | null = null;
   if (reward.itemTier && Math.random() < reward.itemDropChance) {
-    const candidates = await prisma.itemDef.findMany({
-      where: { rarity: reward.itemTier },
-      take: 20,
-    });
-    if (candidates.length > 0) {
-      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const classFilter = boss.classAffinity === 'ANY' ? null : boss.classAffinity;
+    const pick = await pickItemOfRarity(prisma, reward.itemTier, classFilter);
+    if (pick) {
       itemId = pick.id;
       await prisma.inventoryItem.create({
         data: {
