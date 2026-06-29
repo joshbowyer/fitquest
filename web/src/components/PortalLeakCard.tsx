@@ -71,6 +71,7 @@ export function PortalLeakCard() {
   // ACTIVE: render the leak card with HP bar + recent feed.
   if (leak && leak.status === 'ACTIVE') {
     const pct = Math.max(0, Math.min(100, (leak.hp / leak.maxHp) * 100));
+    const isBreach = leak.worldSource === 'BREACH';
     return (
       <Panel
         variant="magenta"
@@ -78,6 +79,14 @@ export function PortalLeakCard() {
           <div className="flex items-center gap-2">
             <span style={{ color: leak.monsterColor }}>{leak.monsterEmoji}</span>
             <span>{leak.monsterName}</span>
+            {isBreach && (
+              <span
+                className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-violet-400/70 text-violet-300/90 bg-violet-500/10"
+                title="Escaped from the Breach world when the Maw was defeated"
+              >
+                breach
+              </span>
+            )}
           </div>
         }
         action={

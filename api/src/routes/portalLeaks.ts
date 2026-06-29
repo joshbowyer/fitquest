@@ -34,13 +34,23 @@ export async function portalLeakRoutes(app: FastifyInstance) {
   // OVERWHELMED / EXPIRED), newest first. The dashboard card only
   // shows the current leak, so this is for the full /portal-leak
   // page and any future "leak log" elsewhere.
+  //
+  // Optional ?source=AMBIENT|BREACH filter. The /portal-leak page
+  // uses this to split the two monster sources (regular ambient
+  // shield leaks vs Breach-world escapes) into separate lists
+  // so the user can see "I've been spawning breach leaks because
+  // I've been killing The Maw" at a glance.
   app.get('/history', async (req) => {
     const me = await requireUser(req);
+    const q = (req.query ?? {}) as { source?: string };
+    const source = q.source === 'AMBIENT' || q.source === 'BREACH' ? q.source : null;
+    const where: any = {
+      userId: me.id,
+      status: { in: ['DEFEATED', 'OVERWHELMED', 'EXPIRED'] },
+    };
+    if (source) where.worldSource = source;
     const items = await prisma.portalLeak.findMany({
-      where: {
-        userId: me.id,
-        status: { in: ['DEFEATED', 'OVERWHELMED', 'EXPIRED'] },
-      },
+      where,
       orderBy: { resolvedAt: 'desc' },
       take: 25,
     });

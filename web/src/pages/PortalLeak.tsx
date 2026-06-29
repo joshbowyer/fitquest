@@ -21,6 +21,44 @@ import type {
 // leaks + dismiss controls for cleared encounters.
 // =============================================================================
 
+/**
+ * Filter UI for the history panel. Toggles between "All",
+ * "Ambient" (random shield drops) and "Breach" (escaped from
+ * the Breach world). The query refilters via the API endpoint
+ * — no client-side filtering of an unfiltered list.
+ */
+function HistoryFilterToggle({
+  value,
+  onChange,
+}: {
+  value: 'ALL' | 'AMBIENT' | 'BREACH';
+  onChange: (v: 'ALL' | 'AMBIENT' | 'BREACH') => void;
+}) {
+  const opts: Array<{ key: 'ALL' | 'AMBIENT' | 'BREACH'; label: string }> = [
+    { key: 'ALL',     label: 'All' },
+    { key: 'AMBIENT', label: 'Ambient' },
+    { key: 'BREACH',  label: 'Breach' },
+  ];
+  return (
+    <div className="flex gap-1 mb-2">
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest border ${
+            value === o.key
+              ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+              : 'border-ink-500/40 text-ink-300 hover:border-ink-300'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function PortalLeakPage() {
   const qc = useQueryClient();
   const leakQ = useQuery({
@@ -29,9 +67,14 @@ export function PortalLeakPage() {
     refetchInterval: 60_000,
   });
 
+  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'AMBIENT' | 'BREACH'>('ALL');
   const historyQ = useQuery({
-    queryKey: ['portal-leak', 'history'],
-    queryFn: () => api<{ items: PortalLeakData[] }>('/portal-leak/history'),
+    queryKey: ['portal-leak', 'history', historyFilter],
+    queryFn: () => api<{ items: PortalLeakData[] }>(
+      historyFilter === 'ALL'
+        ? '/portal-leak/history'
+        : `/portal-leak/history?source=${historyFilter}`,
+    ),
   });
 
   const leak = leakQ.data?.leak ?? null;
@@ -57,12 +100,17 @@ export function PortalLeakPage() {
 
         {/* History */}
         <Panel variant="cyan" title="Recent leaks">
+          <HistoryFilterToggle value={historyFilter} onChange={setHistoryFilter} />
           {historyQ.isLoading && (
             <div className="text-[10px] font-mono text-ink-400">loading history…</div>
           )}
           {historyQ.data && historyQ.data.items.length === 0 && (
             <div className="text-[11px] font-mono text-ink-400 italic">
-              No resolved leaks yet. Once you seal one, it shows up here for posterity.
+              {historyFilter === 'BREACH'
+                ? 'No Breach leaks resolved yet. Defeat The Maw to spawn them.'
+                : historyFilter === 'AMBIENT'
+                ? 'No ambient leaks resolved yet.'
+                : 'No resolved leaks yet. Once you seal one, it shows up here for posterity.'}
             </div>
           )}
           {historyQ.data && historyQ.data.items.length > 0 && (
@@ -133,6 +181,14 @@ function ActiveLeakCard({
         <div className="flex items-center gap-2">
           <span style={{ color: leak.monsterColor }}>{leak.monsterEmoji}</span>
           <span>{leak.monsterName}</span>
+          {leak.worldSource === 'BREACH' && (
+            <span
+              className="text-[9px] font-mono uppercase tracking-widest px-1 py-px border border-violet-400/70 text-violet-300/90 bg-violet-500/10"
+              title="Escaped from the Breach world when the Maw was defeated"
+            >
+              breach
+            </span>
+          )}
           <span className="text-[10px] font-mono text-ink-400 ml-2">
             [{leak.status}]
           </span>
@@ -264,6 +320,11 @@ function HistoryRow({ leak }: { leak: PortalLeakData }) {
       <div className="flex items-center gap-2 min-w-0">
         <span style={{ color: leak.monsterColor }}>{leak.monsterEmoji}</span>
         <span className="text-sm truncate">{leak.monsterName}</span>
+        {leak.worldSource === 'BREACH' && (
+          <span className="text-[8px] font-mono uppercase tracking-widest px-1 py-px border border-violet-400/60 text-violet-300/80">
+            breach
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2 text-[10px] font-mono shrink-0">
         <span className={color}>{leak.status}</span>

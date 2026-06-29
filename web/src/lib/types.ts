@@ -735,6 +735,7 @@ export const MEAL_TYPE_ORDER: MealType[] = ['BREAKFAST', 'LUNCH', 'DINNER', 'SNA
 // =============================================================================
 
 export type PortalLeakStatus = 'ACTIVE' | 'DEFEATED' | 'OVERWHELMED' | 'EXPIRED';
+export type PortalLeakSource = 'AMBIENT' | 'BREACH';
 
 export type PortalLeak = {
   id: string;
@@ -754,6 +755,10 @@ export type PortalLeak = {
   resolvedReason: string | null;
   createdAt: string;
   updatedAt: string;
+  /// 'AMBIENT' = regular homebase-shield spawn. 'BREACH' = monster
+  /// escaped from the Breach world (Maw defeat). Lets the UI
+  /// highlight it differently.
+  worldSource?: PortalLeakSource;
 };
 
 export type LeakDamageEvent = {
