@@ -33,22 +33,18 @@
   - Shows a basic digest (workout logged, sleep duration,
     weigh-in status, recovery score, substance caps).
   - Dismissable; should NOT block other UI once dismissed.
-- **Live workout feature is broken in several ways.**
-  - Predefined routine selection doesn't pre-fill any exercises
-    or sets — user has to re-enter everything from scratch.
-  - First field auto-focuses, which pops up the on-screen
-    keyboard on mobile. Should be no auto-focus on the form.
-  - No "Edit This Set" toggle — the set editor is always live;
-    accidentally tapping a value mid-set overwrites it.
-  - No superset support: can't pair two exercises so the live
-    workout interleaves them (set 1A → set 1B → set 2A → set 2B).
-  - "Finish Workout" reportedly doesn't fire on commit
-    (already supposedly fixed once per the Recently Fixed list,
-    may have regressed — needs a fresh audit of
-    `advanceToNextSet`'s "no more sets" branch).
-  - Notes section is only available pre-workout. Should ALSO
-    be available post-workout for logging how the session went
-    (vs. just preflight conditions).
+- **Supersets in the live workout.** Schema migration needed
+  (groupIndex on WorkoutTemplateExercise + Exercise), then
+  a "Pair with next exercise" button in the Routines page, and
+  a rewrite of `advanceToNextSet` in LiveWorkoutLogger to
+  round-robin through grouped exercises (1A → 1B → 2A → 2B).
+  Bulk mode can stay linear because users fill in the full log
+  at once. (5 of the 6 sub-bugs in the original "live workout
+  feature is broken" item were fixed in commit `65ed0ed`:
+  autofocus removed, Finish-Workout isPending guard added,
+  prefill race gated on selectedTemplateQ.isSuccess, post-
+  workout notes added, Edit-This-Set toggle shipped. Only
+  supersets remain.)
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
   UI (no "history of resting HR" chart, no BP log form, etc).
@@ -112,6 +108,22 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Live workout — 5 of 6 reported bugs fixed. `autoFocus` on the
+  weight input removed (mobile keyboard no longer pops unprompted).
+  "Finish workout" gets a belt-and-suspenders `disabled` guard on
+  `createM.isPending` so double-taps can't re-fire the commit (the
+  existing fix at commit `eff47ad` was likely just behind a stale
+  docker image — pulling the new build should resolve the user-
+  reported hang). Predefined routine prefill now gates on
+  `selectedTemplateQ.isSuccess` so the logger doesn't mount with a
+  stale `templatePrefill=null` snapshot. New `Workout.postNotes`
+  column + rest-screen textarea on the final set for post-session
+  reflection (bulk mode shows it inline). CapturedSet gains a
+  `locked: boolean` field; the new history strip below the live
+  entry lists every captured set with a per-row ✎ Edit / ✓ Lock
+  toggle so accidental taps can't overwrite mid-workout. (6th bug,
+  supersets, deferred — needs schema migration + state-machine
+  rewrite.)
 - ✅ Hardcore-mode heart-loss system wired up. `loseHeart()`
   had zero callers until this commit. New
   `fireHardcoreHeartPenalties()` runs alongside
