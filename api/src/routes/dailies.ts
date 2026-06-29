@@ -4,6 +4,7 @@ import { DayOfWeek, DailyCategory, prisma } from '../lib/prisma.js';
 import type { DayOfWeek as DayOfWeekType } from '@prisma/client';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { computeRecovery } from '../lib/recovery.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),
@@ -113,7 +114,7 @@ async function fetchDailiesForDate(
     const targetLocalDate = todayInTz(tz, startOfDay);
     const dt = new Date(`${targetLocalDate}T12:00:00Z`);
     const dow = ['SUN','MON','TUE','WED','THU','FRI','SAT'][dt.getUTCDay()];
-    today = dow as DayOfWeek;
+    today = dow as DayOfWeekType;
   } else {
     startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -210,84 +211,100 @@ app.get('/today', async (req) => {
    * The popup dismisses itself and re-fetches on demand, so we
    * don't bother with caching.
    */
-  app.get<{ Querystring: { date?: string } }>('/morning-popup', async (req) => {
-    const me = await requireUser(req);
-    const q = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
-    const { localMidnightUtc, todayInTz } = await import('../lib/timezone.js');
-    const tz = me.timezone ?? 'UTC';
+  app.get<{ Querystring: { date?: string } }>('/morning-popup', async (req, reply) => {
+    try {
+      const me = await requireUser(req);
+      const q = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).parse(req.query);
+      const { localMidnightUtc, todayInTz } = await import('../lib/timezone.js');
+      const tz = me.timezone ?? 'UTC';
 
-    // Default date = yesterday in the user's tz.
-    const nowLocal = todayInTz(tz);
-    const targetDate = q.date ?? (() => {
-      const todayMidnight = localMidnightUtc(nowLocal, tz);
-      const yesterday = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
-      return todayInTz(tz, yesterday);
-    })();
+      // Default date = yesterday in the user's tz.
+      const nowLocal = todayInTz(tz);
+      const targetDate = q.date ?? (() => {
+        const todayMidnight = localMidnightUtc(nowLocal, tz);
+        const yesterday = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
+        return todayInTz(tz, yesterday);
+      })();
 
-    const startOfDay = localMidnightUtc(targetDate, tz);
-    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+      const startOfDay = localMidnightUtc(targetDate, tz);
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
-    // Dailies for the target date (use the shared helper directly
-    // — no need to round-trip through app.inject in a route).
-    const dailiesForDate = await fetchDailiesForDate(me.id, tz, targetDate);
+      // Dailies for the target date (use the shared helper directly
+      // — no need to round-trip through app.inject in a route).
+      const dailiesForDate = await fetchDailiesForDate(me.id, tz, targetDate);
 
-    // Yesterday recap: workout + sleep + weigh-in + recovery.
-    const [workouts, sleep, latestWeight, recovery, heartLoss] = await Promise.all([
-      prisma.workout.findMany({
-        where: { userId: me.id, performedAt: { gte: startOfDay, lt: endOfDay } },
-        select: { id: true, name: true, type: true, duration: true, performedAt: true },
-        orderBy: { performedAt: 'asc' },
-      }),
-      prisma.measurement.findFirst({
-        where: { userId: me.id, metric: 'SLEEP_HOURS', recordedAt: { gte: startOfDay, lt: endOfDay } },
-        orderBy: { recordedAt: 'desc' },
-        select: { value: true, recordedAt: true },
-      }),
-      prisma.measurement.findFirst({
-        where: { userId: me.id, metric: 'WEIGHT' },
-        orderBy: { recordedAt: 'desc' },
-        select: { value: true, recordedAt: true },
-      }),
-      // Recovery score is server-computed; re-use the engine.
-      import('../lib/recovery.js').then((m) => m.computeRecovery(me.id)).catch(() => ({ score: null })),
-      prisma.heartLossEvent.findMany({
-        where: { userId: me.id, sourceDate: startOfDay },
-        select: { id: true, kind: true, details: true, sourceDate: true },
-      }),
-    ]);
+      // Yesterday recap: workout + sleep + weigh-in + recovery.
+      // Each query has its own .catch so a single DB hiccup doesn't
+      // take down the whole popup — the UI surfaces the field as
+      // "n/a" instead. Better than a 500 that blocks the user from
+      // seeing their dailies (the actionable part of the popup).
+      const [workouts, sleep, latestWeight, recovery, heartLoss] = await Promise.all([
+        prisma.workout.findMany({
+          where: { userId: me.id, performedAt: { gte: startOfDay, lt: endOfDay } },
+          select: { id: true, name: true, type: true, duration: true, performedAt: true },
+          orderBy: { performedAt: 'asc' },
+        }).catch(() => []),
+        prisma.measurement.findFirst({
+          where: { userId: me.id, metric: 'SLEEP_HOURS', recordedAt: { gte: startOfDay, lt: endOfDay } },
+          orderBy: { recordedAt: 'desc' },
+          select: { value: true, recordedAt: true },
+        }).catch(() => null),
+        prisma.measurement.findFirst({
+          where: { userId: me.id, metric: 'WEIGHT' },
+          orderBy: { recordedAt: 'desc' },
+          select: { value: true, recordedAt: true },
+        }).catch(() => null),
+        // Recovery score is server-computed; re-use the engine.
+        computeRecovery(me.id).catch(() => ({ score: null })),
+        prisma.heartLossEvent.findMany({
+          where: { userId: me.id, sourceDate: startOfDay },
+          select: { id: true, kind: true, details: true, sourceDate: true },
+        }).catch(() => []),
+      ]);
 
-    // Levels: read-only from user. XP-to-next-level uses the same
-    // formula as the rest of the app.
-    const user = await prisma.user.findUnique({
-      where: { id: me.id },
-      select: { level: true, xp: true, mode: true, hearts: true, heartsLastRegenAt: true },
-    });
+      // Levels: read-only from user. XP-to-next-level uses the same
+      // formula as the rest of the app.
+      const user = await prisma.user.findUnique({
+        where: { id: me.id },
+        select: { level: true, xp: true, mode: true, hearts: true, heartsLastRegenAt: true },
+      });
 
-    return {
-      date: targetDate,
-      mode: user?.mode ?? 'CASUAL',
-      level: user?.level ?? 1,
-      xp: user?.xp ?? 0,
-      hearts: user?.hearts ?? 5,
-      // Missed dailies = not yet completed on the target date. User
-      // can tap to mark them done (recovers from the missed-all-dailies
-      // heart-loss trigger). Skipped dailies are NOT surfaced as
-      // missed — those are legitimate opt-outs.
-      dailies: dailiesForDate,
-      recap: {
-        workoutLogged: workouts.length > 0,
-        workoutCount: workouts.length,
-        workoutNames: workouts.map((w) => w.name ?? w.type).slice(0, 3),
-        sleepHours: sleep?.value ?? null,
-        weighInLogged: latestWeight
-          ? latestWeight.recordedAt.getTime() >= startOfDay.getTime()
-            && latestWeight.recordedAt.getTime() < endOfDay.getTime()
-          : false,
-        latestWeightKg: latestWeight?.value ?? null,
-        recoveryScore: recovery?.score ?? null,
-      },
-      heartLoss,
-    };
+      return {
+        date: targetDate,
+        mode: user?.mode ?? 'CASUAL',
+        level: user?.level ?? 1,
+        xp: user?.xp ?? 0,
+        hearts: user?.hearts ?? 5,
+        // Missed dailies = not yet completed on the target date. User
+        // can tap to mark them done (recovers from the missed-all-dailies
+        // heart-loss trigger). Skipped dailies are NOT surfaced as
+        // missed — those are legitimate opt-outs.
+        dailies: dailiesForDate,
+        recap: {
+          workoutLogged: workouts.length > 0,
+          workoutCount: workouts.length,
+          workoutNames: workouts.map((w) => w.name ?? w.type).slice(0, 3),
+          sleepHours: sleep?.value ?? null,
+          weighInLogged: latestWeight
+            ? latestWeight.recordedAt.getTime() >= startOfDay.getTime()
+              && latestWeight.recordedAt.getTime() < endOfDay.getTime()
+            : false,
+          latestWeightKg: latestWeight?.value ?? null,
+          recoveryScore: recovery?.score ?? null,
+        },
+        heartLoss,
+      };
+    } catch (err: any) {
+      // Defensive: any failure here means the popup can't render,
+      // but the rest of /today should still work. Return a sentinel
+      // shape so the client can render the "Couldn't load morning
+      // recap" fallback rather than 500ing the whole page.
+      req.log.warn({ err: String(err?.message ?? err) }, 'morning-popup failed');
+      return reply.code(500).send({
+        error: 'morning-popup failed',
+        message: err?.message ?? 'unknown',
+      });
+    }
   });
 
   // POST /dailies — create a user-defined daily
