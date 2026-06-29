@@ -4,6 +4,18 @@
 > working code reachable via a URL. "Outstanding" items are sized
 > + scoped for the next session.
 
+## Operations
+
+- **Run `npx prisma migrate deploy` after every pull.** The api
+  Dockerfile runs it on container startup, but **`npm run dev` does
+  not** — devs running `tsx watch` locally need to run it manually
+  after pulling new code. The `20260701090000_measurement_unique_user_metric_date`
+  migration can fail on existing installs that accumulated duplicate
+  Measurement rows from old FIT re-imports; if it does, run the
+  dedup query in the migration's comment and then
+  `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
+
+
 ## Active (in progress)
 
 (none — picking from the backlog next)
