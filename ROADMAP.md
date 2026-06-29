@@ -12,13 +12,6 @@
 
 ### Bugs / data-correctness
 
-- **Genetic Max minimums are wrong.** Several metrics have
-  minimums so far below realistic that the field is unusable.
-  Audit + fix:
-    - SHOULDER min 15in (probably should be ~35in)
-    - CALF min 14in, max 16in (user's actual is 12.7in → floor too high)
-    - FFMI min too high
-    - Probably more (audit all of `geneticMax.ts`)
 - **Recent PRs block shows calculated 1RM, not real PRs.** The
   Dashboard "Recent PRs" panel currently surfaces the user's
   estimated 1RM peaks (Epley formula on every set) and calls
@@ -206,7 +199,6 @@
 ## Nice-to-haves (backlog)
 
 - Dark/light theme toggle (currently only dark)
-- Sound effects on level up, raid damage, etc.
 - Push notifications (web push API for homebase shield drops,
   breach defeat, etc.)
 
