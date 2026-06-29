@@ -17,6 +17,28 @@ enum ClassName {
   ORACLE
 }
 
+/// Possible triggers that cost a Hardcore-mode heart. One enum
+/// value per row written to HeartLossEvent.kind.
+enum HeartLossTrigger {
+  /// Yesterday was a planned workout day in the routine and no
+  /// workout landed in that window.
+  MISSED_WORKOUT
+  /// Every expected daily (including the user's configured spiritual
+  /// prayers) was skipped yesterday.
+  MISSED_ALL_DAILIES
+  /// Yesterday's caffeine log count exceeded HARDCORE_SUBSTANCE_CAPS.
+  SUBSTANCE_CAFFEINE
+  /// Rolling 7-day alcohol count exceeded HARDCORE_SUBSTANCE_CAPS.
+  SUBSTANCE_ALCOHOL
+  /// Rolling 7-day nicotine count exceeded HARDCORE_SUBSTANCE_CAPS.
+  SUBSTANCE_NICOTINE
+  /// No spiritual activity logged yesterday (any prayer type,
+  /// mass, scripture reading, etc.) — independent of dailies so
+  /// users without configured spiritual dailies still get credit
+  /// for engaging in any spiritual practice.
+  ZERO_SPIRITUAL
+}
+
 enum MetricType {
   // Hypertrophy (circumferences in cm)
   BICEP
@@ -252,6 +274,7 @@ model User {
   workoutTemplates      WorkoutTemplate[]
   penanceTemplates      PenanceTemplate[]
   penanceEvents         PenanceEvent[]
+  heartLossEvents       HeartLossEvent[]
   // Breach boss progress. One row per user; lazily created on
   // first /breach GET after level 10 OR first workout-commit
   // while unlocked (whichever happens first). Defined as ? here
@@ -765,6 +788,45 @@ model PenanceEvent {
 
   @@index([userId, createdAt])
   @@index([userId, source])
+}
+
+/// Hardcore-mode heart-loss audit. One row per (user, local-date,
+/// trigger-kind). The unique index makes the morning-report sweep
+/// naturally idempotent — re-fetching /morning-report the same day
+/// is a no-op for hearts because the unique constraint blocks dupes.
+///
+/// Possible trigger kinds (see HeartLossTrigger enum):
+///   MISSED_WORKOUT      — yesterday was a RoutineDay workout day
+///                          and no Workout row landed in that window.
+///   MISSED_ALL_DAILIES  — every expected daily (incl. spiritual
+///                          prayers the user committed to) was
+///                          skipped yesterday.
+///   SUBSTANCE_CAFFEINE  — yesterday's caffeine log count exceeded
+///                          the Hardcore cap.
+///   SUBSTANCE_ALCOHOL   — rolling 7-day alcohol count exceeded
+///                          the Hardcore cap.
+///   SUBSTANCE_NICOTINE  — rolling 7-day nicotine count exceeded
+///                          the Hardcore cap.
+///   ZERO_SPIRITUAL      — no spiritual activity (any prayer type,
+///                          mass, etc.) was logged yesterday, even
+///                          if the user hasn't configured dailies.
+model HeartLossEvent {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        HeartLossTrigger
+  /// Local-date (YYYY-MM-DD) the penalty applies to. Stored as a
+  /// DATE (not timestamptz) so the unique constraint is per
+  /// calendar day in the user's tz, not per UTC instant.
+  sourceDate  DateTime            @db.Date
+  /// Human-readable explanation of what fired (e.g. "3 caffeine
+  /// logs on 2026-06-21 vs cap of 3"). Surfaced in the morning
+  /// report penalty ledger.
+  details     String?
+  firedAt     DateTime            @default(now())
+
+  @@unique([userId, kind, sourceDate])
+  @@index([userId, firedAt])
 }
 
 // ============================================================

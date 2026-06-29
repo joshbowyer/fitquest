@@ -188,13 +188,16 @@ async function substanceCountsDomain(
   userId: string,
   since1d: Date,
   since7d: Date,
-): Promise<{ caffeineLast24h: number; alcoholLast7d: number; caffeineAllLast7d: number }> {
-  const [caffeine24h, alcohol7d, caffeine7d] = await Promise.all([
+): Promise<{ caffeineLast24h: number; alcoholLast7d: number; nicotineLast7d: number; caffeineAllLast7d: number }> {
+  const [caffeine24h, alcohol7d, nicotine7d, caffeine7d] = await Promise.all([
     prisma.substanceLog.count({
       where: { userId, category: 'CAFFEINE', loggedAt: { gte: since1d } },
     }),
     prisma.substanceLog.count({
       where: { userId, category: 'ALCOHOL', loggedAt: { gte: since7d } },
+    }),
+    prisma.substanceLog.count({
+      where: { userId, category: 'NICOTINE', loggedAt: { gte: since7d } },
     }),
     prisma.substanceLog.count({
       where: { userId, category: 'CAFFEINE', loggedAt: { gte: since7d } },
@@ -203,6 +206,7 @@ async function substanceCountsDomain(
   return {
     caffeineLast24h: caffeine24h,
     alcoholLast7d: alcohol7d,
+    nicotineLast7d: nicotine7d,
     caffeineAllLast7d: caffeine7d,
   };
 }
@@ -648,7 +652,7 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     });
   }
 
-  const { caffeineLast24h, alcoholLast7d } = payload.substanceCounts;
+  const { caffeineLast24h, alcoholLast7d, nicotineLast7d } = payload.substanceCounts;
   if (caffeineLast24h > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
     const overshoot = caffeineLast24h - HARDCORE_SUBSTANCE_CAPS.caffeinePerDay;
     out.push({
@@ -663,6 +667,14 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
       label: 'Alcohol',
       severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek ? 'scold' : 'warn',
       note: `${alcoholLast7d} drinks in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}). Weekly XP multiplier reduced.`,
+    });
+  }
+  if (nicotineLast7d > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
+    const overshoot = nicotineLast7d - HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek;
+    out.push({
+      label: 'Nicotine',
+      severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek ? 'scold' : 'warn',
+      note: `${nicotineLast7d} nicotine logs in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}). Nicotine carries the highest hard-cap penalty.`,
     });
   }
 
@@ -836,6 +848,7 @@ export async function getOrGenerateToday(
   // day. The check is best-effort: a thrown error here doesn't
   // block the report itself.
   await fireMissedAllDailiesPenance(userId, opts.timezone ?? user?.timezone ?? null);
+  await fireHardcoreHeartPenalties(userId, opts.timezone ?? user?.timezone ?? null);
 
   if (!opts.force) {
     const existing = await prisma.morningReport.findUnique({
@@ -1062,5 +1075,208 @@ async function fireMissedAllDailiesPenance(
     await firePenance(userId, 'missed_all_dailies', 'daily_missed');
   } catch (err) {
     console.warn('[morning-report] missed_all_dailies penance check failed', err);
+  }
+}
+
+// =============================================================================
+// Hardcore-mode heart-loss sweep. Wired alongside the all-dailies
+// penance above so the user gets one morning fetch = one set of
+// idempotent side-effects.
+//
+// Each trigger can independently cost a heart. The HeartLossEvent
+// unique constraint on (userId, kind, sourceDate) makes the sweep
+// naturally idempotent — re-fetching /morning-report in the same
+// local day is a no-op because the dup INSERT raises P2002 and we
+// silently skip.
+//
+// Triggers fired (Hardcore mode only):
+//   MISSED_WORKOUT      — yesterday was a RoutineDay workout day and
+//                         no Workout row landed in that window.
+//   MISSED_ALL_DAILIES  — every expected daily (incl. spiritual
+//                         prayers the user committed to) was
+//                         skipped. Independent of the shield-delta
+//                         penance of the same name above.
+//   SUBSTANCE_CAFFEINE  — yesterday's caffeine log count > cap.
+//   SUBSTANCE_ALCOHOL   — rolling 7-day alcohol count > cap.
+//   SUBSTANCE_NICOTINE  — rolling 7-day nicotine count > cap.
+//   ZERO_SPIRITUAL      — no PrayerLog + no SPIRITUAL:* daily log
+//                         yesterday, even if the user hasn't
+//                         configured any spiritual dailies.
+//
+// Each unique-index INSERT that lands writes a HeartLossEvent row
+// AND calls loseHeart(). A user can lose up to 6 hearts in one day
+// (one per trigger) but in practice the realistic ceiling is 2-3.
+// =============================================================================
+
+export async function fireHardcoreHeartPenalties(
+  userId: string,
+  timezone: string | null,
+): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { mode: true, spiritualDailyPrayers: true },
+    });
+    if (!user || user.mode !== 'HARDCORE') return;
+
+    const { todayInTz, localMidnightUtc } = await import('./timezone.js');
+    const today = todayInTz(timezone);
+    if (!today) return;
+    const todayMidnight = localMidnightUtc(today, timezone ?? 'UTC');
+    const yesterdayMidnight = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
+    const startOfYesterday = new Date(yesterdayMidnight);
+    startOfYesterday.setHours(0, 0, 0, 0);
+    const endOfYesterday = new Date(yesterdayMidnight);
+    endOfYesterday.setHours(23, 59, 59, 999);
+
+    // Helper: try to record a HeartLossEvent + lose a heart. The
+    // unique constraint on (userId, kind, sourceDate) makes the
+    // INSERT idempotent for same-day re-fires; we catch P2002 and
+    // treat it as "already fired, do nothing".
+    async function fire(kind: 'MISSED_WORKOUT' | 'MISSED_ALL_DAILIES' | 'SUBSTANCE_CAFFEINE' | 'SUBSTANCE_ALCOHOL' | 'SUBSTANCE_NICOTINE' | 'ZERO_SPIRITUAL', details: string) {
+      try {
+        await prisma.heartLossEvent.create({
+          data: {
+            userId,
+            kind,
+            sourceDate: yesterdayMidnight,
+            details,
+          },
+        });
+        // Only lose the heart if the row actually landed (i.e. we
+        // weren't an idempotent re-fire). Import lazily to avoid a
+        // circular dep at module-load time.
+        const { loseHeart } = await import('./mode.js');
+        await loseHeart(userId, { reason: details });
+      } catch (err: any) {
+        // P2002 = unique constraint violation = already fired today.
+        // Anything else is a real failure — log and keep going.
+        if (err?.code !== 'P2002') {
+          console.warn(`[morning-report] heart-loss create(${kind}) failed`, err);
+        }
+      }
+    }
+
+    // ---- Trigger 1: MISSED_WORKOUT ----
+    // Day-of-week for "yesterday" in the user's tz.
+    const yesterdayDow = (() => {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone || 'UTC', weekday: 'short',
+        }).format(yesterdayMidnight).toUpperCase().slice(0, 3) as
+          | 'SUN' | 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT';
+      } catch {
+        return ['SUN','MON','TUE','WED','THU','FRI','SAT'][yesterdayMidnight.getUTCDay()] as any;
+      }
+    })();
+    const routineRow = await prisma.routineDay.findUnique({
+      where: { userId_day: { userId, day: yesterdayDow } },
+      select: { workout: true },
+    });
+    if (routineRow?.workout) {
+      const workoutCount = await prisma.workout.count({
+        where: {
+          userId,
+          performedAt: { gte: startOfYesterday, lte: endOfYesterday },
+        },
+      });
+      if (workoutCount === 0) {
+        await fire('MISSED_WORKOUT', `${yesterdayDow} was a planned workout day, 0 workouts logged`);
+      }
+    }
+
+    // ---- Trigger 2: MISSED_ALL_DAILIES ----
+    // Mirror of fireMissedAllDailiesPenance above, but writes a
+    // HeartLossEvent instead of (or in addition to) the shield
+    // penance. Same expected-keys set so the semantics stay in sync.
+    const dailies = await prisma.daily.findMany({
+      where: { userId, archived: false },
+      select: { id: true },
+    });
+    const expectedKeys = new Set<string>([
+      ...dailies.map((d: { id: string }) => d.id),
+      'WORKOUT',
+    ]);
+    for (const prayer of user.spiritualDailyPrayers ?? []) {
+      expectedKeys.add(`SPIRITUAL:${prayer}`);
+    }
+    if (expectedKeys.size > 0) {
+      const completedLogs = await prisma.dailyLog.findMany({
+        where: {
+          userId,
+          loggedAt: { gte: startOfYesterday, lte: endOfYesterday },
+        },
+        select: { dailyKey: true },
+      });
+      const completed = new Set(completedLogs.map((k: { dailyKey: string }) => k.dailyKey));
+      const allMissed = [...expectedKeys].every((k) => !completed.has(k));
+      if (allMissed) {
+        await fire('MISSED_ALL_DAILIES', `0/${expectedKeys.size} expected dailies completed yesterday`);
+      }
+    }
+
+    // ---- Trigger 3-5: SUBSTANCE_* ----
+    const substanceCounts = await prisma.substanceLog.groupBy({
+      by: ['category'],
+      where: { userId, loggedAt: { gte: startOfYesterday } },
+      _count: { _all: true },
+    });
+    // For caffeine we only count yesterday. For alcohol/nicotine we
+    // count the rolling 7-day window ending yesterday (last 7 full
+    // days). The groupBy above already gives us yesterday-only
+    // counts; roll back the window for alcohol/nicotine.
+    const sevenDayStart = new Date(todayMidnight.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const rollingCounts = await prisma.substanceLog.groupBy({
+      by: ['category'],
+      where: { userId, loggedAt: { gte: sevenDayStart, lt: todayMidnight } },
+      _count: { _all: true },
+    });
+    const yesterdayCount = (cat: string) =>
+      substanceCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
+    const rollingCount = (cat: string) =>
+      rollingCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
+
+    if (yesterdayCount('CAFFEINE') > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
+      await fire(
+        'SUBSTANCE_CAFFEINE',
+        `${yesterdayCount('CAFFEINE')} caffeine logs (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}/day)`,
+      );
+    }
+    if (rollingCount('ALCOHOL') > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
+      await fire(
+        'SUBSTANCE_ALCOHOL',
+        `${rollingCount('ALCOHOL')} alcohol logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}/week)`,
+      );
+    }
+    if (rollingCount('NICOTINE') > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
+      await fire(
+        'SUBSTANCE_NICOTINE',
+        `${rollingCount('NICOTINE')} nicotine logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}/week)`,
+      );
+    }
+
+    // ---- Trigger 6: ZERO_SPIRITUAL ----
+    // Independent of configured dailies — a user who logs nothing
+    // spiritual yesterday, regardless of whether they have any
+    // spiritual obligations configured, gets dinged. This rewards
+    // any engagement (mass, rosary, scripture reading, ad-hoc
+    // meditation, etc.).
+    const [prayerLogs, spiritualDailyLogs] = await Promise.all([
+      prisma.prayerLog.count({
+        where: { userId, loggedAt: { gte: startOfYesterday, lte: endOfYesterday } },
+      }),
+      prisma.dailyLog.count({
+        where: {
+          userId,
+          loggedAt: { gte: startOfYesterday, lte: endOfYesterday },
+          dailyKey: { startsWith: 'SPIRITUAL:' },
+        },
+      }),
+    ]);
+    if (prayerLogs + spiritualDailyLogs === 0) {
+      await fire('ZERO_SPIRITUAL', 'no PrayerLog and no SPIRITUAL:* daily logged yesterday');
+    }
+  } catch (err) {
+    console.warn('[morning-report] hardcore heart-loss sweep failed', err);
   }
 }

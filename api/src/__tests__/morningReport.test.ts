@@ -12,6 +12,7 @@ function makePayload(overrides: Partial<{
   hearts: number;
   caffeineLast24h: number;
   alcoholLast7d: number;
+  nicotineLast7d: number;
   currentStreak: number;
   brokenThisWeek: boolean;
 }> = {}): ReportPayload {
@@ -48,6 +49,7 @@ function makePayload(overrides: Partial<{
     substanceCounts: {
       caffeineLast24h: overrides.caffeineLast24h ?? 0,
       alcoholLast7d: overrides.alcoholLast7d ?? 0,
+      nicotineLast7d: overrides.nicotineLast7d ?? 0,
       caffeineAllLast7d: 0,
     },
     // Engines wired into the gather payload. Defaults to empty so

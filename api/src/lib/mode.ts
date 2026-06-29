@@ -44,12 +44,18 @@ import { lastSundayMidnightUtc } from './timezone.js';
 /// weekly recharge regardless of when they last dropped a heart.
 export const HEART_REGEN_MS = 7 * 24 * 60 * 60 * 1000;
 
-/// Caffeine / alcohol thresholds for Hardcore mode substance caps.
-/// Per-day caffeine, per-week alcohol. Conservative — the point is
-/// to flag, not to nag. Could be tuned per-user later via /settings.
+/// Substance thresholds for Hardcore mode. Anything above these
+/// caps fires a heart-loss event the next morning:
+///   - caffeine: per-day count (typical = coffee + pre-workout)
+///   - alcohol:  rolling 7-day count (drinks/week, not unique days)
+///   - nicotine: rolling 7-day count (most restrictive — nicotine is
+///               the most damaging of the three)
+/// Conservative — the point is to flag, not to nag. Could be tuned
+/// per-user later via /settings.
 export const HARDCORE_SUBSTANCE_CAPS = {
   caffeinePerDay: 3,
   alcoholPerWeek: 5,
+  nicotinePerWeek: 2,
 };
 
 export type UserMode = 'CASUAL' | 'HARDCORE';
@@ -160,6 +166,7 @@ export function heartMultiplier(hearts: number): number {
 export function hardcoreSubstanceCapReason(args: {
   caffeineLast24h: number;
   alcoholLast7d: number;
+  nicotineLast7d?: number;
 }): string | null {
   const reasons: string[] = [];
   if (args.caffeineLast24h > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
@@ -167,6 +174,10 @@ export function hardcoreSubstanceCapReason(args: {
   }
   if (args.alcoholLast7d > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
     reasons.push(`>${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek} drinks in last 7d`);
+  }
+  if (typeof args.nicotineLast7d === 'number'
+    && args.nicotineLast7d > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
+    reasons.push(`>${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek} nicotine uses in last 7d`);
   }
   return reasons.length ? reasons.join(', ') : null;
 }
