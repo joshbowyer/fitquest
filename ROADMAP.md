@@ -1,112 +1,141 @@
 # FitQuest Roadmap
 
-> Audited against the actual codebase — every "done" item below has
-> working code in the repo and reachable via a URL. The "outstanding"
-> items are sized + scoped for the next session.
+> Audited against the actual codebase — every "done" item has
+> working code reachable via a URL. "Outstanding" items are sized
+> + scoped for the next session.
 
 ## Active (in progress)
 
-(none — all high-priority items shipped this session)
+(none — high-priority items shipped, picking from the backlog)
 
-## High Priority — done in this session
+## Backlog (from user notes, in priority order)
 
-- ✅ **Tie quest boss unlocks to world completion.** `BossCard` +
-  `BossUnlockModal` + `/bosses/:worldId/damage` endpoint + auto-create
-  `WorldBoss` on clear + first-defeat rewards.
-- ✅ **More worlds — Nexus + Breach.** Nexus (cyan, lvl 10, multi-class
-  convergence, "The Multitude" boss) and Breach (violet, lvl 12,
-  raid-themed descent, "The Maw" boss). 9 worlds total.
-- ✅ **Breach world reset on Maw defeat.** `cycle` field on
-  `WorldBoss` + `UserWorldProgress` (migration
-  `20260629000000_add_world_cycle`). `resetBreachIfDefeated()`
-  increments cycle, picks a new Maw variant from a 10-entry pool
-  (excluding the 3 most recent to avoid repeats), wipes all breach
-  progress rows, and resets the WorldBoss to ACTIVE with full HP.
-- ✅ **Breach ↔ Raid integration.** `PortalLeak.worldSource`
-  (PortalLeakSource enum) — 'AMBIENT' or 'BREACH'. `maybeSpawnBreachLeak()`
-  spawns a leak tagged 'BREACH' when the Maw is defeated. UI:
-  a small violet "breach" badge on the homebase leak alert +
-  /portal-leak page title + history rows. History filter
-  (All / Ambient / Breach) on /portal-leak.
+### Bugs / data-correctness
 
-## Medium Priority — Security & Data
+- **Portal-leak queueing behaviour.** Currently `maybeSpawnLeak`
+  short-circuits if an active leak exists — the new spawn is
+  silently dropped. Should the new one queue so the user gets a
+  "next up" indicator, or get rolled into a 24h cumulative
+  timer, or stay dropped? Need a clear product decision.
+- **Morning Checkins block not linked to weight log.** The user
+  can log weight via the dashboard weigh-in block, but the
+  Morning checkin panel doesn't pick it up. Same problem for
+  sleep quality from .fit uploads → Sleep Q checkin. Likely the
+  "where does today's data come from" routing is wrong; both
+  should query the same `Measurements` table by `recordedAt::date`.
+- **Genetic Max minimums are wrong.** Several metrics have
+  minimums so far below realistic that the field is unusable.
+  Audit + fix:
+    - SHOULDER min 15in (probably should be ~35in)
+    - CALF min 14in, max 16in (user's actual is 12.7in → floor too high)
+    - FFMI min too high
+    - Probably more (audit all of `geneticMax.ts`)
+- **Recent PRs block shows calculated 1RM, not real PRs.** The
+  Dashboard "Recent PRs" panel currently surfaces the user's
+  estimated 1RM peaks (Epley formula on every set) and calls
+  them "PRs". A PR is a deliberate breakthrough, not every set.
+  Either rename to "Estimated 1RM peaks" or filter to only true
+  PR rows (the `Pr` table).
+- **Status page Identity block weight not updated from weigh-ins.**
+  The Identity block shows `user.weightKg` which is the column
+  value, but weigh-ins go into `Measurement` rows. The displayed
+  value should be the latest `Measurement(weightKg)` for today.
+- **Pain entries persist silently on Status.** Pain logs should
+  appear on the Today page with a "is it going down?" trend
+  card + a "pain is gone" quick-action. Currently the user has
+  to dig into the Status page to see them.
+- **Recovery practices should be on Today.** The card is worded
+  as daily ("today's recovery stack") and the user has to
+  navigate to Recovery to see it. Move the block to Today.
+- **Weekly Examen copy typo.** "where was God in neither"
+  appears in both the daily reflection prompt AND the weekly
+  review. The weekly version is the one that needs fixing
+  (should be "either" or "where was God in all this"). Clarify
+  with the user which wording is intended, then fix.
+- **Body weight graph zoom too tight on Insights.** Change
+  `yPad` from 20 above/below the recorded weight max/min to 10
+  so the line shows a bit more dynamism in the chart.
 
-- ~~Email verification + password reset.~~ **DROPPED** per user
-  direction (no email integration in this app).
-- ✅ **2FA / TOTP.** speakeasy + QR code + recovery codes.
-  `api/src/lib/totp.ts` + `web/src/components/TwoFactorSetup.tsx` +
-  full auth flow in `auth.ts`.
-- ✅ **Data export.** `/export/info` + `/export/json` + `/export/csv` (zip).
+### Polish
+
+- **Equipment drops / loot** — common enemy drops for raids so
+  raids aren't just "deal damage". Existing system drops loot
+  on leak defeat + boss defeat, but no themed "drop sources"
+  tied to world activity (e.g. "Glade drops agility gear", "Spire
+  drops strength gear"). Maps world → loot table.
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
-  for medical history. Schema has RHR + sleep already; need UI
-  for "medical history" view (chart of RHR over time, BP if
-  tracked, cholesterol if logged). Currently /measurements has
-  the data but no medical-themed UI.
-- **Insight rule improvements.** Existing rules in
-  `api/src/lib/insights.ts`: `recovery_low`, `recovery_high`,
-  `recovery_drag`, `strong_corr`, `coverage_gap`, `no_data`.
-  Could add: sleep-vs-recovery-correlation, pain-localization-to-
-  muscle-pattern, volume-vs-mood, stress-vs-PR, hydration-vs-RPE.
-
-## Medium Priority — Polish
-
-- ✅ **Quest homebase overhaul (consolidation).** Single `/home-base`
-  command center with "Open Galaxy Map" overlay, Breach indicator
-  (locked = unstable wavy outline, unlocked = full black hole with
-  electron orbital arcs), leak modal. Sidebar shrunk from 25 to 22
-  items (Quest, Breach, Leaks removed).
-- **Equipment drops / loot.** common enemy drops for raids so
-  raids aren't just "deal damage". Existing system drops loot on
-  leak defeat + boss defeat, but no themed "drop sources" tied to
-  world activity (e.g. "Glade drops agility gear", "Spire drops
-  strength gear"). Maps world → loot table.
-- **Mobile polish.** Already done basic pass — could iterate on:
-  - Long-press to multi-select on history
-  - Pull-to-refresh on Dashboard
-  - Haptic feedback on rest timer completion
-- **Live mode "Finish workout" hang.** When the user finished
-  the last set in Live mode and clicked "Finish workout ✓",
-  `advanceToNextSet()` set `phase = 'done'` but the actual
-  commit (`createM.run`) was never fired. Fix: fire the commit
-  in the "no more sets" branch of `advanceToNextSet`. ✅
-
-## Stretch / Future
-
-- ✅ **Nutrition tracker (FoodYou-style).** `api/src/routes/foods.ts`
-  + `api/src/routes/meals.ts` + `web/src/pages/Nutrition.tsx`.
-  AI-estimated macros from free-text descriptions, per-100g
-  client-side math, daily totals. UI exists in the sidebar.
-- **Gadgetbridge integration.** The FIT parser
-  (`api/src/lib/fit.ts`) supports the file format that
-  Gadgetbridge exports, and `/import` page text says "Supports
-  activities, sleep, HRV, and monitoring FITs from Garmin
-  wearables and Gadgetbridge." So in the sense of "we can ingest
-  what Gadgetbridge exports" — ✅. What's *not* done: a live
-  pull-from-server flow (currently upload-only). Future scope
-  if user wants a webhook + auto-poll.
-- ✅ **FIT / GPX file imports (Endurain-style).** `api/src/lib/fit.ts`
-  + `api/src/routes/import.ts` + `web/src/pages/Import.tsx`. Upload
-  a `.fit` file from a Garmin / Wahoo / etc. Extracts distance,
-  time, pace, HR, elevation. Auto-logs as a CARDIO workout with
-  all the juicy metrics. Also infers 1mi / 5K times for level
-  requirements.
-- **3D avatar / STATUS hologram polish.** Body hologram exists.
-  Could add: animations on level completion, animated "worked"
-  pulse when a workout is logged, idle ambient drift on the
-  body parts.
+  for medical history. Schema has the data but no medical-themed
+  UI (no "history of resting HR" chart, no BP log form, etc).
 - **Personal records page** — all PRs in one view with charts
   over time. Currently /prs/WorkoutDetail shows individual PRs
   but no aggregated "all my PRs over time" view.
-- ✅ **Body composition timeline chart** — `web/src/pages/BodyComp.tsx`
-  has a multi-metric timeline (weight, BF%, lean mass, RHR)
-  with 30d/90d/6mo/1yr windows. Implemented via OverlayTrendChart.
+- **Mobile polish** (small wins) — long-press to multi-select on
+  history, pull-to-refresh on Dashboard, haptic feedback on rest
+  timer completion.
+- **3D avatar polish** — animations on level completion,
+  animated "worked" pulse when a workout is logged.
+- **Skills page revisit** — the page exists but the user wants
+  to walk through it again. (Scope: see what currently works,
+  identify gaps.)
+- **Inventory: drop Preview block, move Stats From Equipment.**
+  The PREVIEW panel (which used to show a SpriteAvatar) is now
+  just the class portrait. Since we're not overlaying equipped
+  items onto a sprite, the block has no purpose. The "Stats From
+  Equipment" panel currently lives in the right column under
+  Preview — it should move to the left column ABOVE the item
+  catalogue, BELOW the equipped loadout panel.
+
+### More monsters for spiritual + recovery penalties (not just
+workouts). The Penance engine currently has a few workout-themed
+penalty templates; the spiritual + recovery tracks lack any.
+Add a roster of monsters/events per track (e.g. "missed Sunday
+mass", "skipped the examen", "didn't log a recovery metric for a
+week") that fire as portal leaks with thematic tags.
+
+### Identity / auth
+
+- **Tron identity disk should scale to real body measurements.**
+  Currently the disk is rendered at a fixed size; the user wants
+  the avatar to actually look different between body types. Add
+  measurements (shoulders, waist, height) and map them to real
+  visual properties (e.g. shoulder width → disk radius, waist →
+  inner ring, height → vertical position). 6' / 28in waist / 44in
+  shoulders should look visibly different from 5' / 32in / 42in.
+- **Username case-insensitive login** (may require DB change).
+  Currently login is case-sensitive — `LobsterWrangler` vs
+  `lobsterwrangler` are different identifiers. Make login
+  case-insensitive (store lowercased username OR use a
+  citext column in the User table, OR add a lowercase
+  index column).
+- **Admin: reset all users' items.** Add a button on the admin
+  page that wipes the `InventoryItem` table (and resets any
+  related state) so the user can clear test items from the prod
+  server. Confirm with the user if equip/loadout state should
+  also reset.
+
+## Stretch / Future
+
 - **AI HUD agent** — Cortana-style assistant that knows your
   data and can answer questions ("how did I sleep this week?").
   Could be an LLM-powered insights panel that calls into the
   same APIs the dashboard does.
+- **Gadgetbridge live push/pull** — currently upload-only. A
+  real Gadgetbridge integration would push FIT files
+  automatically when the user pairs a Garmin / WearOS device.
+- **Nutrition tracker enhancements** — barcode lookup,
+  restaurant menu scan, etc. The base tracker is live (AI
+  estimated macros from free-text descriptions).
+- **3D avatar / STATUS hologram polish.**
+- **Body composition timeline chart** ✅ already implemented in
+  BodyComp.tsx (30d/90d/6mo/1yr windows).
+- **FIT / GPX file imports** ✅ fully implemented in
+  `api/src/lib/fit.ts` + `api/src/routes/import.ts`.
+- **Nutrition tracker** ✅ Foods/Meals routes + Nutrition page.
 
 ## Recently Fixed / Resolved
 
+- ✅ 3 new insight rules: `plateau_detected`, `water_low_recent`,
+  `sleep_recovery_mismatch` (tests in `insightRulesExtended.test.ts`).
 - ✅ All sprite assets updated. 91 catalog sprites + 9 boss
   portraits + 15 monster portraits all use the green-screen +
   isnet-soft pipeline. No halo / shadow / smudge artifacts.
@@ -134,6 +163,19 @@
 - ✅ 5571-minute walking-session insight bug (Workout.duration
   unit fix, migration 20260627090000_fix_fit_duration_units)
 - ✅ Class-lock badge color fix (oracle now periwinkle, not gray)
+- ✅ Tie quest boss unlocks to world completion
+- ✅ More worlds — Nexus + Breach
+- ✅ Breach world reset on Maw defeat (cycle field, 10 Maw variants)
+- ✅ Breach ↔ Raid integration (PortalLeak.worldSource + breach badge)
+- ✅ Live mode "Finish workout" hang fix (fire commit in the
+  "no more sets" branch of advanceToNextSet)
+- ✅ Quest homebase overhaul (consolidation to single page with
+  Open Galaxy Map overlay, Breach indicator, leak modal)
+- ✅ 2FA / TOTP
+- ✅ Data export (JSON + CSV)
+- ✅ FIT / GPX imports
+- ✅ Gadgetbridge ingest (upload-only)
+- ✅ Nutrition tracker (Foods/Meals routes + Nutrition page)
 
 ## Nice-to-haves (backlog)
 
@@ -141,3 +183,8 @@
 - Sound effects on level up, raid damage, etc.
 - Push notifications (web push API for homebase shield drops,
   breach defeat, etc.)
+
+## Dropped
+
+- ~~Email verification + password reset.~~ No email integration
+  in this app. Dropped per user direction.
