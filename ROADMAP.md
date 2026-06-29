@@ -44,14 +44,16 @@
 - **Body weight graph zoom too tight on Insights.** Change
   `yPad` from 20 above/below the recorded weight max/min to 10
   so the line shows a bit more dynamism in the chart.
+- **Do hearts actually decrease with missed workouts?** Verify
+  the heart/health loss logic for missed workouts — confirm
+  that hearts (HP / lives / health bar) actually decrement
+  when a workout is skipped past its due date, vs. just being
+  a passive stat. If it doesn't decrement, add the logic
+  (scheduled job + UI feedback). If it does, document the
+  formula + decay rate.
 
 ### Polish
 
-- **Equipment drops / loot** — common enemy drops for raids so
-  raids aren't just "deal damage". Existing system drops loot
-  on leak defeat + boss defeat, but no themed "drop sources"
-  tied to world activity (e.g. "Glade drops agility gear", "Spire
-  drops strength gear"). Maps world → loot table.
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
   UI (no "history of resting HR" chart, no BP log form, etc).
@@ -100,10 +102,42 @@
 - **Nutrition tracker enhancements** — barcode lookup,
   restaurant menu scan, etc. The base tracker is live (AI
   estimated macros from free-text descriptions).
+- **Native Android app** — wrap the web app (or build native)
+  for scheduled toast notifications / reminders for workouts,
+  weigh-ins, recovery, examen, etc. Web push can do some of
+  this but native has reliable scheduled local notifications,
+  background sync, and homescreen widgets. Use Capacitor /
+  TWA / RN / native — pick after scoping.
+- **Sound / audio system** — SFX for level-up, raid damage,
+  rest-timer done, workout logged, boss defeat, leak spawn.
+  Currently silent. Needs an audio service (howler.js / web
+  audio API), mute toggle in user prefs, and per-event hooks
+  fired from the existing event system.
 - **3D avatar / STATUS hologram polish.**
 
 ## Recently Fixed / Resolved
 
+- ✅ Equipment drops / loot (world → loot table mapping). Added
+  `classForWorld()` helper; Spire drops Juggernaut gear, Glade
+  drops Phantom gear, Citadel drops Berserker gear, etc. NEUTRAL
+  worlds (crossroads, nexus, breach) stay unfiltered. Wired into
+  `maybeSpawnLeak` (uses most-recently-cleared world level),
+  `maybeSpawnBreachLeak` (no filter), `claimKill` in Breach
+  (filtered by `boss.classAffinity`, ANY = unfiltered), world
+  boss defeat (filtered by URL `worldId`), and quest level
+  first-clear (~25% drop chance themed by world). Uses existing
+  `ItemDef.classRestriction` column — no schema migration needed.
+  Tests in `worldLoot.test.ts` (10/10 pass).
+- ✅ Genetic Max minimums audit. SHOULDER `defaultMin` 38cm →
+  89cm (was displaying as 15in imperial — now ~35in floor,
+  matches Casey Butt circumference semantic; web/types.ts had
+  drifted to biacromial breadth context which conflicted with
+  the API label + formulas). CALF 35cm → 30cm (accommodates
+  user's 12.7in actual). FFMI 18 → 15 (sedentary adult-male
+  floor). FIVE_K_TIME 1500s → 900s (was 25min; elite is ~13min).
+  ONE_MILE_TIME 360s → 240s (was 6min; elite is ~4min). Applied
+  to both `api/src/lib/metrics.ts` and `web/src/lib/types.ts`
+  to keep them in sync. Tests in `metricFloors.test.ts` (6/6).
 - ✅ Inventory: drop Preview panel + move Stats From Equipment to
   the left column (between Equipped Loadout and Item Catalogue).
   Right column is item-detail only.
