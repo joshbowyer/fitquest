@@ -15,6 +15,7 @@ function makePayload(overrides: Partial<{
   nicotineLast7d: number;
   currentStreak: number;
   brokenThisWeek: boolean;
+  heartLossEvents: Array<{ kind: string; sourceDate: string; details: string | null }>;
 }> = {}): ReportPayload {
   return {
     generatedAt: '2026-06-23T00:00:00Z',
@@ -71,6 +72,7 @@ function makePayload(overrides: Partial<{
       overlaps: [],
     },
     bodyFatSources: [],
+    heartLossEvents: overrides.heartLossEvents ?? [],
   };
 }
 
@@ -265,6 +267,106 @@ describe('buildPenalties', () => {
         expect(typeof entry.note).toBe('string');
         expect(entry.note.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe('heart-loss ledger', () => {
+    it('produces no entry when the user has zero heart-loss events', () => {
+      const p = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 5 }));
+      expect(p.find((x) => x.label === 'Heart loss')).toBeUndefined();
+    });
+
+    it('produces a warn entry for a single MISSED_WORKOUT', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          hearts: 4,
+          heartLossEvents: [
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-29', details: 'MON was a planned workout day, 0 workouts logged' },
+          ],
+        }),
+      );
+      const hl = p.find((x) => x.label === 'Heart loss');
+      expect(hl).toBeDefined();
+      expect(hl?.severity).toBe('warn');
+      expect(hl?.note).toContain('Missed planned workout');
+      expect(hl?.note).toContain('× 1');
+    });
+
+    it('aggregates multiple events of the same kind into one scold entry', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          hearts: 2,
+          heartLossEvents: [
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-25', details: null },
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-26', details: null },
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-27', details: null },
+          ],
+        }),
+      );
+      const hl = p.find((x) => x.label === 'Heart loss');
+      expect(hl?.severity).toBe('scold');
+      expect(hl?.note).toContain('× 3');
+    });
+
+    it('separates distinct trigger kinds into separate entries', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          hearts: 3,
+          heartLossEvents: [
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-29', details: null },
+            { kind: 'SUBSTANCE_CAFFEINE', sourceDate: '2026-06-29', details: '4 caffeine logs' },
+            { kind: 'ZERO_SPIRITUAL', sourceDate: '2026-06-29', details: null },
+          ],
+        }),
+      );
+      const hlEntries = p.filter((x) => x.label === 'Heart loss');
+      expect(hlEntries.length).toBe(3);
+      const notes = hlEntries.map((e) => e.note).join('|');
+      expect(notes).toContain('Missed planned workout');
+      expect(notes).toContain('Caffeine cap exceeded');
+      expect(notes).toContain('No spiritual activity');
+    });
+
+    it('uses friendly labels for each trigger kind', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          hearts: 4,
+          heartLossEvents: [
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-29', details: null },
+            { kind: 'MISSED_ALL_DAILIES', sourceDate: '2026-06-29', details: null },
+            { kind: 'SUBSTANCE_CAFFEINE', sourceDate: '2026-06-29', details: null },
+            { kind: 'SUBSTANCE_ALCOHOL', sourceDate: '2026-06-29', details: null },
+            { kind: 'SUBSTANCE_NICOTINE', sourceDate: '2026-06-29', details: null },
+            { kind: 'ZERO_SPIRITUAL', sourceDate: '2026-06-29', details: null },
+          ],
+        }),
+      );
+      const notes = p.filter((x) => x.label === 'Heart loss').map((e) => e.note).join('|');
+      expect(notes).toContain('Missed planned workout');
+      expect(notes).toContain('All dailies missed');
+      expect(notes).toContain('Caffeine cap exceeded');
+      expect(notes).toContain('Alcohol cap exceeded');
+      expect(notes).toContain('Nicotine cap exceeded');
+      expect(notes).toContain('No spiritual activity');
+    });
+
+    it('includes the most-recent occurrence date in the aggregate note', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          hearts: 4,
+          heartLossEvents: [
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-25', details: null },
+            { kind: 'MISSED_WORKOUT', sourceDate: '2026-06-27', details: null },
+          ],
+        }),
+      );
+      const hl = p.find((x) => x.label === 'Heart loss');
+      expect(hl?.note).toContain('2026-06-27');
     });
   });
 });
