@@ -23,56 +23,10 @@ const RECOVERY_METRICS: MetricType[] = [
   'RESTING_HR',
 ];
 
-// Built-in recovery habits the user can opt into. "Complete" applies
-// a small XP bonus; the focus is the practice, not the reward.
-const RECOVERY_HABITS: Array<{
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  xp: number;
-}> = [
-  { id: 'stretch',  name: 'Stretch / mobility 10m',  description: 'Ten minutes of stretching, foam rolling, or yoga.', icon: '◇', xp: 5 },
-  { id: 'walk',     name: 'Walk (15+ min)',           description: 'Low-intensity movement. Aerobic base without training stress.', icon: '➤', xp: 5 },
-  { id: 'hydrate',  name: 'Hydrated (2L+)',           description: 'Hit your daily water target.', icon: '◌', xp: 3 },
-  { id: 'cold',     name: 'Cold exposure',            description: 'Cold shower, ice bath, or cold plunge.', icon: '✦', xp: 8 },
-  { id: 'breath',   name: 'Box breathing 4-4-4-4',    description: 'One round of box breathing or breathwork.', icon: '◐', xp: 3 },
-  { id: 'meditate', name: 'Meditate 10m',             description: 'Ten minutes of seated meditation.', icon: '☾', xp: 5 },
-  { id: 'sunlight', name: 'Sunlight (10m)',           description: 'Outdoor sunlight within an hour of waking.', icon: '☀', xp: 3 },
-  { id: 'nap',      name: 'Power nap (≤20m)',         description: 'Short restorative nap.', icon: '◍', xp: 3 },
-];
-
-const HABIT_LOG_KEY = 'fitquest:recovery:practiceLog';
-
-function loadTodayLog(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(HABIT_LOG_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as { date: string; log: Record<string, boolean> };
-    if (parsed.date !== new Date().toDateString()) return {};
-    return parsed.log ?? {};
-  } catch {
-    return {};
-  }
-}
-
-function saveTodayLog(log: Record<string, boolean>) {
-  try {
-    localStorage.setItem(
-      HABIT_LOG_KEY,
-      JSON.stringify({ date: new Date().toDateString(), log }),
-    );
-  } catch {
-    /* ignore */
-  }
-}
-
 export function RecoveryPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const qc = useQueryClient();
-  const [practiceLog, setPracticeLog] = useState<Record<string, boolean>>(loadTodayLog);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const statusQ = useQuery({
@@ -120,25 +74,6 @@ export function RecoveryPage() {
     });
   }
 
-  function togglePractice(id: string, xp: number) {
-    const next = { ...practiceLog };
-    if (next[id]) {
-      delete next[id];
-    } else {
-      next[id] = true;
-      // Small XP bonus per practice (no gold; this is recovery, not raid).
-      if (xp > 0) {
-        batchM.run([]).catch(() => {});
-        // XP bonus without a specific endpoint: piggyback on a measurement
-        // would be wrong; for v0 just track the checkbox locally. Future:
-        // POST /recovery/practice with xp grant.
-      }
-    }
-    setPracticeLog(next);
-    saveTodayLog(next);
-  }
-
-  const completedPractices = Object.values(practiceLog).filter(Boolean).length;
   const completedMetrics = RECOVERY_METRICS.filter((m) => status[m]?.logged).length;
 
   return (
@@ -149,7 +84,7 @@ export function RecoveryPage() {
         action={
           <div className="font-mono text-sm">
             <span className="text-ink-300 text-xs uppercase tracking-widest">Today: </span>
-            <span className={`text-xl ml-1 ${completedMetrics === RECOVERY_METRICS.length && completedPractices > 0 ? 'neon-text-lime' : 'neon-text-cyan'}`}>
+            <span className={`text-xl ml-1 ${completedMetrics === RECOVERY_METRICS.length ? 'neon-text-lime' : 'neon-text-cyan'}`}>
               {completedMetrics}/{RECOVERY_METRICS.length}
             </span>
           </div>
@@ -295,53 +230,7 @@ export function RecoveryPage() {
           </div>
         </Panel>
 
-        {/* Recovery practices */}
-        <Panel variant="cyan" title="Recovery practices">
-          <div className="text-[10px] font-mono text-ink-300 mb-3">
-            {completedPractices}/{RECOVERY_HABITS.length} practices completed today. Saved locally — pure signal, no penalty.
-          </div>
-          <div className="space-y-2">
-            {RECOVERY_HABITS.map((p) => {
-              const done = !!practiceLog[p.id];
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => togglePractice(p.id, p.xp)}
-                  className={classNames(
-                    'w-full p-3 border text-left flex items-center gap-3 transition-all',
-                    done
-                      ? 'border-neon-lime/60 bg-neon-lime/10'
-                      : 'border-ink-500/30 hover:border-neon-cyan/40',
-                  )}
-                >
-                  <div
-                    className={classNames(
-                      'shrink-0 w-9 h-9 grid place-items-center font-display text-xl border',
-                      done
-                        ? 'border-neon-lime text-neon-lime'
-                        : 'border-ink-700 text-ink-500',
-                    )}
-                    style={done ? { textShadow: '0 0 6px currentColor' } : undefined}
-                  >
-                    {done ? '✓' : p.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={classNames(
-                      'font-display tracking-wider text-sm',
-                      done ? 'text-neon-lime' : 'text-ink-100',
-                    )}>
-                      {p.name}
-                    </div>
-                    <div className="text-[10px] font-mono text-ink-400 mt-0.5 leading-snug">
-                      {p.description}
-                    </div>
-                  </div>
-                  <div className="text-[9px] font-mono text-ink-400">+{p.xp} XP</div>
-                </button>
-              );
-            })}
-          </div>
-        </Panel>
+        {/* Recovery practices panel moved to Today page — see RecoveryPracticesPanel */}
       </div>
     </Layout>
   );

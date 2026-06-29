@@ -12,6 +12,8 @@ import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/dif
 import { classNames } from '@/lib/format';
 import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
 import { CheckInsPanel } from '@/components/CheckInsPanel';
+import { RecoveryPracticesPanel } from '@/components/RecoveryPracticesPanel';
+import { PainCard } from '@/components/PainCard';
 import { type UnitSystem } from '@/lib/units';
 import { useLiveClock } from '@/hooks/useLiveClock';
 
@@ -155,6 +157,13 @@ export function TodayPage() {
         <TodayActions />
       </div>
 
+      {/* Today's recovery stack — moved here from /recovery so the
+          user sees it first thing. State persists in localStorage so
+          it stays in sync if the user navigates to /recovery too. */}
+      <div className="mb-6">
+        <RecoveryPracticesPanel />
+      </div>
+
       {isLoading ? (
         <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
       ) : (
@@ -261,8 +270,12 @@ export function TodayPage() {
             {/* Check-ins — same cadence cards as the dashboard,
                 stacked vertically so they fit the narrower right
                 column on the /today page. Each card has its own
-                "View all →" link to /check-ins at the bottom. */}
+                "View all →" link to /check-ins at the bottom.
+                Pain card sits above check-ins so the user sees
+                it first thing — that's the "is it going down?"
+                glance they need before starting the day. */}
             <div className="space-y-3">
+              <PainCard />
               <CheckInsPanel layout="stack" />
             </div>
           </div>
