@@ -359,8 +359,6 @@ function BodyPartMesh({
   onClick: (part: BodyPartMeta) => void;
   onHover?: (part: BodyPartMeta | null) => void;
 }) {
-  const wireMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const innerMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const [hovered, setHovered] = useState(false);
 
   // 13-state palette: recovery band drives the hue, volume band
@@ -371,7 +369,7 @@ function BodyPartMesh({
   // heavy = bright wireframe. Lets the user see at a glance which
   // muscles got "real" work vs which were just touched.
   const volumeBand = bandForSetCount(worked?.setCount ?? 0);
-  const wireOpacityBase = hovered
+  const wireOpacity = hovered
     ? 0.95
     : volumeBand === 'heavy'
     ? 0.85
@@ -381,45 +379,24 @@ function BodyPartMesh({
     ? 0.45
     : 0.3;
 
-  // Recently worked = pulsate the actual muscle box (the inner mesh
-  // + the wireframe outline together). Three layered animations read
-  // from across the screen instead of being a small dot above the
-  // part: the inner mesh scales 1.0→1.10 with a slow sin, the
-  // inner emissive intensity pulses 0.4→1.4, and the wireframe
-  // outline's opacity pulses 0.5→1.0. All three are phase-locked to
-  // the same sin so it reads as a single beat, not three separate
-  // animations.
+  // Recently worked = subtle static brightening. (Animation was
+  // tried — the box pulsed via useFrame each frame — but it
+  // noticeably lagged the browser even on good hardware, so the
+  // pulse is gone. The static emissive boost is enough to make
+  // recently-worked parts visibly different at a glance.)
   const recentlyWorked = !!(worked && (Date.now() - new Date(worked.workedAt).getTime()) < 36 * 60 * 60 * 1000);
-  // Pre-compute a phase offset per body part so different parts
-  // don't pulse in lockstep — looks like a wave across the body
-  // instead of a single synchronized throb.
-  const phaseOffset = (part.id.charCodeAt(0) % 7) * 0.4;
-  useFrame(({ clock }) => {
-    if (!recentlyWorked) return;
-    const t = clock.getElapsedTime() + phaseOffset;
-    // Slow primary beat (~1.6s period) + faster wobble for texture.
-    const beat = Math.sin(t * 3.9) * 0.5 + 0.5; // 0..1
-    if (innerMatRef.current) {
-      // Emissive intensity: 0.45 (rest) → 1.4 (peak). Heavy volume
-      // gets a bigger peak so the pulse feels proportional to the
-      // training stimulus.
-      const peak = 0.7 + (volumeBand === 'heavy' ? 0.7 : volumeBand === 'moderate' ? 0.4 : 0.2);
-      innerMatRef.current.emissiveIntensity = 0.45 + peak * beat;
-    }
-    if (wireMatRef.current) {
-      // Wireframe outline opacity: base + 0.5*pulse. Modulated by
-      // volume band so heavy training glows brighter at peak.
-      const baseLift = volumeBand === 'heavy' ? 0.15 : 0.1;
-      wireMatRef.current.opacity = Math.min(1, wireOpacityBase + baseLift + 0.5 * beat);
-    }
-  });
+  const emissiveBoost = hovered
+    ? 0.85
+    : recentlyWorked
+    ? 0.55 + (volumeBand === 'heavy' ? 0.2 : 0)
+    : 0.25;
 
   return (
     <group position={part.position}>
-      {/* Wireframe body — the actual muscle box. When recently
-          worked, the inner mesh + outline pulse together (driven by
-          useFrame above). The box itself grows + brightens instead
-          of a separate dot above the part. */}
+      {/* Inner mesh — the muscle box itself. Static emissive boost
+          when recently worked so the box is visibly brighter than
+          its idle neighbors. (No per-frame animation; that lagged
+          the browser and was removed in commit fca74ac's follow-up.) */}
       <mesh
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -438,13 +415,9 @@ function BodyPartMesh({
       >
         <boxGeometry args={part.size} />
         <meshStandardMaterial
-          ref={innerMatRef}
           color="#1a1c26"
           emissive={baseColor}
-          // emissiveIntensity is animated per-frame by useFrame above
-          // (only when recentlyWorked). When NOT recently worked it
-          // stays at a quiet 0.25 — same as before.
-          emissiveIntensity={recentlyWorked ? 0.45 : 0.25}
+          emissiveIntensity={emissiveBoost}
           metalness={0.7}
           roughness={0.3}
           transparent
@@ -452,19 +425,14 @@ function BodyPartMesh({
         />
       </mesh>
 
-      {/* Outer wireframe outline — pulses opacity in sync with
-          the inner mesh's emissive when recently worked. */}
+      {/* Outer wireframe outline */}
       <mesh>
         <boxGeometry args={part.size} />
         <meshBasicMaterial
-          ref={wireMatRef}
           color={baseColor}
           wireframe
           transparent
-          // Initial value is the static base; useFrame overwrites
-          // it per frame when recentlyWorked. Outside that case
-          // the useFrame is a no-op and the base stays.
-          opacity={wireOpacityBase}
+          opacity={wireOpacity}
         />
       </mesh>
 
