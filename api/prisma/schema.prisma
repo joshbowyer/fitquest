@@ -678,7 +678,29 @@ model Skill {
   className     ClassName
   tier          SkillTier
   name          String      @unique
+  /// Short conceptual blurb: "What is this skill? Why does it
+  /// matter?" Rendered on the SkillTree page under the skill
+  /// name so users understand the point before diving into the
+  /// test details. Existing skills (pre-v1) have null; new skills
+  /// seed a value.
+  blurb         String?
+  /// Existing field. Holds the in-game perk summary (e.g.
+  /// "+10% gold from PRs") rendered in the unlock modal. Not the
+  /// focus of the SkillTree redesign — the focus is the test, not
+  /// the perk — but kept for the in-game reward feedback loop.
   description   String
+  /// Test details for unlocking this skill. JSON shape:
+  ///   {
+  ///     description: "How to perform" (form, technique),
+  ///     safety:      "Use a spotter" (equipment / form cues),
+  ///     metric:      "reps" | "weight:reps" | "weighted:reps:each"
+  ///                 | "duration" | "distance" | "rounds",
+  ///     threshold:   { ... metric-specific fields ... }
+  ///   }
+  /// The unlock endpoint validates the user's submitted result
+  /// against this threshold. See api/src/lib/skillTest.ts for
+  /// the metric-to-validator mapping.
+  test          Json?
   cost          Int         @default(1)
   prerequisites String[]
   position      Int

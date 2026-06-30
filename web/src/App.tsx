@@ -10,7 +10,7 @@ import { ActivityDetailPage } from './pages/ActivityDetail';
 import { MeasurementsPage } from './pages/Measurements';
 import { InsightsPage } from './pages/Insights';
 import { SettingsPage } from './pages/Settings';
-import { SkillsPage } from './pages/Skills';
+import { SkillTreePage } from './pages/SkillTree';
 import { PartyPage } from './pages/Party';
 import { TeamWorkoutPage } from './pages/TeamWorkout';
 import { ProfilePage } from './pages/Profile';
@@ -88,7 +88,7 @@ export default function App() {
       <Route path="/check-ins" element={<RequireAuth><CheckInsPage /></RequireAuth>} />
       <Route path="/body-comp" element={<RequireAuth><BodyCompPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
-      <Route path="/skills" element={<RequireAuth><SkillsPage /></RequireAuth>} />
+      <Route path="/skills" element={<RequireAuth><SkillTreePage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />
       <Route path="/team-workout/:id" element={<RequireAuth><TeamWorkoutPage /></RequireAuth>} />
       <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />

@@ -36,7 +36,7 @@ const NAV: NavItem[] = [
   { to: '/tools',        label: 'Tools',      icon: '⚒', mobile: false },
   { to: '/check-ins',    label: 'Check-ins',  icon: '◷', mobile: false },
   { to: '/body-comp',     label: 'Body comp',  icon: '⚖', mobile: false },
-  { to: '/skills',       label: 'Skills',     icon: '✦', mobile: false },
+  { to: '/skills',       label: 'Skill Tree', icon: '✦', mobile: false },
   { to: '/party',        label: 'Party',      icon: '⚑', mobile: false },
   { to: '/inventory',    label: 'Inventory',  icon: '⚔', mobile: false },
   { to: '/achievements', label: 'Achieve',    icon: '◆', mobile: false },

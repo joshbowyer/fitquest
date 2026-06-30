@@ -48,6 +48,7 @@ import { foodRoutes, savedFoodRoutes } from './routes/foods.js';
 import { mealRoutes } from './routes/meals.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
 import { ensureSkillsSeeded } from './lib/skills.js';
+import { seedSkills } from './lib/seedSkills.js';
 import { seedItems } from './lib/seedItems.js';
 import { ensureDefaultAdmin } from './lib/seedAdmin.js';
 
@@ -142,7 +143,7 @@ async function main() {
   // is also the migration path off the old habitica/legacy sprite
   // paths in prod. No separate remap pass needed.
   await ensureAchievementsSeeded();
-  await ensureSkillsSeeded();
+  await seedSkills();
   await seedItems();
   // System-default penance templates live as constants in
   // api/src/lib/penance.ts (PENANCE_DELTAS + PENANCE_LABELS +
