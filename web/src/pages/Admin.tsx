@@ -71,6 +71,14 @@ export function AdminPage() {
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  // Reset-items confirmation modal targets. `null` = closed.
+  // `all` = wipe every user's items (fresh-state rollout);
+  // `AdminUser` = wipe just that user (this one user got something
+  // they shouldn't have). The wipe deletes the InventoryItem rows
+  // — equip state lives on the same row so it's gone too.
+  const [resetItemsTarget, setResetItemsTarget] = useState<
+    { scope: 'all' } | { scope: 'user'; user: AdminUser } | null
+  >(null);
 
   // ---- Users ----
   const usersQ = useQuery({
@@ -195,6 +203,31 @@ export function AdminPage() {
     },
   }, 800);
 
+  // Reset inventory items. Two scopes: 'all' wipes every user's
+  // InventoryItem rows; 'user' wipes just one. Equip state is on
+  // the same row so it's gone too. Confirmation is a typed-input
+  // modal — the user has to type the word "RESET" (or the username
+  // for per-user) before the confirm button enables.
+  const resetItemsM = useDelayedMutation<
+    { ok: boolean; deleted: number; scope: 'all' | 'user' },
+    { scope: 'all' } | { scope: 'user'; userId: string }
+  >({
+    mutationFn: (vars) =>
+      api<{ ok: boolean; deleted: number; scope: 'all' | 'user' }>(
+        '/admin/items/reset',
+        { method: 'POST', body: vars },
+      ),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Reset failed'),
+    onSuccess: (res) => {
+      setResetItemsTarget(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      qc.invalidateQueries({ queryKey: ['inventory'] });
+      qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      alert(`Reset ${res.deleted} item(s) across ${res.scope === 'all' ? 'all users' : 'the user'}.`);
+    },
+  }, 800);
+
   // ---- Render ----
   if (!user) {
     return (
@@ -249,8 +282,16 @@ export function AdminPage() {
                       toggleAdminM.run({ id: u.id, isAdmin: !u.isAdmin })
                     }
                     onDelete={() => setDeleteTarget(u)}
+                    onResetItems={() =>
+                      setResetItemsTarget({ scope: 'user', user: u })
+                    }
                     isClearing2fa={clear2faM.isPending}
                     isTogglingAdmin={toggleAdminM.isPending}
+                    isResettingItems={
+                      resetItemsM.isPending &&
+                      resetItemsM.variables?.scope === 'user' &&
+                      resetItemsM.variables.userId === u.id
+                    }
                   />
                 ))}
               </div>
@@ -352,6 +393,18 @@ export function AdminPage() {
                               disabled={u.id === user?.id}
                             >
                               Delete
+                            </NeonButton>
+                            <NeonButton
+                              size="sm"
+                              variant="amber"
+                              onClick={() => setResetItemsTarget({ scope: 'user', user: u })}
+                              disabled={
+                                (resetItemsM.isPending &&
+                                  resetItemsM.variables?.scope === 'user' &&
+                                  resetItemsM.variables.userId === u.id)
+                              }
+                            >
+                              Wipe items
                             </NeonButton>
                           </div>
                         </td>
@@ -896,6 +949,22 @@ export function AdminPage() {
       */}
       <DevToolsPanel />
 
+      {/* -------- Inventory controls -------- */}
+      <ResetItemsPanel
+        onResetAll={() => setResetItemsTarget({ scope: 'all' })}
+        resetting={resetItemsM.isPending}
+      />
+
+      {/* -------- Reset-items confirmation modal (all OR per-user) -------- */}
+      {resetItemsTarget && (
+        <ResetItemsModal
+          target={resetItemsTarget}
+          onCancel={() => setResetItemsTarget(null)}
+          onConfirm={(vars) => resetItemsM.run(vars)}
+          isPending={resetItemsM.isPending}
+        />
+      )}
+
       {/* -------- Delete-user confirmation modal -------- */}
       <DeleteUserModal
         target={deleteTarget}
@@ -966,8 +1035,10 @@ function UserCardMobile({
   onClear2fa,
   onToggleAdmin,
   onDelete,
+  onResetItems,
   isClearing2fa,
   isTogglingAdmin,
+  isResettingItems,
 }: {
   user: AdminUser;
   isSelf: boolean;
@@ -975,8 +1046,10 @@ function UserCardMobile({
   onClear2fa: () => void;
   onToggleAdmin: () => void;
   onDelete: () => void;
+  onResetItems: () => void;
   isClearing2fa: boolean;
   isTogglingAdmin: boolean;
+  isResettingItems: boolean;
 }) {
   return (
     <div className="border border-ink-500/30 rounded p-3 bg-bg-900/40">
@@ -1042,6 +1115,14 @@ function UserCardMobile({
           disabled={isSelf}
         >
           Delete
+        </NeonButton>
+        <NeonButton
+          size="sm"
+          variant="amber"
+          onClick={onResetItems}
+          disabled={isResettingItems}
+        >
+          Wipe items
         </NeonButton>
       </div>
     </div>
@@ -1137,6 +1218,125 @@ function DeleteUserModal({
 // mutation that hits an existing endpoint; we just surface them
 // here so the dev workflow doesn't require a curl + open the DB.
 // =============================================================================
+// =============================================================================
+// Inventory controls — wipe-equipment / wipe-items buttons. Host page
+// is already gated to isAdmin=true.
+// =============================================================================
+function ResetItemsPanel({
+  onResetAll,
+  resetting,
+}: {
+  onResetAll: () => void;
+  resetting: boolean;
+}) {
+  return (
+    <Panel
+      title="Inventory"
+      variant="amber"
+      className="mt-4"
+      action={
+        <NeonButton
+          size="sm"
+          variant="magenta"
+          onClick={onResetAll}
+          disabled={resetting}
+        >
+          {resetting ? 'Wiping…' : 'Wipe ALL items'}
+        </NeonButton>
+      }
+    >
+      <p className="text-[11px] font-mono text-ink-300">
+        Wipe every user's <code>InventoryItem</code> rows in one click.
+        Drops + equipped slots go too (they live on the same row). Use
+        this for a fresh-state rollout on the prod server. For a single
+        user, use the <b>Wipe items</b> button in the Users table above.
+      </p>
+    </Panel>
+  );
+}
+
+/**
+ * Destructive-action confirmation for the reset-items button. Mirrors
+ * DeleteUserModal's pattern: typed input enables the confirm. The
+ * 'all' scope requires typing "RESET ITEMS"; the per-user scope
+ * requires the username.
+ */
+function ResetItemsModal({
+  target,
+  onCancel,
+  onConfirm,
+  isPending,
+}: {
+  target: { scope: 'all' } | { scope: 'user'; user: AdminUser };
+  onCancel: () => void;
+  onConfirm: (vars: { scope: 'all' } | { scope: 'user'; userId: string }) => void;
+  isPending: boolean;
+}) {
+  const [typed, setTyped] = useState('');
+  useEffect(() => {
+    setTyped('');
+  }, [target?.scope, target?.scope === 'user' ? target.user.id : null]);
+  if (!target) return null;
+  const isAll = target.scope === 'all';
+  const user = !isAll ? target.user : null;
+  const required = isAll ? 'RESET ITEMS' : user?.username;
+  const matches = typed === required;
+  return (
+    <Modal
+      open={!!target}
+      onClose={onCancel}
+      title={isAll ? 'Wipe ALL items?' : `Wipe ${user!.username}'s items?`}
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-ink-300">
+          {isAll
+            ? 'This permanently deletes every InventoryItem row across every user:'
+            : `This permanently deletes all of ${user!.username}'s inventory:`}
+        </p>
+        <ul className="text-xs font-mono text-ink-400 space-y-0.5 list-disc pl-5">
+          <li>All drops (monster drops, starter kit, raid loot)</li>
+          <li>Equipped slots — all gear is unequipped</li>
+          <li>Loadout history (no separate table; the equipSlot was the only state)</li>
+        </ul>
+        <p className="text-xs font-mono text-rose-300">
+          This cannot be undone. Users will need to re-earn or be
+          re-granted items. Type <span className="text-neon-cyan font-bold">{required}</span> to confirm.
+        </p>
+        <label className="block">
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            className="mt-1 w-full rounded border border-ink-500/40 bg-bg-900 px-2 py-1.5 text-sm font-mono"
+            placeholder={required}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <NeonButton variant="cyan" onClick={onCancel}>
+            Cancel
+          </NeonButton>
+          <NeonButton
+            variant="magenta"
+            onClick={() =>
+              isAll
+                ? onConfirm({ scope: 'all' })
+                : onConfirm({ scope: 'user', userId: user!.id })
+            }
+            disabled={!matches || isPending}
+            loading={isPending}
+            loadingText={isAll ? 'Wiping all…' : `Wiping ${user!.username}…`}
+          >
+            {isAll ? 'Wipe ALL items' : `Wipe ${user!.username}'s items`}
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DevToolsPanel() {
   const qc = useQueryClient();
   const [itemDefId, setItemDefId] = useState<string>('');

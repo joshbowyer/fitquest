@@ -213,6 +213,39 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true, deleted: { id: target.id, username: target.username } };
   });
 
+  // Wipe InventoryItem rows. The equip state lives on the
+  // InventoryItem row itself (`equippedSlot` field), so a delete
+  // also wipes equip + loadout — no separate cleanup needed.
+  // The cascade does NOT cover this (User has `inventoryItems
+  // InventoryItem[]` with default `onDelete: NoAction`); the
+  // explicit deleteMany is the safe path.
+  //
+  // Two scopes:
+  //   - { scope: 'all' } (default): wipe every user's items. For
+  //     "reset the test items" / fresh-state rollouts.
+  //   - { scope: 'user', userId: '...' }: wipe a single user's items.
+  //     For "this user got something they shouldn't have".
+  app.post('/items/reset', async (req, reply) => {
+    await requireAdmin(req);
+    const body = z.object({
+      scope: z.enum(['all', 'user']).default('all'),
+      userId: z.string().optional(),
+    }).parse(req.body);
+    if (body.scope === 'user' && !body.userId) {
+      return reply.code(400).send({ error: 'userId required for user scope' });
+    }
+    const where = body.scope === 'user' && body.userId
+      ? { userId: body.userId }
+      : {};
+    const result = await prisma.inventoryItem.deleteMany({ where });
+    return {
+      ok: true,
+      deleted: result.count,
+      scope: body.scope,
+      ...(body.scope === 'user' ? { userId: body.userId } : {}),
+    };
+  });
+
   // Get current LLM config (single-row table)
   app.get('/llm-config', async () => {
     const config = await getLlmConfig();

@@ -20,6 +20,60 @@ const TIER_BLURB: Record<string, string> = {
   TIER_3: 'Class-defining ultimates. Requires both Tier 2 nodes to unlock.',
 };
 
+/**
+ * Effect type → human label. Mirrors the kind of perk the
+ * effects JSON column carries. Kept narrow on purpose so a typo
+ * in the DB falls through to a generic "perk" label.
+ */
+const EFFECT_LABEL: Record<string, string> = {
+  gold_multiplier: 'gold',
+  xp_multiplier: 'xp',
+  measurement_bonus: 'PR',
+  raid_damage_multiplier: 'raid dmg',
+};
+
+/**
+ * Format the Skill.effects JSON array as a short, comma-joined
+ * summary line for the SkillNode card. Empty array → "" (no line).
+ *
+ * Examples:
+ *   [{ type: gold_multiplier, value: 1.1, appliesTo: ALL }]
+ *     → "+10% gold (all)"
+ *   [{ type: xp_multiplier, value: 1.15, appliesTo: STRENGTH }]
+ *     → "+15% xp (strength)"
+ *   [{ type: measurement_bonus, value: 0.15, metric: PULLUP_1RM }]
+ *     → "+0.15 PULLUP_1RM"
+ *   [{ type: measurement_bonus, value: 1, metric: VO2_MAX }]
+ *     → "+1.0 VO2_MAX"
+ */
+function formatEffects(effects: unknown): string {
+  if (!Array.isArray(effects) || effects.length === 0) return '';
+  return effects
+    .map((e: any) => {
+      const type = String(e?.type ?? '');
+      const value = Number(e?.value ?? 0);
+      if (!type || !Number.isFinite(value) || value === 0) return '';
+      const label = EFFECT_LABEL[type] ?? type.toLowerCase();
+      const pct = Math.round((value - 1) * 100);
+      // Measurement bonuses don't have a "1.0 baseline" — they're
+      // absolute deltas. Render as +X.Y; the rest get the ±%
+      // framing from the 1.0 baseline.
+      if (type === 'measurement_bonus') {
+        const metric = String(e?.metric ?? '?').toLowerCase().replace(/_/g, ' ');
+        // Pretty up VO2_MAX → vo2 max etc. (the lowercase +
+        // underscore-replace already does most of it).
+        return `+${value} ${metric}`;
+      }
+      const sign = pct >= 0 ? '+' : '';
+      // For appliesTo: ALL → "all"; specific class/category →
+      // lowercased for compactness.
+      const scope = e?.appliesTo ? ` (${String(e.appliesTo).toLowerCase()})` : '';
+      return `${sign}${pct}% ${label}${scope}`;
+    })
+    .filter(Boolean)
+    .join(', ');
+}
+
 export function SkillsPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
