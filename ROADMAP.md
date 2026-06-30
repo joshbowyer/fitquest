@@ -26,8 +26,6 @@
 
 ### Polish
 
-- **Morning popup modal (Habitica-style).** ✅ Done — see commit `8e18c3d`.
-- **Supersets in the live workout.** ✅ Done — see commit `1a731e2`.
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
   for medical history. Schema has the data but no medical-themed
   UI (no "history of resting HR" chart, no BP log form, etc).
@@ -37,27 +35,18 @@
 - **Mobile polish** (small wins) — long-press to multi-select on
   history, pull-to-refresh on Dashboard, haptic feedback on rest
   timer completion.
-- **3D avatar polish** — animations on level completion,
-  animated "worked" pulse when a workout is logged.
+- **3D avatar polish** — animations on level completion. The
+  recently-worked indicator already brightens recently-trained
+  parts (static, not animated) so the user can see at a glance
+  what was worked; the level-up animation already fires via
+  RewardOverlay. What's left is making the level-up animation
+  more cinematic and a stronger workout-logged effect.
 - **Skills page revisit** — the page exists but the user wants
   to walk through it again. (Scope: see what currently works,
   identify gaps.)
 
 ### Identity / auth
 
-- **Tron identity disk should scale to real body measurements.**
-  Currently the disk is rendered at a fixed size; the user wants
-  the avatar to actually look different between body types. Add
-  measurements (shoulders, waist, height) and map them to real
-  visual properties (e.g. shoulder width → disk radius, waist →
-  inner ring, height → vertical position). 6' / 28in waist / 44in
-  shoulders should look visibly different from 5' / 32in / 42in.
-- **Username case-insensitive login** (may require DB change).
-  Currently login is case-sensitive — `LobsterWrangler` vs
-  `lobsterwrangler` are different identifiers. Make login
-  case-insensitive (store lowercased username OR use a
-  citext column in the User table, OR add a lowercase
-  index column).
 - **Admin: reset all users' items.** Add a button on the admin
   page that wipes the `InventoryItem` table (and resets any
   related state) so the user can clear test items from the prod
@@ -148,6 +137,43 @@
   toggle so accidental taps can't overwrite mid-workout. (6th bug,
   supersets, deferred — needs schema migration + state-machine
   rewrite.)
+- ✅ Supersets in the live workout. New `groupIndex Int?` column
+  on `WorkoutTemplateExercise` + `Exercise` (migration
+  `20260703090000_superset_group_index`). Routines page got a
+  "Pair with next" button and a neon-magenta pair label (1A/1B/2A
+  ...). Live logger walks exercises round-robin via a new pure
+  `buildRoundRobinOrder` helper (`web/src/lib/supersetRoundRobin.ts`),
+  with 12 unit tests covering empty input, linear singletons,
+  paired alternation, asymmetric set counts, 3-exercise groups,
+  multi-pair ordering, mixed paired/un-paired, zero-set members,
+  and singleton groupIndex. API extended to accept/persist
+  `groupIndex` on both template and workout create paths;
+  backwards-compatible (null = linear). Bulk logger shows the
+  pair label as a visual indicator only (bulk mode doesn't walk
+  in real-time).
+- ✅ Tron identity disk scales to body measurements. New
+  migration `20260705090000_body_measurements_for_avatar` adds
+  `shoulderCm` + `waistCm` columns to User. Avatar.tsx now scales:
+  - outer ring radius (shoulders, ±25%),
+  - inner ring radius (waist, inverse — tighter waist = bigger gap),
+  - figure X scale via V-taper (shoulder/waist ratio, ±35%),
+  - figure Y scale (height, ±25%),
+  - ring stroke width (broader builds = chunkier ring).
+  Profile page exposes Shoulder width + Waist inputs. MES/AVG/END
+  somatotype badge below the disc when measurements are present
+  so the user can see the avatar is reading their build. Reference
+  values 110cm shoulders / 80cm waist / 175cm height.
+- ✅ Username case-insensitive login. New `User.usernameLower
+  String @unique` column populated via `LOWER(username)`. Login
+  route looks up by `usernameLower` so `LobsterWrangler`,
+  `lobsterwrangler`, and `LOBSTERWRANGLER` all resolve to the same
+  account. Display name (`username`) still preserves the case the
+  user typed. Migration `20260704000000_username_lower` adds the
+  column with a UNIQUE constraint that fails loudly if two existing
+  users collide (e.g. "Bob" + "bob") so the operator can manually
+  merge before re-running. Parties route invite-by-username also
+  case-folds. `ensureDefaultAdmin` populates `usernameLower` for
+  fresh installs.
 - ✅ USCCB readings: EWTN is the new primary source (replaced
   USCCB's broken RSS feed). The api walks the cascade
   cache → EWTN → USCCB RSS → Wayback on every miss. New
