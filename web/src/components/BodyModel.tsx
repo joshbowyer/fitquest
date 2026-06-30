@@ -3,74 +3,6 @@ import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
-/**
- * Pulsing dot + emanating glow halo for the "recently worked" body-part
- * marker. Three layers stacked for a more cinematic pulse:
- *   - the central solid dot (scales 1.0 → 1.5)
- *   - a glow ring just outside (scales 1.2 → 2.2 with fading alpha)
- *   - the body-part wireframe itself (already gets an emissive boost
- *     from the parent's emissiveBoost calculation)
- * Multiple instances are cheap (one sphere, one ring, one useFrame
- * per pair) so we can have many on screen at once without affecting
- * framerate.
- */
-function PulseDot({
-  position,
-  radius,
-  color,
-}: {
-  position: [number, number, number];
-  radius: number;
-  color: string;
-}) {
-  const ref = useRef<THREE.Mesh>(null);
-  const haloRef = useRef<THREE.Mesh>(null);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
-  const haloMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  useFrame(({ clock }) => {
-    const t = clock.getElapsedTime();
-    // Primary pulse — strong scale + color flash so it's clearly
-    // visible from across the screen. The body part wireframe gets a
-    // separate emissive boost in the parent; this dot is the
-    // focal point.
-    if (ref.current) {
-      const scale = 1 + 0.45 * Math.sin(t * 2.8) + 0.10 * Math.sin(t * 6.1);
-      ref.current.scale.setScalar(scale);
-    }
-    if (matRef.current) {
-      // Color flash on the upswing so the pulse "feels" like a beat.
-      const flash = 0.5 + 0.5 * Math.sin(t * 2.8);
-      matRef.current.opacity = 0.7 + 0.3 * flash;
-    }
-    // Halo — emanates outward and fades, so each beat sends a ripple
-    // away from the body part. Resets every ~2.2s.
-    if (haloRef.current && haloMatRef.current) {
-      const cycle = (t % 2.2) / 2.2; // 0 → 1
-      const haloScale = 1.5 + cycle * 1.5;
-      haloRef.current.scale.setScalar(haloScale);
-      haloMatRef.current.opacity = (1 - cycle) * 0.55;
-    }
-  });
-  return (
-    <group>
-      <mesh ref={ref} position={position}>
-        <sphereGeometry args={[radius, 12, 12]} />
-        <meshBasicMaterial ref={matRef} color={color} transparent />
-      </mesh>
-      <mesh ref={haloRef} position={position}>
-        <ringGeometry args={[radius * 1.6, radius * 2.0, 24]} />
-        <meshBasicMaterial
-          ref={haloMatRef}
-          color={color}
-          transparent
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
-}
-
 export type BodyPartId =
   | 'HEAD' | 'NECK' | 'TRAPS'
   | 'PECTORAL' | 'ABS' | 'OBLIQUE_L' | 'OBLIQUE_R'
@@ -427,7 +359,8 @@ function BodyPartMesh({
   onClick: (part: BodyPartMeta) => void;
   onHover?: (part: BodyPartMeta | null) => void;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const wireMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const innerMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const [hovered, setHovered] = useState(false);
 
   // 13-state palette: recovery band drives the hue, volume band
@@ -438,7 +371,7 @@ function BodyPartMesh({
   // heavy = bright wireframe. Lets the user see at a glance which
   // muscles got "real" work vs which were just touched.
   const volumeBand = bandForSetCount(worked?.setCount ?? 0);
-  const wireOpacity = hovered
+  const wireOpacityBase = hovered
     ? 0.95
     : volumeBand === 'heavy'
     ? 0.85
@@ -448,19 +381,46 @@ function BodyPartMesh({
     ? 0.45
     : 0.3;
 
-  // Recently worked = pulse the wireframe so it draws the eye.
-  const recentlyWorked = worked && (Date.now() - new Date(worked.workedAt).getTime()) < 36 * 60 * 60 * 1000;
-  const emissiveBoost = hovered
-    ? 0.85
-    : recentlyWorked
-    ? 0.55 + (volumeBand === 'heavy' ? 0.2 : 0)
-    : 0.25;
+  // Recently worked = pulsate the actual muscle box (the inner mesh
+  // + the wireframe outline together). Three layered animations read
+  // from across the screen instead of being a small dot above the
+  // part: the inner mesh scales 1.0→1.10 with a slow sin, the
+  // inner emissive intensity pulses 0.4→1.4, and the wireframe
+  // outline's opacity pulses 0.5→1.0. All three are phase-locked to
+  // the same sin so it reads as a single beat, not three separate
+  // animations.
+  const recentlyWorked = !!(worked && (Date.now() - new Date(worked.workedAt).getTime()) < 36 * 60 * 60 * 1000);
+  // Pre-compute a phase offset per body part so different parts
+  // don't pulse in lockstep — looks like a wave across the body
+  // instead of a single synchronized throb.
+  const phaseOffset = (part.id.charCodeAt(0) % 7) * 0.4;
+  useFrame(({ clock }) => {
+    if (!recentlyWorked) return;
+    const t = clock.getElapsedTime() + phaseOffset;
+    // Slow primary beat (~1.6s period) + faster wobble for texture.
+    const beat = Math.sin(t * 3.9) * 0.5 + 0.5; // 0..1
+    if (innerMatRef.current) {
+      // Emissive intensity: 0.45 (rest) → 1.4 (peak). Heavy volume
+      // gets a bigger peak so the pulse feels proportional to the
+      // training stimulus.
+      const peak = 0.7 + (volumeBand === 'heavy' ? 0.7 : volumeBand === 'moderate' ? 0.4 : 0.2);
+      innerMatRef.current.emissiveIntensity = 0.45 + peak * beat;
+    }
+    if (wireMatRef.current) {
+      // Wireframe outline opacity: base + 0.5*pulse. Modulated by
+      // volume band so heavy training glows brighter at peak.
+      const baseLift = volumeBand === 'heavy' ? 0.15 : 0.1;
+      wireMatRef.current.opacity = Math.min(1, wireOpacityBase + baseLift + 0.5 * beat);
+    }
+  });
 
   return (
     <group position={part.position}>
-      {/* Wireframe body */}
+      {/* Wireframe body — the actual muscle box. When recently
+          worked, the inner mesh + outline pulse together (driven by
+          useFrame above). The box itself grows + brightens instead
+          of a separate dot above the part. */}
       <mesh
-        ref={meshRef}
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
@@ -478,9 +438,13 @@ function BodyPartMesh({
       >
         <boxGeometry args={part.size} />
         <meshStandardMaterial
+          ref={innerMatRef}
           color="#1a1c26"
           emissive={baseColor}
-          emissiveIntensity={emissiveBoost}
+          // emissiveIntensity is animated per-frame by useFrame above
+          // (only when recentlyWorked). When NOT recently worked it
+          // stays at a quiet 0.25 — same as before.
+          emissiveIntensity={recentlyWorked ? 0.45 : 0.25}
           metalness={0.7}
           roughness={0.3}
           transparent
@@ -488,14 +452,19 @@ function BodyPartMesh({
         />
       </mesh>
 
-      {/* Outer wireframe outline */}
+      {/* Outer wireframe outline — pulses opacity in sync with
+          the inner mesh's emissive when recently worked. */}
       <mesh>
         <boxGeometry args={part.size} />
         <meshBasicMaterial
+          ref={wireMatRef}
           color={baseColor}
           wireframe
           transparent
-          opacity={wireOpacity}
+          // Initial value is the static base; useFrame overwrites
+          // it per frame when recentlyWorked. Outside that case
+          // the useFrame is a no-op and the base stays.
+          opacity={wireOpacityBase}
         />
       </mesh>
 
@@ -518,19 +487,6 @@ function BodyPartMesh({
             />
           </mesh>
         </group>
-      )}
-
-      {/* Recently-worked marker — small dot ABOVE the part, color
-          matches the recovery band so the visual story is
-          consistent. Only shown if no pain marker is taking the
-          top spot. Pulses (sin-based scale) so the eye is drawn
-          to recently-trained parts on the hologram. */}
-      {recentlyWorked && (
-        <PulseDot
-          position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}
-          radius={volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04}
-          color={baseColor}
-        />
       )}
     </group>
   );
