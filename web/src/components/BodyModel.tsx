@@ -4,11 +4,15 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 /**
- * Small pulsing dot used for the "recently worked" body-part marker.
- * Sin-based scale + opacity oscillation so the eye is drawn to
- * recently-trained parts on the hologram. Cheap to run (single
- * 12-segment sphere, one useFrame) so we can have many of them
- * on screen at once without affecting framerate.
+ * Pulsing dot + emanating glow halo for the "recently worked" body-part
+ * marker. Three layers stacked for a more cinematic pulse:
+ *   - the central solid dot (scales 1.0 → 1.5)
+ *   - a glow ring just outside (scales 1.2 → 2.2 with fading alpha)
+ *   - the body-part wireframe itself (already gets an emissive boost
+ *     from the parent's emissiveBoost calculation)
+ * Multiple instances are cheap (one sphere, one ring, one useFrame
+ * per pair) so we can have many on screen at once without affecting
+ * framerate.
  */
 function PulseDot({
   position,
@@ -20,20 +24,50 @@ function PulseDot({
   color: string;
 }) {
   const ref = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const haloMatRef = useRef<THREE.MeshBasicMaterial>(null);
   useFrame(({ clock }) => {
-    if (!ref.current) return;
     const t = clock.getElapsedTime();
-    // Two octaves so the pulse has texture — base rate plus a
-    // higher-frequency wobble. Scaled to ~1.3 max so the dot
-    // doesn't visibly leave the body part boundary.
-    const pulse = 1 + 0.18 * Math.sin(t * 3.2) + 0.06 * Math.sin(t * 7.4);
-    ref.current.scale.setScalar(pulse);
+    // Primary pulse — strong scale + color flash so it's clearly
+    // visible from across the screen. The body part wireframe gets a
+    // separate emissive boost in the parent; this dot is the
+    // focal point.
+    if (ref.current) {
+      const scale = 1 + 0.45 * Math.sin(t * 2.8) + 0.10 * Math.sin(t * 6.1);
+      ref.current.scale.setScalar(scale);
+    }
+    if (matRef.current) {
+      // Color flash on the upswing so the pulse "feels" like a beat.
+      const flash = 0.5 + 0.5 * Math.sin(t * 2.8);
+      matRef.current.opacity = 0.7 + 0.3 * flash;
+    }
+    // Halo — emanates outward and fades, so each beat sends a ripple
+    // away from the body part. Resets every ~2.2s.
+    if (haloRef.current && haloMatRef.current) {
+      const cycle = (t % 2.2) / 2.2; // 0 → 1
+      const haloScale = 1.5 + cycle * 1.5;
+      haloRef.current.scale.setScalar(haloScale);
+      haloMatRef.current.opacity = (1 - cycle) * 0.55;
+    }
   });
   return (
-    <mesh ref={ref} position={position}>
-      <sphereGeometry args={[radius, 12, 12]} />
-      <meshBasicMaterial color={color} />
-    </mesh>
+    <group>
+      <mesh ref={ref} position={position}>
+        <sphereGeometry args={[radius, 12, 12]} />
+        <meshBasicMaterial ref={matRef} color={color} transparent />
+      </mesh>
+      <mesh ref={haloRef} position={position}>
+        <ringGeometry args={[radius * 1.6, radius * 2.0, 24]} />
+        <meshBasicMaterial
+          ref={haloMatRef}
+          color={color}
+          transparent
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
   );
 }
 

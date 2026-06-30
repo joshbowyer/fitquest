@@ -53,13 +53,25 @@ export function Avatar({
   const h = 40;
   const cx = w / 2;
 
-  // Measurement-based scaling. Reference values are "average adult
-  // male" — 110cm shoulders, 80cm waist, 175cm height — that map to a
-  // 1.0x scale. Clamps keep the disc from looking weird (e.g. a
-  // 60cm shoulder doesn't shrink the disc to half size).
-  const shoulderScale = clampScale(shoulderCm, 110, 0.92, 1.10);
-  const waistScale = clampScale(waistCm, 80, 0.88, 1.10);
-  const heightScale = clampScale(heightCm, 175, 0.92, 1.10);
+    // Measurement-based scaling. Reference values are "average adult
+  // male" — 110cm shoulders, 80cm waist, 175cm height — that map to
+  // a 1.0x scale. Clamps are wider than the first iteration (±25%
+  // instead of ±10%) so a 6'/28in/44in build is visibly different
+  // from a 5'/32in/42in build. The reference values are adult-male
+  // averages; a female user with different proportions will still
+  // land within the clamp band and the disc will adapt accordingly.
+  const shoulderScale = clampScale(shoulderCm, 110, 0.75, 1.25);
+  const waistScale = clampScale(waistCm, 80, 0.75, 1.25);
+  const heightScale = clampScale(heightCm, 175, 0.75, 1.25);
+  // V-taper ratio — shoulder circumference ÷ waist circumference.
+  // Drives the figure's WIDTH (not just size). Average adult male
+  // sits at ~1.38 (44in/32in). Range ±25% so an athletic 1.55+
+  // build gets a visibly broader upper body than an endomorph 1.20.
+  // The 0.65-1.35 range is wider than the previous 0.80-1.20 so
+  // extreme builds are clearly distinct.
+  const vtaper = shoulderCm && waistCm && waistCm > 0
+    ? Math.min(1.35, Math.max(0.65, shoulderCm / waistCm / 1.38))
+    : 1.0;
   // Outer ring scales with shoulders (broader → bigger disc).
   const outerR = 18 * shoulderScale;
   // Inner ring scales with waist (tighter waist → larger inner ring,
@@ -67,8 +79,6 @@ export function Avatar({
   // waist gives a big inner ring.
   const innerR = 15 / Math.sqrt(waistScale);
   // Vertical figure scale — taller users get an elongated silhouette.
-  // Width stays constant (archetype-controlled). Applied via a
-  // scale transform on the <g> wrapper around the figure.
   const figScaleY = heightScale;
   // Figure y-offset — taller users shift the figure up so it stays
   // centered in the disc.
@@ -105,14 +115,16 @@ export function Avatar({
       {/* Inner grid pattern — slightly inset from outerR for visual ring. */}
       <circle cx={cx} cy={h / 2} r={outerR - 2} fill={`url(#disc-grid-${archetype})`} />
 
-      {/* Outer ring (glowing) — radius scales with shoulder width. */}
+      {/* Outer ring (glowing) — radius scales with shoulder width;
+          stroke width also scales so a broader build gets a
+          chunkier ring (more "presence" in the disc). */}
       <circle
         cx={cx}
         cy={h / 2}
         r={outerR}
         fill="none"
         stroke={ringColor}
-        strokeWidth="2"
+        strokeWidth={1.4 + (shoulderScale - 1) * 1.5}
         filter={`url(#disc-glow-${archetype})`}
       />
       {/* Inner ring (thinner, slightly inset) — radius scales with waist
@@ -130,10 +142,15 @@ export function Avatar({
       {/* Archetype silhouette — abstract humanoid. Vertical scale
           (taller users → elongated figure) + y-offset (taller users
           → figure shifts up to stay centered in the disc). */}
+      {/* Archetype silhouette — abstract humanoid. V-taper modulates
+          the figure's X scale so a 6'/28in/44in build (vtaper > 1)
+          gets a visibly broader upper body than a 5'/32in/42in build
+          (vtaper < 1). Vertical scale = heightScale. Y-offset keeps
+          the figure centered in the disc as it scales. */}
       <g
         fill={innerColor}
         filter={`url(#disc-glow-${archetype})`}
-        transform={`translate(${cx}, ${h / 2 + figYOffset}) scale(1, ${figScaleY})`}
+        transform={`translate(${cx}, ${h / 2 + figYOffset}) scale(${vtaper}, ${figScaleY})`}
       >
         {fig}
       </g>
@@ -159,6 +176,35 @@ export function Avatar({
         <line x1={cx} y1={h / 2 - outerR} x2={cx} y2={h / 2 - (outerR - 2)} />
         <line x1={cx} y1={h / 2 + (outerR - 2)} x2={cx} y2={h / 2 + outerR} />
       </g>
+
+      {/* Body-type badge — only rendered when measurements are present
+          so the user can see the avatar is reading their build.
+          Three-letter somatotype label below the disc. Letter
+          width = 2 units, so 3 chars = 6 units, centered at cx.
+          Color tints by V-taper so the badge itself hints at the
+          measurement. */}
+      {(shoulderCm || waistCm || heightCm) && (
+        <g
+          fontFamily="Orbitron, sans-serif"
+          fontSize="3.2"
+          fontWeight="700"
+          letterSpacing="0.3"
+          textAnchor="middle"
+        >
+          <text
+            x={cx}
+            y={h / 2 + outerR + 4.5}
+            fill={ringColor}
+            opacity={0.85}
+          >
+            {vtaper > 1.10
+              ? 'MES'
+              : vtaper < 0.90
+                ? 'END'
+                : 'AVG'}
+          </text>
+        </g>
+      )}
     </svg>
   );
 }
