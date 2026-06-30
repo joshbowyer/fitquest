@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
+import { branchIcon } from '@/lib/skillIcons';
 
 /**
  * SkillTree v1 — replaces the old /skills page.
@@ -268,59 +269,12 @@ function UnlockModal({
   );
 }
 
-// ---- Branch + metric icons ----
-// One emoji per branch label (used as the column header icon AND the
-// icon inside every circle in that branch). Cross-class branch labels
-// are not displayed at the same time, so two columns sharing an icon
-// is fine (e.g. JUGGERNAUT.Sled and BERSERKER.Sled both = 🛷).
-
-const BRANCH_ICONS: Record<string, string> = {
-  // JUGGERNAUT
-  'Squat': '🏋️',
-  'Press': '💪',
-  'Deadlift': '🦾',
-  'Overhead Press': '🙌',
-  'Strongman': '🪨',
-  'Sled': '🛷',
-  // PHANTOM
-  'Push': '💪',
-  'Pull': '🤸',
-  'Holds': '🧘',
-  'Rings': '⭕',
-  'Handstand': '🙃',
-  'Planche': '🤸‍♂️',
-  // SCOUT
-  'Run': '🏃',
-  'Ruck': '🎒',
-  'Triathlon': '🏊',
-  // BERSERKER
-  'Sled': '🛷',
-  'Kettlebell': '🔔',
-  'Hero WODs': '⚔️',
-  'Boxing': '🥊',
-  'Capacity': '🔥',
-  'Mace / Indian Club': '🔨',
-  // TRACER
-  'Sprint': '⚡',
-  'Plyo': '🦘',
-  'Parkour': '🏃‍♂️',
-  'Agility': '🔄',
-  'Throws': '🎯',
-  // ORACLE
-  'Mobility': '🧘',
-  'Breath': '🌬️',
-  'Balance': '⚖️',
-  'Mindfulness': '🧠',
-  'Yoga': '🕉️',
-  'Pilates': '💃',
-};
-
-const DEFAULT_BRANCH_ICON = '◆';
-
-function branchIcon(branchName: string | null): string {
-  if (!branchName) return DEFAULT_BRANCH_ICON;
-  return BRANCH_ICONS[branchName] ?? DEFAULT_BRANCH_ICON;
-}
+// ---- Branch icons ----
+// Hand-coded SVG icons live in @/lib/skillIcons (32 variants, one
+// per branch label across all 6 classes). See that file for the
+// visual-language notes. branchIcon() returns a React element so it
+// can be rendered inline. Each class gets its own variant for shared
+// labels (e.g. JUGGERNAUT.Sled vs BERSERKER.Sled).
 
 function SkillNode({
   skill,
@@ -329,11 +283,12 @@ function SkillNode({
   isGodTier,
 }: {
   skill: Skill;
+  className: string;
   onClick: () => void;
   isUnlocked: boolean;
   isGodTier: boolean;
 }) {
-  const icon = branchIcon(skill.branch);
+  const icon = branchIcon(skill.branch, className);
   const tierShort = skill.tier.replace('TIER_', 'T');
   return (
     <button
@@ -413,12 +368,14 @@ function SkillNode({
 
 function BranchColumn({
   branch,
+  className,
   onSkillClick,
 }: {
   branch: Branch;
+  className: string;
   onSkillClick: (skill: Skill) => void;
 }) {
-  const icon = branchIcon(branch.branchName);
+  const icon = branchIcon(branch.branchName, className);
   const unlockedCount = branch.skills.filter((s) => s.unlocked).length;
   const total = branch.skills.length;
   const allDone = unlockedCount === total;
@@ -448,6 +405,7 @@ function BranchColumn({
             <div key={s.id} className="flex flex-col items-center">
               <SkillNode
                 skill={s}
+                className={className}
                 onClick={() => onSkillClick(s)}
                 isUnlocked={s.unlocked}
                 isGodTier={isGodTier}
@@ -559,7 +517,7 @@ export function SkillTreePage() {
       <div className="overflow-x-auto pb-2">
         <div className="flex gap-4 min-w-fit px-2">
           {branches.map((b) => (
-            <BranchColumn key={b.branchName} branch={b} onSkillClick={setSelected} />
+            <BranchColumn key={b.branchName} branch={b} className={treeQ.data.className} onSkillClick={setSelected} />
           ))}
         </div>
       </div>
