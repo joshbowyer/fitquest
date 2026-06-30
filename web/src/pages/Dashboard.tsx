@@ -53,6 +53,8 @@ const idealMetricKeys = new Set([
 const monotonicMetricKeys = new Set([
   'VO2_MAX',
   'PLANK_HOLD',
+  'L_SIT_HOLD',
+  'DEAD_HANG',
   'PUSHUP_MAX',
   'PULLUP_MAX',
   'SHOULDER_WAIST_RATIO',

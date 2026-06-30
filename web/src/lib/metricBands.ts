@@ -119,6 +119,17 @@ export const METRIC_MONOTONIC_BANDS: Partial<Record<MetricType, MonotonicBands>>
     healthyMin: 120,  // 2:00 — top of healthy
     subtitle: 'elite ≥4:00 · healthy ≥2:00',
   },
+  DEAD_HANG: {
+    // Same shape as PLANK_HOLD. Elite hang time is broadly similar
+    // to elite plank time — both are full-body isometric holds. 3
+    // min is the typical "elite recreational" threshold; 1:30 is
+    // a realistic healthy floor for a casual trainee.
+    min: 0,
+    max: 600,
+    eliteMin: 180,    // 3:00
+    healthyMin: 90,  // 1:30
+    subtitle: 'elite ≥3:00 · healthy ≥1:30',
+  },
   PUSHUP_MAX: {
     min: 0,
     max: 100,

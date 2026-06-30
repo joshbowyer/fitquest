@@ -181,11 +181,15 @@ export async function skillRoutes(app: FastifyInstance) {
         select: { exercise: true, value: true, achievedAt: true },
       }),
       // Dead Hang specifically. Headline chip on the calisthenics
-      // radial. Null if no Dead Hang sets logged yet.
-      prisma.pr.findFirst({
-        where: { userId: me.id, exercise: 'Dead Hang', type: 'HOLD' },
-        orderBy: { value: 'desc' },
-        select: { value: true, achievedAt: true },
+      // radial. Reads from the Measurement table (the manual
+      // log path the user takes from the dashboard) rather than
+      // the Pr table (which only catches in-workout HOLD PRs).
+      // Users don't typically log Dead Hang inside workouts — they
+      // go do one and click the gauge to record it.
+      prisma.measurement.findFirst({
+        where: { userId: me.id, metric: 'DEAD_HANG' },
+        orderBy: { recordedAt: 'desc' },
+        select: { value: true, recordedAt: true },
       }),
     ]);
     const unlocked = unlockedRows.length;
@@ -209,7 +213,7 @@ export async function skillRoutes(app: FastifyInstance) {
           }
         : null,
       deadHangPr: deadHangPr
-        ? { valueSec: deadHangPr.value, achievedAt: deadHangPr.achievedAt }
+        ? { valueSec: deadHangPr.value, achievedAt: deadHangPr.recordedAt }
         : null,
     };
   });

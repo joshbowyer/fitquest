@@ -11,7 +11,7 @@ export type MetricType =
   | 'BENCH_1RM' | 'SQUAT_1RM' | 'DEADLIFT_1RM' | 'OHP_1RM' | 'PULLUP_1RM'
   | 'BODY_FAT_PCT' | 'LEAN_MASS' | 'FFMI' | 'WEIGHT'
   | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME' | 'ONE_MILE_TIME'
-  | 'PLANK_HOLD' | 'L_SIT_HOLD' | 'PUSHUP_MAX' | 'PULLUP_MAX'
+  | 'PLANK_HOLD' | 'L_SIT_HOLD' | 'DEAD_HANG' | 'PUSHUP_MAX' | 'PULLUP_MAX'
   | 'POWERLIFT_TOTAL'
   // Derived — not logged directly. Computed by Dashboard from SHOULDER + WAIST.
   | 'SHOULDER_WAIST_RATIO'
@@ -61,6 +61,7 @@ export const METRICS: Record<MetricType, MetricMeta> = {
   ONE_MILE_TIME: { type: 'ONE_MILE_TIME', category: 'CARDIO', label: '1 Mile Time', shortLabel: '1 Mile', unit: 's', defaultMin: 240, description: 'Best 1 mile run time in seconds. Elite ~4min.' },
   PLANK_HOLD: { type: 'PLANK_HOLD', category: 'CALISTHENICS', label: 'Plank Hold', shortLabel: 'Plank', unit: 's', defaultMin: 30, description: 'Longest plank hold.' },
   L_SIT_HOLD: { type: 'L_SIT_HOLD', category: 'CALISTHENICS', label: 'L-Sit Hold', shortLabel: 'L-Sit', unit: 's', defaultMin: 5, description: 'Longest L-sit hold.' },
+  DEAD_HANG: { type: 'DEAD_HANG', category: 'CALISTHENICS', label: 'Dead Hang', shortLabel: 'Dead Hang', unit: 's', defaultMin: 30, description: 'Longest dead hang (active shoulders, full grip).' },
   PUSHUP_MAX: { type: 'PUSHUP_MAX', category: 'CALISTHENICS', label: 'Push-ups in a Row', shortLabel: 'Push-ups', unit: 'reps', defaultMin: 5, description: 'Max push-ups in a single unbroken set.' },
   PULLUP_MAX: { type: 'PULLUP_MAX', category: 'CALISTHENICS', label: 'Pull-ups in a Row', shortLabel: 'Pull-ups', unit: 'reps', defaultMin: 1, description: 'Max pull-ups in a single unbroken set.' },
   POWERLIFT_TOTAL: { type: 'POWERLIFT_TOTAL', category: 'STRENGTH', label: 'Powerlifting Total', shortLabel: 'PL Total', unit: 'kg', defaultMin: 200, description: 'Sum of best Squat + Bench + Deadlift.' },
@@ -82,7 +83,7 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   STRENGTH: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'OHP_1RM', 'PULLUP_1RM', 'POWERLIFT_TOTAL'],
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST', 'SHOULDER_WAIST_RATIO'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],
-  CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'PUSHUP_MAX', 'PULLUP_MAX'],
+  CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'DEAD_HANG', 'PUSHUP_MAX', 'PULLUP_MAX'],
   SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
   NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
   WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS'],

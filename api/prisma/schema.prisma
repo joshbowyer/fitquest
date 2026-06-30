@@ -70,6 +70,7 @@ enum MetricType {
   // Calisthenics
   PLANK_HOLD
   L_SIT_HOLD
+  DEAD_HANG
   // Max-reps calisthenics (single-set max)
   PUSHUP_MAX
   PULLUP_MAX
