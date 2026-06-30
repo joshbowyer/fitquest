@@ -97,6 +97,7 @@ export const DEFAULT_CADENCE: Record<MetricType, Cadence> = {
   ONE_MILE_TIME:'WEEKLY',
   PLANK_HOLD:   'WEEKLY',
   L_SIT_HOLD:   'WEEKLY',
+  DEAD_HANG:    'WEEKLY',
   PUSHUP_MAX:   'WEEKLY',
   PULLUP_MAX:   'WEEKLY',
 
