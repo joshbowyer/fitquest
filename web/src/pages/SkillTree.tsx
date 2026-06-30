@@ -268,62 +268,145 @@ function UnlockModal({
   );
 }
 
+// ---- Branch + metric icons ----
+// One emoji per branch label (used as the column header icon AND the
+// icon inside every circle in that branch). Cross-class branch labels
+// are not displayed at the same time, so two columns sharing an icon
+// is fine (e.g. JUGGERNAUT.Sled and BERSERKER.Sled both = 🛷).
+
+const BRANCH_ICONS: Record<string, string> = {
+  // JUGGERNAUT
+  'Squat': '🏋️',
+  'Press': '💪',
+  'Deadlift': '🦾',
+  'Overhead Press': '🙌',
+  'Strongman': '🪨',
+  'Sled': '🛷',
+  // PHANTOM
+  'Push': '💪',
+  'Pull': '🤸',
+  'Holds': '🧘',
+  'Rings': '⭕',
+  'Handstand': '🙃',
+  'Planche': '🤸‍♂️',
+  // SCOUT
+  'Run': '🏃',
+  'Ruck': '🎒',
+  'Triathlon': '🏊',
+  // BERSERKER
+  'Sled': '🛷',
+  'Kettlebell': '🔔',
+  'Hero WODs': '⚔️',
+  'Boxing': '🥊',
+  'Capacity': '🔥',
+  'Mace / Indian Club': '🔨',
+  // TRACER
+  'Sprint': '⚡',
+  'Plyo': '🦘',
+  'Parkour': '🏃‍♂️',
+  'Agility': '🔄',
+  'Throws': '🎯',
+  // ORACLE
+  'Mobility': '🧘',
+  'Breath': '🌬️',
+  'Balance': '⚖️',
+  'Mindfulness': '🧠',
+  'Yoga': '🕉️',
+  'Pilates': '💃',
+};
+
+const DEFAULT_BRANCH_ICON = '◆';
+
+function branchIcon(branchName: string | null): string {
+  if (!branchName) return DEFAULT_BRANCH_ICON;
+  return BRANCH_ICONS[branchName] ?? DEFAULT_BRANCH_ICON;
+}
+
 function SkillNode({
   skill,
   onClick,
   isUnlocked,
-  isLastTier,
-  isOnly,
+  isGodTier,
 }: {
   skill: Skill;
   onClick: () => void;
   isUnlocked: boolean;
-  isLastTier: boolean;
-  isOnly: boolean;
+  isGodTier: boolean;
 }) {
+  const icon = branchIcon(skill.branch);
+  const tierShort = skill.tier.replace('TIER_', 'T');
   return (
     <button
       onClick={onClick}
+      aria-label={`${skill.name} (${skill.tier}${isGodTier ? ' god-tier' : ''})`}
       className={classNames(
-        'w-full text-left p-2.5 border-2 transition-all',
-        isUnlocked
-          ? 'bg-neon-lime/10 border-neon-lime shadow-neon-lime cursor-default'
-          : 'border-ink-500/30 bg-bg-800/40 hover:border-neon-cyan/40 hover:bg-neon-cyan/5 cursor-pointer',
+        'group flex flex-col items-center gap-1.5 outline-none',
+        'focus-visible:ring-2 focus-visible:ring-neon-cyan/60 rounded-lg',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={classNames(
-            'text-[9px] font-display tracking-widest uppercase',
-            isUnlocked ? 'text-neon-lime' : 'text-ink-400',
-          )}
-        >
-          {skill.tier.replace('_', ' ')}
-        </span>
-        {isUnlocked ? (
-          <span className="text-[10px] font-mono text-neon-lime">✓</span>
-        ) : (
-          <span className="text-[10px] font-mono text-ink-500">?</span>
-        )}
-      </div>
+      {/* Tier label */}
       <div
         className={classNames(
-          'text-[11px] font-display tracking-wide mt-0.5',
-          isUnlocked ? 'text-neon-lime' : 'text-ink-100',
+          'text-[8px] font-display tracking-widest uppercase',
+          isGodTier
+            ? 'text-neon-amber'
+            : isUnlocked
+              ? 'text-neon-lime'
+              : 'text-ink-400',
         )}
+      >
+        {tierShort}
+      </div>
+      {/* The circle — calitree-style flow-chart node */}
+      <div
+        className={classNames(
+          'relative w-14 h-14 rounded-full border-2 flex items-center justify-center',
+          'text-2xl transition-all duration-200',
+          isGodTier
+            ? 'border-neon-amber bg-neon-amber/10 shadow-neon-amber'
+            : isUnlocked
+              ? 'border-neon-lime bg-neon-lime/10 shadow-neon-lime'
+              : 'border-ink-500/40 bg-bg-800/60 group-hover:border-neon-cyan/60 group-hover:bg-neon-cyan/5',
+        )}
+      >
+        <span
+          className={classNames(
+            'leading-none select-none',
+            isUnlocked ? '' : 'opacity-40 grayscale',
+          )}
+        >
+          {icon}
+        </span>
+        {/* Lock badge for locked nodes */}
+        {!isUnlocked && (
+          <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-bg-900 border border-ink-500/60 flex items-center justify-center text-[8px] leading-none">
+            🔒
+          </span>
+        )}
+        {/* Check mark for unlocked nodes */}
+        {isUnlocked && !isGodTier && (
+          <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-neon-lime text-bg-900 flex items-center justify-center text-[8px] font-bold leading-none">
+            ✓
+          </span>
+        )}
+        {/* Star for god-tier */}
+        {isGodTier && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-neon-amber text-bg-900 flex items-center justify-center text-[8px] leading-none">
+            ★
+          </span>
+        )}
+      </div>
+      {/* Skill name */}
+      <div
+        className={classNames(
+          'text-[9px] font-display tracking-wide text-center max-w-[110px]',
+          'leading-tight line-clamp-2',
+          isUnlocked ? 'text-neon-lime' : 'text-ink-200',
+        )}
+        title={skill.name}
       >
         {skill.name}
       </div>
-      {!isUnlocked && !isOnly && (
-        <div className="text-[9px] font-mono text-ink-500 mt-1">
-          ↓ {skill.tier === 'TIER_1' ? 'T2' : skill.tier === 'TIER_2' ? 'T3' : 'T1→'}
-        </div>
-      )}
-      {isLastTier && !isUnlocked && (
-        <div className="text-[9px] font-mono text-neon-amber mt-1 uppercase tracking-widest">
-          ★ god-tier
-        </div>
-      )}
     </button>
   );
 }
@@ -335,22 +418,54 @@ function BranchColumn({
   branch: Branch;
   onSkillClick: (skill: Skill) => void;
 }) {
+  const icon = branchIcon(branch.branchName);
+  const unlockedCount = branch.skills.filter((s) => s.unlocked).length;
+  const total = branch.skills.length;
+  const allDone = unlockedCount === total;
   return (
-    <div className="flex flex-col gap-2 min-w-[180px] flex-1">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 px-2 py-1 border-b border-ink-700/30">
-        {branch.branchName}
+    <div className="flex flex-col gap-3 min-w-[140px] flex-1">
+      {/* Branch header — centered icon + name + progress */}
+      <div className="flex flex-col items-center gap-1 pb-2 border-b border-ink-700/30">
+        <div className="text-3xl leading-none">{icon}</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
+          {branch.branchName}
+        </div>
+        <div
+          className={classNames(
+            'text-[9px] font-mono',
+            allDone ? 'text-neon-lime' : 'text-ink-400',
+          )}
+        >
+          {unlockedCount}/{total}
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5">
-        {branch.skills.map((s) => (
-          <SkillNode
-            key={s.id}
-            skill={s}
-            onClick={() => onSkillClick(s)}
-            isUnlocked={s.unlocked}
-            isLastTier={s.tier === 'TIER_3'}
-            isOnly={branch.skills.length === 1}
-          />
-        ))}
+      {/* Vertical chain — circles connected by short gradient lines */}
+      <div className="flex flex-col items-center gap-0">
+        {branch.skills.map((s, idx) => {
+          const isLast = idx === branch.skills.length - 1;
+          const isGodTier = isLast && s.tier === 'TIER_3';
+          return (
+            <div key={s.id} className="flex flex-col items-center">
+              <SkillNode
+                skill={s}
+                onClick={() => onSkillClick(s)}
+                isUnlocked={s.unlocked}
+                isGodTier={isGodTier}
+              />
+              {/* Connector line — short gradient bar between nodes */}
+              {!isLast && (
+                <div
+                  className={classNames(
+                    'w-0.5 h-5 my-0.5',
+                    s.unlocked && branch.skills[idx + 1].unlocked
+                      ? 'bg-gradient-to-b from-neon-lime/60 to-neon-lime/30'
+                      : 'bg-gradient-to-b from-ink-500/40 to-ink-500/10',
+                  )}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -440,9 +555,9 @@ export function SkillTreePage() {
         }
       />
 
-      {/* Tree view — branches as columns, each skill a vertical node */}
+      {/* Tree view — branches as columns, each skill a circular flow node */}
       <div className="overflow-x-auto pb-2">
-        <div className="flex gap-3 min-w-fit">
+        <div className="flex gap-4 min-w-fit px-2">
           {branches.map((b) => (
             <BranchColumn key={b.branchName} branch={b} onSkillClick={setSelected} />
           ))}
@@ -451,12 +566,21 @@ export function SkillTreePage() {
 
       {/* Legend */}
       <Panel variant="cyan" className="mt-4">
-        <div className="text-[10px] font-mono text-ink-300 flex flex-wrap gap-4">
-          <span><span className="text-neon-lime">■</span> Unlocked</span>
-          <span><span className="text-ink-400">■</span> Locked</span>
-          <span><span className="text-neon-amber">★</span> God-tier (final T3 milestone of a branch)</span>
+        <div className="text-[10px] font-mono text-ink-300 flex flex-wrap gap-x-5 gap-y-2 items-center">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-neon-lime bg-neon-lime/10" />
+            Unlocked
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-ink-500/40 bg-bg-800/60" />
+            Locked
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full border-2 border-neon-amber bg-neon-amber/10" />
+            ★ God-tier (final T3 milestone of a branch)
+          </span>
           <span className="text-ink-400">
-            Click any skill node to see the test (blurb + how-to + safety)
+            Click any node to see the test (blurb + how-to + safety)
             and submit your result.
           </span>
         </div>
