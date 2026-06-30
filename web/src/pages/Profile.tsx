@@ -68,6 +68,8 @@ function storageUnitForKey(key: string): string {
   if (key === 'ankleCm') return 'cm';
   if (key === 'forearmLengthCm') return 'cm';
   if (key === 'neckCircCm') return 'cm';
+  if (key === 'shoulderCm') return 'cm';
+  if (key === 'waistCm') return 'cm';
   if (key === 'weightKg') return 'kg';
   return '';
 }
@@ -91,12 +93,13 @@ export function ProfilePage() {
   const [pendingClass, setPendingClass] = useState<ClassName | null>(null);
 
   // Split frame inputs by volatility. Static = bone structure (rarely
-  // changes, drives Casey Butt genetic maxes). Dynamic = body comp
-  // (changes with training, drives FFMI + lean mass). birthDate lives
-  // with the static set since it changes ~never.
-  const STATIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'birthDate'] as const;
+  // changes, drives Casey Butt genetic maxes + scales the Tron
+  // identity disk). Dynamic = body comp (changes with training,
+  // drives FFMI/lean mass). birthDate lives with the static set
+  // since it changes ~never.
+  const STATIC_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'shoulderCm', 'waistCm', 'birthDate'] as const;
   const DYNAMIC_KEYS = ['weightKg', 'bodyFatPct'] as const;
-  const FRAME_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'weightKg', 'bodyFatPct'] as const;
+  const FRAME_KEYS = ['heightCm', 'wristCm', 'ankleCm', 'forearmLengthCm', 'neckCircCm', 'shoulderCm', 'waistCm', 'weightKg', 'bodyFatPct'] as const;
 
   // Initialize draft + class + birthdate from user on mount/unit change
   useEffect(() => {
@@ -162,6 +165,8 @@ export function ProfilePage() {
       ['wristCm', user.wristCm],
       ['ankleCm', user.ankleCm],
       ['heightCm', user.heightCm],
+      ['shoulderCm', user.shoulderCm],
+      ['waistCm', user.waistCm],
       ['weightKg', user.weightKg],
       ['bodyFatPct', user.bodyFatPct],
     ];
@@ -383,6 +388,24 @@ export function ProfilePage() {
                     step={inImperial ? 0.25 : 0.1}
                     required
                     present={!!previewNeck}
+                  />
+                  <FrameField
+                    label="Shoulder width"
+                    storageKey="shoulderCm"
+                    value={draft.shoulderCm ?? ''}
+                    onChange={(v) => setDraftField('shoulderCm', v)}
+                    system={system}
+                    step={inImperial ? 0.5 : 0.1}
+                    present={!!numFromDraft('shoulderCm')}
+                  />
+                  <FrameField
+                    label="Waist"
+                    storageKey="waistCm"
+                    value={draft.waistCm ?? ''}
+                    onChange={(v) => setDraftField('waistCm', v)}
+                    system={system}
+                    step={inImperial ? 0.5 : 0.1}
+                    present={!!numFromDraft('waistCm')}
                   />
                 </div>
               </div>

@@ -255,6 +255,12 @@ model User {
   ankleCm               Float?
   forearmLengthCm       Float?
   neckCircCm            Float?
+  // Static frame measurements (don't change). Used by the Tron
+  // identity disk to scale the disc radius, inner ring, and figure
+  // position. Optional so existing users aren't blocked; the avatar
+  // falls back to archetype-only scaling when missing.
+  shoulderCm            Float?
+  waistCm                Float?
   // Dynamic body metrics (change over time). Used by formulas + tracked.
   weightKg              Float?
   bodyFatPct            Float?

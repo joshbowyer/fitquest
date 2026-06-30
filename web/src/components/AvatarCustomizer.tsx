@@ -76,6 +76,9 @@ export function AvatarCustomizer({ user }: { user: User }) {
                 accentColor={classColor ?? undefined}
                 classStripe={classColor ?? null}
                 size={88}
+                shoulderCm={user.shoulderCm}
+                waistCm={user.waistCm}
+                heightCm={user.heightCm}
               />
             )}
             <div className="text-[10px] font-mono text-ink-300 leading-relaxed flex-1">

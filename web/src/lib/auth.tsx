@@ -51,6 +51,12 @@ export type User = {
   ankleCm: number | null;
   forearmLengthCm: number | null;
   neckCircCm: number | null;
+  /// Static body measurements used by the Tron identity disk to
+  /// scale the disc radius (shoulders), inner ring (waist), and
+  /// figure vertical position (height). Optional — the avatar
+  /// falls back to archetype-only scaling when missing.
+  shoulderCm: number | null;
+  waistCm: number | null;
   weightKg: number | null;
   bodyFatPct: number | null;
   birthDate: string | null;

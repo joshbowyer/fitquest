@@ -18,6 +18,14 @@ const ProfileSchema = z.object({
   ankleCm: z.number().positive().max(30).optional().nullable(),
   forearmLengthCm: z.number().positive().max(60).optional().nullable(),
   neckCircCm: z.number().positive().max(80).optional().nullable(),
+  // Body measurements used by the Tron identity disk to scale the
+  // disc radius, inner ring, and figure vertical position. Optional
+  // so existing installs without these fields aren't blocked.
+  // Upper bounds cover ~99.9th percentile adult humans:
+  //   shoulder width: ~70cm (narrow) to ~160cm (very broad bodybuilders)
+  //   waist:           ~60cm (lean)   to ~180cm (very large)
+  shoulderCm: z.number().positive().max(200).optional().nullable(),
+  waistCm: z.number().positive().max(200).optional().nullable(),
   weightKg: z.number().positive().max(300).optional().nullable(),
   bodyFatPct: z.number().min(2).max(60).optional().nullable(),
   birthDate: z.string().datetime().optional().nullable(),
@@ -70,6 +78,8 @@ export async function userRoutes(app: FastifyInstance) {
       ankleCm: user.ankleCm,
       forearmLengthCm: user.forearmLengthCm,
       neckCircCm: user.neckCircCm,
+      shoulderCm: user.shoulderCm,
+      waistCm: user.waistCm,
       sex: user.sex,
       weightKg: user.weightKg,
       bodyFatPct: user.bodyFatPct,
@@ -129,6 +139,8 @@ export async function userRoutes(app: FastifyInstance) {
         ankleCm: body.ankleCm === undefined ? undefined : body.ankleCm,
         forearmLengthCm: body.forearmLengthCm === undefined ? undefined : body.forearmLengthCm,
         neckCircCm: body.neckCircCm === undefined ? undefined : body.neckCircCm,
+        shoulderCm: body.shoulderCm === undefined ? undefined : body.shoulderCm,
+        waistCm: body.waistCm === undefined ? undefined : body.waistCm,
         weightKg: body.weightKg === undefined ? undefined : body.weightKg,
         bodyFatPct: body.bodyFatPct === undefined ? undefined : body.bodyFatPct,
         birthDate: body.birthDate === undefined ? undefined : (body.birthDate ? new Date(body.birthDate) : null),

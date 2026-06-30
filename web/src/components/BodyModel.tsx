@@ -3,6 +3,40 @@ import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
+/**
+ * Small pulsing dot used for the "recently worked" body-part marker.
+ * Sin-based scale + opacity oscillation so the eye is drawn to
+ * recently-trained parts on the hologram. Cheap to run (single
+ * 12-segment sphere, one useFrame) so we can have many of them
+ * on screen at once without affecting framerate.
+ */
+function PulseDot({
+  position,
+  radius,
+  color,
+}: {
+  position: [number, number, number];
+  radius: number;
+  color: string;
+}) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    const t = clock.getElapsedTime();
+    // Two octaves so the pulse has texture — base rate plus a
+    // higher-frequency wobble. Scaled to ~1.3 max so the dot
+    // doesn't visibly leave the body part boundary.
+    const pulse = 1 + 0.18 * Math.sin(t * 3.2) + 0.06 * Math.sin(t * 7.4);
+    ref.current.scale.setScalar(pulse);
+  });
+  return (
+    <mesh ref={ref} position={position}>
+      <sphereGeometry args={[radius, 12, 12]} />
+      <meshBasicMaterial color={color} />
+    </mesh>
+  );
+}
+
 export type BodyPartId =
   | 'HEAD' | 'NECK' | 'TRAPS'
   | 'PECTORAL' | 'ABS' | 'OBLIQUE_L' | 'OBLIQUE_R'
@@ -455,20 +489,14 @@ function BodyPartMesh({
       {/* Recently-worked marker — small dot ABOVE the part, color
           matches the recovery band so the visual story is
           consistent. Only shown if no pain marker is taking the
-          top spot. SphereGeometry args are [radius, widthSegs,
-          heightSegs]; R3F needs the array form, not a single
-          number (the old shape silently breaks the renderer). */}
+          top spot. Pulses (sin-based scale) so the eye is drawn
+          to recently-trained parts on the hologram. */}
       {recentlyWorked && (
-        <mesh position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}>
-          <sphereGeometry
-            args={[
-              volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04,
-              12,
-              12,
-            ]}
-          />
-          <meshBasicMaterial color={baseColor} />
-        </mesh>
+        <PulseDot
+          position={[pain ? 0.18 : 0, part.size[1] / 2 + (pain ? 0.18 : 0.1), 0]}
+          radius={volumeBand === 'heavy' ? 0.07 : volumeBand === 'moderate' ? 0.055 : 0.04}
+          color={baseColor}
+        />
       )}
     </group>
   );

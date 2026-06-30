@@ -3,6 +3,13 @@ import type { FrameArchetype } from '@/lib/frame';
 export type AvatarProps = {
   archetype: FrameArchetype;
   bodyFatPct?: number | null;
+  /// Static body measurements (cm). When provided, the disc radius,
+  /// inner ring, and figure scale/position adapt so a 6'/28in/44in
+  /// build looks visibly different from a 5'/32in/42in build. All
+  /// optional — missing values fall back to the archetype defaults.
+  shoulderCm?: number | null;
+  waistCm?: number | null;
+  heightCm?: number | null;
   accentColor?: string;
   size?: number | string;
   className?: string;
@@ -34,6 +41,9 @@ export function Avatar({
   className,
   accentColor,
   classStripe,
+  shoulderCm,
+  waistCm,
+  heightCm,
 }: AvatarProps) {
   const ringColor = classStripe ?? accentColor ?? '#14d6e8';
   const innerColor = archetypeTint(archetype);
@@ -42,6 +52,27 @@ export function Avatar({
   const w = 40;
   const h = 40;
   const cx = w / 2;
+
+  // Measurement-based scaling. Reference values are "average adult
+  // male" — 110cm shoulders, 80cm waist, 175cm height — that map to a
+  // 1.0x scale. Clamps keep the disc from looking weird (e.g. a
+  // 60cm shoulder doesn't shrink the disc to half size).
+  const shoulderScale = clampScale(shoulderCm, 110, 0.92, 1.10);
+  const waistScale = clampScale(waistCm, 80, 0.88, 1.10);
+  const heightScale = clampScale(heightCm, 175, 0.92, 1.10);
+  // Outer ring scales with shoulders (broader → bigger disc).
+  const outerR = 18 * shoulderScale;
+  // Inner ring scales with waist (tighter waist → larger inner ring,
+  // i.e. less gap to the outer). Inverse of waistScale so a small
+  // waist gives a big inner ring.
+  const innerR = 15 / Math.sqrt(waistScale);
+  // Vertical figure scale — taller users get an elongated silhouette.
+  // Width stays constant (archetype-controlled). Applied via a
+  // scale transform on the <g> wrapper around the figure.
+  const figScaleY = heightScale;
+  // Figure y-offset — taller users shift the figure up so it stays
+  // centered in the disc.
+  const figYOffset = -(heightScale - 1) * 4;
 
   return (
     <svg
@@ -68,38 +99,41 @@ export function Avatar({
         </pattern>
       </defs>
 
-      {/* Background dark fill (the disc surface) */}
-      <circle cx={cx} cy={h / 2} r={18} fill="#0e0f1a" />
+      {/* Background dark fill (the disc surface). R = outerR. */}
+      <circle cx={cx} cy={h / 2} r={outerR} fill="#0e0f1a" />
 
-      {/* Inner grid pattern */}
-      <circle cx={cx} cy={h / 2} r={16} fill={`url(#disc-grid-${archetype})`} />
+      {/* Inner grid pattern — slightly inset from outerR for visual ring. */}
+      <circle cx={cx} cy={h / 2} r={outerR - 2} fill={`url(#disc-grid-${archetype})`} />
 
-      {/* Outer ring (glowing) */}
+      {/* Outer ring (glowing) — radius scales with shoulder width. */}
       <circle
         cx={cx}
         cy={h / 2}
-        r={18}
+        r={outerR}
         fill="none"
         stroke={ringColor}
         strokeWidth="2"
         filter={`url(#disc-glow-${archetype})`}
       />
-      {/* Inner ring (thinner, slightly inset) */}
+      {/* Inner ring (thinner, slightly inset) — radius scales with waist
+          (tighter waist → larger inner ring, less gap to the outer). */}
       <circle
         cx={cx}
         cy={h / 2}
-        r={15}
+        r={innerR}
         fill="none"
         stroke={ringColor}
         strokeWidth="0.5"
         opacity={0.5}
       />
 
-      {/* Archetype silhouette — abstract humanoid */}
+      {/* Archetype silhouette — abstract humanoid. Vertical scale
+          (taller users → elongated figure) + y-offset (taller users
+          → figure shifts up to stay centered in the disc). */}
       <g
         fill={innerColor}
         filter={`url(#disc-glow-${archetype})`}
-        transform={`translate(${cx}, ${h / 2})`}
+        transform={`translate(${cx}, ${h / 2 + figYOffset}) scale(1, ${figScaleY})`}
       >
         {fig}
       </g>
@@ -108,24 +142,42 @@ export function Avatar({
       {classStripe && (
         <line
           x1={cx}
-          y1={h / 2 - 18}
+          y1={h / 2 - outerR}
           x2={cx}
-          y2={h / 2 + 18}
+          y2={h / 2 + outerR}
           stroke={classStripe}
           strokeWidth="0.8"
           opacity={0.5}
         />
       )}
 
-      {/* Tick marks at cardinal points (Tron identifier) */}
+      {/* Tick marks at cardinal points (Tron identifier) — span
+          the full outer ring radius. */}
       <g stroke={ringColor} strokeWidth="0.6" opacity={0.7}>
-        <line x1={cx - 18} y1={h / 2} x2={cx - 16} y2={h / 2} />
-        <line x1={cx + 16} y1={h / 2} x2={cx + 18} y2={h / 2} />
-        <line x1={cx} y1={h / 2 - 18} x2={cx} y2={h / 2 - 16} />
-        <line x1={cx} y1={h / 2 + 16} x2={cx} y2={h / 2 + 18} />
+        <line x1={cx - outerR} y1={h / 2} x2={cx - (outerR - 2)} y2={h / 2} />
+        <line x1={cx + (outerR - 2)} y1={h / 2} x2={cx + outerR} y2={h / 2} />
+        <line x1={cx} y1={h / 2 - outerR} x2={cx} y2={h / 2 - (outerR - 2)} />
+        <line x1={cx} y1={h / 2 + (outerR - 2)} x2={cx} y2={h / 2 + outerR} />
       </g>
     </svg>
   );
+}
+
+/**
+ * Clamp a measurement-driven scale to a [min, max] range around 1.0.
+ * When the measurement is null/undefined, returns 1.0 (no scaling —
+ * the archetype defaults win). Math is linear: measurement=ref → 1.0;
+ * measurement=2*ref → 2.0 (clamped). The narrow band (±8-12%) keeps the
+ * disc from looking too lopsided at extreme measurements.
+ */
+function clampScale(
+  value: number | null | undefined,
+  ref: number,
+  min: number,
+  max: number,
+): number {
+  if (value == null) return 1;
+  return Math.min(max, Math.max(min, value / ref));
 }
 
 /**
