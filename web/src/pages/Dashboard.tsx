@@ -86,18 +86,36 @@ const CATEGORY_LABELS: Record<string, { label: string; variant: 'cyan' | 'magent
  * Sizing: 140px diameter ring; the outer text stays readable at
  * the dashboard's typical 1/4-row width (≥360px).
  */
+function formatHoldDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+
 function CalisthenicsRadial({
   unlocked,
   total,
   pct,
   className,
   recentName,
+  deadHangPr,
+  bestHoldPr,
 }: {
   unlocked: number;
   total: number;
   pct: number;
   className: string | null;
   recentName?: string | null;
+  // Best Dead Hang HOLD PR — the headline "how long can you hang"
+  // stat. Value is duration in seconds; null if no Dead Hang
+  // sets have been logged yet.
+  deadHangPr: { valueSec: number; achievedAt: string } | null;
+  // Fallback: longest static-hold PR across any calisthenics
+  // exercise (Plank, L-Sit, Side Plank, etc). Used when the
+  // user hasn't logged a Dead Hang yet so the chip doesn't
+  // look empty.
+  bestHoldPr: { exercise: string; valueSec: number; achievedAt: string } | null;
 }) {
   const size = 140;
   const stroke = 10;
@@ -149,7 +167,7 @@ function CalisthenicsRadial({
           </div>
         </div>
       </div>
-      <div className="flex flex-col items-center">
+      <div className="flex flex-col items-center gap-1">
         <div className={`text-[10px] font-mono uppercase tracking-widest ${labelClass}`}>
           Calisthenics mastery
         </div>
@@ -161,6 +179,25 @@ function CalisthenicsRadial({
         {isPhatom && recentName && (
           <div className={`text-[9px] font-mono ${dimClass} text-center max-w-[180px] truncate`}>
             Latest: {recentName}
+          </div>
+        )}
+        {/* Hold PR chip — headline "how long can you hang" stat.
+            Dead Hang takes priority; falls back to the longest
+            static hold across any calisthenics exercise if the
+            user hasn't logged Dead Hang yet. Hidden entirely when
+            no hold PR exists. */}
+        {(deadHangPr || bestHoldPr) && (
+          <div
+            className={`mt-1 px-2 py-1 border border-neon-violet/40 bg-neon-violet/5 text-[10px] font-mono ${labelClass}`}
+            title={
+              deadHangPr
+                ? `Dead Hang PR achieved ${formatRelative(deadHangPr.achievedAt)}`
+                : `Best hold (${bestHoldPr!.exercise}) achieved ${formatRelative(bestHoldPr!.achievedAt)}`
+            }
+          >
+            {deadHangPr
+              ? <>Dead Hang PR: <span className="text-ink-100">{formatHoldDuration(deadHangPr.valueSec)}</span></>
+              : <>Best Hold ({bestHoldPr!.exercise}): <span className="text-ink-100">{formatHoldDuration(bestHoldPr!.valueSec)}</span></>}
           </div>
         )}
       </div>
@@ -280,6 +317,8 @@ export function DashboardPage() {
           tier: string;
           achievedAt: string;
         }>;
+        bestHoldPr: { exercise: string; valueSec: number; achievedAt: string } | null;
+        deadHangPr: { valueSec: number; achievedAt: string } | null;
       }>('/skills/calisthenics-progress'),
   });
 
@@ -498,6 +537,8 @@ export function DashboardPage() {
                   pct={calisthenicsQ.data?.pct ?? 0}
                   className={user.class}
                   recentName={calisthenicsQ.data?.recentUnlocks?.[0]?.name}
+                  deadHangPr={calisthenicsQ.data?.deadHangPr ?? null}
+                  bestHoldPr={calisthenicsQ.data?.bestHoldPr ?? null}
                 />
               </div>
             )}

@@ -153,7 +153,7 @@ export async function skillRoutes(app: FastifyInstance) {
    */
   app.get('/calisthenics-progress', async (req) => {
     const me = await requireUser(req);
-    const [totalSkills, unlockedRows, recentRows] = await Promise.all([
+    const [totalSkills, unlockedRows, recentRows, bestHoldPr, deadHangPr] = await Promise.all([
       prisma.skill.count({ where: { className: 'PHANTOM', test: { not: null } } }),
       prisma.userSkill.findMany({
         where: {
@@ -171,6 +171,22 @@ export async function skillRoutes(app: FastifyInstance) {
         take: 5,
         include: { skill: { select: { name: true, branch: true, tier: true } } },
       }),
+      // Best HOLD-type PR across all static-hold exercises
+      // (Dead Hang, Plank, L-Sit, Side Plank, etc). Falls back to
+      // the best hold overall if the user hasn't logged a Dead Hang
+      // specifically yet.
+      prisma.pr.findFirst({
+        where: { userId: me.id, type: 'HOLD' },
+        orderBy: { value: 'desc' },
+        select: { exercise: true, value: true, achievedAt: true },
+      }),
+      // Dead Hang specifically. Headline chip on the calisthenics
+      // radial. Null if no Dead Hang sets logged yet.
+      prisma.pr.findFirst({
+        where: { userId: me.id, exercise: 'Dead Hang', type: 'HOLD' },
+        orderBy: { value: 'desc' },
+        select: { value: true, achievedAt: true },
+      }),
     ]);
     const unlocked = unlockedRows.length;
     return {
@@ -185,6 +201,16 @@ export async function skillRoutes(app: FastifyInstance) {
         tier: r.skill.tier,
         achievedAt: r.unlockedAt,
       })),
+      bestHoldPr: bestHoldPr
+        ? {
+            exercise: bestHoldPr.exercise,
+            valueSec: bestHoldPr.value,
+            achievedAt: bestHoldPr.achievedAt,
+          }
+        : null,
+      deadHangPr: deadHangPr
+        ? { valueSec: deadHangPr.value, achievedAt: deadHangPr.achievedAt }
+        : null,
     };
   });
 }
