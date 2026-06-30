@@ -72,6 +72,102 @@ const CATEGORY_LABELS: Record<string, { label: string; variant: 'cyan' | 'magent
   CALISTHENICS: { label: 'CALISTHENICS', variant: 'violet', color: 'violet' },
 };
 
+/**
+ * CalisthenicsRadial — circular progress ring for the CALISTHENICS
+ * stat-sheet panel. Shows the user's PHANTOM tree mastery as a
+ * fraction of the 42 v1 calisthenics skills. The ring fills with
+ * neon-violet; the center text shows X/42 and the % underneath.
+ *
+ * For non-PHANTOM users the radial still populates (it counts
+ * PHANTOM skills unlocked regardless of the user's class), but
+ * the caption hints they could pick PHANTOM to grow this number
+ * via the calisthenics test unlocks.
+ *
+ * Sizing: 140px diameter ring; the outer text stays readable at
+ * the dashboard's typical 1/4-row width (≥360px).
+ */
+function CalisthenicsRadial({
+  unlocked,
+  total,
+  pct,
+  className,
+  recentName,
+}: {
+  unlocked: number;
+  total: number;
+  pct: number;
+  className: string | null;
+  recentName?: string | null;
+}) {
+  const size = 140;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  // Clamp + floor at 0; the visual gap at pct=0 is fine (no ring fill).
+  const safePct = Math.max(0, Math.min(1, pct));
+  const dash = c * safePct;
+  // Tailwind safelist (already in tailwind.config.js) ensures these
+  // dynamic class strings survive purge.
+  const strokeClass = 'stroke-neon-violet';
+  const trackClass = 'stroke-neon-violet/15';
+  const labelClass = 'text-neon-violet';
+  const dimClass = 'text-ink-400';
+  const isPhatom = className === 'PHANTOM';
+  return (
+    <div className="flex flex-col items-center gap-1.5" title={recentName ? `Latest unlock: ${recentName}` : 'No calisthenics skills unlocked yet'}>
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          {/* Track */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            strokeWidth={stroke}
+            className={trackClass}
+          />
+          {/* Fill — uses stroke-dasharray for the arc effect */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+            className={strokeClass}
+          />
+        </svg>
+        {/* Center label */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div className={`text-2xl font-display tracking-tight ${labelClass}`}>
+            {unlocked}
+            <span className={`text-sm ${dimClass}`}>/{total}</span>
+          </div>
+          <div className={`text-[10px] font-mono uppercase tracking-widest ${dimClass}`}>
+            {Math.round(safePct * 100)}%
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col items-center">
+        <div className={`text-[10px] font-mono uppercase tracking-widest ${labelClass}`}>
+          Calisthenics mastery
+        </div>
+        {!isPhatom && (
+          <div className={`text-[9px] font-mono ${dimClass} text-center max-w-[180px]`}>
+            Pick PHANTOM to grow this via test unlocks
+          </div>
+        )}
+        {isPhatom && recentName && (
+          <div className={`text-[9px] font-mono ${dimClass} text-center max-w-[180px] truncate`}>
+            Latest: {recentName}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DashboardPage() {
   const { user } = useAuth();
   const system = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
@@ -163,6 +259,29 @@ export function DashboardPage() {
   }
   const maxByMetric = new Map<string, GeneticMax>();
   for (const g of geneticQ.data?.items || []) maxByMetric.set(g.metric, g);
+
+  // Calisthenics skill-tree progress for the dashboard radial.
+  // Reports against the PHANTOM tree (the calisthenics class) —
+  // meaningful even for non-PHANTOM users as a "calisthenics
+  // mastery" metric. The radial in the CALISTHENICS panel reads
+  // unlocked / total from this query.
+  const calisthenicsQ = useQuery({
+    queryKey: ['skills', 'calisthenics-progress'],
+    queryFn: () =>
+      api<{
+        className: string | null;
+        totalSkills: number;
+        unlocked: number;
+        pct: number;
+        recentUnlocks: Array<{
+          skillId: string;
+          name: string;
+          branch: string | null;
+          tier: string;
+          achievedAt: string;
+        }>;
+      }>('/skills/calisthenics-progress'),
+  });
 
   const unlocked = (achievementsQ.data?.items || []).filter((a) => a.unlocked);
 
@@ -362,6 +481,7 @@ export function DashboardPage() {
         const cfg = CATEGORY_LABELS[cat];
         if (!cfg) return null;
         const isBodyComp = cat === 'BODY_COMP';
+        const isCalisthenics = cat === 'CALISTHENICS';
         const gaugeMetrics = isBodyComp ? metrics.filter((m) => m !== 'WAIST') : metrics;
         return (
           <Panel
@@ -370,6 +490,17 @@ export function DashboardPage() {
             variant={cfg.variant}
             className="mb-6"
           >
+            {isCalisthenics && (
+              <div className="mb-4 flex items-center justify-center">
+                <CalisthenicsRadial
+                  unlocked={calisthenicsQ.data?.unlocked ?? 0}
+                  total={calisthenicsQ.data?.totalSkills ?? 42}
+                  pct={calisthenicsQ.data?.pct ?? 0}
+                  className={user.class}
+                  recentName={calisthenicsQ.data?.recentUnlocks?.[0]?.name}
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4 justify-items-center">
               {gaugeMetrics.map((m) => {
                 const meta = METRICS[m];

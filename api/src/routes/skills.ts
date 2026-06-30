@@ -67,10 +67,10 @@ export async function skillRoutes(app: FastifyInstance) {
    *   skillId: string
    *   result: Record<string, number>  // raw values per the metric
    *
-   * For pre-v1 skills (no test JSON), the unlock is permitted with
-   * no validation — backward compat. New v1 skills all have a test
-   * JSON so the validation always runs.
-   */
+* For pre-v1 skills (no test JSON), the unlock is permitted with
+    * no validation — backward compat. New v1 skills all have a test
+    * JSON so the validation always runs.
+    */
   app.post('/unlock', async (req, reply) => {
     const me = await requireUser(req);
     const body = z
@@ -130,5 +130,61 @@ export async function skillRoutes(app: FastifyInstance) {
     }
     await prisma.userSkill.create({ data: { userId: me.id, skillId: skill.id } });
     return { ok: true };
+  });
+
+  /**
+   * GET /skills/calisthenics-progress — compact summary of the user's
+   * calisthenics skill tree progress for the Dashboard radial.
+   *
+   * Returns:
+   *   className:    the user's current class (null if unclassed)
+   *   totalSkills:  count of v1 calisthenics skills (PHANTOM tree)
+   *   unlocked:     count the user has passed the unlock test for
+   *   pct:          unlocked / total (0..1)
+   *   recentUnlocks: last 5 skills the user unlocked (for "latest" tooltip)
+   *
+   * Notes:
+   *   - Always reports against the PHANTOM tree since that's the
+   *     calisthenics class. Non-PHANTOM users still get a meaningful
+   *     count (their unlock% against the canonical 42 calisthenics
+   *     skills — useful as "calisthenics mastery" regardless of class).
+   *   - Server-side filter: skills with test IS NOT NULL (v1 only).
+   *     Pre-v1 leftovers with test=null don't count toward the total.
+   */
+  app.get('/calisthenics-progress', async (req) => {
+    const me = await requireUser(req);
+    const [totalSkills, unlockedRows, recentRows] = await Promise.all([
+      prisma.skill.count({ where: { className: 'PHANTOM', test: { not: null } } }),
+      prisma.userSkill.findMany({
+        where: {
+          userId: me.id,
+          skill: { className: 'PHANTOM', test: { not: null } },
+        },
+        select: { skillId: true },
+      }),
+      prisma.userSkill.findMany({
+        where: {
+          userId: me.id,
+          skill: { className: 'PHANTOM', test: { not: null } },
+        },
+        orderBy: { unlockedAt: 'desc' },
+        take: 5,
+        include: { skill: { select: { name: true, branch: true, tier: true } } },
+      }),
+    ]);
+    const unlocked = unlockedRows.length;
+    return {
+      className: me.class,
+      totalSkills,
+      unlocked,
+      pct: totalSkills > 0 ? unlocked / totalSkills : 0,
+      recentUnlocks: recentRows.map((r) => ({
+        skillId: r.skillId,
+        name: r.skill.name,
+        branch: r.skill.branch,
+        tier: r.skill.tier,
+        achievedAt: r.unlockedAt,
+      })),
+    };
   });
 }

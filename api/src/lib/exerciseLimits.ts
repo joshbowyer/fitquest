@@ -104,6 +104,7 @@ export const EXERCISE_LIMITS: Record<string, ExerciseLimit> = {
   'Plank':                { bodyweightCoefficient: 0.5,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
   'L-Sit':                { bodyweightCoefficient: 0.6,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
   'Side Plank':           { bodyweightCoefficient: 0.5,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
+  'Dead Hang':            { bodyweightCoefficient: 1.0,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
 };
 
 /**

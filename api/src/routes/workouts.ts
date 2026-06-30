@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma, SkipReason, WorkoutType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-import { bestEstimatedOneRm, isPrCandidate } from '../lib/pr.js';
+import { bestEstimatedOneRm, bestHoldDurationSec, isPrCandidate, isStaticHoldExercise } from '../lib/pr.js';
 import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '../lib/xp.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
@@ -313,9 +313,40 @@ export async function workoutRoutes(app: FastifyInstance) {
         include: { exercises: { include: { sets: true } } },
       });
 
-      // PR detection for each exercise with weight*reps sets
+      // PR detection for each exercise. Two flavors:
+      //   - ONE_RM: weight×reps sets (barbell lifts, weighted calisthenics)
+      //   - HOLD:   longest duration in seconds (Plank, L-Sit, Dead Hang)
+      // Both can fire for the same workout — the same exercise name
+      // can have a ONE_RM PR (from a weighted variant) AND a HOLD PR
+      // (from a bodyweight-only hold) tracked separately.
       for (const ex of workout.exercises) {
         if (!ex.sets.length) continue;
+
+        // ---- HOLD PR (static holds: Dead Hang, Plank, L-Sit, ...) ----
+        if (isStaticHoldExercise(ex.name)) {
+          const bestHold = bestHoldDurationSec(ex.sets);
+          if (bestHold != null) {
+            const prevHold = await tx.pr.findFirst({
+              where: { userId: me.id, exercise: ex.name, type: 'HOLD' },
+              orderBy: { value: 'desc' },
+            });
+            if (isPrCandidate(ex.name, bestHold, prevHold?.value)) {
+              const pr = await tx.pr.create({
+                data: {
+                  userId: me.id,
+                  type: 'HOLD',
+                  exercise: ex.name,
+                  value: bestHold,
+                  previousValue: prevHold?.value ?? null,
+                  workoutId: workout.id,
+                },
+              });
+              prs.push({ exercise: ex.name, value: pr.value, previousValue: pr.previousValue, type: 'HOLD' });
+            }
+          }
+        }
+
+        // ---- ONE_RM PR (weight×reps sets) ----
         const bestSet = ex.sets
           .filter((s) => s.completed && !s.skipped && (s.weight ?? 0) > 0 && s.reps > 0)
           .reduce<{ value: number; weight: number; reps: number } | null>((acc, s) => {
