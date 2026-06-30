@@ -538,9 +538,15 @@ function toRow(r: DailyReading | null): DailyReading | null {
  * for older dates. Returns the reading on success, null otherwise.
  */
 export async function seedReading(date: string): Promise<DailyReading | null> {
-  // Cache hit → return immediately
+  // Cache check: treat empty gospel as a MISS, not a hit. Half-baked
+  // fetches (parse errors, EWTN articleBody truncation, Wayback
+  // returning a vigil/day picker without content) leave a row with
+  // `liturgicalInfo` populated but the reading text empty. Returning
+  // that row makes the UI say "no readings" forever until the daily
+  // cron runs — terrible UX. Delete the bad row and fall through to
+  // the live cascade so the user gets a real fetch on this request.
   const cached = await prisma.usccbDailyReading.findUnique({ where: { date } });
-  if (cached) {
+  if (cached && cached.gospel && cached.gospel.trim().length > 0) {
     return toRow({
       date: cached.date,
       liturgicalInfo: cached.liturgicalInfo ?? '',
@@ -549,9 +555,14 @@ export async function seedReading(date: string): Promise<DailyReading | null> {
       responsorialPsalm: cached.responsorialPsalm ?? '',
       psalmRef: cached.psalmRef ?? '',
       gospelAcclamation: cached.gospelAcclamation ?? '',
-      gospel: cached.gospel ?? '',
+      gospel: cached.gospel,
       gospelRef: cached.gospelRef ?? '',
     });
+  }
+  if (cached) {
+    // Empty-content cache hit. Drop the row so the upcoming upsert
+    // doesn't dedupe against a stub.
+    await prisma.usccbDailyReading.delete({ where: { date } }).catch(() => {});
   }
 
   // EWTN is the new primary source. Captcha-less, parseable JSON-LD
@@ -793,17 +804,21 @@ export async function getReadingsStatus(date: string): Promise<{
 }> {
   const sources: ReadingSourceStatus[] = [];
 
-  // Cache probe — instant, no network
+  // Cache probe — instant, no network. The 'ok' flag follows the
+  // content quality: a row with empty gospel is a stub, not a hit.
+  // (seedReading now treats these as misses too.)
   const cached = await prisma.usccbDailyReading.findUnique({
     where: { date },
-    select: { id: true, source: true, fetchedAt: true },
+    select: { id: true, source: true, fetchedAt: true, gospel: true },
   });
   if (cached) {
+    const hasContent = (cached.gospel ?? '').trim().length > 0;
     sources.push({
       source: 'cache',
-      ok: true,
+      ok: hasContent,
       fetchedAt: cached.fetchedAt,
       readingSource: cached.source,
+      ...(hasContent ? {} : { reason: 'cached row has empty gospel (stub from a half-baked fetch)' }),
     });
   } else {
     sources.push({ source: 'cache', ok: false, reason: 'not cached yet' });
