@@ -39,6 +39,10 @@ export async function skillRoutes(app: FastifyInstance) {
         id: s.id,
         name: s.name,
         tier: s.tier,
+        // Branch label (e.g. JUGGERNAUT "Squat", PHANTOM "Pull").
+        // Set by seedSkills; null for pre-v1 leftover skills which
+        // the page falls back to "Other" for.
+        branch: s.branch,
         blurb: s.blurb,
         position: s.position,
         cost: s.cost,

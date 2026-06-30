@@ -37,6 +37,11 @@ type Skill = {
   id: string;
   name: string;
   tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  // Branch label (e.g. JUGGERNAUT "Squat", PHANTOM "Pull") as
+  // stored on the Skill row. The page groups skills by this field.
+  // Pre-v1 leftover skills have null and fall into the "Other"
+  // column at the end.
+  branch: string | null;
   blurb: string | null;
   description: string;
   position: number;
@@ -54,13 +59,10 @@ type TreeResponse = {
 };
 
 // ---- Branch grouping ----
-// Skills are returned in (tier ASC, position ASC) order. A branch
-// is identified by a contiguous run of skills within the same
-// tier that share a class-level grouping. For v1, branches are
-// pre-computed at seed time (position 0+ for branch 1, etc.) so
-// the client can group by a sentinel position bucket. But since
-// we don't have a branch field, fall back to a heuristic: group
-// consecutive skills of the same tier.
+// The Skill model carries an explicit `branch` field set by the
+// seed (one of the canonical labels per class). Group skills by
+// that field directly — no name-prefix inference needed. Skills
+// with a null branch (pre-v1 leftovers) go to "Other".
 
 type Branch = {
   branchName: string;
@@ -68,50 +70,43 @@ type Branch = {
   skills: Skill[];
 };
 
-// 6 class × N branch names — the canonical branch order. We try to
-// match skills to a branch by name; if no match, the branch is
-// named after the first skill in the group.
-const BRANCH_NAMES_BY_CLASS: Record<string, string[]> = {
+// Canonical branch order per class. Used to sort columns in the
+// correct left-to-right order. Any new branch label returned from
+// the server that isn't in this list gets appended after the known
+// ones.
+const BRANCH_ORDER_BY_CLASS: Record<string, string[]> = {
   JUGGERNAUT: ['Squat', 'Press', 'Deadlift', 'Overhead Press', 'Strongman', 'Sled'],
   PHANTOM: ['Push', 'Pull', 'Holds', 'Rings', 'Handstand', 'Planche'],
   SCOUT: ['Run', 'Ruck', 'Triathlon'],
-  BERSERKER: ['Sled / Prowler', 'Kettlebell', 'Hero WODs', 'Boxing', 'Capacity', 'Mace / Indian Club'],
+  BERSERKER: ['Sled', 'Kettlebell', 'Hero WODs', 'Boxing', 'Capacity', 'Mace / Indian Club'],
   TRACER: ['Sprint', 'Plyo', 'Parkour', 'Agility', 'Throws'],
   ORACLE: ['Mobility', 'Breath', 'Balance', 'Mindfulness', 'Yoga', 'Pilates'],
 };
 
-function inferBranch(skillName: string, branchNames: string[]): string {
-  for (const bn of branchNames) {
-    if (skillName.startsWith(bn)) return bn;
-    // Also match mid-name (e.g. "1 Mile < 10:00" matches "Run" because
-    // it's a run test). Branch names appear as prefixes of the
-    // test name in the v1 seed, so this works.
-  }
-  return 'Other';
-}
-
 function buildBranches(items: Skill[], className: string): Branch[] {
-  const branchNames = BRANCH_NAMES_BY_CLASS[className] ?? [];
-  // Group by branch inferred from name. Order: tier ASC, position
-  // ASC within a branch.
+  const order = BRANCH_ORDER_BY_CLASS[className] ?? [];
+  // Group by skill.branch. Order: tier ASC, position ASC within a branch.
   const groups = new Map<string, Skill[]>();
   for (const s of items) {
-    const branch = inferBranch(s.name, branchNames);
+    const branch = s.branch ?? 'Other';
     if (!groups.has(branch)) groups.set(branch, []);
     groups.get(branch)!.push(s);
   }
-  // Sort branches by their first skill's tier then position, then
-  // name (so "1 Mile < 10:00" comes before "5K < 35:00" if the
-  // former came first in tier order).
+  // Sort branches: known order first, then any unknowns alphabetically,
+  // "Other" always last.
+  const sortKey = (name: string): [number, string] => {
+    if (name === 'Other') return [2, ''];
+    const idx = order.indexOf(name);
+    if (idx === -1) return [1, name];
+    return [0, order[idx]];
+  };
   const sortedBranches = Array.from(groups.entries())
     .map(([branchName, skills]) => ({ branchName, skills }))
     .sort((a, b) => {
-      const ta = a.skills[0]?.tier ?? 'TIER_1';
-      const tb = b.skills[0]?.tier ?? 'TIER_1';
-      if (ta !== tb) return ta.localeCompare(tb);
-      const pa = a.skills[0]?.position ?? 0;
-      const pb = b.skills[0]?.position ?? 0;
-      return pa - pb;
+      const [oa, sa] = sortKey(a.branchName);
+      const [ob, sb] = sortKey(b.branchName);
+      if (oa !== ob) return oa - ob;
+      return sa.localeCompare(sb);
     });
   return sortedBranches.map((b) => ({ ...b, tier: b.skills[0]?.tier ?? 'TIER_1' }));
 }

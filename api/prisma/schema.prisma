@@ -704,6 +704,13 @@ model Skill {
   cost          Int         @default(1)
   prerequisites String[]
   position      Int
+  /// Branch within the class (e.g. JUGGERNAUT's "Squat", PHANTOM's
+  /// "Pull"). The SkillTree page renders one column per branch, so
+  /// every skill needs a branch label. Set by seedSkills; nullable
+  /// for pre-v1 skills (which the page falls back to "Other" for).
+  /// Stored as a plain String rather than an enum so future class /
+  /// branch additions don't require a migration.
+  branch        String?
   effects       Json
   userSkills    UserSkill[]
 }
