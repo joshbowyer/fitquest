@@ -278,6 +278,7 @@ function UnlockModal({
 
 function SkillNode({
   skill,
+  className,
   onClick,
   isUnlocked,
   isGodTier,
