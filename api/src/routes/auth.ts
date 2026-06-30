@@ -41,7 +41,7 @@ const TRUSTED_DEVICE_TTL_DAYS = 90;
 // Username-only registration — no email. Email features (verification,
 // password reset, etc.) are deferred until we have a mail provider.
 const RegisterSchema = z.object({
-  username: z.string().min(3).max(32).regex(/^[a-zA-Z0-9_-]+$/, 'username may only contain letters, numbers, _ and -'),
+  username: z.string().min(3).max(21).regex(/^[a-zA-Z0-9_-]+$/, 'username may only contain letters, numbers, _ and -'),
   password: z.string().min(8).max(120),
 });
 

@@ -48,8 +48,8 @@ export function RegisterPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              pattern="[a-zA-Z0-9_-]{3,32}"
-              title="3-32 chars, letters/numbers/_/-"
+              pattern="[a-zA-Z0-9_-]{3,21}"
+              title="3-21 chars, letters/numbers/_/-"
               autoFocus
             />
           </div>

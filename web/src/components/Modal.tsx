@@ -8,6 +8,10 @@ export function Modal({
   title,
   children,
   width = 'max-w-md',
+  // Common override for destructive-action modals (delete/reset
+  // confirmations) where the typed-input field is long enough to
+  // squeeze the cancel button off the right edge. Modal callers
+  // can pass `width="max-w-lg"` to opt into the wider shell.
 }: {
   open: boolean;
   onClose: () => void;

@@ -1158,6 +1158,7 @@ function DeleteUserModal({
       open={!!target}
       onClose={onCancel}
       title={`Delete ${target.username}?`}
+      width="max-w-lg"
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
@@ -1286,6 +1287,7 @@ function ResetItemsModal({
       open={!!target}
       onClose={onCancel}
       title={isAll ? 'Wipe ALL items?' : `Wipe ${user!.username}'s items?`}
+      width="max-w-lg"
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
