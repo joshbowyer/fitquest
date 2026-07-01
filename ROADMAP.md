@@ -24,6 +24,22 @@
 
 ### Bugs / data-correctness
 
+- **New-user dashboard radials don't populate** after entering
+  measurements. Only `LEAN_MASS` + `FFMI` (the auto-derived
+  ones) render; the others (`BODY_FAT_PCT`, `WEIGHT`, `WAIST`,
+  `SHOULDER_WAIST_RATIO`) stay blank even after a measurement
+  is logged. Likely cause: the WEIGHT/BODY_FAT_PCT radials read
+  from the `Measurement` table but the new-user flow writes
+  them only to `User.weightKg` / `User.bodyFatPct`. Fallback
+  to the User row when no Measurement exists.
+- **New-user HomeBase shield starts at 60, not 100.** Code at
+  `api/src/lib/penance.ts:198-208` and `api/src/routes/habits.ts:194-198`
+  both create HomeBase with `shield: 100, tier: 'FORTIFIED'`.
+  User reports shield=60 on a fresh account. Need to confirm
+  whether something fires between registration and first
+  HomeBase GET that drops shield by 40, or whether the user is
+  on a stale image.
+
 ### Polish
 
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
@@ -59,9 +75,12 @@
   data and can answer questions ("how did I sleep this week?").
   Could be an LLM-powered insights panel that calls into the
   same APIs the dashboard does.
-- **Gadgetbridge live push/pull** — currently upload-only. A
-  real Gadgetbridge integration would push FIT files
-  automatically when the user pairs a Garmin / WearOS device.
+- **Gadgetbridge live push/pull** — uploads land via the
+  FitQuestBridge helper APK (vanilla Gadgetbridge + SAF-granted
+  export dir + bridge APK watching the dir). The PR for
+  upstream Gadgetbridge is no longer blocking. Next step: add
+  a "rebuild & install" reminder to the bridge's notification
+  when GB's API changes (rare).
 - **Nutrition tracker enhancements** — barcode lookup,
   restaurant menu scan, etc. The base tracker is live (AI
   estimated macros from free-text descriptions).
@@ -80,6 +99,47 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ FitQuestBridge helper APK + Bearer-token auth. New long-lived
+  `DEVICE` session kind on `Session` table (1-year TTL, sha-stored
+  token via standard Session.token column). New `readBearerToken` /
+  `getDeviceSession` helpers in `api/src/lib/auth.ts`; `requireUser`
+  now accepts `Authorization: Bearer <token>` AND falls back to
+  cookie session (cookie is the source of truth for the web app,
+  Bearer is for unattended clients — they don't share tokens).
+  Endpoints:
+  - `POST /auth/device-login` — username + password (+ optional
+    TOTP code) → `{ token, expiresAt, user }`. Re-running deletes
+    prior DEVICE sessions for the user (rotation).
+  - `POST /auth/device-logout` — revokes the calling Bearer token.
+  - `GET /auth/device-sessions` — lists active tokens (web UI
+    surfaces in /settings so the user can revoke a lost phone).
+  - `DELETE /auth/device-sessions/:id` — revoke one token.
+  - `POST /auth/logout-everywhere` — now also wipes DEVICE sessions.
+  Failed closed: a malformed Bearer rejects the request even if a
+  valid cookie is also present, so a typo'd token never accidentally
+  authenticates as the web user. 21 unit tests in
+  `api/src/__tests__/deviceLogin.test.ts` (all pass).
+  End-to-end smoke verified: real FIT upload via Bearer → 200, 2
+  rows created in DB. The FitQuestBridge APK lives at
+  `/home/josh/claw-code/FitQuestBridge/`, ~7MB debug APK. Setup
+  flow: install APK → enter server URL + credentials (+ TOTP if
+  2FA on) → pick the watch directory via SAF → tap Start → the
+  bridge uploads new `.fit` files to `/import/batch` in the
+  background. Works with vanilla Gadgetbridge: point GB's
+  AutoExport FIT directory at the same SAF-granted directory the
+  bridge watches.
+- ✅ Negative weight values for bodyweight + band exercises.
+  Set-weight schema in `api/src/routes/workouts.ts:100` was
+  `z.number().min(0).max(2000)` — rejected band-assisted work
+  (a 20kg band pulling up on a pull-up is roughly -20kg of
+  effective load). Relaxed to `min(-500).max(2000)`; floor
+  covers the heaviest commercial band stacks, ceiling still
+  flags obvious typos. Frontend weight inputs in
+  `LiveWorkoutLogger.tsx` (target + current), `WorkoutLogger.tsx`
+  and `pages/Workouts.tsx` (bulk-mode) all bumped from
+  `min={0}` to `min={-500}` and the placeholders now read
+  `kg · − for band assist` (or `lb · − for band assist` for
+  imperial users). Reps / duration / RPE inputs untouched.
 - ✅ USCCB readings: stale UI message + diagnostic endpoint. The
   "No USCCB reading available right now" message was stale (didn't
   mention EWTN, which has been the primary source since the

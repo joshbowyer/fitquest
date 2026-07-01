@@ -94,10 +94,11 @@ function flagSuspectSets(
 
 const SetInput = z.object({
   reps: z.number().int().min(0).max(1000),
-  // Hard cap 2000kg/4400lb — past that it's almost certainly a typo
-  // (e.g. typed 1350 instead of 135). Server stores it either way
-  // but flags it for the morning report.
-  weight: z.number().min(0).max(2000).optional().nullable(),
+  // Weight can be negative to support band-assisted bodyweight work
+  // (a 20kg band pulling UP on you during a pull-up is roughly -20kg
+  // of effective load). Floor -500kg covers the heaviest commercial
+  // band stacks; positive ceiling 2000kg still flags obvious typos.
+  weight: z.number().min(-500).max(2000).optional().nullable(),
   duration: z.number().int().min(0).max(60 * 60 * 6).optional().nullable(),
   // 0 means "not specified" — don't reject on min(1).
   rpe: z.number().min(0).max(10).optional().nullable(),

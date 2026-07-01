@@ -385,7 +385,8 @@ export function WorkoutLogger({
                               className={classNames('input-neon text-xs', isWeightedBw && 'pl-3')}
                               type="number"
                               step="0.5"
-                              placeholder={weightUnitLabel(units)}
+                              min={-500}
+                              placeholder={`${weightUnitLabel(units)} · − for band assist`}
                               value={s.weight || ''}
                               onChange={(e) => {
                                 const copy = [...exercises];

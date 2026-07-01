@@ -681,7 +681,7 @@ export function LiveWorkoutLogger({
                             <span className="font-mono text-ink-400 w-12">#{si + 1}</span>
                             <input
                               type="number"
-                              min={0}
+                              min={-500}
                               inputMode="numeric"
                               value={s.targetWeight || ''}
                               onChange={(e) => {
@@ -694,7 +694,7 @@ export function LiveWorkoutLogger({
                                 setExercises(copy);
                               }}
                               className="input-neon flex-1"
-                              placeholder={`weight (${weightUnitLabel(units)})`}
+                              placeholder={`weight (${weightUnitLabel(units)}) · − for band assist`}
                             />
                             <input
                               type="number"
@@ -988,7 +988,7 @@ export function LiveWorkoutLogger({
                     </label>
                     <input
                       type="number"
-                      min={0}
+                      min={-500}
                       inputMode="decimal"
                       value={currentWeight || ''}
                       onChange={(e) => setCurrentWeight(Number(e.target.value))}
