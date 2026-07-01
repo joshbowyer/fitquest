@@ -190,41 +190,10 @@ const Handstand = icon(
   </>
 );
 
-// Planche: NOT hand-coded as a generic "horizontal figure" because
-// it's commonly confused with front lever — they look superficially
-// similar (both involve a horizontal body) but are mechanically
-// opposite:
-//   Front lever: body horizontal, ARMS REACHING UP to a bar above.
-//                The body HANGS from the bar.
-//   Planche:    body horizontal, ARMS REACHING DOWN to the ground.
-//                The body is SUPPORTED by the hands below.
-//
-// Calitree.app's planche icon is just a front-lever figure (a
-// person lying face-down horizontal with no bar visible), which is
-// ambiguous at best and wrong at worst. This hand-coded version
-// depicts the actual planche: face-down body, arms going DOWN
-// from the shoulders to hands on the ground (no bar above).
-const Planche = icon(
-  <>
-    {/* Head (face-down, at the front / "leading" end of the body) */}
-    <circle cx="3.75" cy="9" r="1.5" />
-    {/* Body: subtle horizontal curve from shoulder to feet */}
-    <path d="M5.25 9 Q 12 8.55 20 9" />
-    {/* Arms reaching DOWN — this is the key planche feature,
-        distinguishing it from front lever (which has arms up) */}
-    <line x1="7" y1="9.2" x2="7" y2="17.5" />
-    <line x1="13" y1="9.2" x2="13" y2="17.5" />
-    {/* Hands on the ground (small horizontal marks at end of arms) */}
-    <line x1="5.5" y1="17.5" x2="8.5" y2="17.5" />
-    <line x1="11.5" y1="17.5" x2="14.5" y2="17.5" />
-    {/* Subtle ground line — dashed so the hands read as the support
-        point, not just a generic baseline */}
-    <line
-      x1="3" y1="19" x2="21" y2="19"
-      strokeDasharray="1.5 2" opacity="0.35"
-    />
-  </>
-);
+// (Planche was previously hand-coded here as a stopgap while waiting
+// for fal.ai to generate a real icon. It's been replaced by the
+// PNG at web/public/icons/calitree/planche.png. The hand-coded SVG
+// is removed to avoid confusion.)
 
 // ---- SCOUT (endurance) ----
 
@@ -534,12 +503,13 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Holds':          'plank',
   'Rings':          'ring-dips',
   'Handstand':      'wall-handstand',
-  // 'Planche' — INTENTIONALLY NOT MAPPED. Calitree.app uses the same
-  // icon for planche as for front lever (a guy lying on his
-  // stomach), which is wrong: front lever = hanging from a bar ABOVE
-  // the body (arms UP), planche = supported by hands BELOW the
-  // body (arms DOWN). Falls back to the hand-coded SVG below which
-  // shows the actual planche geometry.
+  // 'Planche' — generated via fal.ai FLUX schnell because calitree's
+  // own planche icon is just a front-lever figure (a guy lying on
+  // his stomach). Front lever = arms UP to bar above; planche =
+  // arms DOWN to ground below. The two moves look superficially
+  // similar but are mechanically opposite. See
+  // web/public/icons/calitree/planche.png — script:
+  // scripts/gen-planche-icon.py.
 
   // SCOUT — running/rucking/triathlon have no direct calisthenics
   // analogs in calitree; all three fall back to hand-coded.
@@ -574,13 +544,9 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,
   // PHANTOM
-  // 5 of 6 branches have calitree matches. Planche is INTENTIONALLY
-  // hand-coded because calitree's "tuck-planche" icon is actually
-  // a front-lever figure — the two moves have mechanically opposite
-  // arm directions (front lever = arms UP to bar, planche = arms
-  // DOWN to ground). Falls back to the hand-coded `Planche` SVG
-  // defined above (not a calitree PNG).
-  'Planche': Planche,
+  // All 6 branches have calitree matches (the planche PNG was
+  // generated via fal.ai FLUX schnell since calitree's own planche
+  // icon is a front-lever figure).
   // SCOUT — no calitree matches for any of the 3 branches
   'Run': Run,
   'Ruck': Ruck,
