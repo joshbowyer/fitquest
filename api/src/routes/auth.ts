@@ -20,6 +20,9 @@ import {
   setTrustedDeviceCookie,
   clearTrustedDeviceCookie,
   readTrustedDeviceCookie,
+  readBearerToken,
+  generateSessionToken,
+  DEVICE_SESSION_TTL_MS,
 } from '../lib/auth.js';
 import { config } from '../lib/config.js';
 import { getClassLockStatus, getClassDisplayName, getNextPromotion } from '../lib/classLock.js';
@@ -487,8 +490,11 @@ export async function authRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
-  /// Log out everywhere — destroys all FULL sessions + all trusted
-  /// devices. The current request's session is also destroyed.
+  /// Log out everywhere — destroys all FULL + DEVICE sessions + all
+  /// trusted devices. The current request's session is also
+  /// destroyed, but a fresh one is re-issued so the calling tab
+  /// doesn't get logged out — they hit "log out everywhere" but
+  /// probably still want to keep using the app from this device.
   app.post('/logout-everywhere', async (req, reply) => {
     const me = await requireUser(req);
     const currentRaw = req.cookies[config.cookieName];
@@ -499,7 +505,7 @@ export async function authRoutes(app: FastifyInstance) {
     }
     await prisma.$transaction([
       prisma.session.deleteMany({
-        where: { userId: me.id, kind: 'FULL' },
+        where: { userId: me.id, kind: { in: ['FULL', 'DEVICE'] } },
       }),
       prisma.trustedDevice.deleteMany({ where: { userId: me.id } }),
     ]);
@@ -526,6 +532,180 @@ export async function authRoutes(app: FastifyInstance) {
     }
     clearSessionCookie(reply);
     clearTrustedDeviceCookie(reply);
+    return reply.send({ ok: true });
+  });
+
+  /// Login for unattended / non-cookie clients (the FitQuestBridge
+  /// helper APK today; potentially other scripts + integrations
+  /// tomorrow). Returns a long-lived Bearer token instead of setting
+  /// a session cookie. The same TOTP + rate-limit + lockout rules as
+  /// /login apply — a 2FA-enabled user must supply their totpCode.
+  ///
+  /// Idempotent on prior tokens: re-running device-login for the
+  /// same user deletes their existing DEVICE sessions and issues a
+  /// fresh one. The web UI's "log out everywhere" also deletes all
+  /// DEVICE sessions for the user, so the user can always revoke a
+  /// lost phone from /settings.
+  const DeviceLoginSchema = z.object({
+    identifier: z.string().min(3),
+    password: z.string().min(1),
+    /// Required when the account has TOTP enabled. Same shape as
+    /// the web /login/totp endpoint: a 6-digit TOTP code or a
+    /// recovery code (dashes/whitespace stripped, uppercased).
+    totpCode: z.string().min(6).max(32).optional(),
+    /// Human-readable label so the user can recognize the token in
+    /// /settings (e.g. "Josh's Pixel 9", "Living-room tablet").
+    /// Defaults to the User-Agent header if omitted.
+    label: z.string().min(1).max(80).optional(),
+  });
+  app.post('/device-login', async (req, reply) => {
+    const body = DeviceLoginSchema.parse(req.body);
+    const ip = req.ip ?? 'unknown';
+    const tentativeKey = body.identifier?.toLowerCase().trim() ?? '';
+    const rateCheck = checkLoginRate(ip, tentativeKey || '__no_user__');
+    if (!rateCheck.allowed) {
+      return reply.code(429).send({
+        error: 'Too many attempts. Try again later.',
+        retryAfterMs: rateCheck.retryAfterMs,
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { usernameLower: body.identifier.toLowerCase() },
+    });
+    let ok = false;
+    if (user) {
+      ok = await verifyPassword(body.password, user.passwordHash);
+    } else {
+      // Constant-time-ish dummy verify so the response doesn't leak
+      // account existence (same trick /login uses).
+      await verifyPassword(body.password, '$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinva');
+    }
+    if (!ok || !user) {
+      recordFailedLogin(ip, tentativeKey || '__no_user__');
+      return reply.code(401).send({ error: 'Invalid credentials.' });
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return reply.code(429).send({
+        error: 'Account temporarily locked. Try again later.',
+        retryAfterMs: user.lockedUntil.getTime() - Date.now(),
+      });
+    }
+
+    // TOTP: must pass before we issue a device token. We accept
+    // either a TOTP code or a recovery code, mirroring /login/totp.
+    if (user.totpEnabled && user.totpSecret) {
+      if (!body.totpCode) {
+        return reply.code(401).send({ requiresTotp: true });
+      }
+      const normalized = body.totpCode.replace(/[\s-]/g, '').toUpperCase();
+      const hashed = sha256(normalized);
+      const recovery = await prisma.recoveryCode.findUnique({
+        where: { userId_codeHash: { userId: user.id, codeHash: hashed } },
+      });
+      let totpOk = false;
+      if (recovery && !recovery.usedAt) {
+        await prisma.recoveryCode.update({
+          where: { id: recovery.id },
+          data: { usedAt: new Date() },
+        });
+        totpOk = true;
+      } else if (await verifyTotp(user.totpSecret, body.totpCode)) {
+        totpOk = true;
+      }
+      if (!totpOk) {
+        recordFailedLogin(ip, tentativeKey);
+        return reply.code(401).send({ error: 'Invalid TOTP code.' });
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLogins: 0, lockedUntil: null },
+    });
+    clearLoginRate(ip, tentativeKey);
+
+    // Rotate: delete any prior DEVICE sessions for this user so a
+    // re-login invalidates the old token. The user explicitly opted
+    // in by re-running setup, so we don't need a separate "force"
+    // flag.
+    await prisma.session.deleteMany({
+      where: { userId: user.id, kind: 'DEVICE' },
+    });
+
+    const label = body.label ?? req.headers['user-agent']?.toString().slice(0, 80) ?? 'FitQuest device';
+    const session = await prisma.session.create({
+      data: {
+        userId: user.id,
+        token: generateSessionToken(),
+        kind: 'DEVICE',
+        expiresAt: new Date(Date.now() + DEVICE_SESSION_TTL_MS),
+        userAgent: req.headers['user-agent'] ?? null,
+        ipAddress: req.ip,
+      },
+    });
+    // The Session model has no `label` column; the User-Agent
+    // header IS the label (the helper APK sets a descriptive UA
+    // like "FitQuestBridge/0.1 (Android)" so the user can see
+    // which devices are signed in from /settings).
+    void label;
+    return reply.send({
+      token: session.token,
+      expiresAt: session.expiresAt.toISOString(),
+      user: await publicUser(user),
+    });
+  });
+
+  /// Revoke the current Bearer token. Used by the helper APK on
+  /// user-initiated sign-out. Idempotent — returns ok regardless.
+  app.post('/device-logout', async (req, reply) => {
+    const bearer = readBearerToken(req);
+    if (bearer) {
+      await prisma.session.deleteMany({ where: { token: bearer } });
+    }
+    return reply.send({ ok: true });
+  });
+
+  /// List active DEVICE sessions for the current user. The web UI
+  /// surfaces these in /settings so the user can revoke a lost
+  /// phone without having to log out everywhere.
+  app.get('/device-sessions', async (req) => {
+    const me = await requireUser(req);
+    const sessions = await prisma.session.findMany({
+      where: { userId: me.id, kind: 'DEVICE', expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        userAgent: true,
+        ipAddress: true,
+        createdAt: true,
+        expiresAt: true,
+        // Never expose the token. Show a short fingerprint so the
+        // user can distinguish "my Pixel 9" from "my tablet" when
+        // both have similar UAs.
+        token: true,
+      },
+    });
+    return {
+      sessions: sessions.map((s: typeof sessions[number]) => ({
+        id: s.id,
+        userAgent: s.userAgent,
+        ipAddress: s.ipAddress,
+        createdAt: s.createdAt,
+        expiresAt: s.expiresAt,
+        fingerprint: s.token.slice(0, 8),
+      })),
+    };
+  });
+
+  /// Revoke a specific DEVICE session by id. Used by the web UI
+  /// "revoke this device" button.
+  app.delete('/device-sessions/:id', async (req, reply) => {
+    const me = await requireUser(req);
+    const id = (req.params as any).id as string;
+    await prisma.session.deleteMany({
+      where: { id, userId: me.id, kind: 'DEVICE' },
+    });
     return reply.send({ ok: true });
   });
 

@@ -12,6 +12,11 @@ const SALT_ROUNDS = 12;
 /// a stolen cookie becomes a long-lived attack window.
 const TOTP_PENDING_TTL_MS = 5 * 60 * 1000;
 
+/// Device (unattended) tokens last a year by default. The user
+/// can revoke them from the web UI or by re-running device-login
+/// (which deletes prior DEVICE rows for that user).
+export const DEVICE_SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+
 /// Cookie name for the "remember this device for 90 days" token.
 /// Different from the session cookie so the two can have different
 /// lifetimes and we can revoke them independently.
@@ -42,11 +47,14 @@ export function generateSessionToken(): string {
 export async function createSession(
   userId: string,
   req: FastifyRequest,
-  options: { kind?: 'FULL' | 'TOTP_PENDING' } = {}
+  options: { kind?: 'FULL' | 'TOTP_PENDING' | 'DEVICE' } = {}
 ) {
   const token = generateSessionToken();
   const kind = options.kind ?? 'FULL';
-  const ttlMs = kind === 'TOTP_PENDING' ? TOTP_PENDING_TTL_MS : config.sessionTtlDays * 24 * 60 * 60 * 1000;
+  const ttlMs =
+    kind === 'TOTP_PENDING' ? TOTP_PENDING_TTL_MS
+    : kind === 'DEVICE' ? DEVICE_SESSION_TTL_MS
+    : config.sessionTtlDays * 24 * 60 * 60 * 1000;
   const expiresAt = new Date(Date.now() + ttlMs);
   const session = await prisma.session.create({
     data: {
@@ -151,12 +159,59 @@ export async function getSession(req: FastifyRequest) {
 }
 
 /**
- * Authenticated user lookup. TOTP_PENDING sessions are rejected
- * here so a half-finished login can't reach any protected route.
- * The /auth/login/totp route uses getSession() directly to read
- * the pending session, so it's the one place TOTP_PENDING leaks.
+ * Extract the Bearer token from the Authorization header. Returns
+ * the raw token (after the "Bearer " prefix) or null if the header
+ * is missing, malformed, or doesn't use the Bearer scheme.
+ */
+export function readBearerToken(req: FastifyRequest): string | null {
+  const raw = req.headers.authorization;
+  if (!raw || typeof raw !== 'string') return null;
+  const m = /^Bearer\s+(.+)$/i.exec(raw);
+  return m && m[1] ? m[1].trim() : null;
+}
+
+/**
+ * Look up a DEVICE session by its bearer token. Unlike getSession()
+ * this does NOT consult cookies — Bearer is the only way to find
+ * a DEVICE session. Returns null on missing/invalid/expired token.
+ *
+ * DEVICE sessions are issued by POST /auth/device-login for the
+ * FitQuestBridge helper APK (and any future unattended clients).
+ * They have no cookie and last a year; the user can revoke them
+ * from the web UI.
+ */
+export async function getDeviceSession(token: string) {
+  const session = await prisma.session.findUnique({
+    where: { token },
+    include: { user: true },
+  });
+  if (!session) return null;
+  if (session.kind !== 'DEVICE') return null;
+  if (session.expiresAt < new Date()) {
+    await prisma.session.delete({ where: { id: session.id } }).catch(() => {});
+    return null;
+  }
+  return session;
+}
+
+/**
+ * Authenticated user lookup. Tries Bearer first (so an APK doesn't
+ * need cookies), then falls back to the cookie session. TOTP_PENDING
+ * sessions are rejected so a half-finished login can't reach any
+ * protected route. The /auth/login/totp route uses getSession()
+ * directly to read the pending session, so it's the one place
+ * TOTP_PENDING leaks.
  */
 export async function getSessionUser(req: FastifyRequest) {
+  const bearer = readBearerToken(req);
+  if (bearer) {
+    const device = await getDeviceSession(bearer);
+    if (device) return device.user;
+    // Bearer present but invalid — fail closed rather than silently
+    // falling through to a cookie, which would let a typo'd token
+    // accidentally authenticate as the web user.
+    return null;
+  }
   const session = await getSession(req);
   if (!session) return null;
   if (session.kind === 'TOTP_PENDING') return null;
