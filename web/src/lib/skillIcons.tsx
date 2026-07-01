@@ -503,13 +503,12 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Holds':          'plank',
   'Rings':          'ring-dips',
   'Handstand':      'wall-handstand',
-  // 'Planche' — generated via fal.ai FLUX schnell because calitree's
-  // own planche icon is just a front-lever figure (a guy lying on
-  // his stomach). Front lever = arms UP to bar above; planche =
-  // arms DOWN to ground below. The two moves look superficially
-  // similar but are mechanically opposite. See
-  // web/public/icons/calitree/planche.png — script:
-  // scripts/gen-planche-icon.py.
+  'Planche':        'planche',           // fal.ai FLUX schnell — see scripts/gen-planche-icon.py
+  // Planche is generated via fal.ai because calitree's own planche
+  // icon is just a front-lever figure (a guy lying on his stomach).
+  // Front lever = arms UP to bar above; planche = arms DOWN to
+  // ground below. The two moves look superficially similar but are
+  // mechanically opposite.
 
   // SCOUT — running/rucking/triathlon have no direct calisthenics
   // analogs in calitree; all three fall back to hand-coded.
