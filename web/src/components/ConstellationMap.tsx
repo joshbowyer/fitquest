@@ -37,6 +37,7 @@ export type ConstellationMapProps = {
   recentEvents?: PenanceEvent[];
   /** Click on home base opens the full home-base modal. */
   onSelectHomeBase?: () => void;
+  onSelectShop?: () => void;
   /** Breach unlock state. When the user is at or above level 10
    *  and has not yet entered, the black hole overlay should fade
    *  in at the Nexus center with a click handler that routes to
@@ -125,10 +126,12 @@ export function ConstellationMap({
   onSelectHomeBase,
   breach,
   onSelectBreach,
+  onSelectShop,
 }: ConstellationMapProps) {
   const stars = useMemo(() => seededStars(110, 7919), []);
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
   const [hoveredHomeBase, setHoveredHomeBase] = useState(false);
+  const [hoveredShop, setHoveredShop] = useState(false);
 
   // Match each pentagon slot to a world by class affiliation.
   // Slots without a matching world render as a dim "unmapped" node.
@@ -465,20 +468,60 @@ export function ConstellationMap({
           );
         })}
 
-        {/* HOME BASE — left half. Hover speeds up the shield ring
-            (60s → 8s rotation) + shows a tooltip with the actual
-            shield value + last-fired penance. Clicking opens the
-            full home-base modal (parent-provided onSelectHomeBase). */}
+        {/* SHOP — bazaar star above home base. Clickable, hovers with
+            a gentle pulse, opens the shop modal in the parent. */}
         <g
-          transform="translate(170, 300)"
+          transform="translate(170, 180)"
+          onMouseEnter={() => setHoveredShop(true)}
+          onMouseLeave={() => setHoveredShop(false)}
+          onClick={onSelectShop}
+          style={{
+            cursor: onSelectShop ? 'pointer' : 'default',
+            transition: 'transform 200ms ease-out',
+            transform: 'translate(170px, 180px) scale(' + (hoveredShop ? 1.12 : 1) + ')',
+            transformOrigin: '170px 180px',
+          }}
+        >
+          {/* Outer amber glow ring */}
+          <circle r="60" fill="none" stroke="#ffaa3a" strokeOpacity={hoveredShop ? 0.7 : 0.3} strokeWidth={hoveredShop ? 2 : 1.2}>
+            <animate attributeName="r" values={hoveredShop ? '60;68;60' : '60;64;60'} dur="3.2s" repeatCount="indefinite" />
+          </circle>
+          {/* Backing disc */}
+          <circle r="44" fill="#1a0e0a" stroke="#ffaa3a" strokeOpacity="0.4" strokeWidth="0.8" />
+          {/* 4-point star */}
+          <path
+            d="M 0 -34 L 8 -8 L 34 0 L 8 8 L 0 34 L -8 8 L -34 0 L -8 -8 Z"
+            fill="#ffaa3a"
+            opacity="0.9"
+            filter="url(#constellation-glow)"
+          />
+          {/* Inner highlight */}
+          <circle r="3" fill="#fafafd" />
+          {/* Label */}
+          <text textAnchor="middle" y="50" fontSize="9" fontFamily="monospace" letterSpacing="2" fill="#ffaa3a">
+            BAZAAR
+          </text>
+          <text textAnchor="middle" y="62" fontSize="7" fontFamily="monospace" letterSpacing="1.5" fill="#a8a8b8">
+            [ Shop ]
+          </text>
+        </g>
+
+        {/* HOME BASE — left half, moved down (y=360) to make room for
+            the Bazaar star above (y=180). Hover speeds up the
+            shield ring (60s → 8s rotation) + shows a tooltip with
+            the actual shield value + last-fired penance. Clicking
+            opens the full home-base modal (parent-provided
+            onSelectHomeBase). */}
+        <g
+          transform="translate(170, 360)"
           onMouseEnter={() => setHoveredHomeBase(true)}
           onMouseLeave={() => setHoveredHomeBase(false)}
           onClick={onSelectHomeBase}
           style={{
             cursor: onSelectHomeBase ? 'pointer' : 'default',
             transition: 'transform 200ms ease-out',
-            transform: 'translate(170px, 300px) scale(' + (hoveredHomeBase ? 1.04 : 1) + ')',
-            transformOrigin: '170px 300px',
+            transform: 'translate(170px, 360px) scale(' + (hoveredHomeBase ? 1.04 : 1) + ')',
+            transformOrigin: '170px 360px',
           }}
         >
           {/* Outer shield ring (tier-colored). Spin duration speeds

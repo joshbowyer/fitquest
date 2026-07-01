@@ -9,6 +9,7 @@ import { Modal } from '@/components/Modal';
 import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { ConstellationMap } from '@/components/ConstellationMap';
 import { HomeBasePage } from '@/components/HomeBaseCard';
+import { ShopModal } from '@/components/ShopModal';
 import type { HomeBase as HomeBaseData } from '@/lib/types';
 import {
   type World,
@@ -26,6 +27,7 @@ export function QuestPage() {
   // panel on the right OR the home-base node on the constellation
   // map. Closes on backdrop click or Escape.
   const [homeBaseOpen, setHomeBaseOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
 
   const { data: worlds, isLoading } = useQuery({
     queryKey: ['quest-worlds'],
@@ -91,22 +93,17 @@ export function QuestPage() {
               shieldTier={homeBase?.tier}
               shield={homeBase?.shield}
               recentEvents={homeBase?.recentEvents}
-onSelectHomeBase={() => setHomeBaseOpen(true)}
-               breach={breachUnlocked ? {
-                 unlocked: true,
-                 bossName: breach!.boss!.name,
-                 bossHp: breach!.progress.bossHp,
-                 bossMaxHp: breach!.progress.bossMaxHp,
-                 status: breach!.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
-               } : null}
-               // Click on the breach constellation node → enter the
-               // Breach world (NOT the raid). Visible when user level
-// >= 12 (the Breach world's levelRequired) OR has
-                // already cleared it. The raid page (/breach) is still
-                // reachable via direct URL + via the in-world panels
-                // once inside the Breach world.
-                onSelectBreach={breachWorldUnlocked ? () => navigate('/quest/breach') : undefined}
-              />
+              onSelectHomeBase={() => setHomeBaseOpen(true)}
+              onSelectShop={() => setShopOpen(true)}
+              breach={breachUnlocked ? {
+                unlocked: true,
+                bossName: breach!.boss!.name,
+                bossHp: breach!.progress.bossHp,
+                bossMaxHp: breach!.progress.bossMaxHp,
+                status: breach!.progress.status as 'ACTIVE' | 'VICTORY' | 'COOLDOWN',
+              } : null}
+              onSelectBreach={breachWorldUnlocked ? () => navigate('/quest/breach') : undefined}
+            />
           </Panel>
 
           <div className="space-y-4">
@@ -236,6 +233,7 @@ onSelectHomeBase={() => setHomeBaseOpen(true)}
           <HomeBasePage />
         </Modal>
       )}
+      <ShopModal open={shopOpen} onClose={() => setShopOpen(false)} />
      </Layout>
    );
 }

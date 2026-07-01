@@ -69,6 +69,9 @@ export default {
         'flicker': 'flicker 4s linear infinite',
         'glow': 'glow 2s ease-in-out infinite alternate',
         'neon-charge': 'neon-charge 1.2s ease-in-out infinite',
+        // Used by the hearts display in the top bar when the user
+        // is at or below 3 hearts. Soft red flash, ~0.8s period.
+        'heart-warn': 'heart-warn 0.8s ease-in-out infinite',
       },
       keyframes: {
         scan: {
@@ -91,6 +94,16 @@ export default {
           '50%': {
             boxShadow: '0 0 16px currentColor, 0 0 32px currentColor, 0 0 56px currentColor',
             borderColor: 'currentColor',
+          },
+        },
+        'heart-warn': {
+          '0%, 100%': {
+            opacity: '1',
+            textShadow: '0 0 2px #ff5c5c, 0 0 4px #ff5c5c',
+          },
+          '50%': {
+            opacity: '0.5',
+            textShadow: '0 0 8px #ff3030, 0 0 16px #ff3030',
           },
         },
       },

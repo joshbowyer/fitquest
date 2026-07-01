@@ -141,25 +141,41 @@ export function Layout({ children }: Props) {
                 <span className="text-ink-300 text-[10px] uppercase tracking-widest">GOLD</span>
                 <span className="neon-text-amber text-lg font-bold">{user.gold}</span>
               </div>
-              {/* Hearts (Hardcore mode only). Hidden in Casual so the
-                  top bar stays clean for default-mode users. */}
-              {user.mode === 'HARDCORE' && (
+              {/* Hearts. Always visible (both Casual + Hardcore) so the
+                  user can see when they're missing things. Color
+                  reflects the mode: cyan in Casual (no penalty,
+                  just a visual signal), magenta in Hardcore (with
+                  the graduated XP/gold/raid penalty). At ≤3 hearts
+                  the row pulses red — even in Casual, the pulse is
+                  a soft "you're getting low" signal. */}
+              {user && (
                 <div
                   className="flex items-center gap-1"
-                  title={`${user.hearts ?? 5} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+                  title={`${user.hearts ?? 10} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
                 >
-                  <span className="text-neon-magenta text-base leading-none select-none">
-                    {Array.from({ length: 5 }, (_, i) => (
+                  <span
+                    className={classNames(
+                      'text-base leading-none select-none',
+                      user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
+                      (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
+                    )}
+                  >
+                    {Array.from({ length: 10 }, (_, i) => (
                       <span
                         key={i}
-                        className={i < (user.hearts ?? 5) ? '' : 'opacity-25 grayscale'}
-                        aria-label={i < (user.hearts ?? 5) ? 'heart filled' : 'heart empty'}
+                        className={i < (user.hearts ?? 10) ? '' : 'opacity-25 grayscale'}
+                        aria-label={i < (user.hearts ?? 10) ? 'heart filled' : 'heart empty'}
                       >
                         ♥
                       </span>
                     ))}
                   </span>
-                  <span className="text-[10px] font-mono text-neon-magenta tabular-nums">
+                  <span
+                    className={classNames(
+                      'text-[10px] font-mono tabular-nums',
+                      user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
+                    )}
+                  >
                     ×{(user.heartMultiplier ?? 1).toFixed(2)}
                   </span>
                 </div>
@@ -175,30 +191,31 @@ export function Layout({ children }: Props) {
             </div>
           )}
 
-          {/* Mobile-only: condensed status pill on the right. Logout
-              moved into the menu overlay so the top bar stays
-              minimal. Hearts appear here in Hardcore mode so the
-              consequence is unmissable on phones too. */}
+          {/* Mobile-only: condensed status pill on the right. Hearts
+              are visible in BOTH modes (Casual: cyan, Hardcore:
+              magenta) with the same red pulse at ≤3. */}
           {user && (
             <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
               <span className="neon-text-cyan font-bold">L{user.level}</span>
               <span className="neon-text-amber">{user.gold}G</span>
-              {user.mode === 'HARDCORE' && (
-                <span
-                  className="text-neon-magenta leading-none select-none"
-                  title={`${user.hearts ?? 5} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
-                >
-                  {Array.from({ length: 5 }, (_, i) => (
-                    <span
-                      key={i}
-                      className={i < (user.hearts ?? 5) ? '' : 'opacity-25 grayscale'}
-                      aria-label={i < (user.hearts ?? 5) ? 'heart filled' : 'heart empty'}
-                    >
-                      ♥
-                    </span>
-                  ))}
-                </span>
-              )}
+              <span
+                className={classNames(
+                  'leading-none select-none',
+                  user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
+                  (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
+                )}
+                title={`${user.hearts ?? 10} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+              >
+                {Array.from({ length: 10 }, (_, i) => (
+                  <span
+                    key={i}
+                    className={i < (user.hearts ?? 10) ? '' : 'opacity-25 grayscale'}
+                    aria-label={i < (user.hearts ?? 10) ? 'heart filled' : 'heart empty'}
+                  >
+                    ♥
+                  </span>
+                ))}
+              </span>
             </div>
           )}
         </div>
