@@ -190,17 +190,39 @@ const Handstand = icon(
   </>
 );
 
+// Planche: NOT hand-coded as a generic "horizontal figure" because
+// it's commonly confused with front lever — they look superficially
+// similar (both involve a horizontal body) but are mechanically
+// opposite:
+//   Front lever: body horizontal, ARMS REACHING UP to a bar above.
+//                The body HANGS from the bar.
+//   Planche:    body horizontal, ARMS REACHING DOWN to the ground.
+//                The body is SUPPORTED by the hands below.
+//
+// Calitree.app's planche icon is just a front-lever figure (a
+// person lying face-down horizontal with no bar visible), which is
+// ambiguous at best and wrong at worst. This hand-coded version
+// depicts the actual planche: face-down body, arms going DOWN
+// from the shoulders to hands on the ground (no bar above).
 const Planche = icon(
   <>
-    {/* Body horizontal, parallel to ground */}
-    <line x1="3" y1="12" x2="21" y2="12" />
-    {/* Arms reaching down (vertical) */}
-    <line x1="7" y1="12" x2="7" y2="18" />
-    <line x1="17" y1="12" x2="17" y2="18" />
-    {/* Hands on ground */}
-    <line x1="3" y1="20" x2="21" y2="20" />
-    {/* Head bump */}
-    <circle cx="4" cy="12" r="2" />
+    {/* Head (face-down, at the front / "leading" end of the body) */}
+    <circle cx="3.75" cy="9" r="1.5" />
+    {/* Body: subtle horizontal curve from shoulder to feet */}
+    <path d="M5.25 9 Q 12 8.55 20 9" />
+    {/* Arms reaching DOWN — this is the key planche feature,
+        distinguishing it from front lever (which has arms up) */}
+    <line x1="7" y1="9.2" x2="7" y2="17.5" />
+    <line x1="13" y1="9.2" x2="13" y2="17.5" />
+    {/* Hands on the ground (small horizontal marks at end of arms) */}
+    <line x1="5.5" y1="17.5" x2="8.5" y2="17.5" />
+    <line x1="11.5" y1="17.5" x2="14.5" y2="17.5" />
+    {/* Subtle ground line — dashed so the hands read as the support
+        point, not just a generic baseline */}
+    <line
+      x1="3" y1="19" x2="21" y2="19"
+      strokeDasharray="1.5 2" opacity="0.35"
+    />
   </>
 );
 
@@ -512,7 +534,12 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Holds':          'plank',
   'Rings':          'ring-dips',
   'Handstand':      'wall-handstand',
-  'Planche':        'tuck-planche',
+  // 'Planche' — INTENTIONALLY NOT MAPPED. Calitree.app uses the same
+  // icon for planche as for front lever (a guy lying on his
+  // stomach), which is wrong: front lever = hanging from a bar ABOVE
+  // the body (arms UP), planche = supported by hands BELOW the
+  // body (arms DOWN). Falls back to the hand-coded SVG below which
+  // shows the actual planche geometry.
 
   // SCOUT — running/rucking/triathlon have no direct calisthenics
   // analogs in calitree; all three fall back to hand-coded.
@@ -547,7 +574,12 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,
   // PHANTOM
-  // (all 6 branches have calitree matches; no hand-coded SVG fallback needed)
+  // 5 of 6 branches have calitree matches. Planche is INTENTIONALLY
+  // hand-coded because calitree's "tuck-planche" icon is actually
+  // a front-lever figure — the two moves have mechanically opposite
+  // arm directions (front lever = arms UP to bar, planche = arms
+  // DOWN to ground). Falls through to the `Planche` SVG above which
+  // shows the correct geometry.
   // SCOUT — no calitree matches for any of the 3 branches
   'Run': Run,
   'Ruck': Ruck,
