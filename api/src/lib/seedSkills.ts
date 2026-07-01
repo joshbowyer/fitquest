@@ -339,6 +339,37 @@ const SKILLS_BY_CLASS: Record<string, Spec[]> = {
 
 export async function seedSkills(): Promise<{ upserted: number }> {
   let upserted = 0;
+  // Compute prereqs from the tier + branch structure. Within each
+  // (class, branch) group, in the order they're declared in the
+  // seed arrays (T1, then T2, then T3):
+  //   T1: no prereqs
+  //   T2: must complete all T1s in the same class+branch
+  //   T3: must complete all T2s in the same class+branch
+  // This produces a coherent linear chain within each branch (or
+  // multi-path for branches that have multiple T1s or T2s).
+  const prereqsByName = new Map<string, string[]>();
+  for (const [className, skills] of Object.entries(SKILLS_BY_CLASS)) {
+    // Group by branch within this class
+    const byBranch = new Map<string, typeof skills>();
+    for (const s of skills) {
+      if (!byBranch.has(s.branch)) byBranch.set(s.branch, []);
+      byBranch.get(s.branch)!.push(s);
+    }
+    for (const [, group] of byBranch) {
+      const t1s = group.filter((s) => s.tier === 'TIER_1').map((s) => s.name);
+      const t2s = group.filter((s) => s.tier === 'TIER_2').map((s) => s.name);
+      for (const s of group) {
+        if (s.tier === 'TIER_1') {
+          prereqsByName.set(s.name, []);
+        } else if (s.tier === 'TIER_2') {
+          prereqsByName.set(s.name, t1s);
+        } else {
+          // TIER_3
+          prereqsByName.set(s.name, t2s);
+        }
+      }
+    }
+  }
   for (const [className, skills] of Object.entries(SKILLS_BY_CLASS)) {
     let position = 0;
     for (const s of skills) {
@@ -353,7 +384,7 @@ export async function seedSkills(): Promise<{ upserted: number }> {
           description: s.description,
           test: s.test as any,
           cost: 1,
-          prerequisites: [],
+          prerequisites: prereqsByName.get(s.name) ?? [],
           position: position++,
           effects: { perk: 'in-game', tier: s.tier } as any,
         },
@@ -364,6 +395,11 @@ export async function seedSkills(): Promise<{ upserted: number }> {
           tier: s.tier,
           branch: s.branch,
           className: className as 'JUGGERNAUT',
+          // Re-write prereqs on every upsert so re-seeding picks up
+          // any future changes to the prereq structure. (The create
+          // block also sets them; both run on insert, only update
+          // runs on conflict.)
+          prerequisites: prereqsByName.get(s.name) ?? [],
         },
       });
       upserted++;
