@@ -216,11 +216,19 @@ function ResultInput({
 
 function UnlockModal({
   skill,
+  unlockedNames,
   onClose,
   onUnlock,
   isPending,
 }: {
   skill: Skill;
+  /**
+   * Set of skill NAMES the user has already unlocked. Used to gate
+   * the test form: if `skill.prerequisites` includes names not in
+   * this set, we show a "Locked" view instead of the form so the
+   * user isn't tempted to enter a result the server will reject.
+   */
+  unlockedNames: Set<string>;
   onClose: () => void;
   onUnlock: (result: Record<string, number>) => void;
   isPending: boolean;
@@ -228,8 +236,9 @@ function UnlockModal({
   const [result, setResult] = useState<Record<string, number>>({});
   const test = skill.test;
 
+  // Pre-v1 skill (no test) — legacy unlock with SP cost. These
+  // don't have prerequisites in the v1 sense.
   if (!test) {
-    // Pre-v1 skill (no test). No validation; just unlock.
     return (
       <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg">
         <p className="text-sm text-ink-200 mb-4">
@@ -245,6 +254,44 @@ function UnlockModal({
           >
             Unlock for {skill.cost} SP
           </NeonButton>
+        </div>
+      </Modal>
+    );
+  }
+
+  // v1 skill: gate on prerequisites. If any are missing, show a
+  // "Locked" view listing what's needed. The user shouldn't be
+  // able to enter a result here — the server would reject it with
+  // 400, but better to not even tempt them.
+  const missing = (skill.prerequisites ?? []).filter((p) => !unlockedNames.has(p));
+  if (missing.length > 0) {
+    return (
+      <Modal open onClose={onClose} title={`Locked: ${skill.name}`} width="max-w-lg">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🔒</span>
+            <span className="text-sm font-display tracking-widest uppercase text-ink-300">
+              Locked
+            </span>
+          </div>
+          {skill.blurb && (
+            <div className="text-sm text-ink-200 italic">{skill.blurb}</div>
+          )}
+          <p className="text-sm text-ink-200">
+            This skill unlocks once you've completed the following
+            prerequisite{missing.length === 1 ? '' : 's'}:
+          </p>
+          <ul className="text-sm font-mono text-neon-amber list-disc list-inside space-y-0.5">
+            {missing.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+          <p className="text-xs font-mono text-ink-400">
+            Come back after each prerequisite is unlocked.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <NeonButton variant="cyan" onClick={onClose}>Close</NeonButton>
+          </div>
         </div>
       </Modal>
     );
@@ -645,6 +692,9 @@ export function SkillTreePage() {
       {selected && (
         <UnlockModal
           skill={selected}
+          unlockedNames={new Set(
+            (treeQ.data?.items ?? []).filter((s) => s.unlocked).map((s) => s.name),
+          )}
           onClose={() => setSelected(null)}
           onUnlock={(result) =>
             unlockM.mutate({ skillId: selected.id, result })
