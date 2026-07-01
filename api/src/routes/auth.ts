@@ -74,8 +74,15 @@ const Disable2faSchema = z.object({
  */
 async function publicUser(user: any) {
   const hearts = await tickHearts(user.id);
-  const heartMult = heartMultiplier(hearts);
+  const heartMult = heartMultiplier(hearts, user.mode ?? 'CASUAL');
   const mode = user.mode ?? 'CASUAL';
+  // Count active Soulstones (unconsumed + non-expired) so the home
+  // page shows the correct class-respec inventory. We compute here
+  // rather than passing through the caller because publicUser is
+  // hit on every /me read + every login.
+  const soulstoneCount = await prisma.soulstone.count({
+    where: { userId: user.id, consumed: false, expiresAt: { gt: new Date() } },
+  });
   return {
     id: user.id,
     email: user.email,
