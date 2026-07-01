@@ -8,6 +8,28 @@ import { Modal } from '@/components/Modal';
 import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
 import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
+import { CLASS_META } from '@/lib/types';
+
+// Tailwind text-neon-* class for the user's class accent. Used by
+// the calitree PNG icons (via mask-image + background-color:
+// currentColor) to color each silhouette per the user's class.
+// PHANTOM → lime, JUGGERNAUT → red, BERSERKER → magenta, etc.
+// Mirrors the same color scheme as primaryColorForClass() in
+// web/src/lib/quest.ts but returns a Tailwind class directly.
+function classColorForClass(c: string | null): string {
+  if (!c) return 'text-neon-lime';
+  const meta = CLASS_META[c];
+  if (!meta) return 'text-neon-lime';
+  switch (meta.color) {
+    case 'red':        return 'text-neon-red';
+    case 'magenta':    return 'text-neon-magenta';
+    case 'lime':       return 'text-neon-lime';
+    case 'orange':     return 'text-neon-orange';
+    case 'goldenrod':  return 'text-neon-goldenrod';
+    case 'periwinkle': return 'text-neon-periwinkle';
+    default:           return 'text-neon-lime';
+  }
+}
 
 /**
  * SkillTree v1 — replaces the old /skills page.
@@ -333,29 +355,39 @@ function SkillNode({
         )}
       >
         {calitreeFile ? (
-          // PNG from /icons/calitree/. The filter does the
-          // synthwave recolor: locked → grayscale + dim,
-          // unlocked → full color with a neon glow matched to the
-          // ring, god-tier → amber shift. The PNG is 512x512 but
-          // displayed at ~28-32px so the anti-aliasing holds up.
-          <img
-            src={`/icons/calitree/${calitreeFile}.png`}
-            alt=""
-            draggable={false}
+          // PNG from /icons/calitree/ used as a CSS mask. The PNG
+          // itself is just a flat silhouette on transparent
+          // background; `background-color: currentColor` paints
+          // it the parent's text color, and the drop-shadow filter
+          // adds the neon glow. This way the same PNG can be
+          // neon-lime for PHANTOM, neon-magenta for BERSERKER,
+          // neon-amber for god-tier, dim for locked — all without
+          // regenerating the PNG. See scripts/gen-planche-nano.py
+          // for how the stroke-free PNG is generated.
+          <i
+            aria-hidden
             className={classNames(
-              'w-9 h-9 select-none pointer-events-none transition-all duration-200',
+              'block w-9 h-9 select-none transition-all duration-200',
               isGodTier
-                ? 'opacity-90'
+                ? 'text-neon-amber'
                 : isUnlocked
-                  ? 'opacity-95'
-                  : 'opacity-30',
+                  ? classColorForClass(className)
+                  : 'text-ink-500',
+              isUnlocked ? 'opacity-100' : 'opacity-40',
             )}
             style={{
+              WebkitMaskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+              maskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              backgroundColor: 'currentColor',
               filter: isGodTier
-                ? 'invert(1) sepia(1) saturate(8) hue-rotate(340deg) brightness(1.1) drop-shadow(0 0 3px #ffaa3a)'
+                ? 'drop-shadow(0 0 3px #ffaa3a)'
                 : isUnlocked
-                  ? 'invert(1) sepia(1) saturate(6) hue-rotate(70deg) brightness(1.05) drop-shadow(0 0 2.5px #56e88e)'
-                  : 'grayscale(1) brightness(0.45) opacity(0.55)',
+                  ? 'drop-shadow(0 0 2.5px currentColor)'
+                  : 'none',
             }}
           />
         ) : (
@@ -421,18 +453,29 @@ function BranchColumn({
       {/* Branch header — centered icon + name + progress */}
       <div className="flex flex-col items-center gap-1 pb-2 border-b border-ink-700/30">
         {calitreeFile ? (
-          // Bigger version of the calitree icon for the column
-          // header. Same neon-lime / amber / grayscale logic as
-          // the per-skill nodes, scaled up.
-          <img
-            src={`/icons/calitree/${calitreeFile}.png`}
-            alt=""
-            draggable={false}
-            className="w-8 h-8 select-none pointer-events-none"
+          // Same mask-image approach as the per-skill nodes. The
+          // column header icon picks up the user's class color
+          // (lime for PHANTOM, magenta for BERSERKER, etc.) so each
+          // class's tree has a distinct header palette.
+          <i
+            aria-hidden
+            className={classNames(
+              'block w-8 h-8 select-none',
+              allDone
+                ? 'text-neon-lime'
+                : classColorForClass(className),
+            )}
             style={{
+              WebkitMaskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+              maskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              backgroundColor: 'currentColor',
               filter: allDone
-                ? 'invert(1) sepia(1) saturate(6) hue-rotate(70deg) brightness(1.05) drop-shadow(0 0 4px #56e88e)'
-                : 'invert(1) sepia(1) saturate(5) hue-rotate(170deg) brightness(0.95) drop-shadow(0 0 3px #14d6e8)',
+                ? 'drop-shadow(0 0 4px #56e88e)'
+                : 'drop-shadow(0 0 3px currentColor)',
             }}
           />
         ) : (
