@@ -481,35 +481,88 @@ const Pilates = icon(
 
 // ---- Lookup ----
 
+// Calitree.app-style icon mapping for branches that have a direct
+// calisthenics analog. The PNGs live at web/public/icons/calitree/
+// and were re-themed via CSS filters at render time (synthwave-ify):
+//   filter: hue-rotate(...) brightness(...) saturate(...)
+// to recolor the calitree brand colors into our neon palette per
+// state (locked = grayscale/dimmed, unlocked = neon, god-tier =
+// amber). Branches not in this map fall back to a hand-coded SVG
+// further down — those are the heavy/barbell/boxing/mace/sled
+// categories that calitree.app doesn't cover (it's a calisthenics-
+// only tree).
+//
+// Attribution: icons adapted from calitree.app (open-source-feel
+// calisthenics tree, see https://calitree.app). Path data was
+// rasterized to PNG by the upstream; we re-color and re-frame
+// rather than 1:1 copy.
+const CALITREE_ICON_FILES: Record<string, string> = {
+  // JUGGERNAUT — heavy barbell / strongman (no perfect calitree
+  // match; using the closest bodyweight movement for each)
+  'Squat':          'bodyweight-squat',
+  'Press':          'bench-dips',        // bench + bar vibe
+  'Deadlift':       'cossack-squat',     // wide-stance heavy lift
+  'Overhead Press': 'pike-press',        // overhead pressing motion
+  'Strongman':     'bulgarian-dips',    // heavy weighted hold
+  // 'Sled' — no calitree equivalent, falls back to hand-coded SVG
+
+  // PHANTOM — calisthenics, direct mapping
+  'Push':           'incline-push-ups',
+  'Pull':           'pull-ups',
+  'Holds':          'plank',
+  'Rings':          'ring-dips',
+  'Handstand':      'wall-handstand',
+  'Planche':        'tuck-planche',
+
+  // SCOUT — running/rucking/triathlon have no direct calisthenics
+  // analogs in calitree; all three fall back to hand-coded.
+
+  // BERSERKER
+  // 'Sled' / 'Kettlebell' / 'Boxing' / 'Mace / Indian Club' — no
+  // calitree equivalent; fall back to hand-coded.
+  'Hero WODs':      'kipping-muscle-up', // high-volume benchmark
+  'Capacity':       'chin-ups',          // AMRAP-style grinder
+
+  // TRACER
+  // 'Sprint' / 'Throws' — no calitree equivalent.
+  'Plyo':           'tuck-front-lever',  // explosive isometric
+  'Parkour':        'tuck-back-lever',   // body-control rotation
+  'Agility':        'tuck-back-lever',   // shared with Parkour
+
+  // ORACLE — mobility / holds, mostly direct mapping
+  'Mobility':       'pancake-stretch',
+  'Breath':         'hollow-hold',
+  'Balance':        'side-plank',
+  // 'Mindfulness' — no calitree equivalent.
+  'Yoga':           'bridge-hold',
+  'Pilates':        'l-sit',
+};
+
+export function calitreeIconFor(branchName: string | null): string | null {
+  if (!branchName) return null;
+  return CALITREE_ICON_FILES[branchName] ?? null;
+}
+
 export const BRANCH_ICONS: Record<string, ReactElement> = {
-  // JUGGERNAUT
-  'Squat': Squat,
-  'Press': Press,
-  'Deadlift': Deadlift,
-  'Overhead Press': OverheadPress,
-  'Strongman': Strongman,
+  // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,
   // PHANTOM
-  'Push': Push,
-  'Pull': Pull,
-  'Holds': Holds,
-  'Rings': Rings,
-  'Handstand': Handstand,
-  'Planche': Planche,
-  // SCOUT
+  // (all 6 branches have calitree matches; no hand-coded SVG fallback needed)
+  // SCOUT — no calitree matches for any of the 3 branches
   'Run': Run,
   'Ruck': Ruck,
   'Triathlon': Triathlon,
-  // BERSERKER — uses its own sled variant for visual distinction
-  // from JUGGERNAUT.Sled (prowler-style with vertical push posts
-  // vs strongman-style flat platform). Same branch label, different
-  // class — the page only renders one class at a time so this is
-  // fine. The mapping is keyed by className so there's no collision.
-  // (See skillIconsByClass below for the per-class override.)
+  // BERSERKER — only Hero WODs + Capacity have calitree matches
+  'Kettlebell': Kettlebell,
+  'Boxing': Boxing,
+  'Mace / Indian Club': Mace,
+  // TRACER — only Plyo + Parkour + Agility have matches
+  'Sprint': Sprint,
+  'Throws': Throws,
+  // ORACLE — only Mobility + Breath + Balance + Yoga + Pilates have matches
+  'Mindfulness': Mindfulness,
 };
 
-// Override the Sled icon per-class — BERSERKER gets the prowler
-// variant instead of the strongman variant.
 export const BRANCH_ICONS_BY_CLASS: Record<string, Record<string, ReactElement>> = {
   JUGGERNAUT: {
     'Sled': Sled,

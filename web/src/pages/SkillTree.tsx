@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
-import { branchIcon } from '@/lib/skillIcons';
+import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
 
 /**
  * SkillTree v1 — replaces the old /skills page.
@@ -290,6 +290,11 @@ function SkillNode({
   isGodTier: boolean;
 }) {
   const icon = branchIcon(skill.branch, className);
+  // Calitree.app-style icon for branches that have a direct
+  // calisthenics analog. null → fall through to the hand-coded
+  // SVG above (covers heavy barbell / sled / boxing / mace / etc.
+  // where calitree.app doesn't have a node).
+  const calitreeFile = calitreeIconFor(skill.branch);
   const tierShort = skill.tier.replace('TIER_', 'T');
   return (
     <button
@@ -313,7 +318,9 @@ function SkillNode({
       >
         {tierShort}
       </div>
-      {/* The circle — calitree-style flow-chart node */}
+      {/* The circle — calitree-style flow-chart node. Renders a
+          calitree PNG (with synthwave CSS filter) when one exists,
+          otherwise the hand-coded SVG via `icon`. */}
       <div
         className={classNames(
           'relative w-14 h-14 rounded-full border-2 flex items-center justify-center',
@@ -325,14 +332,42 @@ function SkillNode({
               : 'border-ink-500/40 bg-bg-800/60 group-hover:border-neon-cyan/60 group-hover:bg-neon-cyan/5',
         )}
       >
-        <span
-          className={classNames(
-            'leading-none select-none',
-            isUnlocked ? '' : 'opacity-40 grayscale',
-          )}
-        >
-          {icon}
-        </span>
+        {calitreeFile ? (
+          // PNG from /icons/calitree/. The filter does the
+          // synthwave recolor: locked → grayscale + dim,
+          // unlocked → full color with a neon glow matched to the
+          // ring, god-tier → amber shift. The PNG is 512x512 but
+          // displayed at ~28-32px so the anti-aliasing holds up.
+          <img
+            src={`/icons/calitree/${calitreeFile}.png`}
+            alt=""
+            draggable={false}
+            className={classNames(
+              'w-9 h-9 select-none pointer-events-none transition-all duration-200',
+              isGodTier
+                ? 'opacity-90'
+                : isUnlocked
+                  ? 'opacity-95'
+                  : 'opacity-30',
+            )}
+            style={{
+              filter: isGodTier
+                ? 'invert(1) sepia(1) saturate(8) hue-rotate(340deg) brightness(1.1) drop-shadow(0 0 3px #ffaa3a)'
+                : isUnlocked
+                  ? 'invert(1) sepia(1) saturate(6) hue-rotate(70deg) brightness(1.05) drop-shadow(0 0 2.5px #56e88e)'
+                  : 'grayscale(1) brightness(0.45) opacity(0.55)',
+            }}
+          />
+        ) : (
+          <span
+            className={classNames(
+              'leading-none select-none',
+              isUnlocked ? '' : 'opacity-40 grayscale',
+            )}
+          >
+            {icon}
+          </span>
+        )}
         {/* Lock badge for locked nodes */}
         {!isUnlocked && (
           <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-bg-900 border border-ink-500/60 flex items-center justify-center text-[8px] leading-none">
@@ -377,6 +412,7 @@ function BranchColumn({
   onSkillClick: (skill: Skill) => void;
 }) {
   const icon = branchIcon(branch.branchName, className);
+  const calitreeFile = calitreeIconFor(branch.branchName);
   const unlockedCount = branch.skills.filter((s) => s.unlocked).length;
   const total = branch.skills.length;
   const allDone = unlockedCount === total;
@@ -384,7 +420,24 @@ function BranchColumn({
     <div className="flex flex-col gap-3 min-w-[140px] flex-1">
       {/* Branch header — centered icon + name + progress */}
       <div className="flex flex-col items-center gap-1 pb-2 border-b border-ink-700/30">
-        <div className="text-3xl leading-none">{icon}</div>
+        {calitreeFile ? (
+          // Bigger version of the calitree icon for the column
+          // header. Same neon-lime / amber / grayscale logic as
+          // the per-skill nodes, scaled up.
+          <img
+            src={`/icons/calitree/${calitreeFile}.png`}
+            alt=""
+            draggable={false}
+            className="w-8 h-8 select-none pointer-events-none"
+            style={{
+              filter: allDone
+                ? 'invert(1) sepia(1) saturate(6) hue-rotate(70deg) brightness(1.05) drop-shadow(0 0 4px #56e88e)'
+                : 'invert(1) sepia(1) saturate(5) hue-rotate(170deg) brightness(0.95) drop-shadow(0 0 3px #14d6e8)',
+            }}
+          />
+        ) : (
+          <div className="text-3xl leading-none">{icon}</div>
+        )}
         <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
           {branch.branchName}
         </div>
