@@ -338,11 +338,10 @@ export function DashboardPage() {
         }
       />
 
-      {/* Top hero: character + raid + hearts + home-base. All same
-          row, same height, at lg breakpoint. On smaller screens
-          they stack. HeartsCard returns null in Casual mode so the
-          home-base card visually fills that slot when there's no
-          hearts indicator to render. */}
+        {/* Top hero: character + raid + hearts + home-base. All same
+          row, same height, at lg breakpoint. On smaller screens they
+          stack. HeartsCard always renders (both Casual and Hardcore)
+          with mode-appropriate content — see HeartsCard.tsx. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 md:mb-6">
         <Panel variant="cyan" className="lg:col-span-1">
           <div className="flex flex-wrap items-center justify-between gap-3">

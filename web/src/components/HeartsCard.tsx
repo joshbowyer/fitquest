@@ -8,21 +8,74 @@ import { useAuth } from '@/lib/auth';
 const MAX_HEARTS = 10;
 
 /**
- * Hearts indicator for Hardcore mode. Shows up to 10 hearts (or fewer
- * if depleted), with a status line that explains the current penalty.
- * Hidden entirely in Casual mode so it doesn't add visual noise.
+ * Hearts indicator. Always rendered (in both Casual and Hardcore
+ * mode) so the top-hero row stays a consistent 4-column layout.
+ * Contents differ by mode:
  *
- * Tone ladder:
+ *   - Casual: full hearts (no penalty, no regen) + a "switch to
+ *     Hardcore" hint so the user knows the toggle exists. Tone is
+ *     lime/cyan to signal "no risk."
+ *   - Hardcore: the existing 0-10 heart visualization with
+ *     magenta/amber/cyan tone ladder, status message, and regen
+ *     explainer.
+ *
+ * Tone ladder (Hardcore only):
  *   0 hearts  → magenta + pulse  (0.0x multiplier)
  *   1-4 hearts → amber              (≤ 0.7x multiplier)
  *   5+ hearts  → cyan               (≥ 0.8x multiplier, full at 10)
  */
 export function HeartsCard() {
   const { user } = useAuth();
-  if (!user || user.mode !== 'HARDCORE') return null;
+  if (!user) return null;
 
+  const isHardcore = user.mode === 'HARDCORE';
   const hearts = Math.max(0, Math.min(MAX_HEARTS, user.hearts ?? MAX_HEARTS));
   const mult = user.heartMultiplier ?? 1;
+
+  if (!isHardcore) {
+    // Casual mode: simplified display. No penalty, no regen — the
+    // block exists so the row stays balanced and so a user who
+    // doesn't know about the Hardcore toggle can discover it.
+    return (
+      <div className="panel relative p-4 border border-neon-lime/30 bg-neon-lime/5">
+        <header className="flex items-center justify-between mb-2">
+          <span className="font-display tracking-widest text-[10px] uppercase text-neon-lime">
+            ◆ Casual · Hearts
+          </span>
+          <span className="text-[10px] font-mono tabular-nums text-neon-lime/80">
+            ×{mult.toFixed(2)}
+          </span>
+        </header>
+
+        {/* Filled row — casual hearts never deplete, so render all
+            MAX_HEARTS filled in the lime tone. Same unicode chars as
+            Hardcore so the row visually parallels the other column. */}
+        <div className="flex items-center gap-1 text-2xl mb-2 select-none">
+          {Array.from({ length: MAX_HEARTS }, (_, i) => (
+            <span
+              key={i}
+              style={{ color: '#9bff5c', textShadow: '0 0 4px currentColor' }}
+              aria-label="heart filled"
+            >
+              ♥
+            </span>
+          ))}
+        </div>
+
+        <div className="text-[10px] font-mono text-ink-400">
+          Casual mode — no heart penalty, full rewards. Hearts shown for
+          parity with the other columns.
+          <div className="mt-0.5 text-ink-500">
+            Want the penalty loop? Switch to Hardcore in Settings →
+            Difficulty. (6 reasons — missed workout, all-dailies miss,
+            caffeine/alcohol/nicotine overuse, zero spiritual.)
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Hardcore mode: existing 0-10 heart visualization.
   const tone =
     hearts === 0 ? 'magenta' :
     hearts <= 4 ? 'amber' :
