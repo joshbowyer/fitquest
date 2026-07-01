@@ -398,35 +398,6 @@ function HabitEditor({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-              Gold {direction === 'POSITIVE' ? 'reward' : 'penalty'}
-            </label>
-            <input
-              className="input-neon w-full"
-              type="number"
-              min={0}
-              max={1000}
-              value={goldReward}
-              onChange={(e) => setGoldReward(Number(e.target.value))}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
-              XP {direction === 'POSITIVE' ? 'reward' : 'penalty'}
-            </label>
-            <input
-              className="input-neon w-full"
-              type="number"
-              min={0}
-              max={1000}
-              value={xpReward}
-              onChange={(e) => setXpReward(Number(e.target.value))}
-            />
-          </div>
-        </div>
-
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
             Icon (optional)
