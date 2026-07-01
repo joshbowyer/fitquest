@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
+import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 
 type Habit = {
   id: string;
@@ -272,6 +273,23 @@ function HabitEditor({
   const [xpReward, setXpReward] = useState<number>(habit?.xpReward ?? 2);
   const [notes, setNotes] = useState(habit?.notes ?? '');
   const [icon, setIcon] = useState(habit?.icon ?? '');
+  // Selected difficulty tier. Used as a preset that auto-fills
+  // goldReward + xpReward. The user can still override the inputs
+  // directly. On edit, we pre-select the tier that best matches
+  // the habit's current (gold, xp) values (if any). For a brand-new
+  // habit, default to EASY.
+  const initialTier: DifficultyTier = habit
+    ? tierForRewards(habit.goldReward, habit.xpReward)
+    : DIFFICULTY_TIERS[1]; // EASY
+  const [selectedTier, setSelectedTier] = useState<DifficultyTier>(initialTier);
+  // When the tier button is clicked, snap the gold/xp inputs to the
+  // tier's values. We track this so we can show "Custom" if the user
+  // edits the gold/xp inputs away from the tier's values.
+  const applyTier = (t: DifficultyTier) => {
+    setSelectedTier(t);
+    setGoldReward(t.gold);
+    setXpReward(t.xp);
+  };
 
   const saveM = useDelayedMutation<unknown, void>({
     mutationFn: () => {
@@ -332,6 +350,52 @@ function HabitEditor({
             placeholder={direction === 'POSITIVE' ? 'e.g., Drank water' : 'e.g., Ate junk food'}
             autoFocus={mode === 'create'}
           />
+        </div>
+
+        {/* Difficulty tier — pick a preset to auto-fill gold + xp. The
+            inputs below stay editable so the user can override after
+            selecting a tier. */}
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">
+            Difficulty
+          </label>
+          <div className="grid grid-cols-5 gap-1.5">
+            {DIFFICULTY_TIERS.map((t) => {
+              const active = selectedTier.key === t.key
+                && goldReward === t.gold
+                && xpReward === t.xp;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => applyTier(t)}
+                  title={`${t.label} — ${t.hint} (+${direction === 'NEGATIVE' ? '-' : ''}${t.gold}g, +${direction === 'NEGATIVE' ? '-' : ''}${t.xp} XP)`}
+                  className={classNames(
+                    'flex flex-col items-center justify-center py-2 px-1 border-2 transition-all text-center',
+                    active
+                      ? 'border-current bg-bg-700'
+                      : 'border-ink-500/40 text-ink-300 hover:border-ink-300',
+                  )}
+                  style={active ? { color: t.color, borderColor: t.color } : undefined}
+                >
+                  <span className="text-[9px] font-display tracking-widest uppercase">
+                    {t.label}
+                  </span>
+                  <span className="text-[9px] font-mono mt-0.5 opacity-80">
+                    {t.gold}g · {t.xp}xp
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {selectedTier && (
+            <div
+              className="text-[10px] font-mono mt-1 italic"
+              style={{ color: selectedTier.color }}
+            >
+              {selectedTier.hint}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">

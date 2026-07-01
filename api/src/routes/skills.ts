@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ClassName } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { levelFromXp } from '../lib/xp.js';
 import {
   validateSkillTest,
   type SkillTestSpec,
@@ -129,7 +130,38 @@ export async function skillRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Not enough skill points' });
     }
     await prisma.userSkill.create({ data: { userId: me.id, skillId: skill.id } });
-    return { ok: true };
+    // Bonus XP + gold for unlocking. Tier-scaled so T3 god-tier
+    // skills reward more than T1 entry skills. Modest amounts —
+    // skills are a side path, workouts should still be the main
+    // XP source. (Pre-v1 skills without a test get the T1 reward.)
+    const tierBonus = skill.tier === 'TIER_3'
+      ? { xp: 50, gold: 25 }
+      : skill.tier === 'TIER_2'
+        ? { xp: 30, gold: 15 }
+        : { xp: 20, gold: 10 };
+    // v1 skills (with a test) get the tier bonus; pre-v1 skills get
+    // a slightly smaller flat reward since they're "free" unlocks
+    // (no test validation).
+    const bonus = skill.test ? tierBonus : { xp: 5, gold: 3 };
+    const updatedUser = await prisma.user.update({
+      where: { id: me.id },
+      data: { xp: { increment: bonus.xp }, gold: { increment: bonus.gold } },
+      select: { xp: true, gold: true, level: true },
+    });
+    const prevLevel = me.level;
+    const newLevel = levelFromXp(updatedUser.xp);
+    if (newLevel > prevLevel) {
+      await prisma.user.update({ where: { id: me.id }, data: { level: newLevel } });
+      updatedUser.level = newLevel;
+    }
+    return {
+      ok: true,
+      reward: bonus,
+      newXp: updatedUser.xp,
+      newGold: updatedUser.gold,
+      newLevel: updatedUser.level,
+      leveledUp: updatedUser.level > prevLevel,
+    };
   });
 
   /**
