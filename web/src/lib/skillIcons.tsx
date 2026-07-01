@@ -578,8 +578,9 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   // hand-coded because calitree's "tuck-planche" icon is actually
   // a front-lever figure — the two moves have mechanically opposite
   // arm directions (front lever = arms UP to bar, planche = arms
-  // DOWN to ground). Falls through to the `Planche` SVG above which
-  // shows the correct geometry.
+  // DOWN to ground). Falls back to the hand-coded `Planche` SVG
+  // defined above (not a calitree PNG).
+  'Planche': Planche,
   // SCOUT — no calitree matches for any of the 3 branches
   'Run': Run,
   'Ruck': Ruck,
