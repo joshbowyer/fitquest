@@ -109,10 +109,15 @@ export function Layout({ children }: Props) {
             {menuOpen ? '✕' : '☰'}
           </button>
 
-          {/* Title — mobile is centered absolutely so it survives the
-              variable-width left button + right status pill. Desktop
-              uses the normal flow. */}
-          <div className="font-display tracking-[0.4em] text-sm neon-text-cyan md:static md:translate-x-0 absolute left-0 right-0 text-center pointer-events-none md:pointer-events-auto">
+          {/* Title — flows naturally in the flex row so it sits
+              immediately right of the hamburger on mobile (no
+              longer centered, which overlapped with the 10-heart
+              row in the dashboard hero on narrow viewports).
+              Desktop uses the same flex flow with the hamburger
+              hidden, so the title stays in its natural left-edge
+              position. The flex-1 spacer to the right of the title
+              pushes the desktop status row to the right edge. */}
+          <div className="font-display tracking-[0.4em] text-sm neon-text-cyan shrink-0">
             FIT<span className="hidden md:inline">//</span><span className="md:hidden">·</span>QUEST
           </div>
 

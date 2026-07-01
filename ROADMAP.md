@@ -99,6 +99,14 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Mobile top-bar title overlap (Layout.tsx). The FIT//QUEST
+  title was `absolute left-0 right-0 text-center` on mobile so
+  the new 10-heart hero row in Dashboard.tsx overlapped with it
+  on narrow viewports. Switched the title to a natural flex
+  child (`shrink-0` next to the hamburger) so it sits flush
+  right of the menu icon, left of center, instead of centered
+  across the whole header. Desktop layout unchanged (hamburger
+  hidden, title in the same left-edge position).
 - ✅ FitQuestBridge helper APK + Bearer-token auth. New long-lived
   `DEVICE` session kind on `Session` table (1-year TTL, sha-stored
   token via standard Session.token column). New `readBearerToken` /
