@@ -190,11 +190,6 @@ const Handstand = icon(
   </>
 );
 
-// (Planche was previously hand-coded here as a stopgap while waiting
-// for fal.ai to generate a real icon. It's been replaced by the
-// PNG at web/public/icons/calitree/planche.png. The hand-coded SVG
-// is removed to avoid confusion.)
-
 // ---- SCOUT (endurance) ----
 
 const Run = icon(
@@ -503,12 +498,7 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Holds':          'plank',
   'Rings':          'ring-dips',
   'Handstand':      'wall-handstand',
-  'Planche':        'planche',           // fal.ai FLUX schnell — see scripts/gen-planche-icon.py
-  // Planche is generated via fal.ai because calitree's own planche
-  // icon is just a front-lever figure (a guy lying on his stomach).
-  // Front lever = arms UP to bar above; planche = arms DOWN to
-  // ground below. The two moves look superficially similar but are
-  // mechanically opposite.
+  'Planche':        'tuck-planche',
 
   // SCOUT — running/rucking/triathlon have no direct calisthenics
   // analogs in calitree; all three fall back to hand-coded.
@@ -543,9 +533,9 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,
   // PHANTOM
-  // All 6 branches have calitree matches (the planche PNG was
-  // generated via fal.ai FLUX schnell since calitree's own planche
-  // icon is a front-lever figure).
+  // All 6 branches have calitree matches. (Calitree's planche icon
+  // is technically a front-lever figure rather than a true planche,
+  // but the silhouette shape is close enough for now.)
   // SCOUT — no calitree matches for any of the 3 branches
   'Run': Run,
   'Ruck': Ruck,
