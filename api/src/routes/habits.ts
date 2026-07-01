@@ -4,6 +4,7 @@ import { HabitDirection } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { clampShield, tierForShield } from '../lib/penance.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),
@@ -19,9 +20,41 @@ const updateSchema = z.object({
   notes: z.string().max(500).optional().nullable(),
   goldReward: z.number().int().min(0).max(1000).optional(),
   xpReward: z.number().int().min(0).max(1000).optional(),
-  icon: z.string().max(8).optional().nullable(),
   archived: z.boolean().optional(),
 });
+
+// Tier-scaled shield drop for NEGATIVE habit logs. Maps the habit's
+// goldReward (which the user picked via the difficulty tier selector
+// on the create modal) to a shield delta. The bands line up with
+// the DIFFICULTY_TIERS values in web/src/lib/difficultyTiers.ts so
+// the user gets a consistent picture of "this habit is X-tier, so
+// it costs me Y shield per check-in":
+//   TRIVIAL 1g   -> -2
+//   EASY    5g   -> -3
+//   MEDIUM  15g  -> -7
+//   HARD    35g  -> -12
+//   EPIC    80g  -> -20
+const NEGATIVE_HABIT_SHIELD_DROP: Record<'TRIVIAL' | 'EASY' | 'MEDIUM' | 'HARD' | 'EPIC', number> = {
+  TRIVIAL: -2,
+  EASY: -3,
+  MEDIUM: -7,
+  HARD: -12,
+  EPIC: -20,
+};
+
+// Map a habit's goldReward to one of the 5 tier keys. Mirrors the
+// thresholds used by tierForRewards() in web/src/lib/difficultyTiers.ts
+// (TRIVIAL=1, EASY=5, MEDIUM=15, HARD=35, EPIC=80) — if a habit has a
+// goldReward between two tier values, the higher tier wins. Falls
+// through to EASY for anything that pre-dates the tier system
+// (e.g. legacy habits with weird values).
+function tierKeyForGoldReward(g: number): 'TRIVIAL' | 'EASY' | 'MEDIUM' | 'HARD' | 'EPIC' {
+  if (g >= 80) return 'EPIC';
+  if (g >= 35) return 'HARD';
+  if (g >= 15) return 'MEDIUM';
+  if (g >= 5) return 'EASY';
+  return 'TRIVIAL';
+}
 
 export async function habitRoutes(app: FastifyInstance) {
   // GET /habits — list the user's habits with today's counts
@@ -145,6 +178,45 @@ export async function habitRoutes(app: FastifyInstance) {
       select: { gold: true, xp: true, level: true },
     });
 
+    // NEGATIVE habits also chip the home-base shield. Magnitude
+    // scales with the habit's difficulty tier (mapped from its
+    // goldReward via the same TRIVIAL..EPIC scheme as /today dailies)
+    // so a TRIVIAL "ate one cookie" tick is -2 and an EPIC "smoked"
+    // tick is -20. Inline shield update mirrors what firePenance()
+    // does internally — transaction, tier re-derivation, PenanceEvent
+    // insert — but lets us pass the tier-scaled delta rather than
+    // looking it up from the penance template.
+    let shieldEvent: { shieldBefore: number; shieldAfter: number; delta: number } | null = null;
+    if (habit.direction === 'NEGATIVE') {
+      const tierKey = tierKeyForGoldReward(habit.goldReward);
+      const shieldDelta = NEGATIVE_HABIT_SHIELD_DROP[tierKey];
+      shieldEvent = await prisma.$transaction(async (tx: any) => {
+        const base = await tx.homeBase.upsert({
+          where: { userId: me.id },
+          create: { userId: me.id, shield: 100, tier: 'FORTIFIED' },
+          update: {},
+        });
+        const shieldAfter = clampShield(base.shield + shieldDelta);
+        const tierAfter = tierForShield(shieldAfter);
+        await tx.homeBase.update({
+          where: { userId: me.id },
+          data: { shield: shieldAfter, tier: tierAfter },
+        });
+        await tx.penanceEvent.create({
+          data: {
+            userId: me.id,
+            penanceKey: 'negative_habit',
+            label: `Negative habit: ${habit.name}`,
+            shieldDelta,
+            shieldAfter,
+            tierAfter,
+            source: 'habit_log',
+          },
+        });
+        return { shieldBefore: base.shield, shieldAfter, delta: shieldDelta };
+      });
+    }
+
     await checkAchievements(me.id);
 
     return {
@@ -154,6 +226,11 @@ export async function habitRoutes(app: FastifyInstance) {
       gold: updated.gold,
       xp: updated.xp,
       level: updated.level,
+      ...(shieldEvent && {
+        shieldDelta: shieldEvent.delta,
+        shieldBefore: shieldEvent.shieldBefore,
+        shieldAfter: shieldEvent.shieldAfter,
+      }),
     };
   });
 
