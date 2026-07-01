@@ -1,29 +1,37 @@
 import { classNames } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 
+// Max hearts. Mirrors MAX_HEARTS in api/src/lib/mode.ts. The api
+// defaults new users to this number; we cap the local display at
+// the same value so a "10 of 10" reading is possible. If the api
+// ever bumps the cap, we'd update this constant.
+const MAX_HEARTS = 10;
+
 /**
- * Hearts indicator for Hardcore mode. Shows 5 hearts (or fewer if
- * depleted), with a status line that explains the current penalty.
+ * Hearts indicator for Hardcore mode. Shows up to 10 hearts (or fewer
+ * if depleted), with a status line that explains the current penalty.
  * Hidden entirely in Casual mode so it doesn't add visual noise.
  *
- * At 0 hearts the card switches to magenta + scolds the user so the
- * consequence is unmissable. At 1-2 hearts the card shifts to amber.
- * 3+ hearts = neutral cyan.
+ * Tone ladder:
+ *   0 hearts  → magenta + pulse  (0.0x multiplier)
+ *   1-4 hearts → amber              (≤ 0.7x multiplier)
+ *   5+ hearts  → cyan               (≥ 0.8x multiplier, full at 10)
  */
 export function HeartsCard() {
   const { user } = useAuth();
   if (!user || user.mode !== 'HARDCORE') return null;
 
-  const hearts = Math.max(0, Math.min(5, user.hearts ?? 5));
+  const hearts = Math.max(0, Math.min(MAX_HEARTS, user.hearts ?? MAX_HEARTS));
   const mult = user.heartMultiplier ?? 1;
   const tone =
     hearts === 0 ? 'magenta' :
-    hearts <= 2 ? 'amber' :
+    hearts <= 4 ? 'amber' :
     'cyan';
 
   const message =
-    hearts === 0 ? '⚠ Half rewards until next Sunday tick.' :
-    hearts <= 2 ? 'Hearts low — try to log a workout before Sunday.' :
+    hearts === 0 ? '⚠ Zero hearts — ×0.00, no rewards. Regen Sunday.' :
+    hearts <= 2 ? 'Hearts low — penalty is heavy. Try to log a workout before Sunday.' :
+    hearts <= 4 ? 'Hearts dropping — penalty escalating. One missed day and you drop another.' :
     'Full hearts. No penalty.';
 
   return (
@@ -52,10 +60,15 @@ export function HeartsCard() {
         </span>
       </header>
 
-      {/* 5 hearts in a row. Filled = current count. Empty = depleted.
-          Uses unicode hearts so it renders without an icon library. */}
-      <div className="flex items-center gap-1 text-2xl mb-2 select-none">
-        {Array.from({ length: 5 }, (_, i) => (
+      {/* Hearts in a row. Filled = current count. Empty = depleted.
+          Uses unicode hearts so it renders without an icon library.
+          At ≤3 hearts the whole row gets the heart-warn pulse so
+          even a glance catches the "you're low" state. */}
+      <div className={classNames(
+        'flex items-center gap-1 text-2xl mb-2 select-none',
+        hearts <= 3 && 'animate-heart-warn',
+      )}>
+        {Array.from({ length: MAX_HEARTS }, (_, i) => (
           <span
             key={i}
             className={classNames(

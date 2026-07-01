@@ -468,20 +468,32 @@ export function ConstellationMap({
           );
         })}
 
-        {/* SHOP — bazaar star above home base. Clickable, hovers with
-            a gentle pulse, opens the shop modal in the parent. */}
+        {/* SHOP — bazaar star above home base. Bumped up to y=130 (was
+            180) to give the Bazaar's labels and the HomeBase circle
+            more breathing room — they were overlapping by a couple
+            pixels before. transformOrigin is the local (0, 0) of the
+            group (after the SVG translate) which is the visual
+            center of the star, so the scale-on-hover grows in place
+            instead of shifting left like before. */}
         <g
-          transform="translate(170, 180)"
+          transform="translate(170, 130)"
           onMouseEnter={() => setHoveredShop(true)}
           onMouseLeave={() => setHoveredShop(false)}
           onClick={onSelectShop}
           style={{
             cursor: onSelectShop ? 'pointer' : 'default',
             transition: 'transform 200ms ease-out',
-            transform: 'translate(170px, 180px) scale(' + (hoveredShop ? 1.12 : 1) + ')',
-            transformOrigin: '170px 180px',
+            transform: `translate(170px, 130px) scale(${hoveredShop ? 1.1 : 1})`,
+            transformOrigin: '0 0',
           }}
         >
+          {/* Larger click target — invisible, behind everything */}
+          <circle
+            r="68"
+            fill="transparent"
+            style={{ cursor: 'pointer' }}
+            onClick={onSelectShop}
+          />
           {/* Outer amber glow ring */}
           <circle r="60" fill="none" stroke="#ffaa3a" strokeOpacity={hoveredShop ? 0.7 : 0.3} strokeWidth={hoveredShop ? 2 : 1.2}>
             <animate attributeName="r" values={hoveredShop ? '60;68;60' : '60;64;60'} dur="3.2s" repeatCount="indefinite" />
@@ -496,32 +508,32 @@ export function ConstellationMap({
             filter="url(#constellation-glow)"
           />
           {/* Inner highlight */}
-          <circle r="3" fill="#fafafd" />
-          {/* Label */}
-          <text textAnchor="middle" y="50" fontSize="9" fontFamily="monospace" letterSpacing="2" fill="#ffaa3a">
+          <circle r="3" fill="#fafafd" style={{ pointerEvents: 'none' }} />
+          {/* Labels — pointerEvents:none so the click target
+              underneath (the r=68 transparent circle) catches the
+              click. Otherwise the text + star can intercept pointer
+              events and the parent <g>'s onClick might not fire. */}
+          <text textAnchor="middle" y="50" fontSize="9" fontFamily="monospace" letterSpacing="2" fill="#ffaa3a" style={{ pointerEvents: 'none' }}>
             BAZAAR
           </text>
-          <text textAnchor="middle" y="62" fontSize="7" fontFamily="monospace" letterSpacing="1.5" fill="#a8a8b8">
+          <text textAnchor="middle" y="62" fontSize="7" fontFamily="monospace" letterSpacing="1.5" fill="#a8a8b8" style={{ pointerEvents: 'none' }}>
             [ Shop ]
           </text>
         </g>
 
-        {/* HOME BASE — left half, moved down (y=360) to make room for
-            the Bazaar star above (y=180). Hover speeds up the
-            shield ring (60s → 8s rotation) + shows a tooltip with
-            the actual shield value + last-fired penance. Clicking
-            opens the full home-base modal (parent-provided
-            onSelectHomeBase). */}
+        {/* HOME BASE — left half, moved down (y=400) to make room for
+            the Bazaar star above (y=130). Same transformOrigin fix
+            as the Bazaar so the scale-on-hover grows in place. */}
         <g
-          transform="translate(170, 360)"
+          transform="translate(170, 400)"
           onMouseEnter={() => setHoveredHomeBase(true)}
           onMouseLeave={() => setHoveredHomeBase(false)}
           onClick={onSelectHomeBase}
           style={{
             cursor: onSelectHomeBase ? 'pointer' : 'default',
             transition: 'transform 200ms ease-out',
-            transform: 'translate(170px, 360px) scale(' + (hoveredHomeBase ? 1.04 : 1) + ')',
-            transformOrigin: '170px 360px',
+            transform: `translate(170px, 400px) scale(${hoveredHomeBase ? 1.05 : 1})`,
+            transformOrigin: '0 0',
           }}
         >
           {/* Outer shield ring (tier-colored). Spin duration speeds
