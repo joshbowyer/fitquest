@@ -83,7 +83,7 @@ async function publicUser(user: any) {
     level: user.level,
     xp: user.xp,
     gold: user.gold,
-    soulstones: user.soulstones,
+    soulstones: soulstoneCount,
     class: user.class,
     classDisplay: getClassDisplayName(user.class, user.level),
     classStage: user.class ? (user.level >= 25 ? 3 : user.level >= 10 ? 2 : 1) : null,
@@ -100,7 +100,7 @@ async function publicUser(user: any) {
     birthDate: user.birthDate,
     createdAt: user.createdAt,
     classChangedAt: user.classChangedAt,
-    classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
+    classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount),
     ordained: user.ordained,
     isAdmin: user.isAdmin,
     spiritualDailyPrayers: user.spiritualDailyPrayers,
@@ -182,7 +182,7 @@ export async function authRoutes(app: FastifyInstance) {
       select: {
         id: true, email: true, username: true, level: true, xp: true, gold: true,
         class: true, units: true, createdAt: true, classChangedAt: true,
-        soulstones: true, birthDate: true, sex: true, heightCm: true, wristCm: true,
+        birthDate: true, sex: true, heightCm: true, wristCm: true,
         ankleCm: true, forearmLengthCm: true, neckCircCm: true,
         isAdmin: true,
       },
@@ -211,6 +211,16 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await prisma.user.findUnique({
       where: { usernameLower: body.identifier.toLowerCase() },
     });
+    // Count active Soulstones (unconsumed + non-expired). Used in the
+    // /login response below for the classLock status. Login shouldn't
+    // have to call the DB twice, but it's < 1ms and keeps the code
+    // symmetric with the PATCH /me path.
+    let soulstoneCount = 0;
+    if (user) {
+      soulstoneCount = await prisma.soulstone.count({
+        where: { userId: user.id, consumed: false, expiresAt: { gt: new Date() } },
+      });
+    }
 
     // Always run bcrypt even on missing user — constant-time-ish so
     // attackers can't tell "user doesn't exist" vs "wrong password"

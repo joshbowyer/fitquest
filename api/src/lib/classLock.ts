@@ -5,8 +5,11 @@ import type { User } from './prisma.js';
  * after) their birthday. If their birthday isn't on file, fall back to
  * 365 days from the last class change.
  *
- * Soulstones are the early-unlock item. Each stone lets the user bypass
- * the cooldown once. Soulstones are awarded rarely from raid victories.
+ * Soulstones are the early-unlock item. Each Soulstone row in the
+ * Soulstone table is one consumable that bypasses the cooldown once.
+ * Soulstones drop from world bosses (any boss always drops one)
+ * with a 24h TTL — if not used, the row "disintegrates" (queries
+ * filter by expiresAt > now, so an expired row is invisible).
  */
 export type ClassLockStatus = {
   locked: boolean;
@@ -18,6 +21,8 @@ export type ClassLockStatus = {
   remainingLabel: string;
   /** True if the user can spend a Soulstone to change early. */
   canUseSoulstone: boolean;
+  /** Number of unconsumed + non-expired Soulstone rows the user holds. */
+  soulstoneCount: number;
   /** True if the cooldown is tied to the next birthday. */
   birthdayUnlock: boolean;
   /** ISO of the user's next birthday (this year or next). */
@@ -116,7 +121,7 @@ export function getClassLockStatus(
   userClass: string | null,
   classChangedAt: Date | null | undefined,
   birthDate?: Date | null,
-  soulstones: number = 0,
+  soulstoneCount: number = 0,
   now: Date = new Date(),
 ): ClassLockStatus {
   // No class picked yet, or no change recorded: free to pick.
@@ -127,6 +132,7 @@ export function getClassLockStatus(
       unlockAt: null,
       remainingLabel: '',
       canUseSoulstone: false,
+      soulstoneCount,
       birthdayUnlock: false,
       nextBirthdayAt: null,
     };
@@ -145,6 +151,7 @@ export function getClassLockStatus(
         unlockAt: null,
         remainingLabel: '',
         canUseSoulstone: false,
+        soulstoneCount,
         birthdayUnlock: true,
         nextBirthdayAt: nextUnlock.toISOString(),
       };
@@ -155,7 +162,8 @@ export function getClassLockStatus(
       remainingMs: remaining,
       unlockAt: nextUnlock.toISOString(),
       remainingLabel: daysLabel(remaining),
-      canUseSoulstone: soulstones > 0,
+      canUseSoulstone: soulstoneCount > 0,
+      soulstoneCount,
       birthdayUnlock: true,
       nextBirthdayAt: nextUnlock.toISOString(),
     };
@@ -170,6 +178,7 @@ export function getClassLockStatus(
       unlockAt: null,
       remainingLabel: '',
       canUseSoulstone: false,
+      soulstoneCount,
       birthdayUnlock: false,
       nextBirthdayAt: null,
     };
@@ -180,7 +189,8 @@ export function getClassLockStatus(
     remainingMs: remaining,
     unlockAt: unlockAt.toISOString(),
     remainingLabel: daysLabel(remaining),
-    canUseSoulstone: soulstones > 0,
+    canUseSoulstone: soulstoneCount > 0,
+    soulstoneCount,
     birthdayUnlock: false,
     nextBirthdayAt: null,
   };
@@ -202,14 +212,20 @@ function daysLabel(ms: number): string {
  * Throws if the user is currently class-locked and has no Soulstone to
  * bypass. Returns null otherwise. The error includes the lock status so
  * the UI can show "wait N days" or "use a Soulstone".
+ *
+ * Note: the caller is responsible for consuming the Soulstone row
+ * (via prisma.soulstone.update({ consumed: true, consumedAt: now }))
+ * AFTER calling this with useSoulstone: true. The lib is pure — it
+ * doesn't write to the DB itself.
  */
 export function assertCanChangeClass(
-  user: Pick<User, 'class' | 'classChangedAt' | 'birthDate' | 'soulstones'>,
+  user: Pick<User, 'class' | 'classChangedAt' | 'birthDate'>,
   newClass: string | null,
+  soulstoneCount: number = 0,
 ): { useSoulstone: boolean } {
   if (!newClass) return { useSoulstone: false };
   if (user.class === newClass) return { useSoulstone: false };
-  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones);
+  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount);
   if (!status.locked) return { useSoulstone: false };
   if (status.canUseSoulstone) return { useSoulstone: true };
   const err: any = new Error(

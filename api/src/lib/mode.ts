@@ -1,11 +1,29 @@
 /**
- * Casual vs Hardcore difficulty mode. Casual is the legacy
- * no-consequences behavior. Hardcore engages a penalty ladder:
+ * Casual vs Hardcore difficulty mode. Casual is the "slap on the
+ * wrist" mode — hearts still drop (so the user can SEE they're
+ * missing things) but no XP/gold/raid penalty applies. Hardcore
+ * engages a graduated penalty ladder where every lost heart chops
+ * a percentage off rewards.
  *
- *  - **Hearts**: 5 hearts. Lose 1 per missed planned workout
- *    (routine day with no workout by end of day). Regen 1 per 8h.
- *    At 0 hearts: -50% XP, -50% gold, -50% raid damage until the
- *    user gets back to at least 1.
+ *  - **Hearts**: 10 hearts (both modes). Lose 1 per missed planned
+ *    workout (routine day with no workout by end of day) in either
+ *    mode. Regen 1 per week (anchored to local Sunday midnight in
+ *    the user's tz). Casual drops are visual-only; Hardcore drops
+ *    apply a graduated multiplier (see heartMultiplier below).
+ *
+ *  - **Hardcore graduated penalty** (per current heart count):
+ *      10 hearts: ×1.00
+ *       9 hearts: ×0.95
+ *       8 hearts: ×0.90
+ *       7 hearts: ×0.85
+ *       6 hearts: ×0.80
+ *       5 hearts: ×0.70
+ *       4 hearts: ×0.60
+ *       3 hearts: ×0.50
+ *       2 hearts: ×0.40
+ *       1 heart:  ×0.25
+ *       0 hearts: ×0.00
+ *    Applied to XP, gold, and raid damage. Casual: always ×1.00.
  *
  *  - **Streak break on miss**: routine streak resets to 0 if the
  *    user misses their weekly goal AND had a streak ≥ 1 last week.
@@ -23,20 +41,24 @@
  *    /insights anti-staleness surface.
  *
  * Heart regen is computed at *read* time, not via a cron, because the
- * value is bounded (5 max, 0 min) and the math is trivial. We compute
+ * value is bounded (10 max, 0 min) and the math is trivial. We compute
  * `floor((now - heartsLastRegenAt) / 1 week)` and add it to the stored
- * value, capped at 5. The last-regen timestamp is anchored to local
+ * value, capped at 10. The last-regen timestamp is anchored to local
  * Sunday-midnight in the user's tz, so a user who lost a heart on
  * Wednesday gets a new one on Sunday morning (not just "one week
- * from the loss"). The 8-hour cadence was too forgiving for users
- * with a single planned workout per day — they'd never lose a heart
- * in the first place, making Hardcore mode a no-op.
+ * from the loss"). Casual mode skips the regen math entirely and
+ * just returns the current count.
  *
  * The lib is pure-ish — the only DB touchpoints are read/write on
  * `User.hearts` + `User.heartsLastRegenAt`. The rest is computation.
  */
 import { prisma } from './prisma.js';
 import { lastSundayMidnightUtc } from './timezone.js';
+
+/// Maximum hearts. Bumped from 5 to 10 so the graduated Hardcore
+/// penalty curve has meaningful resolution. The default is also 10
+/// (see User.hearts in schema.prisma) for new users.
+export const MAX_HEARTS = 10;
 
 /// 1 week in ms. Hardcore regen cadence: +1 heart per local
 /// Sunday (in the user's tz). Anchored to Sunday midnight rather
@@ -74,11 +96,12 @@ export async function tickHearts(userId: string): Promise<number> {
   });
   if (!user) return 0;
 
-  // Casual mode never depletes or ticks hearts. The value stays at 5
-  // for UI consistency but isn't read by any penalty logic.
-  if (user.mode === 'CASUAL') return 5;
+  // Casual: hearts are visual-only — no regen math, no penalty. Just
+  // return the current value (the UI shows the count, the user can
+  // see it dropping, but no reward is affected).
+  if (user.mode === 'CASUAL') return user.hearts;
 
-  if (user.hearts >= 5) {
+  if (user.hearts >= MAX_HEARTS) {
     // Already full. Reset the timer so future losses regen from now.
     if (user.heartsLastRegenAt) {
       await prisma.user.update({
@@ -86,11 +109,11 @@ export async function tickHearts(userId: string): Promise<number> {
         data: { heartsLastRegenAt: new Date() },
       });
     }
-    return 5;
+    return MAX_HEARTS;
   }
 
   // Anchor: the most recent Sunday midnight in the user's tz.
-  // If the user just dropped to 4 hearts on Wednesday, this still
+  // If the user just dropped to 9 hearts on Wednesday, this still
   // returns the same Sunday they ticked on, so the next regen
   // happens at the FOLLOWING Sunday — not "one week from the loss".
   const now = new Date();
@@ -115,7 +138,7 @@ export async function tickHearts(userId: string): Promise<number> {
     // Same Sunday window — no regen yet. Return current.
     return user.hearts;
   }
-  const next = Math.min(5, user.hearts + weeksSince);
+  const next = Math.min(MAX_HEARTS, user.hearts + weeksSince);
   // Bump the timer to the most recent Sunday (weeksSince back from
   // now rounded). Next tick is then the following Sunday.
   const newLast = new Date(now.getTime() - (now.getTime() - last.getTime()) % HEART_REGEN_MS);
@@ -127,39 +150,66 @@ export async function tickHearts(userId: string): Promise<number> {
 }
 
 /**
- * Decrement hearts by 1 in Hardcore mode. Called from the morning-
- * report sweep (`fireHardcoreHeartPenalties` in morningReport.ts)
- * once per (user, local-date, trigger-kind) — the HeartLossEvent
- * unique constraint makes re-fires within the same day a no-op.
+ * Decrement hearts by 1 in EITHER mode. Casual: visual-only (the
+ * count drops so the user can see they missed something, but no
+ * reward is affected). Hardcore: count drops AND the
+ * heartMultiplier() drops apply to subsequent XP / gold / raid.
  *
- * Clamped at 0. Returns the new count. Silent no-op in Casual mode.
+ * Called from the morning-report sweep
+ * (`fireHardcoreHeartPenalties` in morningReport.ts) once per
+ * (user, local-date, trigger-kind) — the HeartLossEvent unique
+ * constraint makes re-fires within the same day a no-op.
+ *
+ * Clamped at 0. Returns the new count.
  */
 export async function loseHeart(userId: string, opts?: { reason?: string }): Promise<number> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { hearts: true, mode: true },
   });
-  if (!user || user.mode === 'CASUAL') return user?.hearts ?? 5;
+  if (!user) return 0;
   const next = Math.max(0, user.hearts - 1);
-  // When dropping to 0, reset the regen timer so the next tick is a
-  // full regen-window away — preserves the cadence so a 0-heart user
-  // sees the "next heart in" counter reset visually. Regen cadence
-  // is weekly (HEART_REGEN_MS = 7d); see tickHearts for details.
+  // When dropping to 0 (Hardcore only — Casual regen cadence is
+  // daily so this doesn't apply), reset the regen timer so the next
+  // tick is a full regen-window away. For Casual we leave the
+  // existing timer alone (it's a 24h cadence; see tickHearts).
+  const isHardcore = user.mode === 'HARDCORE';
   await prisma.user.update({
     where: { id: userId },
     data: {
       hearts: next,
-      heartsLastRegenAt: next === 0 ? new Date() : undefined,
+      ...(isHardcore && next === 0
+        ? { heartsLastRegenAt: new Date() }
+        : {}),
     },
   });
   return next;
 }
 
-/// XP/gold/damage multiplier when hearts are at 0. Capped at 1.0
-/// for any heart count ≥ 1. (Hardcore mode only — Casual ignores.)
-export function heartMultiplier(hearts: number): number {
-  if (hearts >= 1) return 1.0;
-  return 0.5; // 50% — visible but not punishing to the point of quitting
+/**
+ * XP / gold / raid-damage multiplier derived from current heart
+ * count. Both modes show the heart count visually, but only
+ * Hardcore applies the penalty. Casual always returns 1.0.
+ *
+ * Graduated curve (Hardcore only) — see file header for the table.
+ * The curve is steeper at the bottom (1 heart = 0.25x, 0 hearts =
+ * 0x) and gentler at the top (10 hearts = 1.0x, 9 hearts = 0.95x)
+ * so the top of the bar feels like breathing room while the bottom
+ * feels like genuine warning.
+ */
+export function heartMultiplier(hearts: number, mode: UserMode = 'HARDCORE'): number {
+  if (mode === 'CASUAL') return 1.0;
+  if (hearts >= 10) return 1.0;
+  if (hearts === 9) return 0.95;
+  if (hearts === 8) return 0.90;
+  if (hearts === 7) return 0.85;
+  if (hearts === 6) return 0.80;
+  if (hearts === 5) return 0.70;
+  if (hearts === 4) return 0.60;
+  if (hearts === 3) return 0.50;
+  if (hearts === 2) return 0.40;
+  if (hearts === 1) return 0.25;
+  return 0.0; // hearts === 0 — no progress at all
 }
 
 /// Apply hardcore substance caps to a windowed substance count.

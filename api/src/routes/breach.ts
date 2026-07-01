@@ -57,7 +57,6 @@ export async function breachRoutes(app: FastifyInstance) {
         damageToday: progress.damageToday,
         damageDayKey: progress.damageDayKey,
         kills: progress.kills,
-        soulstones: progress.soulstones,
         deaths: progress.deaths,
         recentBossIds: progress.recentBossIds,
         lastDeathAt: progress.lastDeathAt,
@@ -126,7 +125,12 @@ export async function breachRoutes(app: FastifyInstance) {
     if (progress.status === 'LOCKED' || !progress.currentBossId) {
       return reply.code(400).send({ error: 'no_active_boss' });
     }
-    const skipPenalty = 10;
+    // Skip-boss cost. Bumped from 10g → 100g so it's a real strategic
+    // decision, not a default. Combined with the new shop items
+    // (50g Vital Tonic, 80g War Tincture, etc.) gold has somewhere
+    // meaningful to go, but skipping a Breach is still the most
+    // expensive single thing you can do in a day.
+    const skipPenalty = 100;
     const user = await prisma.user.findUnique({ where: { id: me.id } });
     if (!user || user.gold < skipPenalty) {
       return reply.code(400).send({ error: 'insufficient_gold' });

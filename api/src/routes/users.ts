@@ -58,11 +58,17 @@ const ProfileSchema = z.object({
 
 export async function userRoutes(app: FastifyInstance) {
   app.get('/me', async (req) => {
-    const user = await requireUser(req);
+    const me = await requireUser(req);
     // Tick hearts on every /me read so the UI always reflects the
     // current regen state, even if the user has been offline for
     // days. tickHearts is a no-op for Casual mode (returns 5).
     const hearts = await tickHearts(user.id);
+    // Count active Soulstones (unconsumed + not-yet-disintegrated).
+    // Used by the classLock block below + the shop endpoint.
+    const now = new Date();
+    const soulstoneCount = await prisma.soulstone.count({
+      where: { userId: user.id, consumed: false, expiresAt: { gt: now } },
+    });
     return {
       id: user.id,
       email: user.email,
@@ -70,7 +76,7 @@ export async function userRoutes(app: FastifyInstance) {
       level: user.level,
       xp: user.xp,
       gold: user.gold,
-      soulstones: user.soulstones,
+      soulstones: soulstoneCount,
       class: user.class,
       units: user.units,
       heightCm: user.heightCm,
@@ -86,7 +92,7 @@ export async function userRoutes(app: FastifyInstance) {
       birthDate: user.birthDate,
       createdAt: user.createdAt,
       classChangedAt: user.classChangedAt,
-      classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, user.soulstones),
+      classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount),
       progress: progressInLevel(user.xp, user.level),
       ordained: user.ordained,
       spiritualDailyPrayers: user.spiritualDailyPrayers,
@@ -101,7 +107,7 @@ export async function userRoutes(app: FastifyInstance) {
       // here too so the UI doesn't have to redo the math.
       mode: user.mode ?? 'CASUAL',
       hearts,
-      heartMultiplier: heartMultiplier(hearts),
+      heartMultiplier: heartMultiplier(hearts, user.mode ?? 'CASUAL'),
       hardcoreCaps: HARDCORE_SUBSTANCE_CAPS,
     };
   });
@@ -112,10 +118,15 @@ export async function userRoutes(app: FastifyInstance) {
 
     // Class lock check. If the user is mid-cooldown, allow the change
     // only if they have a Soulstone to spend. assertCanChangeClass
-    // returns { useSoulstone: true } in that case.
+    // returns { useSoulstone: true } in that case. The Soulstone
+    // consumption is performed below: pick the oldest active (non-
+    // expired, unconsumed) Soulstone row and mark it consumed.
     let soulstoneConsumed = false;
     if (body.class !== undefined && body.class !== me.class) {
-      const verdict = assertCanChangeClass(me, body.class);
+      const activeSoulstoneCount = await prisma.soulstone.count({
+        where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+      });
+      const verdict = assertCanChangeClass(me, body.class, activeSoulstoneCount);
       soulstoneConsumed = verdict.useSoulstone;
     }
 
@@ -130,8 +141,6 @@ export async function userRoutes(app: FastifyInstance) {
         ...(body.class !== undefined && body.class !== me.class
           ? { classChangedAt: new Date() }
           : {}),
-        // Decrement Soulstone if one was used.
-        ...(soulstoneConsumed ? { soulstones: { decrement: 1 } } : {}),
         units: (body as any).units ?? undefined,
         sex: body.sex === undefined ? undefined : body.sex,
         heightCm: body.heightCm === undefined ? undefined : body.heightCm,
@@ -190,20 +199,45 @@ export async function userRoutes(app: FastifyInstance) {
       await prisma.geneticMax.upsert({
         where: { userId_metric: { userId: updated.id, metric: metric as any } },
         create: { userId: updated.id, metric: metric as any, value, source: 'FORMULA' },
-        update: { value, source: 'FORMULA' },
+         update: { value, source: 'FORMULA' },
       });
     }
 
-    return { ok: true, soulstoneConsumed, soulstones: updated.soulstones };
+    // Consume the oldest active Soulstone row. We pick by
+    // `droppedAt ASC` (FIFO) so the user always burns the stone
+    // closest to its TTL — the most "expendable" — leaving them
+    // with the freshest stone in their inventory.
+    if (soulstoneConsumed) {
+      const oldest = await prisma.soulstone.findFirst({
+        where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+        orderBy: { droppedAt: 'asc' },
+      });
+      if (oldest) {
+        await prisma.soulstone.update({
+          where: { id: oldest.id },
+          data: { consumed: true, consumedAt: new Date() },
+        });
+      }
+    }
+
+    // Re-count for the response (one fewer now).
+    const newSoulstoneCount = await prisma.soulstone.count({
+      where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+    });
+
+    return { ok: true, soulstoneConsumed, soulstones: newSoulstoneCount };
   });
 
   app.get('/me/stats', async (req) => {
     const me = await requireUser(req);
+    const soulstoneCount = await prisma.soulstone.count({
+      where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+    });
     return {
       level: me.level,
       xp: me.xp,
       gold: me.gold,
-      soulstones: me.soulstones,
+      soulstones: soulstoneCount,
       progress: progressInLevel(me.xp, me.level),
       nextLevel: levelFromXp(me.xp + 1) > me.level ? me.level + 1 : me.level,
     };

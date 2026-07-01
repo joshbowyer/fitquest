@@ -247,7 +247,7 @@ export async function workoutRoutes(app: FastifyInstance) {
     // out so the post-commit raid math doesn't ReferenceError when
     // we reference `mult` outside the transaction scope.
     const currentHearts = await tickHearts(me.id);
-    const mult = heartMultiplier(currentHearts);
+    const mult = heartMultiplier(currentHearts, me.mode ?? 'CASUAL');
 
     const result = await prisma.$transaction(async (tx) => {
       const workout = await tx.workout.create({
@@ -535,9 +535,23 @@ export async function workoutRoutes(app: FastifyInstance) {
                 data: {
                   xp: u.xp + share,
                   gold: u.gold + Math.floor(share / 4),
-                  ...(soulstoneDropped ? { soulstones: u.soulstones + 1 } : {}),
                 },
               });
+              if (soulstoneDropped) {
+                // Drop a Soulstone with 24h TTL. World-boss drops are
+                // guaranteed; raid drops are a rare bonus. Both use the
+                // same shape so the inventory/use endpoints don't
+                // have to care about the source.
+                await prisma.soulstone.create({
+                  data: {
+                    userId: m.userId,
+                    bossName: 'Raid Spoils',
+                    bossTier: 1,
+                    droppedAt: new Date(),
+                    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                  },
+                });
+              }
               await checkAchievements(m.userId);
             }
           }

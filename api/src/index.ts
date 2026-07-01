@@ -41,6 +41,7 @@ import { examenRoutes } from './routes/examen.js';
 import { homeBaseRoutes } from './routes/homeBase.js';
 import { breachRoutes } from './routes/breach.js';
 import { portalLeakRoutes } from './routes/portalLeaks.js';
+import { shopRoutes } from './routes/shop.js';
 import { exportRoutes } from './routes/export.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
@@ -111,6 +112,7 @@ async function build() {
   await app.register(homeBaseRoutes, { prefix: '/home-base' });
   await app.register(breachRoutes, { prefix: '/breach' });
   await app.register(portalLeakRoutes, { prefix: '/portal-leak' });
+  await app.register(shopRoutes, { prefix: '/shop' });
   await app.register(exportRoutes, { prefix: '' });
 
   app.setErrorHandler((err, req, reply) => {

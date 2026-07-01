@@ -246,9 +246,11 @@ model User {
   level                 Int                     @default(1)
   xp                    Int                     @default(0)
   gold                  Int                     @default(0)
-  // Soulstones: rare drop from raids/world bosses, used to bypass the
-  // 9-day class-change lock. Capped softly via the boss/raid reward logic.
-  soulstones            Int                     @default(0)
+  // Soulstones: world-boss drops with 24h TTL. Used to bypass the
+  // class-change cooldown (respec). Each Soulstone row in the
+  // Soulstone table is one consumable. The Int counter that used
+  // to live here was dropped in migration 20260701120000 in favor
+  // of the row-based model so we can track per-stone TTLs.
   units                 UnitSystem              @default(METRIC)
   // Static frame inputs (rarely change). Used by genetic-max formulas.
   heightCm              Float?
@@ -287,6 +289,8 @@ model User {
   penanceTemplates      PenanceTemplate[]
   penanceEvents         PenanceEvent[]
   heartLossEvents       HeartLossEvent[]
+  purchases             Purchase[]
+  soulstones            Soulstone[]
   // Breach boss progress. One row per user; lazily created on
   // first /breach GET after level 10 OR first workout-commit
   // while unlocked (whichever happens first). Defined as ? here
@@ -368,7 +372,7 @@ model User {
   /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
   /// missed planned workout in the routine, regen 1 per 8h. Always 5
   /// in Casual mode (the value is preserved but unused).
-  hearts                Int                     @default(5)
+  hearts                Int                     @default(10)
   /// Timestamp of last heart regeneration tick. Used to compute
   /// accrued regeneration since last read; the server applies the
   /// accrued delta on every /users/me read so the UI stays honest
@@ -852,6 +856,88 @@ model PenanceEvent {
   @@index([userId, source])
 }
 
+/// Shop items the user can buy with gold. Each item has a fixed
+/// cost and a single effect (applied on purchase or held in the
+/// user's inventory until consumed, depending on the effect).
+/// Seeded with the 4 base items: Vital Tonic, War Tincture,
+/// Continuity Rune, Forge Tonic.
+model ShopItem {
+  id                  String     @id @default(cuid())
+  /// Stable string key used by the API and frontend to look the
+  /// item up (e.g. "vital_tonic", "war_tincture"). Don't change
+  /// without a migration — purchases reference this.
+  key                 String     @unique
+  name                String
+  /// Short flavor text shown in the shop modal under the name.
+  description         String
+  cost                Int
+  /// "heart_refill" | "raid_buff" | "streak_shield" | "pr_doubler" | ...
+  /// Consumed-item types (raid_buff, pr_doubler) have an
+  /// effectDurationSec; passive-item types (heart_refill) have null.
+  effectKey           String
+  effectValue         Int        @default(0)
+  effectDurationSec   Int?
+  /// When false, the item is hidden from the shop (admin toggle).
+  active              Boolean    @default(true)
+  createdAt           DateTime   @default(now())
+
+  purchases           Purchase[]
+
+  @@index([active])
+}
+
+/// User purchases of shop items. Each row is either:
+///   - already consumed (consumedAt != null) — for items that
+///     apply their effect immediately on purchase (Vital Tonic:
+///     +1 heart right now). The row stays in the table for audit.
+///   - active inventory (consumedAt == null AND now < expiresAt)
+///     — for items with a duration (War Tincture, Forge Tonic,
+///     Continuity Rune). The effect applies while this row exists.
+///   - expired (now >= expiresAt) — lazy-cleaned by background
+///     queries; query helpers filter by expiresAt > now to ignore
+///     these transparently.
+model Purchase {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId        String
+  item          ShopItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  purchasedAt   DateTime @default(now())
+  consumedAt    DateTime?
+  expiresAt     DateTime?
+
+  @@index([userId, purchasedAt])
+  @@index([userId, consumedAt])
+}
+
+/// World-boss soulstone drops. Any world boss always drops one of
+/// these in addition to its normal drops; if the user doesn't use
+/// it within 24h it "disintegrates" (the row is lazy-cleaned by
+/// background queries). Using the soulstone triggers a class
+/// respec — the user picks a new class, and their skill unlocks
+/// for the old class are archived (not deleted) so they can be
+/// re-unlocked if the user switches back.
+model Soulstone {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// For display in the inventory / shop: which boss dropped it.
+  /// E.g. "Gains Goblin" (Maw) or "Gripping Ghoul" (Heroic Breach).
+  bossName      String
+  /// Boss difficulty tier at time of drop. Cosmetic — used for
+  /// sort order + UI badge (e.g. "Soulstone from a Tier 3 boss").
+  bossTier      Int      @default(1)
+  droppedAt     DateTime @default(now())
+  /// droppedAt + 24h. After this, the stone "disintegrates" and
+  /// the row is ignored by all queries.
+  expiresAt     DateTime
+  consumed      Boolean  @default(false)
+  consumedAt    DateTime?
+
+  @@index([userId, droppedAt])
+  @@index([userId, expiresAt])
+}
+
 /// Hardcore-mode heart-loss audit. One row per (user, local-date,
 /// trigger-kind). The unique index makes the morning-report sweep
 /// naturally idempotent — re-fetching /morning-report the same day
@@ -1022,10 +1108,6 @@ model UserBreachProgress {
   deaths        Int                  @default(0)
   /// Last time the user died. NULL on first encounter.
   lastDeathAt   DateTime?
-  /// Soulstones held. Earned per kill, spent on... nothing yet
-  /// (future: class-change bypass). Stored here so the Breach
-  /// can be the primary soulstone source.
-  soulstones    Int                  @default(0)
   /// Damage dealt to the current boss in the current local day.
   /// Reset on day rollover. Bounded by 1.5× boss.maxHp — anything
   /// over that is rejected at the workout-commit handler.
