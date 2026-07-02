@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth';
 import { convertForDisplay, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames, formatDate, formatRelative } from '@/lib/format';
 import { getFrameSize, frameDescription } from '@/lib/frame';
+import { isMuted, setMuted, playSound, primeAudio, type SoundEvent } from '@/lib/soundBus';
 import type { GeneticMax, Measurement, MetricType } from '@/lib/types';
 import { METRICS, METRICS_BY_CATEGORY } from '@/lib/types';
 
@@ -42,6 +43,82 @@ type Change = { metric: string; from: number | null; to: number };
 // breach progress, etc.) to a JSON file or a ZIP of CSVs, and
 // re-import from a previously-exported JSON. Round-trip safe.
 // ============================================================
+function SoundSection() {
+  // Re-read on every render so the panel reflects toggles from
+  // elsewhere (e.g. a future top-bar mute button). The Panel's
+  // action slot already shows the current state via isMuted().
+  const muted = isMuted();
+  const onToggle = () => {
+    // Prime the audio context in the same gesture as the toggle —
+    // browsers won't unlock audio unless the user interacts, so
+    // the first interaction here primes subsequent playSound()
+    // calls for the whole session. Important: don't .play() any
+    // SFX here — the user just opened the page, they may not
+    // want sound yet. The "Test sound" button below does that
+    // explicitly.
+    primeAudio();
+    setMuted(!muted);
+  };
+  const testable: Array<{ key: SoundEvent; label: string; glyph: string }> = [
+    { key: 'workoutComplete', label: 'Workout committed', glyph: '⚔' },
+    { key: 'levelUp', label: 'Level up', glyph: '✦' },
+    { key: 'achievement', label: 'Achievement', glyph: '★' },
+    { key: 'restTimerDone', label: 'Rest timer done', glyph: '⏱' },
+    { key: 'bossKill', label: 'Boss kill', glyph: '☠' },
+    { key: 'lootDrop', label: 'Loot drop', glyph: '✧' },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-mono text-ink-200">
+            SFX for workouts, level-ups, achievements, rest timer,
+            boss kills, loot drops.
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 mt-1">
+            Browser autoplay requires your first click before
+            sounds will play. Mute persists across sessions.
+          </div>
+        </div>
+        <button
+          onClick={onToggle}
+          className={classNames(
+            'px-3 h-9 text-[10px] font-mono uppercase tracking-widest border min-w-[80px]',
+            muted
+              ? 'border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan'
+              : 'border-neon-lime text-neon-lime bg-neon-lime/5 hover:bg-neon-lime/15',
+          )}
+        >
+          {muted ? 'Muted' : 'On'}
+        </button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-2 border-t border-ink-700/30">
+        {testable.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            disabled={muted}
+            onClick={() => {
+              primeAudio();
+              playSound(s.key);
+            }}
+            className={classNames(
+              'flex items-center gap-2 px-2 py-1.5 border text-left text-[11px] font-mono',
+              muted
+                ? 'border-ink-500/20 text-ink-500 cursor-not-allowed'
+                : 'border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan',
+            )}
+          >
+            <span className="text-base">{s.glyph}</span>
+            <span className="flex-1 truncate">{s.label}</span>
+            <span className="text-[9px] uppercase tracking-widest text-ink-400">play</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DataPanel() {
   const qc = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
@@ -845,6 +922,25 @@ export function SettingsPage() {
           }
         >
           <ModeSection />
+        </Panel>
+
+        {/* SOUND */}
+        <Panel
+          title="Sound"
+          variant="cyan"
+          className="mt-4"
+          action={
+            <span
+              className={classNames(
+                'text-[10px] font-mono',
+                isMuted() ? 'text-ink-400' : 'text-neon-lime',
+              )}
+            >
+              {isMuted() ? 'muted' : 'on'}
+            </span>
+          }
+        >
+          <SoundSection />
         </Panel>
 
         {/* FRAME */}

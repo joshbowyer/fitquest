@@ -6,6 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
+import { playSound } from '@/lib/soundBus';
 import { formatRelative, formatSeconds, classNames } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Workout, WorkoutType } from '@/lib/types';
@@ -595,6 +596,11 @@ export function WorkoutsPage() {
     },
     onSuccess: (r) => {
       setResult(r);
+      // Workout-complete sound — fires after every successful commit
+      // so the user gets an audible "logged!" confirmation. Level-up
+      // chime is handled separately below since the user already
+      // gets a visual RewardOverlay pulse for that.
+      playSound('workoutComplete');
       // Emit reward events so the global overlay can show XP float,
       // level-up pulse, and raid-damage number. Each event auto-
       // removes itself when its CSS animation finishes.
@@ -614,6 +620,7 @@ export function WorkoutsPage() {
           level: rw.level,
           previousLevel: rw.previousLevel ?? rw.level - 1,
         });
+        playSound('levelUp');
       }
       const dmg = r?.raid?.damage?.total;
       if (dmg && dmg > 0) {

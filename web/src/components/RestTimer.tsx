@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { playSound } from '@/lib/soundBus';
 
 type Props = {
   onTick?: (secondsRemaining: number) => void;
@@ -39,18 +40,20 @@ export function RestTimer({ onTick, onComplete }: Props) {
   useEffect(() => {
     if (!running) return;
     intervalRef.current = window.setInterval(() => {
-      setSeconds((s) => {
-        const next = s - 1;
-        if (next <= 0) {
-          setRunning(false);
-          // Beep via Web Audio API
-          beep();
-          onCompleteRef.current?.();
-          return 0;
-        }
-        onTick?.(next);
-        return next;
-      });
+setSeconds((s) => {
+            const next = s - 1;
+            if (next <= 0) {
+              setRunning(false);
+              // Audio cue when the timer hits zero — same shared
+              // bus as the rest of the app's SFX. Honors the
+              // user's mute toggle from Settings → Sound.
+              playSound('restTimerDone');
+              onCompleteRef.current?.();
+              return 0;
+            }
+            onTick?.(next);
+            return next;
+          });
     }, 1000);
     return () => {
       if (intervalRef.current) {
@@ -135,20 +138,10 @@ export function RestTimer({ onTick, onComplete }: Props) {
 }
 
 function beep() {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.frequency.value = 880;
-    g.gain.setValueAtTime(0.1, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    o.start(ctx.currentTime);
-    o.stop(ctx.currentTime + 0.4);
-  } catch {
-    // Web Audio not available — silent fallback.
-  }
+  // Replaced by playSound('restTimerDone') from the shared
+  // soundBus — see the timer body above. Kept as a no-op export
+  // for any future direct callers (e.g. dev tools).
+  try { playSound('restTimerDone'); } catch { /* silent */ }
 }
 
 // Preset durations in seconds. Used by the dashboard tab to let the

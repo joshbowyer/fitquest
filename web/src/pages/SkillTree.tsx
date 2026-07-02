@@ -669,6 +669,7 @@ export function SkillTreePage() {
             level: res.newLevel,
             previousLevel: res.newLevel - 1,
           });
+          playSound('levelUp');
         }
         setSelected(null);
       }

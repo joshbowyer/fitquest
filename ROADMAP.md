@@ -542,6 +542,22 @@ scopes + the equip-state-wiped-with-row assertion.)
 - Push notifications (web push API for homebase shield drops,
   breach defeat, etc.)
 
+(was: sound/audio system — shipped. Settings → Sound panel
+has a mute toggle (persisted to localStorage) plus 6 per-event
+preview buttons (workout / level-up / achievement / rest
+timer / boss kill / loot drop). Web Audio API synth tones
+(oscillator + ADSR envelope) — no MP3 files, no howler.js
+dependency. v1 events wired into Workouts onSuccess → workoutComplete,
+Workouts + SkillTree on level-up → levelUp, RestTimer on
+hit-zero → restTimerDone (replaces the inline AudioContext
+beep). The soundBus also exposes `playFile(event)` for future
+MP3 swaps — drop files in web/public/sounds/ and add the
+path to SOUND_FILES in web/src/lib/soundBus.ts to upgrade
+any event. Mute state is persisted via `fitquest:sound:muted`
+in localStorage. Audio context is unlocked on the first
+user gesture (pointerdown / keydown) per browser autoplay
+policy.)
+
 ## Dropped
 
 - ~~Email verification + password reset.~~ No email integration
