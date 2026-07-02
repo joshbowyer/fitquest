@@ -99,21 +99,21 @@
 
 ## Recently Fixed / Resolved
 
-- ✅ FitQuestBridge APK: SAF-only storage model (no root, no
-  Magisk toasts, no MANAGE_EXTERNAL_STORAGE). Earlier versions
-  either read GB's app-private dir at
-  `/sdcard/Android/data/nodomain.freeyourgadget.gadgetbridge/files/`
-  via root/`MANAGE_EXTERNAL_STORAGE` — both kicked off a Magisk
-  "superuser granted" toast on every periodic poll, and the
-  permission toggle was unstable on Android 14. Replaced with
-  a SAF-only model: the user picks a directory via
-  `ACTION_OPEN_DOCUMENT_TREE`, the bridge takes a persistable
-  URI permission, and all reads go through `ContentResolver` +
-  `DocumentsContract`. Trade-off: the user has to point
-  Gadgetbridge's `AutoExport FIT` setting at the same
-  directory (a one-time config change, not a code change). No
-  root required, no special permissions, no toasts, works on
-  every Android 5+ device the bridge supports.
+- ✅ FitQuestBridge APK: 15-minute poll interval, su-based
+  read for rooted devices, no SAF picker. The walker polls
+  every `15 * 60 * 1000` ms (was 5s then 60s) to keep
+  foreground-service resource use minimal — Gadgetbridge
+  syncs typically happen on the order of once a day, so a
+  15-min cadence catches the next sync with no perceptible
+  delay. On rooted devices the bridge still uses `su -c "find"`
+  + `su -c "cat | base64"` to read GB's app-private dir
+  (`/sdcard/Android/data/nodown.gadgetbridge/files/...`),
+  bypassing Android 11+ scoped storage. The "All files access"
+  toggle in system Settings is still required for the OS-level
+  AppOps grant; the user can disable Magisk's superuser
+  notification toast in Magisk Manager → Settings →
+  Superuser notifications → off to silence the per-poll
+  confirmations.
 - ✅ Mobile top-bar title overlap (Layout.tsx). The FIT//QUEST
   title was `absolute left-0 right-0 text-center` on mobile so
   the new 10-heart hero row in Dashboard.tsx overlapped with it
