@@ -282,6 +282,53 @@ export async function firePenance(
   if (tpl.shieldDelta === 0) return null;
 
   return await prisma.$transaction(async (tx) => {
+    // Idempotency: only one (userId, penanceKey) event per local
+    // day. Without this, a single morning report fetch that
+    // fans out across Dashboard + Today + HomeBase mounts would
+    // re-fire 'missed_all_dailies' once per mount, dropping the
+    // user's shield by N×20 before they ever see the home-base
+    // screen. (HeartLossEvent has @@unique([userId, kind, sourceDate])
+    // — we're applying the same idempotency here, but at the
+    // application layer because PenanceEvent's natural key spans
+    // a derived date and we don't want a generated column just
+    // for this.)
+    //
+    // Uses the user's timezone so 'today' matches the user's
+    // wall-clock day, not the server's. Falls back to UTC when
+    // tz is missing.
+    const userRow = await tx.user.findUnique({
+      where: { id: userId },
+      select: { createdAt: true, timezone: true },
+    });
+    if (!userRow) return null;
+
+    // Skip past-event penances for brand-new users. The "you
+    // missed yesterday's daily / weekly" concept doesn't apply
+    // when yesterday the user didn't exist. We check against
+    // createdAt + 24h so a user registering at 5pm still gets
+    // a chance to settle in before the morning-report sweep
+    // starts billing them for yesterday.
+    const NOW = Date.now();
+    const isPastEventSource = source === 'daily_missed' || source === 'auto_decay';
+    if (isPastEventSource && NOW - userRow.createdAt.getTime() < 24 * 60 * 60 * 1000) {
+      return null;
+    }
+
+    const { todayInTz, localMidnightUtc } = await import('./timezone.js');
+    const todayStr = todayInTz(userRow.timezone ?? null);
+    const startOfTodayUtc = todayStr
+      ? localMidnightUtc(todayStr, userRow.timezone ?? 'UTC')
+      : new Date(Math.floor(NOW / (24 * 60 * 60 * 1000)) * 24 * 60 * 60 * 1000);
+    const existing = await tx.penanceEvent.findFirst({
+      where: {
+        userId,
+        penanceKey: key,
+        createdAt: { gte: startOfTodayUtc },
+      },
+      select: { id: true },
+    });
+    if (existing) return null;
+
     const base = await tx.homeBase.upsert({
       where: { userId },
       create: { userId, shield: 100, tier: 'FORTIFIED' },

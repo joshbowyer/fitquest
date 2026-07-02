@@ -276,6 +276,33 @@ export function DashboardPage() {
     }
   }
 
+  // Fallbacks for the four body-comp metrics that have a static
+  // User.* field. The new-user flow sets these on Profile (or
+  // carries them through from registration) without ever creating
+  // a Measurement row, so the dashboard gauges would otherwise
+  // show blank until the user logs a measurement. Inject from the
+  // User row when no Measurement is present, marked with an
+  // `auto:` note so the source is obvious on the InsightsMetrics
+  // drill-down.
+  const userFallback: Array<[string, number | null | undefined, string, string]> = [
+    ['WEIGHT', user.weightKg, 'kg', 'auto: from Profile'],
+    ['BODY_FAT_PCT', user.bodyFatPct, '%', 'auto: from Profile'],
+    ['WAIST', user.waistCm, 'cm', 'auto: from Profile'],
+    ['SHOULDER', user.shoulderCm, 'cm', 'auto: from Profile'],
+  ];
+  for (const [metric, value, unit, note] of userFallback) {
+    if (value == null || !Number.isFinite(value)) continue;
+    if (latestByMetric.has(metric as any)) continue;
+    latestByMetric.set(metric as any, {
+      id: `user:${metric.toLowerCase()}`,
+      metric: metric as any,
+      value,
+      unit,
+      notes: note,
+      recordedAt: new Date(0).toISOString(), // epoch — sorts to the bottom, signals "not a real measurement"
+    } as Measurement);
+  }
+
   // Shoulder:Waist ratio (V-taper indicator). Derived from the latest
   // SHOULDER and WAIST measurements. Display in user units so the
   // ratio is unitless regardless of which system.
