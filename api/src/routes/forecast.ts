@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
-import { getWeatherBundle, weatherCodeMeta, isOutdoorFriendly, usAqiBand, AQI_BAND_META } from '../lib/forecast.js';
+import { getWeatherBundle, weatherCodeMeta, usAqiBand, AQI_BAND_META } from '../lib/forecast.js';
 import { computeRecovery } from '../lib/recovery.js';
 import { recommendMuscle, partRecovery } from '../lib/recommendMuscle.js';
 import { centroidOfTrack } from '../lib/geo.js';
@@ -82,13 +82,19 @@ export async function forecastRoutes(app: FastifyInstance) {
 
     const bundle = await getWeatherBundle(lat, lng);
 
-    // 3. Compose outdoor-friendly verdict per day + air-quality
-    // bands so the client doesn't have to re-derive from raw
-    // WMO codes / AQI numbers.
+    // 3. Compose the per-day enrichment: WMO label + icon for the
+    // headline, and a back-compat `ok`/`reason` alias for older
+    // clients (the new insight object carries verdict + headline
+    // + bestWindow + per-activity advice).
     const daily = (bundle?.forecast.daily ?? []).map((d) => {
-      const verdict = isOutdoorFriendly(d);
       const meta = weatherCodeMeta(d.weatherCode);
-      return { ...d, ...verdict, label: meta.label, icon: meta.icon };
+      return {
+        ...d,
+        label: meta.label,
+        icon: meta.icon,
+        ok: d.insight.verdict !== 'skip',
+        reason: d.insight.headline,
+      };
     });
 
     const aq = bundle?.airQuality ?? null;

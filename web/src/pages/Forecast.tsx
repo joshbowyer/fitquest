@@ -25,6 +25,25 @@ type Readiness = {
 };
 type PartRecovery = { bodyPart: string; score: number; lastWorkedAt: string | null };
 type Recommendation = PartRecovery;
+type ActivityRating = {
+  verdict: 'ok' | 'caution' | 'skip';
+  reason: string;
+};
+type DayInsight = {
+  verdict: 'go' | 'caution' | 'skip';
+  headline: string;
+  bestWindow: {
+    startHour: number;
+    endHour: number;
+    apparentTempF: number;
+    precipProbability: number;
+    windGustMph: number;
+    label: string;
+  } | null;
+  peakHeat: { hour: number; apparentTempF: number; label: string } | null;
+  uvPeak: number;
+  activityAdvice: { rings: ActivityRating; running: ActivityRating; walking: ActivityRating };
+};
 type DailyWeather = {
   date: string;
   weatherCode: number;
@@ -37,6 +56,7 @@ type DailyWeather = {
   reason: string;
   label: string;
   icon: string;
+  insight: DayInsight;
 };
 type CurrentWeather = {
   temperature: number;
@@ -197,29 +217,107 @@ function WeatherCard({ data }: { data: NonNullable<ForecastResponse['weather']> 
   );
 }
 
+// Tone color for the verdict. "go" = lime, "caution" = amber,
+// "skip" = magenta. Mirrors the AQI band palette.
+function verdictTone(v: 'go' | 'caution' | 'skip'): 'lime' | 'amber' | 'magenta' {
+  if (v === 'go') return 'lime';
+  if (v === 'caution') return 'amber';
+  return 'magenta';
+}
+function verdictGlyph(v: 'go' | 'caution' | 'skip'): string {
+  if (v === 'go') return '✓';
+  if (v === 'caution') return '!';
+  return '✗';
+}
+function activityGlyph(v: 'ok' | 'caution' | 'skip'): string {
+  if (v === 'ok') return '✓';
+  if (v === 'caution') return '!';
+  return '✗';
+}
+function activityTone(v: 'ok' | 'caution' | 'skip'): 'lime' | 'amber' | 'magenta' {
+  if (v === 'ok') return 'lime';
+  if (v === 'caution') return 'amber';
+  return 'magenta';
+}
+
 function DayCard({ day, idx }: { day: DailyWeather; idx: number }) {
-  const friendlyColor = day.ok ? 'lime' : 'magenta';
+  const ins = day.insight;
+  const tone = verdictTone(ins.verdict);
   return (
     <div className={classNames(
       'p-3 border rounded-sm space-y-2',
-      day.ok ? 'border-neon-lime/30' : 'border-neon-magenta/30',
+      `border-neon-${tone}/30`,
     )}>
+      {/* Day label + weather glyph */}
       <div className="flex items-center justify-between">
         <div className="text-[10px] font-display tracking-widest uppercase text-ink-100">
           {dayLabel(day.date, idx)}
         </div>
         <div className="text-xl">{day.icon}</div>
       </div>
+      {/* Hi/lo */}
       <div className="font-mono text-lg">
         <span className="neon-text-lime">{day.tempMax.toFixed(0)}°</span>
         <span className="text-ink-400"> / </span>
         <span className="text-ink-300">{day.tempMin.toFixed(0)}°</span>
       </div>
-      <div className={`text-[10px] font-mono neon-text-${friendlyColor}`}>
-        {day.ok ? '✓ ' : '✗ '}{day.reason}
+      {/* One-line verdict + headline */}
+      <div className={`text-[10px] font-mono neon-text-${tone}`}>
+        <span className="mr-1">{verdictGlyph(ins.verdict)}</span>
+        {ins.headline}
       </div>
-      {(day.precipProbabilityMax > 0 || day.windMax > 0) && (
+      {/* Best 2-hour window — the actionable line. */}
+      {ins.bestWindow && (
+        <div className="text-[10px] font-mono text-ink-200 border-t border-current/10 pt-1.5">
+          <span className="text-ink-400">Best window: </span>
+          <span className="neon-text-cyan">{ins.bestWindow.label}</span>
+          {ins.bestWindow.precipProbability > 20 && (
+            <span className="text-ink-400"> · {ins.bestWindow.precipProbability.toFixed(0)}% rain</span>
+          )}
+          {ins.bestWindow.windGustMph > 15 && (
+            <span className="text-ink-400"> · gusts {ins.bestWindow.windGustMph.toFixed(0)}mph</span>
+          )}
+        </div>
+      )}
+      {/* Peak heat — show only if it materially exceeds the
+          best window. Skips the line when the peak isn't much
+          hotter than the morning window. */}
+      {ins.peakHeat && ins.bestWindow &&
+        ins.peakHeat.apparentTempF - ins.bestWindow.apparentTempF > 8 && (
         <div className="text-[10px] font-mono text-ink-400">
+          {ins.peakHeat.label}
+        </div>
+      )}
+      {/* Per-activity advice — three mini-rows. Hidden if all
+          three are 'ok' and the headline already covers it (avoids
+          redundant lines on perfect days). */}
+      {!(ins.activityAdvice.rings.verdict === 'ok' &&
+        ins.activityAdvice.running.verdict === 'ok' &&
+        ins.activityAdvice.walking.verdict === 'ok') && (
+        <div className="text-[10px] font-mono space-y-0.5 border-t border-current/10 pt-1.5">
+          {(['rings', 'running', 'walking'] as const).map((k) => {
+            const a = ins.activityAdvice[k];
+            return (
+              <div key={k} className="flex justify-between gap-2">
+                <span className="text-ink-300 capitalize">{k}</span>
+                <span className={`neon-text-${activityTone(a.verdict)}`}>
+                  {activityGlyph(a.verdict)} {a.reason}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* UV peak — only when high enough to matter. */}
+      {ins.uvPeak >= 6 && (
+        <div className="text-[10px] font-mono text-amber-300/80">
+          UV peak {ins.uvPeak.toFixed(1)} — sunscreen.
+        </div>
+      )}
+      {/* Compact fallback (no hourly window) — show the basic
+          rain/wind numbers so the card isn't empty. */}
+      {!ins.bestWindow && (day.precipProbabilityMax > 0 || day.windMax > 0) && (
+        <div className="text-[10px] font-mono text-ink-400 border-t border-current/10 pt-1.5">
           {day.precipProbabilityMax > 0 && `${day.precipProbabilityMax.toFixed(0)}% rain`}
           {day.precipProbabilityMax > 0 && day.windMax > 0 && ' · '}
           {day.windMax > 0 && `wind ${day.windMax.toFixed(0)}mph`}
