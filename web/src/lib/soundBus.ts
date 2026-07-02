@@ -89,7 +89,7 @@ const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
   // levelUp:        '/sounds/level-up.mp3',
   // achievement:    '/sounds/achievement.mp3',
   // restTimerDone:   '/sounds/rest-timer.mp3',
-  // skillUnlock:     '/sounds/skill-unlock.mp3',   // the meme
+  skillUnlock:     '/sounds/skill-unlock.mp3',   // the meme — party horn + kids yay
   // bossKill:        '/sounds/boss-kill.mp3',
   // lootDrop:        '/sounds/loot-drop.mp3',
 };
@@ -239,16 +239,15 @@ function playPattern(event: SoundEvent): void {
       playTone(880, 0.12, { type: 'square', gain: 0.12 });
       break;
     case 'skillUnlock':
-      // No synth fallback — this one is intentionally meme-only
-      // and a synthesized version sounds ridiculous (the user
-      // called it '8-bit DOS'). Drop a real recording at
-      // /sounds/skill-unlock.mp3 and uncomment the SOUND_FILES
-      // entry above. The Mixkit 'Happy party horn sound' (0:02)
-      // + 'Birthday crowd party cheer' (0:05) work well; the
-      // YouTube SFX the user linked is a 0:02 'Party Horn
-      // Children Yay' that's also a good fit. The playFile()
-      // path uses the file if present, else no-op so we don't
-      // subject the user to synth noise.
+      // Real recording from the YouTube SFX the user linked
+      // ('Party Horn Children Yay Sound Effect', K6tsx6j-ZAM).
+      // Downloaded + extracted via yt-dlp, converted to mono
+      // 96kbps MP3 with ffmpeg, dropped at
+      // web/public/sounds/skill-unlock.mp3 (4.2s, 35KB).
+      // playFile() will pick this up; if the file 404s the
+      // synth fallback in playPattern() fires (kept as a
+      // last-resort silent no-op for now — better than a sad
+      // 8-bit version).
       break;
     case 'bossKill':
       // Descending three-note stab (E4 → C4 → A3) — heavy, final.
