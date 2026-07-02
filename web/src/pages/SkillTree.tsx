@@ -9,6 +9,7 @@ import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
 import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
 import { CLASS_META } from '@/lib/types';
+import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 
 // Tailwind text-neon-* class for the user's class accent. Used by
 // the calitree PNG icons (via mask-image + background-color:
@@ -235,6 +236,45 @@ function UnlockModal({
 }) {
   const [result, setResult] = useState<Record<string, number>>({});
   const test = skill.test;
+
+  // Already-unlocked — show a read-only view so the user can see
+  // what the test was without re-doing it. Saves a click and
+  // avoids the "what does Mark Complete do?" moment on an
+  // already-completed skill.
+  if (skill.unlocked) {
+    return (
+      <Modal open onClose={onClose} title={skill.name} width="max-w-lg">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">✓</span>
+            <span className="text-sm font-display tracking-widest uppercase text-neon-lime">
+              Unlocked · {skill.tier.replace('TIER_', 'Tier ')}
+            </span>
+          </div>
+          {skill.blurb && (
+            <div className="text-sm text-ink-200 italic">{skill.blurb}</div>
+          )}
+          {test && (
+            <div className="text-sm text-ink-100">{test.description}</div>
+          )}
+          {test?.safety && (
+            <div className="border border-amber-500/40 bg-amber-500/5 p-2 text-xs font-mono text-amber-200">
+              <span className="uppercase tracking-widest mr-2 text-amber-300">SAFETY</span>
+              {test.safety}
+            </div>
+          )}
+          {test && (
+            <div className="text-xs font-mono text-ink-400">
+              Threshold: <span className="text-ink-200">{JSON.stringify(test.threshold)}</span>
+            </div>
+          )}
+          <div className="flex justify-end pt-2">
+            <NeonButton variant="cyan" onClick={onClose}>Close</NeonButton>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   // Pre-v1 skill (no test) — legacy unlock with SP cost. These
   // don't have prerequisites in the v1 sense.
@@ -590,13 +630,46 @@ export function SkillTreePage() {
 
   const unlockM = useMutation({
     mutationFn: (vars: { skillId: string; result: Record<string, number> }) =>
-      api<{ ok: boolean; reason?: string }>('/skills/unlock', {
+      api<{
+        ok: boolean;
+        reason?: string;
+        reward?: { xp: number; gold: number };
+        newXp?: number;
+        newGold?: number;
+        newLevel?: number;
+        leveledUp?: boolean;
+      }>('/skills/unlock', {
         method: 'POST',
         body: vars,
       }),
-    onSuccess: (res, vars) => {
+    onSuccess: (res) => {
       if (res.ok) {
         qc.invalidateQueries({ queryKey: ['skills', 'tree'] });
+        // Surface the XP + level-up rewards via the global overlay
+        // so the user actually sees the payoff of unlocking a
+        // skill. The server already returns the numbers — we just
+        // have to wire them through. Without this the unlock modal
+        // closed silently and the only feedback was the tree node
+        // lighting up a second later, which felt like nothing
+        // happened.
+        const xp = res.reward?.xp ?? 0;
+        const gold = res.reward?.gold ?? 0;
+        if (xp > 0 || gold > 0) {
+          emitReward({
+            kind: 'xp',
+            id: nextRewardId('skill-xp'),
+            amount: xp,
+            source: `skill unlock · +${gold}g`,
+          });
+        }
+        if (res.leveledUp && res.newLevel != null) {
+          emitReward({
+            kind: 'levelUp',
+            id: nextRewardId('skill-lvl'),
+            level: res.newLevel,
+            previousLevel: res.newLevel - 1,
+          });
+        }
         setSelected(null);
       }
     },

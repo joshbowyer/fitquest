@@ -138,17 +138,13 @@
   what was worked; the level-up animation already fires via
   RewardOverlay. What's left is making the level-up animation
   more cinematic and a stronger workout-logged effect.
-- **Skills page revisit** — the page exists but the user wants
-  to walk through it again. (Scope: see what currently works,
-  identify gaps.)
 
 ### Identity / auth
 
-- **Admin: reset all users' items.** Add a button on the admin
-  page that wipes the `InventoryItem` table (and resets any
-  related state) so the user can clear test items from the prod
-  server. Confirm with the user if equip/loadout state should
-  also reset.
+(was: admin reset-items button — shipped in commit 4c18a0f.
+Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
+button + per-user 'Wipe items' buttons. 5 unit tests cover the
+scopes + the equip-state-wiped-with-row assertion.)
 
 ## Stretch / Future
 
