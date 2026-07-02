@@ -115,75 +115,94 @@ function playTone(
 }
 
 /**
- * Party-kazoo approximation. A single sawtooth oscillator at the
- * base frequency, mixed with a slightly-detuned second sawtooth
- * (the detune interval is modulated by a slow LFO via setValueAtTime
- * ramps) to produce the "wobble" you hear on a real kazoo. Not
- * perfect, but recognizable — and zero asset overhead.
+ * Party-horn approximation. Brassier than the kazoo: a square
+ * wave mixed with a sawtooth (gives the "buzzy" brassy
+ * character) plus a quick downward pitch slide at the start
+ * (the "blat" attack real party horns make when you blow into
+ * them). Two slightly-detuned oscillators for the body, with
+ * a fast exponential pitch ramp from ~110% → 100% over the
+ * first 30ms.
  *
- * Real party kazoos are membrane instruments (~250-350Hz fundamental
- * with strong harmonics); a sawtooth captures the harmonic content
- * well enough. Drop a real MP3 in web/public/sounds/skill-unlock.mp3
- * for higher fidelity.
+ * Real party horns have a much richer harmonic stack (lots of
+ * odd harmonics from the membrane vibration) and a brief
+ * "pop" when the membrane opens. A real MP3 captures all of
+ * that — drop one in web/public/sounds/skill-unlock.mp3 and
+ * uncomment the SOUND_FILES entry for a higher-quality version.
  */
-function playKazoo(
-  baseFreq = 280,
-  durationSec = 0.55,
-  wobbleHz = 5,
-  wobbleCents = 12,
+function playPartyHorn(
+  baseFreq = 220,
+  durationSec = 0.32,
+  pitchStartCents = 18,
 ): void {
   const c = ensureCtx();
   if (!c || !unlocked || muted) return;
   const start = c.currentTime;
   const stop = start + durationSec;
-  // Primary oscillator.
+  // Two oscillators — square + sawtooth — slightly detuned to
+  // give the brassy "wide" feel. Square gives the odd harmonics
+  // that make a horn sound brassy; sawtooth fills in the missing
+  // even harmonics so the timbre is full without sounding like
+  // a pure buzzer.
   const osc1 = c.createOscillator();
-  osc1.type = 'sawtooth';
-  osc1.frequency.setValueAtTime(baseFreq, start);
-  // Detuned second oscillator for the "honk" — modulated by a
-  // slow LFO so the detune interval wobbles in and out.
+  osc1.type = 'square';
   const osc2 = c.createOscillator();
   osc2.type = 'sawtooth';
-  osc2.frequency.setValueAtTime(baseFreq * Math.pow(2, wobbleCents / 1200), start);
-  // LFO modulates osc2's detune.
-  const lfo = c.createOscillator();
-  lfo.frequency.value = wobbleHz;
-  const lfoGain = c.createGain();
-  lfoGain.gain.value = wobbleCents / 1200; // cents → octave fraction
-  lfo.connect(lfoGain);
-  lfoGain.connect(osc2.detune);
-  // Shared envelope — a touch of bite at the start, then sustain.
+  // Quick pitch slide down — the "blat" attack. Real horns
+  // start a bit sharp then settle.
+  const startFreq = baseFreq * Math.pow(2, pitchStartCents / 1200);
+  osc1.frequency.setValueAtTime(startFreq, start);
+  osc1.frequency.exponentialRampToValueAtTime(baseFreq, start + 0.03);
+  osc2.frequency.setValueAtTime(startFreq * 1.005, start); // slight detune
+  osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.005, start + 0.03);
+  // Per-osc gains so the square doesn't dominate.
+  const g1 = c.createGain();
+  g1.gain.value = 0.06;
+  const g2 = c.createGain();
+  g2.gain.value = 0.10;
+  osc1.connect(g1);
+  osc2.connect(g2);
+  // Shared envelope — fast attack, slow decay, very brief.
+  // The exponential decay matches how a real horn's amplitude
+  // falls off once the membrane relaxes.
   const env = c.createGain();
   env.gain.setValueAtTime(0, start);
-  env.gain.linearRampToValueAtTime(0.16, start + 0.02);
-  env.gain.setValueAtTime(0.16, start + durationSec * 0.6);
-  env.gain.exponentialRampToValueAtTime(0.0001, stop);
-  osc1.connect(env);
-  osc2.connect(env);
+  env.gain.linearRampToValueAtTime(1, start + 0.005);
+  env.gain.setValueAtTime(1, start + 0.05);
+  env.gain.exponentialRampToValueAtTime(0.001, stop);
+  g1.connect(env);
+  g2.connect(env);
   env.connect(c.destination);
   osc1.start(start);
   osc2.start(start);
-  lfo.start(start);
   osc1.stop(stop + 0.02);
   osc2.stop(stop + 0.02);
-  lfo.stop(stop + 0.02);
 }
 
 /**
- * "Yayyy" — three rising sine tones in a triumphant C-major
- * arpeggio (C5 → E5 → G5), with each note slightly louder than
- * the last so the celebration feels like it's building. The
- * final note is held a touch longer to let the user feel the
- * payoff before the modal's glow animation kicks in.
+ * "Yay!" — a small group of kids cheering. Multiple short sine
+ * tones at slightly different pitches and timings, like a few
+ * kids shouting at the same time. The pitches aren't a clean
+ * arpeggio — they cluster around the major triad (C, E, G)
+ * but with a few "off" notes that give it the slightly chaotic
+ * "kids yelling" feel.
  */
-function playYayyy(delayMs = 0): void {
-  const notes = [
-    { freq: 523.25, dur: 0.12, gain: 0.22, off: 0 },
-    { freq: 659.25, dur: 0.12, gain: 0.24, off: 90 },
-    { freq: 783.99, dur: 0.28, gain: 0.28, off: 180 },
+function playKidsYay(delayMs = 0): void {
+  // (freq, startOffset, gain) — multiple voices, each its own
+  // little envelope. Frequencies are Hz; startOffset is relative
+  // to the yays' base time so the cheers are clustered but not
+  // perfectly aligned. ~5 voices to feel like a small group.
+  const voices: Array<[number, number, number]> = [
+    [523.25,   0,  0.20], // C5 — the "yay!" root
+    [659.25,  20,  0.18], // E5 — the "yay!" fifth
+    [783.99,  40,  0.20], // G5 — the "yay!" octave
+    [698.46,  60,  0.16], // F5 — a little off, sounds kid-like
+    [659.25,  85,  0.14], // E5 again, slightly behind
+    [523.25, 110,  0.16], // C5 trailing
+    [783.99, 130,  0.18], // G5 high
+    [659.25, 170,  0.14], // E5 final
   ];
-  for (const n of notes) {
-    playTone(n.freq, n.dur, { type: 'sine', gain: n.gain, delayMs: delayMs + n.off });
+  for (const [freq, off, gain] of voices) {
+    playTone(freq, 0.10, { type: 'sine', gain, delayMs: delayMs + off });
   }
 }
 
@@ -217,16 +236,16 @@ function playPattern(event: SoundEvent): void {
       playTone(880, 0.12, { type: 'square', gain: 0.12 });
       break;
     case 'skillUnlock':
-      // The meme. Party kazoo + kids yelling "yayyy" — synth
-      // approximation of a real kazoo (sawtooth at ~280Hz with
-      // wobble from a slightly detuned second osc) followed by
-      // a C5→E5→G5 arpeggio for the "yayyy".
+      // The meme. Party horn blast + kids yelling "yay".
+      // Synth approximation of a real party horn (brassier than
+      // the kazoo, with a quick pitch "blat" attack) followed by
+      // a small group-cheer arpeggio.
       //
       // Drop a real MP3 in web/public/sounds/skill-unlock.mp3
       // and uncomment the SOUND_FILES entry for a higher-quality
       // version.
-      playKazoo(280, 0.55, 5, 12);
-      playYayyy(80);
+      playPartyHorn(220, 0.32, 18);
+      playKidsYay(60);
       break;
     case 'bossKill':
       // Descending three-note stab (E4 → C4 → A3) — heavy, final.
