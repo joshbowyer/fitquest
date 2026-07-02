@@ -86,6 +86,8 @@ export function ProfilePage() {
   const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
   const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
   const [timezoneDraft, setTimezoneDraft] = useState<string>('');
+  const [latitudeDraft, setLatitudeDraft] = useState<string>('');
+  const [longitudeDraft, setLongitudeDraft] = useState<string>('');
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -124,6 +126,8 @@ export function ProfilePage() {
     if (sexDraft === null) setSexDraft(user.sex);
     setOrdainedDraft(user.ordained ?? false);
     setTimezoneDraft(user.timezone ?? '');
+    setLatitudeDraft(user.latitude != null ? String(user.latitude) : '');
+    setLongitudeDraft(user.longitude != null ? String(user.longitude) : '');
   }, [user, inImperial]);
 
   function setDraftField(key: string, raw: string) {
@@ -183,7 +187,16 @@ export function ProfilePage() {
   const sexChanged = sexDraft !== null && sexDraft !== user?.sex;
   const ordainedChanged = ordainedDraft !== (user?.ordained ?? false);
   const timezoneChanged = timezoneDraft !== (user?.timezone ?? '');
-  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged || timezoneChanged;
+  const locationLat = latitudeDraft === '' ? null : Number(latitudeDraft);
+  const locationLng = longitudeDraft === '' ? null : Number(longitudeDraft);
+  const locationValid = (locationLat == null && locationLng == null) ||
+    (Number.isFinite(locationLat) && Number.isFinite(locationLng) &&
+     locationLat! >= -90 && locationLat! <= 90 &&
+     locationLng! >= -180 && locationLng! <= 180);
+  const locationChanged =
+    (locationLat ?? null) !== (user?.latitude ?? null) ||
+    (locationLng ?? null) !== (user?.longitude ?? null);
+  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged || timezoneChanged || locationChanged;
 
   const saveM = useDelayedMutation<
     { recomputed: boolean; changeCount: number },
@@ -221,6 +234,10 @@ export function ProfilePage() {
       if (sexChanged) body.sex = sexDraft;
       if (ordainedChanged) body.ordained = ordainedDraft;
       if (timezoneChanged) body.timezone = timezoneDraft || null;
+      if (locationChanged && locationValid) {
+        body.latitude = locationLat;
+        body.longitude = locationLng;
+      }
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -238,6 +255,7 @@ export function ProfilePage() {
       qc.invalidateQueries({ queryKey: ['measurements'] });
       qc.invalidateQueries({ queryKey: ['insights'] });
       qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['forecast'] });
       if (res?.recomputed) {
         setSaveResult({
           kind: 'recomputed',
@@ -920,6 +938,83 @@ export function ProfilePage() {
                 achievements, and logs render absolute dates in this zone. Leave blank for UTC.
               </div>
             </label>
+          </div>
+
+          {/* Home location — drives the /forecast page weather lookup. */}
+          <div className="mt-4 border-t border-ink-500/30 pt-3">
+            <div className="text-xs font-mono text-ink-100 mb-1">
+              Home location <span className="text-ink-400">(for /forecast)</span>
+            </div>
+            <div className="flex items-stretch gap-2">
+              <input
+                className="input-neon flex-1 text-xs"
+                type="number"
+                step="0.0001"
+                value={latitudeDraft}
+                onChange={(e) => setLatitudeDraft(e.target.value)}
+                placeholder="Latitude (e.g. 34.02)"
+              />
+              <input
+                className="input-neon flex-1 text-xs"
+                type="number"
+                step="0.0001"
+                value={longitudeDraft}
+                onChange={(e) => setLongitudeDraft(e.target.value)}
+                placeholder="Longitude (e.g. -84.62)"
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!('geolocation' in navigator)) {
+                    setSaveResult({ kind: 'error', message: 'Browser geolocation unavailable.' });
+                    return;
+                  }
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      setLatitudeDraft(pos.coords.latitude.toFixed(4));
+                      setLongitudeDraft(pos.coords.longitude.toFixed(4));
+                    },
+                    (err) => {
+                      setSaveResult({ kind: 'error', message: `Geolocation failed: ${err.message}` });
+                    },
+                    { timeout: 8000, enableHighAccuracy: false, maximumAge: 60_000 },
+                  );
+                }}
+                className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1"
+              >
+                Use device location
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await api('/users/me', { method: 'PATCH', body: { latitude: null, longitude: null } });
+                    await refresh();
+                    setLatitudeDraft('');
+                    setLongitudeDraft('');
+                    setSaveResult({ kind: 'saved', message: 'Home location cleared. Forecast will use last outdoor workout GPS.' });
+                    setTimeout(() => setSaveResult({ kind: 'idle', message: '' }), 4000);
+                    qc.invalidateQueries({ queryKey: ['forecast'] });
+                  } catch (e: any) {
+                    setSaveResult({ kind: 'error', message: e?.message ?? 'Clear failed' });
+                  }
+                }}
+                disabled={user?.latitude == null && user?.longitude == null}
+                className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-200 hover:border-neon-magenta hover:text-neon-magenta px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Clear (use workout GPS)
+              </button>
+            </div>
+            {!locationValid && (
+              <div className="text-[10px] font-mono neon-text-magenta mt-1">
+                Lat must be -90..90 and lng -180..180 — leave both blank to use workout GPS.
+              </div>
+            )}
+            <div className="text-[10px] font-mono text-ink-400 mt-1 leading-relaxed">
+              Decimal degrees (WGS84). Saves with the main profile save button below.
+            </div>
           </div>
 
           <div className="mt-4 text-[10px] text-ink-400 font-mono leading-relaxed border-t border-neon-magenta/20 pt-3">

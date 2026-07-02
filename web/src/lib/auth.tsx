@@ -84,6 +84,10 @@ export type User = {
   // IANA timezone name (e.g. "America/New_York"). Used to render
   // absolute timestamps in the user's local time.
   timezone?: string | null;
+  // Home lat/lng for the /forecast page. Null = the server
+  // falls back to the most-recent workout's GPS centroid.
+  latitude?: number | null;
+  longitude?: number | null;
   // Calorie goal. Drives the conservative ±250 cal offset from
   // calorieBaseline and the protein target on /nutrition.
   goal?: 'CUT' | 'MAINTAIN' | 'BULK';

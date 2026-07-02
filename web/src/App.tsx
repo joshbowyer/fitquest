@@ -32,6 +32,7 @@ import { ToolsPage } from './pages/Tools';
 import { CheckInsPage } from './pages/CheckIns';
 import { BodyCompPage } from './pages/BodyComp';
 import { InsightsMetricsPage } from './pages/InsightsMetrics';
+import { ForecastPage } from './pages/Forecast';
 import type { ReactNode } from 'react';
 
 function FullPageLoader() {
@@ -87,6 +88,7 @@ export default function App() {
       <Route path="/tools" element={<RequireAuth><ToolsPage /></RequireAuth>} />
       <Route path="/check-ins" element={<RequireAuth><CheckInsPage /></RequireAuth>} />
       <Route path="/body-comp" element={<RequireAuth><BodyCompPage /></RequireAuth>} />
+      <Route path="/forecast" element={<RequireAuth><ForecastPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillTreePage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />

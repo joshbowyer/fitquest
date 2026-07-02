@@ -43,6 +43,7 @@ import { breachRoutes } from './routes/breach.js';
 import { portalLeakRoutes } from './routes/portalLeaks.js';
 import { shopRoutes } from './routes/shop.js';
 import { exportRoutes } from './routes/export.js';
+import { forecastRoutes } from './routes/forecast.js';
 import { supplementsRoutes } from './routes/supplements.js';
 import { substanceRoutes } from './routes/substances.js';
 import { foodRoutes, savedFoodRoutes } from './routes/foods.js';
@@ -113,6 +114,7 @@ async function build() {
   await app.register(breachRoutes, { prefix: '/breach' });
   await app.register(portalLeakRoutes, { prefix: '/portal-leak' });
   await app.register(shopRoutes, { prefix: '/shop' });
+  await app.register(forecastRoutes, { prefix: '/forecast' });
   await app.register(exportRoutes, { prefix: '' });
 
   app.setErrorHandler((err, req, reply) => {

@@ -18,7 +18,52 @@
 
 ## Active (in progress)
 
-(none — picking from the backlog next)
+- **Forecast page (`/forecast`).** New page that answers two
+  questions in one glance: "should I train outside today?" and
+  "what should I work?"
+  - **Weather:** Open-Meteo (free, no API key) for current
+    conditions + 3-day daily forecast. Cache keyed by rounded
+    lat/lng (same scheme as `GeoCache`) with a 1-hour TTL —
+    matches Open-Meteo's own update cadence and keeps the call
+    count well under the 10k/day free-tier ceiling for a single
+    user. WMO weather code → short label + icon glyph + an
+    outdoor-friendliness verdict per day (no-go: thunderstorms /
+    snow / >5mm rain / >100°F / sustained 30+ mph winds; caution
+    bands for >90°F or <32°F).
+  - **Readiness:** existing `computeRecovery(userId)` —
+    HRV/sleep/RHR/soreness/stress/energy/mood composite score
+    with 7-day trend, same data the `/recovery` page shows.
+  - **Recommendation:** new `recommendMuscle(userId)` helper
+    picks the highest-scoring body part that hasn't been worked
+    in the last 12 h. Extracted the per-part recovery math
+    out of `routes/status.ts` into a new
+    `api/src/lib/recommendMuscle.ts` so the same numbers drive
+    both the avatar on `/status` and this recommendation.
+  - **Location:** new `User.latitude` / `User.longitude` Float?
+    columns. Explicit setting wins; otherwise the route falls
+    back to the most-recent workout's trackJson centroid via
+    the existing `centroidOfTrack()` helper in `api/src/lib/geo.ts`.
+    422 with `needsLocation: true` when neither source has data
+    — the page renders an actionable empty state pointing at
+    Profile.
+  - **Profile UI:** new "Home location (for /forecast)" panel
+    on Profile with manual lat/lng inputs, a "Use device
+    location" button (`navigator.geolocation.getCurrentPosition`),
+    and a "Clear (use workout GPS)" affordance. Saves with the
+    main profile-save button + invalidates `['forecast']`.
+  - **Nav:** added to the desktop sidebar + mobile overlay via
+    the existing `NAV` array in `web/src/components/Layout.tsx`
+    with `icon: '☀'`, `mobile: true` so it's a top-level
+    primary nav item.
+  - **Migration:** `20260702140000_user_forecast_location` adds
+    the two lat/lng columns + a new `WeatherCache` table
+    (mirrors the `GeoCache` pattern: `key` = round3 lat/lng,
+    `payload` JSON, `fetchedAt`). Also resolved two
+    previously-failed migrations (`drop_soulstone_counter` and
+    `workout_unique_per_user_time`) — the dev DB had 151
+    duplicate Workout rows from the earlier FitQuestBridge
+    re-upload flood; the dedup pass cleared them and the unique
+    constraint now installs cleanly.
 
 ## Backlog (from user notes, in priority order)
 

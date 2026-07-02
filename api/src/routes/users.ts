@@ -54,6 +54,12 @@ const ProfileSchema = z.object({
   /// on/off (hearts, streak-break, substance caps). Casual is the
   /// default and behaves identically to the legacy no-penalty app.
   mode: z.enum(['CASUAL', 'HARDCORE']).optional(),
+  /// Home location for the /forecast page. Lat/lng in decimal
+  /// degrees (WGS84). Latitude bounded to ±90, longitude to
+  /// ±180. Empty string or null clears the override so the
+  /// forecast falls back to the most-recent workout's centroid.
+  latitude: z.number().min(-90).max(90).optional().nullable(),
+  longitude: z.number().min(-180).max(180).optional().nullable(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -109,6 +115,8 @@ export async function userRoutes(app: FastifyInstance) {
       hearts,
       heartMultiplier: heartMultiplier(hearts, user.mode ?? 'CASUAL'),
       hardcoreCaps: HARDCORE_SUBSTANCE_CAPS,
+      latitude: user.latitude,
+      longitude: user.longitude,
     };
   });
 
@@ -175,6 +183,15 @@ export async function userRoutes(app: FastifyInstance) {
         ...(body.calorieSource !== undefined ? { calorieSource: body.calorieSource } : {}),
         ...(body.usdaApiKey !== undefined
           ? { usdaApiKey: body.usdaApiKey === '' ? null : body.usdaApiKey }
+          : {}),
+        // Lat/lng clear-on-null: PATCHing with null wipes the
+        // override so /forecast falls back to the workout-centroid
+        // auto-detect.
+        ...(body.latitude !== undefined
+          ? { latitude: body.latitude === null ? null : body.latitude }
+          : {}),
+        ...(body.longitude !== undefined
+          ? { longitude: body.longitude === null ? null : body.longitude }
           : {}),
       },
     });

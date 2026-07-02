@@ -233,187 +233,192 @@ enum MemberRole {
 }
 
 model User {
-  id                    String                  @id @default(cuid())
-  email                 String                  @unique
-  username              String                  @unique
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  username               String                  @unique
   /// Case-folded copy of `username` for case-insensitive login +
   /// unique-by-case uniqueness. Login routes look up by this
   /// column. `username` is preserved as the display name (whatever
   /// case the user typed at registration).
-  usernameLower         String                  @unique
-  passwordHash          String
-  class                 ClassName?
-  level                 Int                     @default(1)
-  xp                    Int                     @default(0)
-  gold                  Int                     @default(0)
+  usernameLower          String                  @unique
+  passwordHash           String
+  class                  ClassName?
+  level                  Int                     @default(1)
+  xp                     Int                     @default(0)
+  gold                   Int                     @default(0)
   // Soulstones: world-boss drops with 24h TTL. Used to bypass the
   // class-change cooldown (respec). Each Soulstone row in the
   // Soulstone table is one consumable. The Int counter that used
   // to live here was dropped in migration 20260701120000 in favor
   // of the row-based model so we can track per-stone TTLs.
-  units                 UnitSystem              @default(METRIC)
+  units                  UnitSystem              @default(METRIC)
   // Static frame inputs (rarely change). Used by genetic-max formulas.
-  heightCm              Float?
-  wristCm               Float?
-  ankleCm               Float?
-  forearmLengthCm       Float?
-  neckCircCm            Float?
+  heightCm               Float?
+  wristCm                Float?
+  ankleCm                Float?
+  forearmLengthCm        Float?
+  neckCircCm             Float?
   // Static frame measurements (don't change). Used by the Tron
   // identity disk to scale the disc radius, inner ring, and figure
   // position. Optional so existing users aren't blocked; the avatar
   // falls back to archetype-only scaling when missing.
-  shoulderCm            Float?
+  shoulderCm             Float?
   waistCm                Float?
+  /// Home location for the /forecast page. Null = auto-fall back
+  /// to the most-recent workout's track centroid until the user
+  /// explicitly opts in via Profile.
+  latitude               Float?
+  longitude              Float?
   // Dynamic body metrics (change over time). Used by formulas + tracked.
-  weightKg              Float?
-  bodyFatPct            Float?
-  birthDate             DateTime?
+  weightKg               Float?
+  bodyFatPct             Float?
+  birthDate              DateTime?
   // Cached PRs (kg or seconds depending on exercise)
-  benchPr               Float?
-  squatPr               Float?
-  deadliftPr            Float?
-  ohpPr                 Float?
-  pullupPr              Int?
+  benchPr                Float?
+  squatPr                Float?
+  deadliftPr             Float?
+  ohpPr                  Float?
+  pullupPr               Int?
   // Relations
-  sessions              Session[]
-  measurements          Measurement[]
-  geneticMaxes          GeneticMax[]
-  workouts              Workout[]
-  prs                   Pr[]
-  partyMember           PartyMember?
-  raidContribs          RaidContribution[]
-  achievements          UserAchievement[]
-  skills                UserSkill[]
-  homeBase              HomeBase?
-  workoutTemplates      WorkoutTemplate[]
-  penanceTemplates      PenanceTemplate[]
-  penanceEvents         PenanceEvent[]
-  heartLossEvents       HeartLossEvent[]
-  purchases             Purchase[]
-  soulstones            Soulstone[]
+  sessions               Session[]
+  measurements           Measurement[]
+  geneticMaxes           GeneticMax[]
+  workouts               Workout[]
+  prs                    Pr[]
+  partyMember            PartyMember?
+  raidContribs           RaidContribution[]
+  achievements           UserAchievement[]
+  skills                 UserSkill[]
+  homeBase               HomeBase?
+  workoutTemplates       WorkoutTemplate[]
+  penanceTemplates       PenanceTemplate[]
+  penanceEvents          PenanceEvent[]
+  heartLossEvents        HeartLossEvent[]
+  purchases              Purchase[]
+  soulstones             Soulstone[]
   // Breach boss progress. One row per user; lazily created on
   // first /breach GET after level 10 OR first workout-commit
   // while unlocked (whichever happens first). Defined as ? here
   // so existing users without a row still load cleanly.
-  userBreachProgress    UserBreachProgress?
+  userBreachProgress     UserBreachProgress?
   /// Per-workout Breach damage audit trail. Looked up by user
   /// (newest first) for the /breach damage feed. Cascades with
   /// the user row so account deletion stays clean.
-  breachDamageEvents    BreachDamageEvent[]
-  avatar                Avatar?
-  classChangedAt        DateTime?
+  breachDamageEvents     BreachDamageEvent[]
+  avatar                 Avatar?
+  classChangedAt         DateTime?
   // Admin role. First user to register is bootstrapped to admin.
   // Future: 2FA / TOTP secret + recovery codes live here too.
-  isAdmin               Boolean                 @default(false)
-  twoFactorSecret       String?
-  twoFactorEnabled      Boolean                 @default(false)
+  isAdmin                Boolean                 @default(false)
+  twoFactorSecret        String?
+  twoFactorEnabled       Boolean                 @default(false)
   // TOTP recovery codes (one-time use, hashed at rest).
-  twoFactorBackupCodes  String?
-  worldProgress         UserWorldProgress[]
-  painLogs              PainLog[]
-  routine               Routine?
-  worldBosses           WorldBoss[]
-  sentInvites           PartyInvite[]           @relation("Inviter")
-  receivedInvites       PartyInvite[]           @relation("Invitee")
-  prayerLogs            PrayerLog[]
-  habits                Habit[]
-  habitLogs             HabitLog[]
-  supplements           SupplementLog[]
-  routineDays           RoutineDay[]
-  dailies               Daily[]
-  dailyLogs             DailyLog[]
-  inventoryItems        InventoryItem[]
-  morningReports        MorningReport[]
-  spiritualReflections  SpiritualReflection[]
-  activityInsights      ActivityInsight[]
-  metricInsights        MetricInsight[]
-  plateauPauses         PlateauPause[]
-  plateauSnapshots      PlateauSnapshot[]
-  examenResponses       ExamenResponse[]
-  trackedItems          UserTrackedItem[]
-  dailyTracked          DailyTrackedItem[]
-  substanceLogs         SubstanceLog[]
-  mealEntries           MealEntry[]
-  savedFoods            SavedFood[]
-  correlationSnapshots  CorrelationSnapshot[]
-  teamWorkoutsLed       TeamWorkout[]           @relation("TeamWorkoutLeader")
-  teamParticipations    TeamParticipant[]
-  trustedDevices        TrustedDevice[]
-  recoveryCodes         RecoveryCode[]
+  twoFactorBackupCodes   String?
+  worldProgress          UserWorldProgress[]
+  painLogs               PainLog[]
+  routine                Routine?
+  worldBosses            WorldBoss[]
+  sentInvites            PartyInvite[]           @relation("Inviter")
+  receivedInvites        PartyInvite[]           @relation("Invitee")
+  prayerLogs             PrayerLog[]
+  habits                 Habit[]
+  habitLogs              HabitLog[]
+  supplements            SupplementLog[]
+  routineDays            RoutineDay[]
+  dailies                Daily[]
+  dailyLogs              DailyLog[]
+  inventoryItems         InventoryItem[]
+  morningReports         MorningReport[]
+  spiritualReflections   SpiritualReflection[]
+  activityInsights       ActivityInsight[]
+  metricInsights         MetricInsight[]
+  plateauPauses          PlateauPause[]
+  plateauSnapshots       PlateauSnapshot[]
+  examenResponses        ExamenResponse[]
+  trackedItems           UserTrackedItem[]
+  dailyTracked           DailyTrackedItem[]
+  substanceLogs          SubstanceLog[]
+  mealEntries            MealEntry[]
+  savedFoods             SavedFood[]
+  correlationSnapshots   CorrelationSnapshot[]
+  teamWorkoutsLed        TeamWorkout[]           @relation("TeamWorkoutLeader")
+  teamParticipations     TeamParticipant[]
+  trustedDevices         TrustedDevice[]
+  recoveryCodes          RecoveryCode[]
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
-  spiritualDailyPrayers PrayerType[]            @default([ROSARY, SCRIPTURE])
+  spiritualDailyPrayers  PrayerType[]            @default([ROSARY, SCRIPTURE])
   // Creatine adds intracellular water weight (~1-2 kg). When true, the
   // user wants it accounted for in lean-mass display so a "real" LBM
   // number doesn't include the water. Stored raw so we can compute
   // both numbers downstream.
-  creatine              Boolean                 @default(false)
+  creatine               Boolean                 @default(false)
   // IANA timezone name (e.g. "America/New_York"). Used to render
   // absolute timestamps in the user's local time. Defaults to UTC.
-  timezone              String?
-  spiritualSubclass     SpiritualSubclass?
-  spiritualXp           Int                     @default(0)
-  ordained              Boolean                 @default(false)
-  ordainedAt            DateTime?
-  sex                   Sex?
+  timezone               String?
+  spiritualSubclass      SpiritualSubclass?
+  spiritualXp            Int                     @default(0)
+  ordained               Boolean                 @default(false)
+  ordainedAt             DateTime?
+  sex                    Sex?
   /// Goal for daily calorie/macro targets. Drives the conservative
   /// ±250 cal adjustment from the user's calorie baseline, and
   /// shifts the protein target up (cut/maint) or down (bulk)
   /// per the user's preference for the high end of the range.
   /// Default MAINTAIN. User can override individual targets in
   /// /settings to fine-tune.
-  goal                  CalorieGoal             @default(MAINTAIN)
+  goal                   CalorieGoal             @default(MAINTAIN)
   /// Casual/Hardcore difficulty toggle. Casual = current no-consequences
   /// behavior (streaks can be broken freely, no heart system). Hardcore =
   /// full penalty ladder (heart system, streak-break on miss, reduced XP
   /// when hearts are low). Default Casual so existing users aren't
   /// surprised by a difficulty change.
-  mode                  UserMode                @default(CASUAL)
+  mode                   UserMode                @default(CASUAL)
   /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
   /// missed planned workout in the routine, regen 1 per 8h. Always 5
   /// in Casual mode (the value is preserved but unused).
-  hearts                Int                     @default(10)
+  hearts                 Int                     @default(10)
   /// Timestamp of last heart regeneration tick. Used to compute
   /// accrued regeneration since last read; the server applies the
   /// accrued delta on every /users/me read so the UI stays honest
   /// about regen even if the user is offline for days.
-  heartsLastRegenAt     DateTime?
+  heartsLastRegenAt      DateTime?
   /// User-set baseline (TDEE-ish). The actual calorie target is
   /// this + goal offset (cut -250, maintain 0, bulk +250). Default
   /// 2200 is a reasonable placeholder; the user should set this to
   /// their actual maintenance once they have data.
-  calorieBaseline       Int                     @default(2200)
+  calorieBaseline        Int                     @default(2200)
   /// What the baseline number represents. Affects only the UI label
   /// ("Maintenance" vs "BMR" vs "BMR + NEAT"). Math is the same.
-  calorieSource         CalorieSource           @default(BASELINE)
+  calorieSource          CalorieSource           @default(BASELINE)
   /// USDA FoodData Central API key. Free; sign up at
   /// https://fdc.nal.usda.gov/api-key-signup.html. Required for the
   /// upcoming food tracker; the LLM will use this when looking up
   /// foods that aren't in OpenFoodFacts. Private to the user.
-  usdaApiKey            String?
+  usdaApiKey             String?
   /// Per-user sidebar order. JSON array of route paths ('/dashboard',
   /// '/quest', etc.) in the user's preferred sequence. Replaces the
   /// localStorage-only order so mobile + laptop stay in sync.
   /// Persists across devices, login sessions, and browser switches.
   /// Null = use the canonical default order from the frontend.
-  navOrder              Json?
+  navOrder               Json?
   /// TOTP secret, base32-encoded. Null when 2FA is not configured.
   /// Setup flow generates a fresh secret + recovery codes; user
   /// must verify one code before the secret is committed (and
   /// totpEnabled flips to true).
-  totpSecret            String?
+  totpSecret             String?
   /// Whether the user must complete a TOTP code at login. False
   /// during the grace window after first registration so the user
   /// isn't locked out if the authenticator app setup fails.
-  totpEnabled           Boolean                 @default(false)
+  totpEnabled            Boolean                 @default(false)
   /// Counter for failed login attempts. Reset on successful login.
   /// Used by the brute-force protection in the auth route.
-  failedLogins          Int                     @default(0)
+  failedLogins           Int                     @default(0)
   /// When the account was last locked out due to too many failed
   /// attempts. Null = not locked. Resets on successful login.
-  lockedUntil           DateTime?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
+  lockedUntil            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
   portalLeaks            PortalLeak[]
   portalLeakDamageEvents PortalLeakDamageEvent[]
 
@@ -546,8 +551,8 @@ model Exercise {
   // set entry, and when they finished the last set of this exercise.
   // Null for workouts entered in bulk mode (legacy data, and any
   // workout where the user opted into the bulk flow).
-  startedAt   DateTime?
-  completedAt DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
 
   @@index([workoutId, groupIndex])
 }
@@ -566,20 +571,20 @@ enum SkipReason {
 }
 
 model Set {
-  id         String      @id @default(cuid())
-  exerciseId String
-  exercise   Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
-  reps       Int
-  weight     Float?
-  duration   Int?
-  rpe        Float?
-  completed  Boolean     @default(true)
-  order      Int         @default(0)
+  id          String      @id @default(cuid())
+  exerciseId  String
+  exercise    Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  reps        Int
+  weight      Float?
+  duration    Int?
+  rpe         Float?
+  completed   Boolean     @default(true)
+  order       Int         @default(0)
   // Set was not performed. If true, the workout's PR detection and
   // volume math ignore this row. The reason flows into the Status
   // avatar's "Condition" badge and the morning report.
-  skipped    Boolean     @default(false)
-  skipReason SkipReason?
+  skipped     Boolean     @default(false)
+  skipReason  SkipReason?
   // Live-mode timestamps. startedAt = user opened the set entry form
   // (or first set of a workout). completedAt = user tapped Continue.
   // Both null for workouts logged in bulk mode.
@@ -611,31 +616,31 @@ model Set {
 // =============================================================================
 
 model WorkoutTemplate {
-  id        String                     @id @default(cuid())
+  id        String                    @id @default(cuid())
   userId    String
-  user      User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Human name, e.g. "Push Day 5x5", "Heavy Squat". Free text.
   name      String
   // Default workout type — preselected in setup phase, user can override.
-  type      WorkoutType                @default(STRENGTH)
+  type      WorkoutType               @default(STRENGTH)
   // Free-form notes shown above the workout logger when this template
   // is picked (e.g. "Barbell bench first, accessories after, abs at end").
   notes     String?
   exercises WorkoutTemplateExercise[]
-  createdAt DateTime                   @default(now())
-  updatedAt DateTime                   @updatedAt
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
 
   @@index([userId])
   @@index([userId, updatedAt])
 }
 
 model WorkoutTemplateExercise {
-  id         String           @id @default(cuid())
+  id         String               @id @default(cuid())
   templateId String
-  template   WorkoutTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template   WorkoutTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
   // Exercise name (free text — same lookup as the live logger).
   name       String
-  order      Int              @default(0)
+  order      Int                  @default(0)
   /// Superset pairing. Two or more exercises that share the same
   /// groupIndex are paired — the live logger walks them round-robin
   /// (1A → 1B → 2A → 2B → ...) so the user alternates between
@@ -862,26 +867,26 @@ model PenanceEvent {
 /// Seeded with the 4 base items: Vital Tonic, War Tincture,
 /// Continuity Rune, Forge Tonic.
 model ShopItem {
-  id                  String     @id @default(cuid())
+  id                String   @id @default(cuid())
   /// Stable string key used by the API and frontend to look the
   /// item up (e.g. "vital_tonic", "war_tincture"). Don't change
   /// without a migration — purchases reference this.
-  key                 String     @unique
-  name                String
+  key               String   @unique
+  name              String
   /// Short flavor text shown in the shop modal under the name.
-  description         String
-  cost                Int
+  description       String
+  cost              Int
   /// "heart_refill" | "raid_buff" | "streak_shield" | "pr_doubler" | ...
   /// Consumed-item types (raid_buff, pr_doubler) have an
   /// effectDurationSec; passive-item types (heart_refill) have null.
-  effectKey           String
-  effectValue         Int        @default(0)
-  effectDurationSec   Int?
+  effectKey         String
+  effectValue       Int      @default(0)
+  effectDurationSec Int?
   /// When false, the item is hidden from the shop (admin toggle).
-  active              Boolean    @default(true)
-  createdAt           DateTime   @default(now())
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
 
-  purchases           Purchase[]
+  purchases Purchase[]
 
   @@index([active])
 }
@@ -897,14 +902,14 @@ model ShopItem {
 ///     queries; query helpers filter by expiresAt > now to ignore
 ///     these transparently.
 model Purchase {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  itemId        String
-  item          ShopItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
-  purchasedAt   DateTime @default(now())
-  consumedAt    DateTime?
-  expiresAt     DateTime?
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        ShopItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  purchasedAt DateTime  @default(now())
+  consumedAt  DateTime?
+  expiresAt   DateTime?
 
   @@index([userId, purchasedAt])
   @@index([userId, consumedAt])
@@ -918,21 +923,21 @@ model Purchase {
 /// for the old class are archived (not deleted) so they can be
 /// re-unlocked if the user switches back.
 model Soulstone {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// For display in the inventory / shop: which boss dropped it.
   /// E.g. "Gains Goblin" (Maw) or "Gripping Ghoul" (Heroic Breach).
-  bossName      String
+  bossName   String
   /// Boss difficulty tier at time of drop. Cosmetic — used for
   /// sort order + UI badge (e.g. "Soulstone from a Tier 3 boss").
-  bossTier      Int      @default(1)
-  droppedAt     DateTime @default(now())
+  bossTier   Int       @default(1)
+  droppedAt  DateTime  @default(now())
   /// droppedAt + 24h. After this, the stone "disintegrates" and
   /// the row is ignored by all queries.
-  expiresAt     DateTime
-  consumed      Boolean  @default(false)
-  consumedAt    DateTime?
+  expiresAt  DateTime
+  consumed   Boolean   @default(false)
+  consumedAt DateTime?
 
   @@index([userId, droppedAt])
   @@index([userId, expiresAt])
@@ -959,19 +964,19 @@ model Soulstone {
 ///                          mass, etc.) was logged yesterday, even
 ///                          if the user hasn't configured dailies.
 model HeartLossEvent {
-  id          String              @id @default(cuid())
-  userId      String
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind        HeartLossTrigger
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       HeartLossTrigger
   /// Local-date (YYYY-MM-DD) the penalty applies to. Stored as a
   /// DATE (not timestamptz) so the unique constraint is per
   /// calendar day in the user's tz, not per UTC instant.
-  sourceDate  DateTime            @db.Date
+  sourceDate DateTime         @db.Date
   /// Human-readable explanation of what fired (e.g. "3 caffeine
   /// logs on 2026-06-21 vs cap of 3"). Surfaced in the morning
   /// report penalty ledger.
-  details     String?
-  firedAt     DateTime            @default(now())
+  details    String?
+  firedAt    DateTime         @default(now())
 
   @@unique([userId, kind, sourceDate])
   @@index([userId, firedAt])
@@ -1217,7 +1222,7 @@ model PortalLeak {
   /// leak that escaped from the Breach world (e.g. user defeated
   /// the Maw and the wound bled). Lets the UI show a special
   /// banner and the /breach raid page filter for them.
-  worldSource           PortalLeakSource      @default(AMBIENT)
+  worldSource           PortalLeakSource        @default(AMBIENT)
   PortalLeakDamageEvent PortalLeakDamageEvent[]
 
   @@index([userId, status])
@@ -1227,7 +1232,7 @@ model PortalLeak {
 
 enum PortalLeakSource {
   AMBIENT // regular homebase-shield leak
-  BREACH   // escaped from the Breach world
+  BREACH // escaped from the Breach world
 }
 
 model PortalLeakDamageEvent {
@@ -2387,6 +2392,28 @@ model GeoCache {
   displayName String
   zoom        Int      @default(10)
   fetchedAt   DateTime @default(now())
+}
+
+// ============================================================
+// WeatherCache — Open-Meteo current + daily forecast responses,
+// keyed by a rounded lat/lng grid (~110m at 3 decimals). Same
+// caching strategy as GeoCache: the upstream is free but rate-
+// limited, and a single user hot-reloading the page shouldn't
+// trigger an outbound call every time. Default TTL handled at
+// the call site (1 hour — Open-Meteo's update cadence).
+// ============================================================
+
+model WeatherCache {
+  /// Key = `${round3(lat)}_${round3(lng)}` — same shape as
+  /// GeoCache so callers can reuse `round3` + `keyOf` helpers.
+  key       String   @id
+  lat       Float
+  lng       Float
+  /// Full Open-Meteo response payload (current + daily fields
+  /// we care about). Stored as JSON so we can extend the
+  /// fetched fields without a migration.
+  payload   Json
+  fetchedAt DateTime @default(now())
 }
 
 // ============================================================
