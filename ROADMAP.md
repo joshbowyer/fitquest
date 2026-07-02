@@ -543,20 +543,43 @@ scopes + the equip-state-wiped-with-row assertion.)
   breach defeat, etc.)
 
 (was: sound/audio system — shipped. Settings → Sound panel
-has a mute toggle (persisted to localStorage) plus 6 per-event
-preview buttons (workout / level-up / achievement / rest
-timer / boss kill / loot drop). Web Audio API synth tones
-(oscillator + ADSR envelope) — no MP3 files, no howler.js
-dependency. v1 events wired into Workouts onSuccess → workoutComplete,
+has a mute toggle (persisted to localStorage) plus per-event
+preview buttons. Web Audio API synth tones (oscillator +
+ADSR envelope) — no MP3 files, no howler.js dependency. v1
+events wired into Workouts onSuccess → workoutComplete,
 Workouts + SkillTree on level-up → levelUp, RestTimer on
 hit-zero → restTimerDone (replaces the inline AudioContext
-beep). The soundBus also exposes `playFile(event)` for future
-MP3 swaps — drop files in web/public/sounds/ and add the
-path to SOUND_FILES in web/src/lib/soundBus.ts to upgrade
-any event. Mute state is persisted via `fitquest:sound:muted`
-in localStorage. Audio context is unlocked on the first
-user gesture (pointerdown / keydown) per browser autoplay
-policy.)
+beep), SkillTree on unlock → skillUnlock (the meme),
+Achievements diff → achievement. The soundBus also exposes
+`playFile(event)` for future MP3 swaps — drop files in
+web/public/sounds/ and add the path to SOUND_FILES in
+web/src/lib/soundBus.ts to upgrade any event. Mute state is
+persisted via `fitquest:sound:muted` in localStorage. Audio
+context is unlocked on the first user gesture (pointerdown
+/ keydown) per browser autoplay policy.)
+
+(also: skill-unlock queue + activity→skill matching, shipped.
+New PendingSkillUnlock table + lib/skillMatching.ts + two
+new endpoints (POST /skills/check-eligible, GET /skills
+/pending-unlocks, POST /skills/pending-unlocks/:id/dismiss).
+The matching pass runs server-side on every workout commit
++ on demand via the check-eligible endpoint, creates a
+PendingSkillUnlock row for each (skill, workout, set) tuple
+that satisfies a locked skill's test threshold. The SkillTree
+page renders the queue one modal at a time on mount (FIFO),
+each modal showing the matched set details (reps × weight,
+exercise name, date) so the user can verify before unlocking.
+Skills with unmet prerequisites are filtered out of the
+queue. Sibling PENDING rows for the same skillId are
+auto-DISMISSED on unlock. POST /skills/unlock accepts an
+optional pendingUnlockId to use the snapshotted set as the
+unlock result. Skill points are bypassed for pending-driven
+unlocks (the user paid the cost by doing the workout). The
+synth-approximated kazoo + yayyy "skillUnlock" sound plays
+on every successful unlock — both manual and from the
+queue. The diff-based "playSound('achievement')" hook in
+the Achievements page fires whenever a new achievement
+unlock is detected in the query data.)
 
 ## Dropped
 

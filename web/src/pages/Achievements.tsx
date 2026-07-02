@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -6,6 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import type { Achievement } from '@/lib/types';
 import { classNames } from '@/lib/format';
+import { playSound } from '@/lib/soundBus';
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
   CONSISTENCY:   { label: 'Consistency', color: '#ffc34d' },
@@ -33,8 +34,32 @@ export function AchievementsPage() {
     const total = items.length;
     const unlocked = items.filter((a) => a.unlocked).length;
     const points = items.filter((a) => a.unlocked).reduce((s, a) => s + a.points, 0);
-    const totalPoints = items.reduce((s, a) => s + a.points, 0);
+    const totalPoints = items.reduce((s, a) => a.s.points, 0);
     return { total, unlocked, points, totalPoints, pct: total ? Math.round((unlocked / total) * 100) : 0 };
+  }, [items]);
+
+  // Achievement-unlock chime. We diff the current unlocked-id
+  // set against the one we saw on the previous render and fire
+  // the sound for any newly-unlocked IDs. Same React pattern as
+  // tracking the "previous" state for animation transitions —
+  // standard "fire on diff" idiom.
+  //
+  // Skips the sound on the very first render (no transition yet)
+  // and on the same-IDs case (nothing changed). Capped at 5
+  // sounds per diff so a bulk-unlock batch doesn't spam the
+  // user's ears.
+  const prevUnlockedIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (items.length === 0) return;
+    const currentIds = new Set(items.filter((a) => a.unlocked).map((a) => a.id));
+    const prev = prevUnlockedIds.current;
+    if (prev) {
+      const newly = items.filter((a) => a.unlocked && !prev.has(a.id));
+      for (const a of newly.slice(0, 5)) {
+        playSound('achievement');
+      }
+    }
+    prevUnlockedIds.current = currentIds;
   }, [items]);
 
   const filtered = useMemo(() => {

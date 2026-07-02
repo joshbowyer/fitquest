@@ -44,10 +44,11 @@ type Change = { metric: string; from: number | null; to: number };
 // re-import from a previously-exported JSON. Round-trip safe.
 // ============================================================
 function SoundSection() {
-  // Re-read on every render so the panel reflects toggles from
-  // elsewhere (e.g. a future top-bar mute button). The Panel's
-  // action slot already shows the current state via isMuted().
-  const muted = isMuted();
+  // useState (not just isMuted()) so the button label + panel
+  // action slot re-render on toggle. The module-level isMuted()
+  // is still the source of truth for playSound(), we mirror it
+  // into local state on every change to drive the UI.
+  const [muted, setMutedState] = useState(() => isMuted());
   const onToggle = () => {
     // Prime the audio context in the same gesture as the toggle —
     // browsers won't unlock audio unless the user interacts, so
@@ -57,13 +58,16 @@ function SoundSection() {
     // want sound yet. The "Test sound" button below does that
     // explicitly.
     primeAudio();
-    setMuted(!muted);
+    const next = !muted;
+    setMuted(next);
+    setMutedState(next);
   };
   const testable: Array<{ key: SoundEvent; label: string; glyph: string }> = [
     { key: 'workoutComplete', label: 'Workout committed', glyph: '⚔' },
     { key: 'levelUp', label: 'Level up', glyph: '✦' },
     { key: 'achievement', label: 'Achievement', glyph: '★' },
     { key: 'restTimerDone', label: 'Rest timer done', glyph: '⏱' },
+    { key: 'skillUnlock', label: 'Skill unlock', glyph: '★' },
     { key: 'bossKill', label: 'Boss kill', glyph: '☠' },
     { key: 'lootDrop', label: 'Loot drop', glyph: '✧' },
   ];
@@ -73,7 +77,7 @@ function SoundSection() {
         <div>
           <div className="text-xs font-mono text-ink-200">
             SFX for workouts, level-ups, achievements, rest timer,
-            boss kills, loot drops.
+            skill unlocks, boss kills, loot drops.
           </div>
           <div className="text-[10px] font-mono text-ink-400 mt-1">
             Browser autoplay requires your first click before
@@ -81,6 +85,7 @@ function SoundSection() {
           </div>
         </div>
         <button
+          type="button"
           onClick={onToggle}
           className={classNames(
             'px-3 h-9 text-[10px] font-mono uppercase tracking-widest border min-w-[80px]',

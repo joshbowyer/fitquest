@@ -424,6 +424,42 @@ export async function workoutRoutes(app: FastifyInstance) {
 
     await checkAchievements(me.id);
 
+    // Activity → skill matching pass. Best-effort: a slow match
+    // shouldn't fail the workout save, so we catch + log and
+    // continue. The matching pass scans the user's last 60 days
+    // of workouts + sets, so this is the natural place to fire
+    // it (any new workout might match a locked skill). The
+    // /check-eligible endpoint is also exposed separately for
+    // manual re-runs.
+    try {
+      const skillLib = await import('../lib/skillMatching.js');
+      const eligible = await skillLib.findEligibleSkillUnlocks(
+        me.id,
+        me.weightKg ?? 0,
+      );
+      for (const e of eligible) {
+        try {
+          await prisma.pendingSkillUnlock.create({
+            data: {
+              userId: me.id,
+              skillId: e.skillId,
+              workoutId: e.matchedSet.workoutId,
+              matchedSetId: e.matchedSet.setId,
+              setReps: e.matchedSet.reps,
+              setWeight: e.matchedSet.weight,
+              setDuration: e.matchedSet.duration,
+              exerciseName: e.matchedSet.exerciseName,
+              workoutDate: e.matchedSet.workoutDate,
+            },
+          });
+        } catch (err: any) {
+          if (err?.code !== 'P2002') throw err;
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err: String(err) }, '[workouts] skill matching failed');
+    }
+
     // Check routine progress — if the user hit their weekly goal,
     // bump their streak. Returns whether the streak just incremented
     // so the workout response can show a celebratory message.

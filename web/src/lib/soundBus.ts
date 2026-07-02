@@ -75,6 +75,7 @@ export type SoundEvent =
   | 'levelUp'
   | 'achievement'
   | 'restTimerDone'
+  | 'skillUnlock'
   | 'bossKill'
   | 'lootDrop';
 
@@ -114,6 +115,79 @@ function playTone(
 }
 
 /**
+ * Party-kazoo approximation. A single sawtooth oscillator at the
+ * base frequency, mixed with a slightly-detuned second sawtooth
+ * (the detune interval is modulated by a slow LFO via setValueAtTime
+ * ramps) to produce the "wobble" you hear on a real kazoo. Not
+ * perfect, but recognizable — and zero asset overhead.
+ *
+ * Real party kazoos are membrane instruments (~250-350Hz fundamental
+ * with strong harmonics); a sawtooth captures the harmonic content
+ * well enough. Drop a real MP3 in web/public/sounds/skill-unlock.mp3
+ * for higher fidelity.
+ */
+function playKazoo(
+  baseFreq = 280,
+  durationSec = 0.55,
+  wobbleHz = 5,
+  wobbleCents = 12,
+): void {
+  const c = ensureCtx();
+  if (!c || !unlocked || muted) return;
+  const start = c.currentTime;
+  const stop = start + durationSec;
+  // Primary oscillator.
+  const osc1 = c.createOscillator();
+  osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(baseFreq, start);
+  // Detuned second oscillator for the "honk" — modulated by a
+  // slow LFO so the detune interval wobbles in and out.
+  const osc2 = c.createOscillator();
+  osc2.type = 'sawtooth';
+  osc2.frequency.setValueAtTime(baseFreq * Math.pow(2, wobbleCents / 1200), start);
+  // LFO modulates osc2's detune.
+  const lfo = c.createOscillator();
+  lfo.frequency.value = wobbleHz;
+  const lfoGain = c.createGain();
+  lfoGain.gain.value = wobbleCents / 1200; // cents → octave fraction
+  lfo.connect(lfoGain);
+  lfoGain.connect(osc2.detune);
+  // Shared envelope — a touch of bite at the start, then sustain.
+  const env = c.createGain();
+  env.gain.setValueAtTime(0, start);
+  env.gain.linearRampToValueAtTime(0.16, start + 0.02);
+  env.gain.setValueAtTime(0.16, start + durationSec * 0.6);
+  env.gain.exponentialRampToValueAtTime(0.0001, stop);
+  osc1.connect(env);
+  osc2.connect(env);
+  env.connect(c.destination);
+  osc1.start(start);
+  osc2.start(start);
+  lfo.start(start);
+  osc1.stop(stop + 0.02);
+  osc2.stop(stop + 0.02);
+  lfo.stop(stop + 0.02);
+}
+
+/**
+ * "Yayyy" — three rising sine tones in a triumphant C-major
+ * arpeggio (C5 → E5 → G5), with each note slightly louder than
+ * the last so the celebration feels like it's building. The
+ * final note is held a touch longer to let the user feel the
+ * payoff before the modal's glow animation kicks in.
+ */
+function playYayyy(delayMs = 0): void {
+  const notes = [
+    { freq: 523.25, dur: 0.12, gain: 0.22, off: 0 },
+    { freq: 659.25, dur: 0.12, gain: 0.24, off: 90 },
+    { freq: 783.99, dur: 0.28, gain: 0.28, off: 180 },
+  ];
+  for (const n of notes) {
+    playTone(n.freq, n.dur, { type: 'sine', gain: n.gain, delayMs: delayMs + n.off });
+  }
+}
+
+/**
  * Per-event tone patterns. Each is 1-3 notes max — quick enough to
  * not overlap with the next event but distinct enough to be
  * recognizable.
@@ -141,6 +215,18 @@ function playPattern(event: SoundEvent): void {
       // Single square-wave beep — distinct from the synth bell so
       // it's clearly an alert rather than a celebration.
       playTone(880, 0.12, { type: 'square', gain: 0.12 });
+      break;
+    case 'skillUnlock':
+      // The meme. Party kazoo + kids yelling "yayyy" — synth
+      // approximation of a real kazoo (sawtooth at ~280Hz with
+      // wobble from a slightly detuned second osc) followed by
+      // a C5→E5→G5 arpeggio for the "yayyy".
+      //
+      // Drop a real MP3 in web/public/sounds/skill-unlock.mp3
+      // and uncomment the SOUND_FILES entry for a higher-quality
+      // version.
+      playKazoo(280, 0.55, 5, 12);
+      playYayyy(80);
       break;
     case 'bossKill':
       // Descending three-note stab (E4 → C4 → A3) — heavy, final.

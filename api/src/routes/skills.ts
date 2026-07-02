@@ -9,6 +9,7 @@ import {
   type SkillTestSpec,
   type SkillTestResult,
 } from '../lib/skillTest.js';
+import { findEligibleSkillUnlocks } from '../lib/skillMatching.js';
 
 export async function skillRoutes(app: FastifyInstance) {
   /**
@@ -72,11 +73,18 @@ export async function skillRoutes(app: FastifyInstance) {
     * no validation — backward compat. New v1 skills all have a test
     * JSON so the validation always runs.
     */
-  app.post('/unlock', async (req, reply) => {
+app.post('/unlock', async (req, reply) => {
     const me = await requireUser(req);
     const body = z
       .object({
         skillId: z.string(),
+        // Optional: link this unlock to a PendingSkillUnlock row
+        // that the activity→skill matching pass created. When
+        // present, the server reads the matched set's snapshot
+        // data and uses it as the unlock result, then marks the
+        // row UNLOCKED. Also gives the workout + set a +XP/gold
+        // nudge via the inbox-creation path's stats.
+        pendingUnlockId: z.string().optional(),
         // Raw values keyed by metric field. Examples:
         //   { reps: 5, weight_kg: 100 }         // weight:reps
         //   { duration_sec: 35 }                  // duration
@@ -89,6 +97,30 @@ export async function skillRoutes(app: FastifyInstance) {
     const skill = await prisma.skill.findUnique({ where: { id: body.skillId } });
     if (!skill) return reply.code(404).send({ error: 'Skill not found' });
     if (skill.className !== me.class) return reply.code(400).send({ error: 'Not your class' });
+    // If the request came from a PendingSkillUnlock, the row
+    // owns the matched-set result. Pull it in and merge with the
+    // caller's explicit result object (the caller's wins if both
+    // are present, but typically they're identical).
+    if (body.pendingUnlockId) {
+      const pending = await prisma.pendingSkillUnlock.findUnique({
+        where: { id: body.pendingUnlockId },
+      });
+      if (!pending || pending.userId !== me.id) {
+        return reply.code(404).send({ error: 'Pending unlock not found' });
+      }
+      if (pending.status !== 'PENDING') {
+        return reply.code(400).send({ error: `Pending unlock is ${pending.status}` });
+      }
+      if (pending.skillId !== body.skillId) {
+        return reply.code(400).send({ error: 'Pending unlock is for a different skill' });
+      }
+      body.result = {
+        ...(pending.setReps != null && { reps: pending.setReps }),
+        ...(pending.setWeight != null && { weight_kg: pending.setWeight }),
+        ...(pending.setDuration != null && { duration_sec: pending.setDuration }),
+        ...body.result,
+      };
+    }
     const already = await prisma.userSkill.findUnique({
       where: { userId_skillId: { userId: me.id, skillId: skill.id } },
     });
@@ -123,13 +155,36 @@ export async function skillRoutes(app: FastifyInstance) {
         });
       }
     }
-    // Skill points (legacy / pre-v1)
-    const spent = mySkills.reduce((a, s) => a + s.skill.cost, 0);
-    const available = Math.max(0, Math.floor((me.level - 1) / 2) - spent);
-    if (skill.cost > available) {
-      return reply.code(400).send({ error: 'Not enough skill points' });
+    // Skill points (legacy / pre-v1). Skipped entirely for
+    // pending-unlock-driven requests — the user already paid
+    // the "cost" by doing the workout, we don't want to gate
+    // the activity→skill auto-unlock on the SP economy (which
+    // only kicks in at level 2+).
+    if (!body.pendingUnlockId) {
+      const spent = mySkills.reduce((a, s) => a + s.skill.cost, 0);
+      const available = Math.max(0, Math.floor((me.level - 1) / 2) - spent);
+      if (skill.cost > available) {
+        return reply.code(400).send({ error: 'Not enough skill points' });
+      }
     }
     await prisma.userSkill.create({ data: { userId: me.id, skillId: skill.id } });
+    // If this unlock came from a PendingSkillUnlock row, mark
+    // it UNLOCKED + set resolvedAt. The matching pass won't see
+    // it on the next run (it filters by status='PENDING').
+    // Also auto-DISMISS any sibling PENDING rows for the same
+    // skill — the matching pass may have created one per
+    // matching workout, and the user only needs to confirm
+    // once.
+    if (body.pendingUnlockId) {
+      await prisma.pendingSkillUnlock.update({
+        where: { id: body.pendingUnlockId },
+        data: { status: 'UNLOCKED', resolvedAt: new Date() },
+      });
+      await prisma.pendingSkillUnlock.updateMany({
+        where: { userId: me.id, skillId: skill.id, status: 'PENDING' },
+        data: { status: 'DISMISSED', resolvedAt: new Date() },
+      });
+    }
     // Bonus XP + gold for unlocking. Tier-scaled so T3 god-tier
     // skills reward more than T1 entry skills. Modest amounts —
     // skills are a side path, workouts should still be the main
@@ -248,5 +303,119 @@ export async function skillRoutes(app: FastifyInstance) {
         ? { valueSec: deadHangPr.value, achievedAt: deadHangPr.recordedAt }
         : null,
     };
+  });
+
+  // ===================================================================
+  // Pending skill-unlock inbox
+  // ===================================================================
+  //
+  // The activity→skill matching pass (lib/skillMatching.ts) creates
+  // PendingSkillUnlock rows when a recent workout's set satisfies a
+  // locked skill's test. The SkillTree page shows these one at a
+  // time on mount; each modal resolves via POST /unlock (UNLOCKED)
+  // or POST /pending-unlocks/dismiss (DISMISSED).
+
+  // POST /skills/check-eligible — run the matching pass for the
+  // current user and create PendingSkillUnlock rows. Idempotent
+  // on (userId, skillId, workoutId, matchedSetId). Called by the
+  // workout commit handler on save, and from the SkillTree page's
+  // pull-to-refresh / manual "check again" button.
+  app.post('/check-eligible', async (req) => {
+    const me = await requireUser(req);
+    const weight = me.weightKg ?? 0;
+    if (!weight) {
+      return { created: 0, note: 'set bodyweight in /profile to enable auto-detection' };
+    }
+    const eligible = await findEligibleSkillUnlocks(me.id, weight);
+    let created = 0;
+    for (const e of eligible) {
+      try {
+        await prisma.pendingSkillUnlock.create({
+          data: {
+            userId: me.id,
+            skillId: e.skillId,
+            workoutId: e.matchedSet.workoutId,
+            matchedSetId: e.matchedSet.setId,
+            setReps: e.matchedSet.reps,
+            setWeight: e.matchedSet.weight,
+            setDuration: e.matchedSet.duration,
+            exerciseName: e.matchedSet.exerciseName,
+            workoutDate: e.matchedSet.workoutDate,
+          },
+        });
+        created += 1;
+      } catch (err: any) {
+        // P2002 = unique violation = already pending. Idempotent.
+        if (err?.code !== 'P2002') throw err;
+      }
+    }
+    return { created, scanned: eligible.length };
+  });
+
+  // GET /skills/pending-unlocks — list the user's PENDING rows in
+  // oldest-first order. The SkillTree page renders them as modals
+  // one at a time, so order matters (FIFO).
+  //
+  // Dedupes by skillId: the matching pass can create multiple
+  // rows for the same skill (one per matching workout), but the
+  // user only needs to see it once. The sibling rows stay in the
+  // DB and are auto-DISMISSED when the user unlocks the skill
+  // (see /unlock handler above).
+  app.get('/pending-unlocks', async (req) => {
+    const me = await requireUser(req);
+    const rows = await prisma.pendingSkillUnlock.findMany({
+      where: { userId: me.id, status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      include: { skill: { select: { name: true, branch: true, tier: true, blurb: true, test: true } } },
+    });
+    const seen = new Set<string>();
+    const items = [];
+    for (const r of rows) {
+      if (seen.has(r.skillId)) continue;
+      seen.add(r.skillId);
+      items.push({
+        id: r.id,
+        skillId: r.skillId,
+        skillName: r.skill.name,
+        branch: r.skill.branch,
+        tier: r.skill.tier,
+        blurb: r.skill.blurb,
+        test: r.skill.test,
+        matchedSet: {
+          workoutId: r.workoutId,
+          workoutName: null, // not snapshotted; we only need the date
+          workoutDate: r.workoutDate,
+          exerciseName: r.exerciseName,
+          setId: r.matchedSetId,
+          reps: r.setReps,
+          weight: r.setWeight,
+          duration: r.setDuration,
+        },
+        createdAt: r.createdAt,
+      });
+    }
+    return { items };
+  });
+
+  // POST /skills/pending-unlocks/:id/dismiss — mark a pending row
+  // DISMISSED so it never re-appears in the queue. The user is
+  // saying "no, I don't want this unlock right now" — the workout
+  // set still exists, the next /check-eligible pass would create
+  // a new PENDING row, but the dismiss prevents this specific
+  // (skill, workout, set) tuple from re-queuing. (If the user
+  // logs the same exercise again, the new workout + new set will
+  // re-trigger eligibility.)
+  app.post<{ Params: { id: string } }>('/pending-unlocks/:id/dismiss', async (req, reply) => {
+    const me = await requireUser(req);
+    const id = req.params.id;
+    const row = await prisma.pendingSkillUnlock.findUnique({ where: { id } });
+    if (!row || row.userId !== me.id) {
+      return reply.code(404).send({ error: 'Pending unlock not found' });
+    }
+    await prisma.pendingSkillUnlock.update({
+      where: { id },
+      data: { status: 'DISMISSED', resolvedAt: new Date() },
+    });
+    return { ok: true };
   });
 }

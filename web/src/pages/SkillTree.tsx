@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -10,6 +10,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
 import { CLASS_META } from '@/lib/types';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
+import { playSound } from '@/lib/soundBus';
 
 // Tailwind text-neon-* class for the user's class accent. Used by
 // the calitree PNG icons (via mask-image + background-color:
@@ -55,6 +56,31 @@ type SkillTest = {
   safety: string;
   metric: string;
   threshold: Record<string, number>;
+};
+
+// Pending unlock payload returned by /skills/pending-unlocks.
+// The matchedSet is a snapshot of the workout set that satisfied
+// the skill's test threshold — the modal renders these values
+// so the user can verify "ah, my 5-rep pull-up set on Oct 12
+// was the trigger" before clicking Unlock.
+type PendingUnlock = {
+  id: string;
+  skillId: string;
+  skillName: string;
+  branch: string | null;
+  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  blurb: string | null;
+  test: SkillTest | null;
+  matchedSet: {
+    workoutId: string;
+    workoutDate: string;
+    exerciseName: string;
+    setId: string;
+    reps: number | null;
+    weight: number | null;
+    duration: number | null;
+  };
+  createdAt: string;
 };
 
 type Skill = {
@@ -617,19 +643,60 @@ export function SkillTreePage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Skill | null>(null);
+  // Pending-unlock queue — populated on mount from /skills/pending-unlocks
+  // and consumed one modal at a time. FIFO so the user sees their
+  // oldest eligibility first.
+  const [pendingQueue, setPendingQueue] = useState<PendingUnlock[] | null>(null);
+  const [activePending, setActivePending] = useState<PendingUnlock | null>(null);
 
   const treeQ = useQuery({
     queryKey: ['skills', 'tree'],
     queryFn: () => api<TreeResponse>('/skills/tree'),
   });
 
+  // Fetch the pending-unlock inbox on mount. The matching pass
+  // runs on the server (workout commit + manual /check-eligible
+  // button), so this is a pure read. After consuming an item we
+  // re-fetch to keep the queue in sync.
+  const pendingQ = useQuery({
+    queryKey: ['skills', 'pending-unlocks'],
+    queryFn: () => api<{ items: PendingUnlock[] }>('/skills/pending-unlocks'),
+    enabled: !!user?.class,
+  });
+
+  // Once the query resolves, seed the local queue and surface the
+  // first item. We intentionally only set state on the first
+  // transition from null → populated so the user's in-flight modal
+  // doesn't get yanked out from under them when the query
+  // re-fetches after a resolve / dismiss.
+  useEffect(() => {
+    if (pendingQ.data && pendingQueue === null) {
+      const items = pendingQ.data.items;
+      setPendingQueue(items);
+      setActivePending(items[0] ?? null);
+    }
+  }, [pendingQ.data, pendingQueue]);
+
   const branches = useMemo(
     () => (treeQ.data ? buildBranches(treeQ.data.items, treeQ.data.className) : []),
     [treeQ.data],
   );
 
+  // Helper: advance the queue after the user resolves the active
+  // modal (either unlock or dismiss). The new head of the queue
+  // becomes the next modal.
+  function advanceQueue() {
+    setActivePending(null);
+    setPendingQueue((q) => {
+      if (!q || q.length === 0) return q;
+      const [, ...rest] = q;
+      setActivePending(rest[0] ?? null);
+      return rest;
+    });
+  }
+
   const unlockM = useMutation({
-    mutationFn: (vars: { skillId: string; result: Record<string, number> }) =>
+    mutationFn: (vars: { skillId: string; result?: Record<string, number>; pendingUnlockId?: string }) =>
       api<{
         ok: boolean;
         reason?: string;
@@ -645,6 +712,7 @@ export function SkillTreePage() {
     onSuccess: (res) => {
       if (res.ok) {
         qc.invalidateQueries({ queryKey: ['skills', 'tree'] });
+        qc.invalidateQueries({ queryKey: ['skills', 'pending-unlocks'] });
         // Surface the XP + level-up rewards via the global overlay
         // so the user actually sees the payoff of unlocking a
         // skill. The server already returns the numbers — we just
@@ -671,6 +739,11 @@ export function SkillTreePage() {
           });
           playSound('levelUp');
         }
+        // Skill-unlock sound — the meme. Fires on every successful
+        // unlock (manual or auto). Mute state from Settings →
+        // Sound applies. playSound() is fire-and-forget so we
+        // don't block the modal close.
+        playSound('skillUnlock');
         setSelected(null);
       }
     },
@@ -776,6 +849,159 @@ export function SkillTreePage() {
           isPending={unlockM.isPending}
         />
       )}
+
+      {/* Pending-unlock queue — one modal at a time, FIFO. The
+          active modal renders on top of the tree; the rest of
+          the UI stays interactive underneath so the user can
+          dismiss the modal without losing scroll position on
+          the page. After resolve/dismiss, the next item in the
+          queue surfaces automatically. */}
+      {activePending && (
+        <PendingUnlockModal
+          pending={activePending}
+          totalInQueue={pendingQueue?.length ?? 0}
+          onClose={() => {
+            setActivePending(null);
+            // If the user dismisses without resolving, drop
+            // the item server-side too — otherwise it'd re-queue
+            // on every page load.
+            if (activePending) {
+              api(`/skills/pending-unlocks/${activePending.id}/dismiss`, {
+                method: 'POST',
+              }).catch(() => { /* swallow — non-critical */ });
+            }
+            advanceQueue();
+          }}
+          onUnlock={async () => {
+            await unlockM.mutateAsync({
+              skillId: activePending.skillId,
+              pendingUnlockId: activePending.id,
+            });
+            advanceQueue();
+          }}
+          isPending={unlockM.isPending}
+        />
+      )}
     </Layout>
+  );
+}
+
+/**
+ * Pending-unlock confirmation modal. Renders when the user has
+ * at least one PENDING PendingSkillUnlock in their inbox. Shows
+ * the matched set details (reps × weight, exercise name, date)
+ * so the user can verify the match before clicking Unlock.
+ *
+ * Close (X) dismisses server-side. Unlock calls /skills/unlock
+ * with the pendingUnlockId — the server uses the snapshotted
+ * set as the unlock result and marks the row UNLOCKED.
+ */
+function PendingUnlockModal({
+  pending,
+  totalInQueue,
+  onClose,
+  onUnlock,
+  isPending,
+}: {
+  pending: PendingUnlock;
+  totalInQueue: number;
+  onClose: () => void;
+  onUnlock: () => Promise<void> | void;
+  isPending: boolean;
+}) {
+  const tierShort = pending.tier.replace('TIER_', 'T');
+  const test = pending.test;
+  // Format the set details for display. Default to '-' when the
+  // matched set has no value for the metric (e.g. duration for a
+  // reps-based test).
+  const setDetails: string[] = [];
+  if (pending.matchedSet.reps != null) setDetails.push(`${pending.matchedSet.reps} reps`);
+  if (pending.matchedSet.weight != null && pending.matchedSet.weight > 0) {
+    setDetails.push(`${pending.matchedSet.weight.toFixed(1)} kg`);
+  }
+  if (pending.matchedSet.duration != null) {
+    setDetails.push(`${pending.matchedSet.duration}s`);
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Skill ready to unlock!"
+      width="max-w-lg"
+    >
+      <div className="space-y-3">
+        {/* Skill header */}
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-2xl neon-text-lime">
+            {pending.skillName}
+          </span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            {tierShort}{pending.branch ? ` · ${pending.branch}` : ''}
+          </span>
+        </div>
+        {pending.blurb && (
+          <div className="text-sm text-ink-200 italic">{pending.blurb}</div>
+        )}
+
+        {/* Matched set details — the "this is what you did" callout.
+            Same idea as the Locked view's prerequisite list:
+            show enough info for the user to verify the match
+            without re-doing the test. */}
+        <div className="border border-neon-lime/30 bg-neon-lime/5 p-2 text-xs font-mono text-ink-100">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-neon-lime uppercase tracking-widest text-[10px]">Matched set</span>
+            <span className="text-ink-400 text-[10px]">
+              {new Date(pending.matchedSet.workoutDate).toLocaleDateString()}
+            </span>
+          </div>
+          <div className="mt-1">
+            <span className="text-ink-200">{pending.matchedSet.exerciseName}</span>
+            {setDetails.length > 0 && (
+              <span className="text-ink-300 ml-2">
+                · {setDetails.join(' · ')}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Test description — same shape as the manual UnlockModal
+            so the user sees the full context. */}
+        {test && (
+          <div className="text-sm text-ink-100">{test.description}</div>
+        )}
+        {test?.safety && (
+          <div className="border border-amber-500/40 bg-amber-500/5 p-2 text-xs font-mono text-amber-200">
+            <span className="uppercase tracking-widest mr-2 text-amber-300">SAFETY</span>
+            {test.safety}
+          </div>
+        )}
+        {test && (
+          <div className="text-xs font-mono text-ink-400">
+            Threshold: <span className="text-ink-200">{JSON.stringify(test.threshold)}</span>
+          </div>
+        )}
+
+        {/* Queue position — lets the user know whether more
+            modals are coming after this one. */}
+        {totalInQueue > 1 && (
+          <div className="text-[10px] font-mono text-ink-400">
+            1 of {totalInQueue} eligible unlocks in your queue.
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <NeonButton variant="cyan" onClick={onClose} disabled={isPending}>
+            Not yet
+          </NeonButton>
+          <NeonButton
+            variant="lime"
+            loading={isPending}
+            onClick={() => onUnlock()}
+          >
+            Unlock
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
   );
 }

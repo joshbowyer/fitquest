@@ -305,6 +305,10 @@ model User {
   penanceTemplates       PenanceTemplate[]
   penanceEvents          PenanceEvent[]
   heartLossEvents        HeartLossEvent[]
+  /// Skill unlocks waiting for user confirmation. Created when a
+  /// recent workout's set satisfies a locked skill's test. The
+  /// SkillTree page shows these one at a time on mount.
+  pendingSkillUnlocks    PendingSkillUnlock[]
   purchases              Purchase[]
   soulstones             Soulstone[]
   // Breach boss progress. One row per user; lazily created on
@@ -542,6 +546,7 @@ model Workout {
   /// Looked up by leak, not by user — so no back-relation on
   /// PortalLeakDamageEvent needed.
   portalLeakDamageEvents PortalLeakDamageEvent[]
+  PendingSkillUnlock     PendingSkillUnlock[]
 
   @@unique([userId, performedAt])
   @@index([userId, importSource, performedAt(sort: Desc)])
@@ -701,21 +706,21 @@ model Pr {
 }
 
 model Skill {
-  id            String      @id @default(cuid())
-  className     ClassName
-  tier          SkillTier
-  name          String      @unique
+  id             String               @id @default(cuid())
+  className      ClassName
+  tier           SkillTier
+  name           String               @unique
   /// Short conceptual blurb: "What is this skill? Why does it
   /// matter?" Rendered on the SkillTree page under the skill
   /// name so users understand the point before diving into the
   /// test details. Existing skills (pre-v1) have null; new skills
   /// seed a value.
-  blurb         String?
+  blurb          String?
   /// Existing field. Holds the in-game perk summary (e.g.
   /// "+10% gold from PRs") rendered in the unlock modal. Not the
   /// focus of the SkillTree redesign — the focus is the test, not
   /// the perk — but kept for the in-game reward feedback loop.
-  description   String
+  description    String
   /// Test details for unlocking this skill. JSON shape:
   ///   {
   ///     description: "How to perform" (form, technique),
@@ -727,19 +732,24 @@ model Skill {
   /// The unlock endpoint validates the user's submitted result
   /// against this threshold. See api/src/lib/skillTest.ts for
   /// the metric-to-validator mapping.
-  test          Json?
-  cost          Int         @default(1)
-  prerequisites String[]
-  position      Int
+  test           Json?
+  cost           Int                  @default(1)
+  prerequisites  String[]
+  position       Int
   /// Branch within the class (e.g. JUGGERNAUT's "Squat", PHANTOM's
   /// "Pull"). The SkillTree page renders one column per branch, so
   /// every skill needs a branch label. Set by seedSkills; nullable
   /// for pre-v1 skills (which the page falls back to "Other" for).
   /// Stored as a plain String rather than an enum so future class /
   /// branch additions don't require a migration.
-  branch        String?
-  effects       Json
-  userSkills    UserSkill[]
+  branch         String?
+  effects        Json
+  userSkills     UserSkill[]
+  /// Inbox of pending unlocks — one per (workout, set) that
+  /// satisfied this skill's test. Unique on
+  /// (userId, skillId, workoutId, matchedSetId) so re-running
+  /// the matching pass is idempotent.
+  pendingUnlocks PendingSkillUnlock[]
 }
 
 model Avatar {
@@ -765,6 +775,49 @@ model UserSkill {
   unlockedAt DateTime @default(now())
 
   @@unique([userId, skillId])
+}
+
+/// PendingSkillUnlock — created when a workout's exercises + sets
+/// satisfy a locked skill's test threshold. The SkillTree page
+/// shows the user's PENDING rows one at a time on mount; each
+/// modal has "Unlock" (calls POST /skills/unlock with the
+/// pendingUnlockId, which then marks the row UNLOCKED) and "Not
+/// yet" (marks DISMISSED). Idempotent on
+/// (userId, skillId, workoutId, setId) so re-running the matching
+/// pass doesn't create duplicate rows.
+///
+/// The set data is snapshotted (setReps / setWeight / setDuration)
+/// at insert time so the modal can render the matched set even
+/// after the workout is later edited or deleted. Cascading
+/// deletes (on user / workout / skill) still clean up.
+model PendingSkillUnlock {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId      String
+  skill        Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  /// The workout whose set triggered the eligibility. Cascades on
+  /// delete so we don't end up with dangling pending rows.
+  workoutId    String
+  workout      Workout   @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  /// The specific Set within the workout that matched. We
+  /// snapshot the relevant fields rather than joining, so the
+  /// modal can render the matched set even after Set mutation.
+  matchedSetId String
+  setReps      Int?
+  setWeight    Float?
+  setDuration  Int?
+  exerciseName String
+  workoutDate  DateTime
+  /// PENDING | DISMISSED | UNLOCKED. Default PENDING. The /skills
+  /// /pending-unlocks endpoint only returns PENDING rows so the
+  /// queue auto-drains as the user unlocks or dismisses.
+  status       String    @default("PENDING")
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+
+  @@unique([userId, skillId, workoutId, matchedSetId])
+  @@index([userId, status, createdAt])
 }
 
 /// Home-base shield tier. Drives the visible home-base widget
