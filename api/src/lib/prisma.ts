@@ -69,6 +69,7 @@ const {
   SubstanceCategory,
   TrackedItemCategory,
   TrackedItemUnit,
+  WorkoutSource,
   WorkoutType,
 } = requireCjs('@prisma/client');
 
@@ -132,5 +133,6 @@ export {
   SubstanceCategory,
   TrackedItemCategory,
   TrackedItemUnit,
+  WorkoutSource,
   WorkoutType,
 };

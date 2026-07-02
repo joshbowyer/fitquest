@@ -123,6 +123,17 @@ enum WorkoutType {
   OTHER
 }
 
+/// Which surface ingested the workout. Lets the /import page
+/// distinguish bridge uploads from web drags, and keeps the
+/// door open for bulk-reprocess imports later without another
+/// enum migration. Default WEB — every existing row + every
+/// non-bridge future ingest keeps the legacy behaviour.
+enum WorkoutSource {
+  WEB
+  BRIDGE
+  BULK_REPROCESS
+}
+
 /// Method used to record a body-fat or weight measurement.
 /// Methodologically-known (DEXA / BOD_POD / NAVY_TAPE) get full
 /// confidence in the morning report's body-comp insight; visual
@@ -484,6 +495,11 @@ model Workout {
   /// how the workout went (not just how they expected it to go).
   /// Same string length budget — textareas cap at 2000 chars.
   postNotes              String?
+  /// Which surface ingested this workout. See [WorkoutSource].
+  /// Surfaced on /import → Bridge imports panel so the user can
+  /// see which activities came in via the FitQuestBridge APK vs.
+  /// a manual drag-and-drop into the web dropzone.
+  importSource           WorkoutSource           @default(WEB)
   performedAt            DateTime                @default(now())
   createdAt              DateTime                @default(now())
   exercises              Exercise[]
@@ -528,6 +544,7 @@ model Workout {
   portalLeakDamageEvents PortalLeakDamageEvent[]
 
   @@unique([userId, performedAt])
+  @@index([userId, importSource, performedAt(sort: Desc)])
 }
 
 model Exercise {

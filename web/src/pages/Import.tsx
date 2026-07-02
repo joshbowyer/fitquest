@@ -7,6 +7,26 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { classNames, formatRelative } from '@/lib/format';
 
+// Bridge-import summary — groups bridge-ingested workouts by
+// local-date so the user can see "today I got 3 activities via
+// the bridge" at a glance.
+type BridgeSummary = {
+  days: number;
+  totalCount: number;
+  groups: Array<{
+    date: string;
+    count: number;
+    totalDurationMin: number;
+    items: Array<{
+      id: string;
+      name: string | null;
+      notes: string | null;
+      performedAt: string;
+      duration: number | null;
+    }>;
+  }>;
+};
+
 type FitKind = 'activity' | 'sleep' | 'hrv' | 'monitor' | 'metrics' | 'unknown';
 
 type CreatedRecord =
@@ -64,12 +84,21 @@ export function ImportPage() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [bridgeOpen, setBridgeOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const summaryQ = useQuery({
     queryKey: ['import', 'summary'],
     queryFn: () => api<ImportSummary>('/import/summary'),
     refetchInterval: 30_000,
+  });
+  // Bridge-import summary. Polled less aggressively than the
+  // manual summary since the bridge uploads in bursts and we
+  // don't want a hammer of /import/bridge-summary every 30s.
+  const bridgeQ = useQuery({
+    queryKey: ['import', 'bridge-summary'],
+    queryFn: () => api<BridgeSummary>('/import/bridge-summary', { query: { days: 14 } }),
+    refetchInterval: 60_000,
   });
 
   const handleFiles = useCallback(
@@ -326,6 +355,75 @@ export function ImportPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+      </Panel>
+
+      {/* Bridge imports — collapsed by default so it doesn't
+          dominate the page when there's nothing to show.
+          Surfaces only activities ingested via the FitQuestBridge
+          APK (importSource = BRIDGE), grouped by local-date in
+          the user's timezone. The summary endpoint returns the
+          last 14 days; users with longer histories can scan them
+          in /activities if they need to. */}
+      <Panel
+        title="Bridge imports"
+        variant="amber"
+        className="mt-4"
+        action={
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-ink-300">
+              {bridgeQ.isLoading ? '…' : `${bridgeQ.data?.totalCount ?? 0} in last ${bridgeQ.data?.days ?? 14}d`}
+            </span>
+            <button
+              onClick={() => setBridgeOpen((o) => !o)}
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-neon-amber border border-ink-500/30 px-2 py-0.5"
+              aria-expanded={bridgeOpen}
+            >
+              {bridgeOpen ? '▾ collapse' : '▸ expand'}
+            </button>
+          </div>
+        }
+      >
+        {bridgeQ.isLoading ? (
+          <div className="text-[10px] font-mono text-ink-300">loading…</div>
+        ) : !bridgeQ.data || bridgeQ.data.totalCount === 0 ? (
+          <div className="text-[10px] font-mono text-ink-400 italic text-center py-3">
+            No bridge uploads yet. Install FitQuestBridge + point it at this
+            server; new Gadgetbridge .fit files will show up here.
+          </div>
+        ) : !bridgeOpen ? (
+          <div className="text-[10px] font-mono text-ink-300">
+            {bridgeQ.data.groups[0]?.count ?? 0} activities on {bridgeQ.data.groups[0]?.date ?? '—'} · click ▸ expand to see all
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {bridgeQ.data.groups.map((g) => (
+              <div key={g.date} className="border-l-2 border-neon-amber/30 pl-3">
+                <div className="flex items-baseline justify-between">
+                  <div className="text-[11px] font-display tracking-widest uppercase text-ink-100">
+                    {g.date}
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-400">
+                    {g.count} {g.count === 1 ? 'activity' : 'activities'}
+                    {g.totalDurationMin > 0 && (
+                      <> · {Math.round(g.totalDurationMin)} min total</>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1 space-y-0.5">
+                  {g.items.map((it) => (
+                    <div key={it.id} className="text-[11px] font-mono flex items-baseline gap-2">
+                      <span className="neon-text-amber">{it.name ?? it.notes ?? '(unnamed)'}</span>
+                      {it.duration != null && (
+                        <span className="text-ink-400">{Math.round(it.duration)}m</span>
+                      )}
+                      <span className="text-ink-500 ml-auto">{formatRelative(it.performedAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Panel>

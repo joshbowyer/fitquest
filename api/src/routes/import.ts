@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { WorkoutSource } from '../lib/prisma.js';
 import { parseFit, isFitBuffer, type FitImportResult, type FitKind } from '../lib/fit.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { checkRoutineProgress } from './routine.js';
@@ -11,6 +12,14 @@ import { importExport, ImportError, validatePayload } from '../lib/import.js';
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
 const bodyLimit = 60 * 1024 * 1024; // Fastify body limit; pair with our 50MB cap
+
+// Source for a FIT ingest. Mirrors the WorkoutSource enum on the
+// Workout row. The FitQuestBridge APK sets `source: 'BRIDGE'` in
+// every batch upload so the /import page can separate auto-uploaded
+// activities from web drags. Unknown / missing values default to
+// WEB (same as the Workout column default) so old clients keep
+// working without an explicit field.
+const ImportSourceSchema = z.nativeEnum(WorkoutSource).optional();
 
 type CreatedRecord =
   | { kind: 'workout'; id: string; summary: string }
@@ -29,6 +38,7 @@ type FileResult = {
 async function persist(
   userId: string,
   fit: FitImportResult,
+  importSource: WorkoutSource = WorkoutSource.WEB,
 ): Promise<CreatedRecord[]> {
   const created: CreatedRecord[] = [];
 
@@ -84,6 +94,7 @@ async function persist(
           name: await activityTitle(w.sport, w.trackpoints),
           duration,
           notes: `[FIT] ${notes}`,
+          importSource,
           performedAt: w.startTime,
           trackJson: (w.trackpoints ?? []) as any,
         },
@@ -216,7 +227,12 @@ export async function importRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'Not a FIT file (bad header)' });
     }
     const fit = parseFit(buf, me.timezone ?? 'UTC');
-    const created = await persist(me.id, fit);
+    // Single-file endpoint accepts ?source=BRIDGE for parity with
+    // /batch. We don't expect anyone to use this path with the
+    // bridge (it always batches) but keeping the API symmetric
+    // means any future client can flag its origin.
+    const singleSource = ImportSourceSchema.parse((req.query as any)?.source ?? undefined) ?? WorkoutSource.WEB;
+    const created = await persist(me.id, fit, singleSource);
     const fileResult: FileResult = {
       filename: 'upload.fit',
       fitKind: fit.kind,
@@ -232,6 +248,11 @@ export async function importRoutes(app: FastifyInstance) {
 // posts them in one request. This is more portable than multipart and
 // avoids the @fastify/multipart streaming quirks across versions. We
 // re-parse each file as a buffer on the server side and process it.
+//
+// Optional `source` field ('WEB' | 'BRIDGE' | 'BULK_REPROCESS')
+// identifies the ingest surface. Default WEB so old clients keep
+// working. The FitQuestBridge APK sets `source: 'BRIDGE'` on every
+// batch so the /import page can distinguish auto-uploads.
   app.post('/batch', { bodyLimit }, async (req, reply) => {
     const me = await requireUser(req);
     const body = z.object({
@@ -239,7 +260,9 @@ export async function importRoutes(app: FastifyInstance) {
         filename: z.string().min(1).max(200),
         contentBase64: z.string().min(1),
       })).min(1).max(50),
+      source: ImportSourceSchema,
     }).parse(req.body);
+    const source: WorkoutSource = body.source ?? WorkoutSource.WEB;
     const results: FileResult[] = [];
     for (const f of body.files) {
       try {
@@ -265,7 +288,7 @@ export async function importRoutes(app: FastifyInstance) {
           continue;
         }
         const fit = parseFit(buf, me.timezone ?? 'UTC');
-        const created = await persist(me.id, fit);
+        const created = await persist(me.id, fit, source);
         results.push({
           filename: f.filename,
           fitKind: fit.kind,
@@ -316,6 +339,80 @@ export async function importRoutes(app: FastifyInstance) {
       }),
     ]);
     return { recentWorkouts, recentSleep, recentSleepOnset, recentHrv };
+  });
+
+  // GET /import/bridge-summary — recent FIT files ingested via
+  // the FitQuestBridge APK (importSource = BRIDGE). The /import
+  // page renders this in a collapsed panel below the existing
+  // "Recent imports" block so the user can confirm the bridge is
+  // doing its job without mixing it into the manually-imported
+  // log.
+  //
+  // We group by local-date in the user's tz (matching how the
+  // /import page renders "Today / Tomorrow" elsewhere) so a
+  // bridge batch that uploads several files around midnight
+  // doesn't split weirdly across days. The activity names come
+  // straight from the Workout row — `notes` is auto-populated by
+  // the FIT parser with `<sport>/<subsport> · <distance> · …`.
+  app.get('/bridge-summary', async (req) => {
+    const me = await requireUser(req);
+    const days = Math.max(1, Math.min(60, Number((req.query as any)?.days) || 14));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const rows = await prisma.workout.findMany({
+      where: {
+        userId: me.id,
+        importSource: WorkoutSource.BRIDGE,
+        performedAt: { gte: since },
+      },
+      orderBy: { performedAt: 'desc' },
+      take: 200,
+      select: {
+        id: true,
+        name: true,
+        notes: true,
+        performedAt: true,
+        duration: true,
+      },
+    });
+
+    // Group by local-date string. We use Intl.DateTimeFormat so
+    // the bucket respects the user's tz (vs. UTC). This is the
+    // same pattern the /forecast page uses.
+    const tz = me.timezone ?? 'UTC';
+    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    const byDate = new Map<string, {
+      date: string;
+      count: number;
+      totalDurationMin: number;
+      items: Array<{ id: string; name: string | null; notes: string | null; performedAt: string; duration: number | null }>;
+    }>();
+    for (const r of rows) {
+      const date = fmt.format(r.performedAt); // YYYY-MM-DD in tz
+      const bucket = byDate.get(date) ?? {
+        date,
+        count: 0,
+        totalDurationMin: 0,
+        items: [],
+      };
+      bucket.count += 1;
+      bucket.totalDurationMin += r.duration ?? 0;
+      bucket.items.push({
+        id: r.id,
+        name: r.name,
+        notes: r.notes,
+        performedAt: r.performedAt.toISOString(),
+        duration: r.duration,
+      });
+      byDate.set(date, bucket);
+    }
+    const groups = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+
+    return {
+      days,
+      totalCount: rows.length,
+      groups,
+    };
   });
 
   // ============================================================
