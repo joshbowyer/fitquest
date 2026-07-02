@@ -85,13 +85,13 @@ export type SoundEvent =
 // in and uncomment to upgrade. Events without a file use the
 // built-in synth tone (see playPattern() below).
 const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
-  // workoutComplete: '/sounds/workout-complete.mp3',
-  // levelUp:        '/sounds/level-up.mp3',
-  // achievement:    '/sounds/achievement.mp3',
-  // restTimerDone:   '/sounds/rest-timer.mp3',
-  skillUnlock:     '/sounds/skill-unlock.mp3',   // the meme — party horn + kids yay
-  // bossKill:        '/sounds/boss-kill.mp3',
-  // lootDrop:        '/sounds/loot-drop.mp3',
+  workoutComplete: '/sounds/workout-complete.mp3',
+  levelUp:        '/sounds/level-up.mp3',
+  achievement:    '/sounds/achievement.mp3',
+  restTimerDone:   '/sounds/rest-timer.mp3',
+  skillUnlock:     '/sounds/skill-unlock.mp3',
+  bossKill:        '/sounds/boss-kill.mp3',
+  lootDrop:        '/sounds/loot-drop.mp3',
 };
 
 function playTone(
