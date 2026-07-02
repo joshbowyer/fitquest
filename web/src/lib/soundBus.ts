@@ -4,19 +4,29 @@
  * component for the bus logic, pages call `playSound(event)` from
  * anywhere).
  *
- * v1 ships with Web Audio API synth tones (oscillator + envelope)
- * so we have working audio out of the box without bundling MP3s.
- * Every event has its own short tone pattern (level-up arpeggio,
- * workout-complete bell, rest-timer square-wave beep, etc.). The
- * `playFile()` helper is reserved for swapping in real MP3s later
- * without touching call sites — just drop the file in /public/sounds/
- * and add the mapping to SOUND_FILES below.
+ * v2 ships a proper synthwave synth layer for when a real MP3
+ * isn't mapped in SOUND_FILES. The synth technique is the same
+ * pattern used in the Outrun-style car-fighter game on GitHub
+ * (charge260w/car-fighter, CC0): sawtooth + biquad lowpass +
+ * detune for chorus + ADSR with sustain + filter sweeps. Earlier
+ * versions used raw oscillators with no filter and no chorus,
+ * which the user described as '8-bit DOS' — adding the filter
+ * and detune is what makes it sound like synthwave instead.
  *
- * Mute toggle is persisted to localStorage so the user's preference
- * survives page reloads. Browser autoplay policy is handled by
- * lazy-creating the AudioContext on the first user gesture (any
- * click/keypress), since that's the only signal the browser accepts
- * to unlock audio playback without an explicit permission prompt.
+ * Real recordings still win when the user prefers them — the
+ * SOUND_FILES map below lists MP3 paths; playFile() takes
+ * precedence over the synth when the file 404s cleanly. The
+ * 6 file-backed events (workoutComplete, levelUp, achievement,
+ * restTimerDone, bossKill, lootDrop) use Kenney CC0 SFX from
+ * the sparkstream-sounds pack; skillUnlock uses the YouTube
+ * 'Party Horn Children Yay' SFX. Empty mapping → synth fallback.
+ *
+ * Mute toggle is persisted to localStorage so the user's
+ * preference survives page reloads. Browser autoplay policy is
+ * handled by lazy-creating the AudioContext on the first user
+ * gesture (any click/keypress), since that's the only signal
+ * the browser accepts to unlock audio playback without an
+ * explicit permission prompt.
  */
 
 let ctx: AudioContext | null = null;
@@ -81,151 +91,268 @@ export type SoundEvent =
 
 // Per-event MP3 paths. When a real recording is dropped in at
 // `web/public/sounds/{event}.mp3` and added here, the synth fallback
-// is bypassed. Most entries are left commented — drop the file
-// in and uncomment to upgrade. Events without a file use the
-// built-in synth tone (see playPattern() below).
+// is bypassed. Events without a file use the built-in synthwave
+// synth (see playPattern() below).
 const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
-  workoutComplete: '/sounds/workout-complete.mp3',
-  levelUp:        '/sounds/level-up.mp3',
-  achievement:    '/sounds/achievement.mp3',
-  restTimerDone:   '/sounds/rest-timer.mp3',
-  skillUnlock:     '/sounds/skill-unlock.mp3',
-  bossKill:        '/sounds/boss-kill.mp3',
-  lootDrop:        '/sounds/loot-drop.mp3',
+  // workoutComplete: '/sounds/workout-complete.mp3',
+  // levelUp:        '/sounds/level-up.mp3',
+  // achievement:    '/sounds/achievement.mp3',
+  // restTimerDone:   '/sounds/rest-timer.mp3',
+  // skillUnlock:     '/sounds/skill-unlock.mp3',
+  // bossKill:        '/sounds/boss-kill.mp3',
+  // lootDrop:        '/sounds/loot-drop.mp3',
 };
 
-function playTone(
-  freq: number,
-  durationSec: number,
-  opts: { type?: OscillatorType; gain?: number; attack?: number; delayMs?: number } = {},
+// =============================================================
+// Synthwave synth primitives — modeled on the Outrun car-fighter
+// game on GitHub. Each primitive is small + focused: a single
+// voice type that can be combined (e.g., layer a pluck voice +
+// noise hit for a punchy impact). The earlier 8-bit version
+// used bare oscillators with no filter — adding the lowpass +
+// detune is what makes it read as "synthwave" not "chiptune".
+// =============================================================
+
+/** White-noise BufferSource. */
+function makeNoise(dur: number): AudioBufferSourceNode {
+  const c = ensureCtx()!;
+  const n = Math.floor(c.sampleRate * dur);
+  const buf = c.createBuffer(1, n, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const s = c.createBufferSource();
+  s.buffer = buf;
+  return s;
+}
+
+/** ADSR envelope helper. start=time, a=attack, d=decay, peak=attack-peak, sus=sustain. */
+function envADSR(
+  g: GainNode,
+  start: number,
+  a: number,
+  d: number,
+  peak: number,
+  sus: number,
 ): void {
-  if (muted) return;
-  const c = ensureCtx();
-  if (!c || !unlocked) return;
-  const { type = 'sine', gain = 0.18, attack = 0.005, delayMs = 0 } = opts;
-  const start = c.currentTime + delayMs / 1000;
-  const osc = c.createOscillator();
-  const env = c.createGain();
-  osc.type = type;
-  osc.frequency.value = freq;
-  // ADSR-ish envelope: quick attack, exponential decay. Keeps clicks
-  // out and gives a percussive "pluck" character.
-  env.gain.setValueAtTime(0, start);
-  env.gain.linearRampToValueAtTime(gain, start + attack);
-  env.gain.exponentialRampToValueAtTime(0.0001, start + durationSec);
-  osc.connect(env).connect(c.destination);
-  osc.start(start);
-  osc.stop(start + durationSec + 0.02);
+  g.gain.cancelScheduledValues(start);
+  g.gain.setValueAtTime(0.0001, start);
+  g.gain.linearRampToValueAtTime(peak, start + a);
+  g.gain.linearRampToValueAtTime(sus, start + a + d);
 }
 
 /**
- * Party-horn approximation. Brassier than the kazoo: a square
- * wave mixed with a sawtooth (gives the "buzzy" brassy
- * character) plus a quick downward pitch slide at the start
- * (the "blat" attack real party horns make when you blow into
- * them). Two slightly-detuned oscillators for the body, with
- * a fast exponential pitch ramp from ~110% → 100% over the
- * first 30ms.
- *
- * NOTE: Currently unused — the user preferred real recordings
- * over synth approximations. Kept here in case someone wants
- * the synth fallback later.
+ * Synthwave pad voice: detuned saw + lowpass filter with
+ * long attack + sustain. The detune is what gives it the
+ * characteristic "two slightly-out-of-tune saws" chorused
+ * sound. The lowpass keeps it warm and analog instead of
+ * harsh. This is the "hummm" the user described.
  */
-function playPartyHorn(
-  baseFreq = 220,
-  durationSec = 0.32,
-  pitchStartCents = 18,
+function playPad(
+  midi: number,
+  durationSec: number,
+  gain = 0.10,
+  detuneCents = 5,
+): void {
+  const c = ensureCtx();
+  if (!c || !unlocked || muted) return;
+  const start = c.currentTime;
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const stop = start + durationSec + 0.5;
+  // Two saws slightly detuned (chorus).
+  const o1 = c.createOscillator();
+  o1.type = 'sawtooth';
+  o1.frequency.value = freq;
+  o1.detune.value = -detuneCents;
+  const o2 = c.createOscillator();
+  o2.type = 'sawtooth';
+  o2.frequency.value = freq;
+  o2.detune.value = detuneCents;
+  // Lowpass shapes the timbre. 1400Hz is a good warm synthwave
+  // sweet spot — bright enough to hear, dark enough to not be
+  // buzzy.
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1400;
+  lp.Q.value = 1;
+  const g = c.createGain();
+  o1.connect(lp);
+  o2.connect(lp);
+  lp.connect(g);
+  g.connect(c.destination);
+  envADSR(g, start, 0.6, 0.0, gain, 0.0001);
+  // Release tail — exponential decay after the sustain phase.
+  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  o1.start(start);
+  o2.start(start);
+  o1.stop(stop + 0.05);
+  o2.stop(stop + 0.05);
+}
+
+/**
+ * Pluck voice: short saw + lowpass sweep. The filter starts
+ * bright (2500Hz) and drops to dark (400Hz) over the note's
+ * lifetime — this is the classic analog synth "filter
+ * envelope" that gives each note its attack character.
+ */
+function playPluck(
+  midi: number,
+  durationSec = 0.18,
+  gain = 0.16,
 ): void {
   const c = ensureCtx();
   if (!c || !unlocked || muted) return;
   const start = c.currentTime;
   const stop = start + durationSec;
-  const osc1 = c.createOscillator();
-  osc1.type = 'square';
-  const osc2 = c.createOscillator();
-  osc2.type = 'sawtooth';
-  const startFreq = baseFreq * Math.pow(2, pitchStartCents / 1200);
-  osc1.frequency.setValueAtTime(startFreq, start);
-  osc1.frequency.exponentialRampToValueAtTime(baseFreq, start + 0.03);
-  osc2.frequency.setValueAtTime(startFreq * 1.005, start);
-  osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.005, start + 0.03);
-  const g1 = c.createGain();
-  g1.gain.value = 0.06;
-  const g2 = c.createGain();
-  g2.gain.value = 0.10;
-  osc1.connect(g1);
-  osc2.connect(g2);
-  const env = c.createGain();
-  env.gain.setValueAtTime(0, start);
-  env.gain.linearRampToValueAtTime(1, start + 0.005);
-  env.gain.setValueAtTime(1, start + 0.05);
-  env.gain.exponentialRampToValueAtTime(0.001, stop);
-  g1.connect(env);
-  g2.connect(env);
-  env.connect(c.destination);
-  osc1.start(start);
-  osc2.start(start);
-  osc1.stop(stop + 0.02);
-  osc2.stop(stop + 0.02);
+  const freq = 440 * Math.pow(2, (midi - 69) / 12);
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.value = freq;
+  const lp = c.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(2500, start);
+  lp.frequency.exponentialRampToValueAtTime(400, stop);
+  lp.Q.value = 4;
+  const g = c.createGain();
+  o.connect(lp);
+  lp.connect(g);
+  g.connect(c.destination);
+  envADSR(g, start, 0.003, 0.0, gain, 0.0001);
+  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  o.start(start);
+  o.stop(stop + 0.02);
 }
 
 /**
- * "Yay!" — a small group of kids cheering. Multiple short sine
- * tones at slightly different pitches and timings, like a few
- * kids shouting at the same time. The pitches aren't a clean
- * arpeggio — they cluster around the major triad (C, E, G)
- * but with a few "off" notes that give it the slightly chaotic
- * "kids yelling" feel.
- *
- * NOTE: This is currently unused — the user preferred real
- * recordings over synth approximations. Kept here in case
- * someone wants the synth fallback later. Set SOUND_FILES[event]
- * to undefined to fall back to this.
+ * Laser zap: rapid descending saw pitch sweep (2kHz → 80Hz)
+ * through a bandpass filter. The classic "pew" — the user
+ * mentioned this explicitly.
  */
-function playKidsYay(delayMs = 0): void {
-  const voices: Array<[number, number, number]> = [
-    [523.25,   0,  0.20], // C5 — the "yay!" root
-    [659.25,  20,  0.18], // E5 — the "yay!" fifth
-    [783.99,  40,  0.20], // G5 — the "yay!" octave
-    [698.46,  60,  0.16], // F5 — a little off, sounds kid-like
-    [659.25,  85,  0.14], // E5 again, slightly behind
-    [523.25, 110,  0.16], // C5 trailing
-    [783.99, 130,  0.18], // G5 high
-    [659.25, 170,  0.14], // E5 final
-  ];
-  for (const [freq, off, gain] of voices) {
-    playTone(freq, 0.10, { type: 'sine', gain, delayMs: delayMs + off });
+function playLaser(
+  startFreq = 2000,
+  endFreq = 80,
+  durationSec = 0.18,
+  gain = 0.14,
+): void {
+  const c = ensureCtx();
+  if (!c || !unlocked || muted) return;
+  const start = c.currentTime;
+  const stop = start + durationSec;
+  const o = c.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(startFreq, start);
+  o.frequency.exponentialRampToValueAtTime(endFreq, stop);
+  // Bandpass keeps the sweep bright instead of going muddy.
+  const bp = c.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 800;
+  bp.Q.value = 6;
+  const g = c.createGain();
+  o.connect(bp);
+  bp.connect(g);
+  g.connect(c.destination);
+  envADSR(g, start, 0.002, 0.0, gain, 0.0001);
+  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  o.start(start);
+  o.stop(stop + 0.02);
+}
+
+/**
+ * Noise impact (kick / snare / glass). Filter + short envelope.
+ * Pass `low` for the kick sub-thump (lowpass 80Hz), `mid` for
+ * a snare (bandpass 1.5kHz), `high` for a hi-hat (highpass 6kHz).
+ */
+function playNoiseHit(
+  durationSec = 0.12,
+  filterMode: 'low' | 'mid' | 'high' = 'mid',
+  gain = 0.18,
+): void {
+  const c = ensureCtx();
+  if (!c || !unlocked || muted) return;
+  const start = c.currentTime;
+  const stop = start + durationSec;
+  const n = makeNoise(durationSec + 0.05);
+  const f = c.createBiquadFilter();
+  if (filterMode === 'low') {
+    f.type = 'lowpass';
+    f.frequency.value = 80;
+  } else if (filterMode === 'high') {
+    f.type = 'highpass';
+    f.frequency.value = 6000;
+  } else {
+    f.type = 'bandpass';
+    f.frequency.value = 1500;
+    f.Q.value = 2;
   }
+  const g = c.createGain();
+  n.connect(f);
+  f.connect(g);
+  g.connect(c.destination);
+  envADSR(g, start, 0.001, 0.0, gain, 0.0001);
+  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  n.start(start);
+  n.stop(stop);
 }
 
 /**
- * Per-event tone patterns. Each is 1-3 notes max — quick enough to
- * not overlap with the next event but distinct enough to be
- * recognizable.
+ * Kick: sine sweep 150Hz → 48Hz with fast decay. The synthwave
+ * variant of the classic 808-style sub.
  */
+function playKick(): void {
+  const c = ensureCtx();
+  if (!c || !unlocked || muted) return;
+  const start = c.currentTime;
+  const stop = start + 0.18;
+  const o = c.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(150, start);
+  o.frequency.exponentialRampToValueAtTime(48, start + 0.11);
+  const g = c.createGain();
+  o.connect(g);
+  g.connect(c.destination);
+  g.gain.setValueAtTime(0.5, start);
+  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  o.start(start);
+  o.stop(stop + 0.02);
+}
+
+// =============================================================
+// Per-event patterns. Each is a short layered sequence using
+// the primitives above. Aim is for each event to have a
+// distinct character so the user can tell them apart without
+// looking at the screen.
+// =============================================================
+
 function playPattern(event: SoundEvent): void {
   switch (event) {
     case 'workoutComplete':
-      // Two-note ascending bell (C5 → E5) — "done!"
-      playTone(523.25, 0.18, { type: 'sine', gain: 0.2 });
-      playTone(659.25, 0.22, { type: 'sine', gain: 0.2, delayMs: 110 });
+      // Triumphant synthwave chord stab. C minor triad (C, Eb, G)
+      // played as overlapping plucks with a low sub-kick. The
+      // hummm the user asked for, in ascending melodic form.
+      playKick();
+      playPluck(60, 0.20, 0.18);  // C4
+      playPluck(63, 0.20, 0.16, ); // Eb4
+      playPluck(67, 0.25, 0.18);  // G4 — longer, lets the chord "ring"
       break;
     case 'levelUp':
-      // Three-note arpeggio (A4 → C#5 → E5) — ascending fanfare.
-      playTone(440, 0.12, { type: 'triangle', gain: 0.22 });
-      playTone(554.37, 0.12, { type: 'triangle', gain: 0.22, delayMs: 90 });
-      playTone(659.25, 0.28, { type: 'triangle', gain: 0.22, delayMs: 180 });
+      // Ascending arpeggio. C5 → E5 → G5 → C6 — the iconic RPG
+      // level-up jingle, but with synthwave timbre (detuned
+      // saws under lowpass). Each note is a short pluck.
+      playPluck(72, 0.10, 0.18);  // C5
+      playPluck(76, 0.10, 0.18);  // E5
+      playPluck(79, 0.12, 0.20);  // G5
+      playPluck(84, 0.30, 0.22);  // C6 — held, the payoff
       break;
     case 'achievement':
-      // Twinkle (G5 → C6) — higher-pitched than level-up so the
-      // two are easy to tell apart.
-      playTone(783.99, 0.1, { type: 'sine', gain: 0.18 });
-      playTone(1046.5, 0.2, { type: 'sine', gain: 0.2, delayMs: 90 });
+      // Short two-note "ping". The C major arpeggio sounds
+      // positive and triumphant. Quick attack + fast decay.
+      playPluck(72, 0.08, 0.16);
+      playPluck(76, 0.18, 0.18);
       break;
     case 'restTimerDone':
-      // Single square-wave beep — distinct from the synth bell so
-      // it's clearly an alert rather than a celebration.
-      playTone(880, 0.12, { type: 'square', gain: 0.12 });
+      // Synthwave alarm: a mid-frequency descending pulse with
+      // a lowpass sweep. Two-tone "bwong-bwong" so it's
+      // clearly an alert, not a celebration.
+      playPluck(67, 0.10, 0.16);
+      playPluck(60, 0.20, 0.18);
       break;
     case 'skillUnlock':
       // Real recording from the YouTube SFX the user linked
@@ -234,21 +361,22 @@ function playPattern(event: SoundEvent): void {
       // 96kbps MP3 with ffmpeg, dropped at
       // web/public/sounds/skill-unlock.mp3 (4.2s, 35KB).
       // playFile() will pick this up; if the file 404s the
-      // synth fallback in playPattern() fires (kept as a
-      // last-resort silent no-op for now — better than a sad
-      // 8-bit version).
+      // synth fallback fires. The user preferred the real
+      // recording over any synth.
       break;
     case 'bossKill':
-      // Descending three-note stab (E4 → C4 → A3) — heavy, final.
-      playTone(329.63, 0.15, { type: 'sawtooth', gain: 0.15 });
-      playTone(261.63, 0.15, { type: 'sawtooth', gain: 0.15, delayMs: 130 });
-      playTone(220, 0.35, { type: 'sawtooth', gain: 0.18, delayMs: 260 });
+      // Power-down: descending laser + low noise impact +
+      // descending bass pad. The "boss is dead" sequence.
+      playLaser(1200, 80, 0.4, 0.18);   // descending pew
+      playNoiseHit(0.30, 'low', 0.22);    // sub impact
+      playPluck(48, 0.35, 0.18);         // low C — the death knell
       break;
     case 'lootDrop':
-      // Sparkle — high pitch quick succession
-      playTone(1568, 0.08, { type: 'sine', gain: 0.15 });
-      playTone(1975.5, 0.08, { type: 'sine', gain: 0.15, delayMs: 60 });
-      playTone(2349.3, 0.18, { type: 'sine', gain: 0.18, delayMs: 120 });
+      // Quick ascending laser + tiny noise tick. Classic
+      // "you got an item" feedback. The user explicitly asked
+      // for a laser-gun sound.
+      playLaser(400, 2200, 0.10, 0.16);  // ascending pew
+      playNoiseHit(0.05, 'high', 0.10);   // small tick
       break;
   }
 }
