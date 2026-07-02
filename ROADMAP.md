@@ -99,21 +99,31 @@
 
 ## Recently Fixed / Resolved
 
-- ✅ FitQuestBridge APK: 15-minute poll interval, su-based
-  read for rooted devices, no SAF picker. The walker polls
-  every `15 * 60 * 1000` ms (was 5s then 60s) to keep
-  foreground-service resource use minimal — Gadgetbridge
-  syncs typically happen on the order of once a day, so a
-  15-min cadence catches the next sync with no perceptible
-  delay. On rooted devices the bridge still uses `su -c "find"`
-  + `su -c "cat | base64"` to read GB's app-private dir
-  (`/sdcard/Android/data/nodown.gadgetbridge/files/...`),
-  bypassing Android 11+ scoped storage. The "All files access"
-  toggle in system Settings is still required for the OS-level
-  AppOps grant; the user can disable Magisk's superuser
-  notification toast in Magisk Manager → Settings →
-  Superuser notifications → off to silence the per-poll
-  confirmations.
+- ✅ FitQuestBridge APK: 15-min poll + persistent dedup set +
+  freshness window + periodic prune. Three new mechanisms
+  collaborate to bound the upload surface:
+  1. **Persistent known-paths set** in `Settings` (SharedPreferences
+     StringSet, ~30KB at 1700 paths) — survives restarts so
+     the bridge doesn't re-upload its history every time the
+     service comes back up. Persisted on every batch of new
+     uploads.
+  2. **Freshness window** — `find -mmin -60` ignores any file
+     older than 60 minutes. Safety net for the case where the
+     persisted set ever gets out of sync (user clears app data,
+     GB writes a new file with a path the bridge has never
+     seen, etc.). 60 min is generous enough to catch any
+     in-flight GB sync.
+  3. **Periodic prune** every 10 polls (~2.5 h at 15-min
+     cadence) — intersects the persisted set with the current
+     dir contents and drops any entry that no longer exists.
+     Bounds the persisted set's growth as files come and go.
+  Together these mean the bridge does ~1 su call per 15 min
+  in the steady state, sees no growth in persisted state, and
+  never re-uploads historical data on restart. The unique
+  constraint on `Workout(userId, performedAt)` (added in the
+  workout-dedup migration) is the final backstop — even if a
+  file IS re-uploaded somehow, the server rejects the
+  duplicate.
 - ✅ Mobile top-bar title overlap (Layout.tsx). The FIT//QUEST
   title was `absolute left-0 right-0 text-center` on mobile so
   the new 10-heart hero row in Dashboard.tsx overlapped with it
