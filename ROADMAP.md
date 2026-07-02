@@ -99,6 +99,21 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ FitQuestBridge APK: SAF-only storage model (no root, no
+  Magisk toasts, no MANAGE_EXTERNAL_STORAGE). Earlier versions
+  either read GB's app-private dir at
+  `/sdcard/Android/data/nodomain.freeyourgadget.gadgetbridge/files/`
+  via root/`MANAGE_EXTERNAL_STORAGE` — both kicked off a Magisk
+  "superuser granted" toast on every periodic poll, and the
+  permission toggle was unstable on Android 14. Replaced with
+  a SAF-only model: the user picks a directory via
+  `ACTION_OPEN_DOCUMENT_TREE`, the bridge takes a persistable
+  URI permission, and all reads go through `ContentResolver` +
+  `DocumentsContract`. Trade-off: the user has to point
+  Gadgetbridge's `AutoExport FIT` setting at the same
+  directory (a one-time config change, not a code change). No
+  root required, no special permissions, no toasts, works on
+  every Android 5+ device the bridge supports.
 - ✅ Mobile top-bar title overlap (Layout.tsx). The FIT//QUEST
   title was `absolute left-0 right-0 text-center` on mobile so
   the new 10-heart hero row in Dashboard.tsx overlapped with it
