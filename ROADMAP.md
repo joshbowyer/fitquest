@@ -99,6 +99,30 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Portal-leak damage now auto-applied on every workout
+  commit. Previously only the AttackLeakModal in /portal-leak
+  fired `applyLeakDamage` -- logging a matching workout via
+  the regular /workouts page left the leak untouched, which
+  was confusing. Now the `workouts.ts` POST handler runs
+  `applyLeakDamage` inline (best-effort, try/catch -- a leak
+  bug can't break the workout save). The same damage math
+  applies: matched muscle tags deal positive damage, bonus
+  tags stack, mismatched tags *feed* the leak (negative
+  delta = HP increases). For a 1-shot encounter with the
+  usual HP range of 80-200, the effective delta is clamped to
+  [-12, +30] so even a marathon squat session can't insta-kill
+  a leak and even a wildly-mismatched workout can't insta-overwhelm
+  it (the overwhelm cap at 1.5x maxHp does the final brake).
+- ✅ Workout POST handler switched from `create` to `upsert`
+  on (userId, performedAt). The schema gained a
+  `@@unique([userId, performedAt])` constraint (migration
+  20260702120000_workout_unique_per_user_time) so re-uploads
+  update the existing row in place instead of failing the
+  create() with a 23505. The `update` block only touches the
+  top-level scalar fields; the `create` block has the full
+  nested exercise/set tree. End-to-end idempotent with the
+  FitQuestBridge dedup set -- re-uploads no longer 500 in the
+  server log.
 - ✅ FitQuestBridge APK: 15-min poll + persistent dedup set +
   freshness window + periodic prune. Three new mechanisms
   collaborate to bound the upload surface:

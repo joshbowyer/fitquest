@@ -522,7 +522,7 @@ model Workout {
   /// PortalLeakDamageEvent needed.
   portalLeakDamageEvents PortalLeakDamageEvent[]
 
-  @@index([userId, performedAt])
+  @@unique([userId, performedAt])
 }
 
 model Exercise {

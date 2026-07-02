@@ -251,27 +251,37 @@ export async function workoutRoutes(app: FastifyInstance) {
     const mult = heartMultiplier(currentHearts, me.mode ?? 'CASUAL');
 
     const result = await prisma.$transaction(async (tx) => {
-      const workout = await tx.workout.create({
-        data: {
+      // Upsert on (userId, performedAt). Re-uploads of the same
+      // workout (e.g. FitQuestBridge re-uploads after a restart
+      // before the dedup set kicked in) update the existing row
+      // in place instead of failing the create() with a unique
+      // violation. The schema has @@unique([userId, performedAt])
+      // (see migration 20260702120000_workout_unique_per_user_time)
+      // and the persist function here was create() before -- a
+      // duplicate POST would 500 with a constraint violation. The
+      // FitQuestBridge fits dedup path is now end-to-end idempotent.
+      //
+      // The `update` block has only the top-level scalar fields
+      // so we don't accidentally destroy the existing nested
+      // exercises / sets when re-uploading. The `create` block
+      // has the full nested tree for first-time inserts.
+      const performedAt = body.performedAt ? new Date(body.performedAt) : new Date();
+      const sharedTopLevel = {
+        type: body.type,
+        name: body.name,
+        duration,
+        notes: body.notes,
+        postNotes: body.postNotes ?? null,
+        cardio: body.cardio ?? null,
+        validityFlags: validityFlags.length > 0 ? (validityFlags as any) : null,
+      };
+      const workout = await tx.workout.upsert({
+        where: { userId_performedAt: { userId: me.id, performedAt } },
+        update: sharedTopLevel,
+        create: {
           userId: me.id,
-          type: body.type,
-          name: body.name,
-          duration,
-          notes: body.notes,
-          postNotes: body.postNotes ?? null,
-          performedAt: body.performedAt ? new Date(body.performedAt) : new Date(),
-          // Non-set cardio block. Prisma Json? column — pass `null`
-          // (not undefined) when the user didn't fill it in so the
-          // stored value is consistent across rows.
-          cardio: body.cardio ?? null,
-          // Per-set plausibility flags from flagSuspectSets (Bench
-          // > 350kg, Squat > 1000 reps, blanket > 500kg, etc.).
-          // Persisted so the morning report can surface them — without
-          // this, an "is this PR for real?" toast only shows on the
-          // workout detail screen the day of, then scrolls off.
-          // Stored as null (not []) when no flags, so empty workouts
-          // don't bloat the row.
-          validityFlags: validityFlags.length > 0 ? (validityFlags as any) : null,
+          performedAt,
+          ...sharedTopLevel,
           exercises: {
             create: body.exercises.map((ex) => ({
               name: ex.name,
@@ -573,6 +583,19 @@ export async function workoutRoutes(app: FastifyInstance) {
       pendingReward: any;
       unlocked: boolean;
     } | null = null;
+    // Portal-leak damage is now auto-applied on every workout
+    // commit (not just from the AttackLeakModal). The previous
+    // design only fired it from a dedicated UI flow, which meant
+    // logging a matching workout via the regular /workouts page
+    // left the leak untouched -- confusing for the user. The
+    // dedup semantics are preserved: a workout already in the
+    // leak-damage-event table for this leak won't double-damage.
+    let leakDamage: {
+      dealt: number;
+      matchType: string;
+      leakHpAfter: number;
+      resolved: string | null;
+    } | null = null;
     try {
       const breachLib = await import('../lib/breach.js');
       const userBefore = await prisma.user.findUnique({
@@ -612,6 +635,27 @@ export async function workoutRoutes(app: FastifyInstance) {
       // Breach is best-effort. A failed damage calc shouldn't break
       // the workout commit — log + continue without breachDamage.
       console.error('[breach] damage hook failed', err);
+    }
+
+    // Auto-apply portal-leak damage on every workout commit. The
+    // user no longer has to remember to use the AttackLeakModal in
+    // /portal-leak to make their matching workouts count -- any
+    // workout log fires the damage. Mismatched workouts feed the
+    // leak (negative delta); matched ones deal damage. Best-effort:
+    // a leak bug doesn't fail the workout save.
+    try {
+      const leakLib = await import('../lib/portalLeaks.js');
+      const leakResult = await leakLib.applyLeakDamage(me.id, result.workout.id);
+      if (leakResult) {
+        leakDamage = {
+          dealt: leakResult.dealt,
+          matchType: leakResult.matchType,
+          leakHpAfter: leakResult.leakHpAfter,
+          resolved: leakResult.resolved,
+        };
+      }
+    } catch (err) {
+      console.error('[leak] damage hook failed', err);
     }
 
     return reply.send({
