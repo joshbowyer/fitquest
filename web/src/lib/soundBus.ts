@@ -94,17 +94,6 @@ const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
   // lootDrop:        '/sounds/loot-drop.mp3',
 };
 
-/**
- * File-path overrides. Drop MP3s in web/public/sounds/ and add
- * the filename here to use them instead of the synth tones.
- * If the file 404s we fall back to the synth. Empty = use synth.
- */
-const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
-  // workoutComplete: '/sounds/workout-complete.mp3',
-  // levelUp: '/sounds/level-up.mp3',
-  // ...
-};
-
 function playTone(
   freq: number,
   durationSec: number,
