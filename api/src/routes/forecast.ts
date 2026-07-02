@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireUser } from '../lib/auth.js';
 import { prisma } from '../lib/prisma.js';
-import { getForecast, weatherCodeMeta, isOutdoorFriendly } from '../lib/forecast.js';
+import { getWeatherBundle, weatherCodeMeta, isOutdoorFriendly, usAqiBand, AQI_BAND_META } from '../lib/forecast.js';
 import { computeRecovery } from '../lib/recovery.js';
 import { recommendMuscle, partRecovery } from '../lib/recommendMuscle.js';
 import { centroidOfTrack } from '../lib/geo.js';
@@ -80,15 +80,27 @@ export async function forecastRoutes(app: FastifyInstance) {
       });
     }
 
-    const weather = await getForecast(lat, lng);
+    const bundle = await getWeatherBundle(lat, lng);
 
-    // 3. Compose outdoor-friendly verdict per day so the client
-    // doesn't have to re-derive from raw WMO codes.
-    const daily = (weather?.daily ?? []).map((d) => {
+    // 3. Compose outdoor-friendly verdict per day + air-quality
+    // bands so the client doesn't have to re-derive from raw
+    // WMO codes / AQI numbers.
+    const daily = (bundle?.forecast.daily ?? []).map((d) => {
       const verdict = isOutdoorFriendly(d);
       const meta = weatherCodeMeta(d.weatherCode);
       return { ...d, ...verdict, label: meta.label, icon: meta.icon };
     });
+
+    const aq = bundle?.airQuality ?? null;
+    const aqCurrent = aq
+      ? {
+          ...aq.current,
+          bandMeta: AQI_BAND_META[aq.current.band],
+        }
+      : null;
+    const aqDaily = aq
+      ? aq.daily.map((d) => ({ ...d, bandMeta: AQI_BAND_META[d.band] }))
+      : [];
 
     return {
       location: {
@@ -96,14 +108,27 @@ export async function forecastRoutes(app: FastifyInstance) {
         longitude: lng,
         source,
       },
-      weather: weather
+      weather: bundle
         ? {
-            ...weather,
-            current: { ...weather.current, ...weatherCodeMeta(weather.current.weatherCode) },
+            ...bundle.forecast,
+            current: { ...bundle.forecast.current, ...weatherCodeMeta(bundle.forecast.current.weatherCode) },
             daily,
+            cached: bundle.forecast.cached,
           }
         : null,
-      weatherStatus: weather ? (weather.cached ? 'cached' : 'fresh') : 'unavailable',
+      weatherStatus: bundle ? (bundle.forecast.cached ? 'cached' : 'fresh') : 'unavailable',
+      airQuality: aq
+        ? {
+            latitude: aq.latitude,
+            longitude: aq.longitude,
+            timezone: aq.timezone,
+            current: aqCurrent,
+            daily: aqDaily,
+            cached: aq.cached,
+            fetchedAt: aq.fetchedAt,
+          }
+        : null,
+      airQualityStatus: aq ? (aq.cached ? 'cached' : 'fresh') : 'unavailable',
       readiness: {
         score: recovery.score,
         trend: recovery.trend,

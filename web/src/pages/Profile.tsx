@@ -26,6 +26,24 @@ import {
 
 const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'TRACER', 'ORACLE'];
 
+// Open-Meteo geocoding search-result shape. Mirrors the JSON the
+// `/geocode` route returns (see api/src/routes/geocode.ts).
+type GeocodeResult = {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  country?: string;
+  country_code?: string;
+  admin1?: string;
+  admin2?: string;
+  admin3?: string;
+  admin4?: string;
+  timezone?: string;
+  population?: number;
+  feature_code?: string;
+};
+
 // Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts)
 function previewMax(
   metric: string,
@@ -88,6 +106,8 @@ export function ProfilePage() {
   const [timezoneDraft, setTimezoneDraft] = useState<string>('');
   const [latitudeDraft, setLatitudeDraft] = useState<string>('');
   const [longitudeDraft, setLongitudeDraft] = useState<string>('');
+  const [locationSearchDraft, setLocationSearchDraft] = useState<string>('');
+  const [locationSearchResults, setLocationSearchResults] = useState<GeocodeResult[]>([]);
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -196,7 +216,7 @@ export function ProfilePage() {
   const locationChanged =
     (locationLat ?? null) !== (user?.latitude ?? null) ||
     (locationLng ?? null) !== (user?.longitude ?? null);
-  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged || timezoneChanged || locationChanged;
+  const anythingChanged = frameChanged || classChanged || birthChanged || sexChanged || ordainedChanged || timezoneChanged;
 
   const saveM = useDelayedMutation<
     { recomputed: boolean; changeCount: number },
@@ -234,10 +254,6 @@ export function ProfilePage() {
       if (sexChanged) body.sex = sexDraft;
       if (ordainedChanged) body.ordained = ordainedDraft;
       if (timezoneChanged) body.timezone = timezoneDraft || null;
-      if (locationChanged && locationValid) {
-        body.latitude = locationLat;
-        body.longitude = locationLng;
-      }
       await api('/users/me', { method: 'PATCH', body });
       // Auto-recompute genetic maxes if frame data changed
       if (frameChanged) {
@@ -290,6 +306,41 @@ export function ProfilePage() {
     value: previewMax(m.key, previewWrist, previewAnkle, previewHeight, previewNeck),
   }));
   const previewsValid = previewValues.every((v) => v.value != null);
+
+  // Geocoding search — backed by Open-Meteo's free /v1/search
+  // endpoint (no API key, no signup). We proxy through /geocode
+  // server-side so the request always succeeds regardless of
+  // CORS / rate-limiting on the user agent.
+  const locationSearchM = useDelayedMutation<
+    { results: GeocodeResult[] },
+    void
+  >({
+    mutationFn: async () => {
+      const q = locationSearchDraft.trim();
+      if (q.length < 2) return { results: [] };
+      return api<{ results: GeocodeResult[] }>('/geocode', { query: { q } });
+    },
+    onSuccess: (res) => {
+      setLocationSearchResults(res.results);
+      if (res.results.length === 0) {
+        setSaveResult({ kind: 'error', message: 'No matches. Try a different city or postal code.' });
+        setTimeout(() => setSaveResult({ kind: 'idle', message: '' }), 3000);
+      }
+    },
+    onError: () => {
+      setLocationSearchResults([]);
+    },
+  }, 400);
+
+  // Picking a result fills the lat/lng inputs but does NOT save
+  // — the user reviews the values and clicks "Save location".
+  // (Same pattern as the rest of Profile: explicit save.)
+  function pickGeocodeResult(r: GeocodeResult) {
+    setLatitudeDraft(r.latitude.toFixed(4));
+    setLongitudeDraft(r.longitude.toFixed(4));
+    setLocationSearchResults([]);
+    setSaveResult({ kind: 'idle', message: '' });
+  }
 
   return (
     <Layout>
@@ -945,6 +996,58 @@ export function ProfilePage() {
             <div className="text-xs font-mono text-ink-100 mb-1">
               Home location <span className="text-ink-400">(for /forecast)</span>
             </div>
+
+            {/* Search-by-city-or-zip: hits Open-Meteo's free
+                geocoding endpoint through our own proxy so we
+                don't burn CORS / rate-limit budget on the user
+                agent directly. Pick a result to populate the
+                lat/lng inputs below. */}
+            <div className="flex items-stretch gap-2 mb-2">
+              <input
+                className="input-neon flex-1 text-xs"
+                type="search"
+                value={locationSearchDraft}
+                onChange={(e) => setLocationSearchDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    locationSearchM.run(undefined);
+                  }
+                }}
+                placeholder="Search city or postal code (e.g. Kennesaw, 30144)"
+              />
+              <button
+                type="button"
+                onClick={() => locationSearchM.run(undefined)}
+                disabled={locationSearchDraft.trim().length < 2 || locationSearchM.isPending}
+                className="px-3 text-[10px] font-mono uppercase tracking-widest border border-neon-cyan text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neon-cyan/5"
+              >
+                {locationSearchM.isPending ? '…' : 'Search'}
+              </button>
+            </div>
+            {locationSearchResults.length > 0 && (
+              <div className="border border-ink-500/30 max-h-44 overflow-y-auto mb-2">
+                {locationSearchResults.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => pickGeocodeResult(r)}
+                    className="w-full text-left px-2 py-1 text-[11px] font-mono hover:bg-neon-cyan/10 border-b border-ink-500/20 last:border-b-0"
+                  >
+                    <span className="text-ink-100">{r.name}</span>
+                    {r.admin1 && <span className="text-ink-300">, {r.admin1}</span>}
+                    {r.country && <span className="text-ink-400"> · {r.country}</span>}
+                    <span className="text-ink-400 ml-2">{r.latitude.toFixed(4)}, {r.longitude.toFixed(4)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {locationSearchM.isError && (
+              <div className="text-[10px] font-mono neon-text-magenta mb-2">
+                Search failed: {(locationSearchM.error as any)?.message ?? 'unknown'}
+              </div>
+            )}
+
             <div className="flex items-stretch gap-2">
               <input
                 className="input-neon flex-1 text-xs"
@@ -963,7 +1066,7 @@ export function ProfilePage() {
                 placeholder="Longitude (e.g. -84.62)"
               />
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <button
                 type="button"
                 onClick={async () => {
@@ -1004,16 +1107,50 @@ export function ProfilePage() {
                 disabled={user?.latitude == null && user?.longitude == null}
                 className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-200 hover:border-neon-magenta hover:text-neon-magenta px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Clear (use workout GPS)
+                Clear
+              </button>
+              {latitudeDraft !== '' && longitudeDraft !== '' && Number.isFinite(locationLat) && Number.isFinite(locationLng) && (
+                <a
+                  href={`https://www.openstreetmap.org/?mlat=${locationLat}&mlon=${locationLng}#map=11/${locationLat}/${locationLng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1"
+                >
+                  View on map ↗
+                </a>
+              )}
+              {/* Own Save button — the Frame save button is far
+                  above and not visibly linked to this section. */}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!locationChanged || !locationValid) return;
+                  try {
+                    await api('/users/me', {
+                      method: 'PATCH',
+                      body: { latitude: locationLat, longitude: locationLng },
+                    });
+                    await refresh();
+                    setSaveResult({ kind: 'saved', message: 'Home location saved.' });
+                    setTimeout(() => setSaveResult({ kind: 'idle', message: '' }), 3000);
+                    qc.invalidateQueries({ queryKey: ['forecast'] });
+                  } catch (e: any) {
+                    setSaveResult({ kind: 'error', message: e?.message ?? 'Save failed' });
+                  }
+                }}
+                disabled={!locationChanged || !locationValid}
+                className="px-3 h-9 text-[10px] font-mono uppercase tracking-widest border border-neon-cyan text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/15 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neon-cyan/5"
+              >
+                Save location
               </button>
             </div>
-            {!locationValid && (
+            {!locationValid && (latitudeDraft !== '' || longitudeDraft !== '') && (
               <div className="text-[10px] font-mono neon-text-magenta mt-1">
-                Lat must be -90..90 and lng -180..180 — leave both blank to use workout GPS.
+                Lat must be -90..90 and lng -180..180 — or leave both blank to use workout GPS.
               </div>
             )}
             <div className="text-[10px] font-mono text-ink-400 mt-1 leading-relaxed">
-              Decimal degrees (WGS84). Saves with the main profile save button below.
+              Decimal degrees (WGS84). Pick a search result above, paste manually, or use your device's location.
             </div>
           </div>
 

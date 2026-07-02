@@ -51,6 +51,31 @@ type CurrentWeather = {
   label: string;
   icon: string;
 };
+type AirQualityCurrent = {
+  usAqi: number | null;
+  pm25: number | null;
+  pm10: number | null;
+  band: 'good' | 'moderate' | 'unhealthySensitive' | 'unhealthy' | 'veryUnhealthy' | 'hazardous' | 'unknown';
+  bandMeta: { label: string; short: string; tone: 'lime' | 'cyan' | 'amber' | 'magenta'; advice: string };
+  time: string;
+};
+type AirQualityDay = {
+  date: string;
+  pm25Max: number | null;
+  pm10Max: number | null;
+  usAqiMax: number | null;
+  band: AirQualityCurrent['band'];
+  bandMeta: AirQualityCurrent['bandMeta'];
+};
+type AirQuality = {
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  current: AirQualityCurrent;
+  daily: AirQualityDay[];
+  cached: boolean;
+  fetchedAt: string;
+};
 type ForecastResponse = {
   location?: { latitude: number; longitude: number; source: 'user' | 'workout' };
   weather?: {
@@ -64,6 +89,8 @@ type ForecastResponse = {
     cached: boolean;
   } | null;
   weatherStatus?: 'cached' | 'fresh' | 'unavailable';
+  airQuality?: AirQuality | null;
+  airQualityStatus?: 'cached' | 'fresh' | 'unavailable';
   readiness: Readiness;
   recommendation: Recommendation | null;
   recoveryByPart: PartRecovery[];
@@ -244,20 +271,16 @@ export function ForecastPage() {
       {data?.needsLocation && !hasLocation && (
         <Panel variant="amber" title="Set your home location" scanline>
           <div className="space-y-3">
-            <div className="text-sm text-ink-100">{data.message}</div>
-            <div className="text-xs text-ink-300">
-              Weather forecasts need a location. Two options:
+            <div className="text-sm text-ink-100">
+              Go to{' '}
+              <Link to="/profile" className="neon-text-cyan underline">
+                Profile
+              </Link>{' '}
+              to set your home location — search by city or zip, paste lat/lng, or use your device's location.
             </div>
-            <ol className="list-decimal list-inside text-xs text-ink-300 space-y-1">
-              <li>
-                Set explicit lat/lng on{' '}
-                <Link to="/profile" className="neon-text-cyan underline">
-                  Profile
-                </Link>
-                .
-              </li>
-              <li>Log any outdoor workout (run/walk/bike) — the bridge can use its GPS centroid automatically.</li>
-            </ol>
+            <div className="text-[10px] text-ink-400 font-mono">
+              Alternatively, log any outdoor workout (run/walk/bike) and its GPS centroid will be used as a fallback.
+            </div>
           </div>
         </Panel>
       )}
@@ -266,7 +289,7 @@ export function ForecastPage() {
         {/* Weather card */}
         <Panel variant="cyan" title="Weather" scanline>
           {!hasLocation && (
-            <div className="text-sm text-ink-300">No location set yet — see above.</div>
+            <div className="text-sm text-ink-300">Awaiting location — set it on Profile to enable.</div>
           )}
           {hasLocation && q.isLoading && (
             <div className="text-sm text-ink-300 animate-pulse">Fetching forecast…</div>
@@ -366,19 +389,88 @@ export function ForecastPage() {
         </Panel>
       </div>
 
-      {user?.latitude == null && user?.longitude == null && data?.location?.source !== 'user' && (
-        <Panel variant="violet" title="Tip" className="mt-4">
-          <div className="text-sm text-ink-100">
-            Currently using GPS from your most-recent outdoor workout. For a stable home
-            forecast, set explicit lat/lng on{' '}
-            <Link to="/profile" className="neon-text-cyan underline">
-              Profile
-            </Link>
-            .
-          </div>
-        </Panel>
+      {user?.latitude == null && user?.longitude == null && data?.location?.source === 'workout' && (
+        <div className="text-[10px] font-mono text-ink-400 mt-3 px-1">
+          Using GPS from your most-recent outdoor workout. For a stable home forecast, set
+          explicit lat/lng on <Link to="/profile" className="neon-text-cyan underline">Profile</Link>.
+        </div>
+      )}
+
+      {/* Air quality — third card, separate row so the page
+          stays scannable. Hidden when location is missing or
+          AQ upstream is unavailable. */}
+      {hasLocation && data?.airQuality && (
+        <div className="mt-4">
+          <AirQualityCard data={data.airQuality} />
+        </div>
+      )}
+      {hasLocation && data?.weatherStatus !== 'unavailable' && data?.airQualityStatus === 'unavailable' && (
+        <div className="text-[10px] font-mono text-ink-400 mt-3 px-1">
+          Air quality data unavailable (Open-Meteo air-quality endpoint didn't respond).
+        </div>
       )}
     </Layout>
+  );
+}
+
+function AirQualityCard({ data }: { data: NonNullable<ForecastResponse['airQuality']> }) {
+  const c = data.current;
+  const tone = c.bandMeta.tone;
+  return (
+    <Panel variant={tone} title="Air quality" scanline>
+      <div className="grid lg:grid-cols-[auto_1fr] gap-4 items-start">
+        {/* Headline: AQI number + band */}
+        <div className="flex items-baseline gap-3">
+          <div
+            className={`font-display text-5xl neon-text-${tone} leading-none`}
+            style={{ textShadow: '0 0 12px currentColor' }}
+          >
+            {c.usAqi ?? '—'}
+          </div>
+          <div>
+            <div className={`text-[10px] font-display tracking-widest uppercase neon-text-${tone}`}>
+              {c.bandMeta.short} {c.bandMeta.label}
+            </div>
+            <div className="text-[10px] font-mono text-ink-300 mt-1">
+              {c.pm25 != null && <>PM2.5 {c.pm25.toFixed(1)} µg/m³</>}
+              {c.pm25 != null && c.pm10 != null && ' · '}
+              {c.pm10 != null && <>PM10 {c.pm10.toFixed(1)} µg/m³</>}
+            </div>
+          </div>
+        </div>
+        {/* Advice + 3-day trend */}
+        <div className="space-y-2">
+          <div className={`text-xs font-mono neon-text-${tone}`}>
+            {c.bandMeta.advice}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {data.daily.map((d, i) => (
+              <div
+                key={d.date}
+                className={`p-2 border rounded-sm space-y-1 border-neon-${d.bandMeta.tone}/30`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-display tracking-widest uppercase text-ink-100">
+                    {dayLabel(d.date, i)}
+                  </div>
+                  <div className={`text-[10px] font-mono neon-text-${d.bandMeta.tone}`}>
+                    {d.usAqiMax != null ? d.usAqiMax : '—'}
+                  </div>
+                </div>
+                <div className="text-[10px] font-mono text-ink-400">
+                  {d.pm25Max != null && <>PM2.5 {d.pm25Max.toFixed(0)}</>}
+                  {d.pm25Max != null && d.pm10Max != null && ' · '}
+                  {d.pm10Max != null && <>PM10 {d.pm10Max.toFixed(0)}</>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 pt-1 border-t border-current/10">
+            {data.cached ? 'cached' : 'fresh'} · US EPA AQI scale
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }
 

@@ -64,6 +64,42 @@
     duplicate Workout rows from the earlier FitQuestBridge
     re-upload flood; the dedup pass cleared them and the unique
     constraint now installs cleanly.
+  - **Air quality (added in the same iteration):** new
+    `getWeatherBundle()` in `api/src/lib/forecast.ts` fetches
+    the forecast + the air-quality endpoint
+    (`https://air-quality-api.open-meteo.com/v1/air-quality`)
+    in parallel and stores both in the same `WeatherCache` row.
+    Open-Meteo's AQ endpoint only exposes hourly data, so the
+    server aggregates daily peaks (max pm2_5 / pm10 / US AQI
+    per local day) and surfaces them alongside the current
+    nowcast. The page renders a third card with the headline
+    AQI number, the EPA band ("Good" / "Moderate" / "Unhealthy
+    for sensitive groups" / etc.), the PM2.5/PM10 μg/m³ values,
+    and a 3-day peak-per-day strip so the user can plan around
+    wildfire smoke, ozone, etc. No pollen (per user preference).
+    No new API key — same Open-Meteo provider.
+  - **Geocoding search (added in the same iteration):** new
+    `GET /geocode?q=<city or postal>` proxy around
+    Open-Meteo's free `geocoding-api.open-meteo.com/v1/search`
+    endpoint. Profile's home-location panel now has a search
+    input — type "Kennesaw" or "30144", pick a result, the
+    lat/lng inputs auto-fill. The picker is explicit-save
+    (matches the rest of Profile: no surprise writes). The
+    same panel also surfaces "View on map ↗" (opens OSM with
+    the current draft coords as a crosshair) and the existing
+    "Use device location" / "Clear" buttons. The Profile save
+    flow was rewritten so the location panel has its own Save
+    button instead of relying on the Frame panel's save button
+    (which was far above and visually disconnected — the
+    previous "Saves with the main profile save button below"
+    hint was misleading because there was no obvious "main"
+    button on the page).
+  - **Empty state copy cleanup:** the bottom "Tip" Panel that
+    said "see above" was removed; the in-page empty state now
+    self-contains the Profile link. The workout-GPS fallback
+    hint is a small grey one-liner below the cards (only shown
+    when the user is actually on the workout-GPS fallback),
+    not a Panel.
 
 ## Backlog (from user notes, in priority order)
 
