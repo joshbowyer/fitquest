@@ -79,6 +79,21 @@ export type SoundEvent =
   | 'bossKill'
   | 'lootDrop';
 
+// Per-event MP3 paths. When a real recording is dropped in at
+// `web/public/sounds/{event}.mp3` and added here, the synth fallback
+// is bypassed. Most entries are left commented — drop the file
+// in and uncomment to upgrade. Events without a file use the
+// built-in synth tone (see playPattern() below).
+const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
+  // workoutComplete: '/sounds/workout-complete.mp3',
+  // levelUp:        '/sounds/level-up.mp3',
+  // achievement:    '/sounds/achievement.mp3',
+  // restTimerDone:   '/sounds/rest-timer.mp3',
+  // skillUnlock:     '/sounds/skill-unlock.mp3',   // the meme
+  // bossKill:        '/sounds/boss-kill.mp3',
+  // lootDrop:        '/sounds/loot-drop.mp3',
+};
+
 /**
  * File-path overrides. Drop MP3s in web/public/sounds/ and add
  * the filename here to use them instead of the synth tones.
@@ -123,11 +138,9 @@ function playTone(
  * a fast exponential pitch ramp from ~110% → 100% over the
  * first 30ms.
  *
- * Real party horns have a much richer harmonic stack (lots of
- * odd harmonics from the membrane vibration) and a brief
- * "pop" when the membrane opens. A real MP3 captures all of
- * that — drop one in web/public/sounds/skill-unlock.mp3 and
- * uncomment the SOUND_FILES entry for a higher-quality version.
+ * NOTE: Currently unused — the user preferred real recordings
+ * over synth approximations. Kept here in case someone wants
+ * the synth fallback later.
  */
 function playPartyHorn(
   baseFreq = 220,
@@ -138,32 +151,21 @@ function playPartyHorn(
   if (!c || !unlocked || muted) return;
   const start = c.currentTime;
   const stop = start + durationSec;
-  // Two oscillators — square + sawtooth — slightly detuned to
-  // give the brassy "wide" feel. Square gives the odd harmonics
-  // that make a horn sound brassy; sawtooth fills in the missing
-  // even harmonics so the timbre is full without sounding like
-  // a pure buzzer.
   const osc1 = c.createOscillator();
   osc1.type = 'square';
   const osc2 = c.createOscillator();
   osc2.type = 'sawtooth';
-  // Quick pitch slide down — the "blat" attack. Real horns
-  // start a bit sharp then settle.
   const startFreq = baseFreq * Math.pow(2, pitchStartCents / 1200);
   osc1.frequency.setValueAtTime(startFreq, start);
   osc1.frequency.exponentialRampToValueAtTime(baseFreq, start + 0.03);
-  osc2.frequency.setValueAtTime(startFreq * 1.005, start); // slight detune
+  osc2.frequency.setValueAtTime(startFreq * 1.005, start);
   osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.005, start + 0.03);
-  // Per-osc gains so the square doesn't dominate.
   const g1 = c.createGain();
   g1.gain.value = 0.06;
   const g2 = c.createGain();
   g2.gain.value = 0.10;
   osc1.connect(g1);
   osc2.connect(g2);
-  // Shared envelope — fast attack, slow decay, very brief.
-  // The exponential decay matches how a real horn's amplitude
-  // falls off once the membrane relaxes.
   const env = c.createGain();
   env.gain.setValueAtTime(0, start);
   env.gain.linearRampToValueAtTime(1, start + 0.005);
@@ -185,12 +187,13 @@ function playPartyHorn(
  * arpeggio — they cluster around the major triad (C, E, G)
  * but with a few "off" notes that give it the slightly chaotic
  * "kids yelling" feel.
+ *
+ * NOTE: This is currently unused — the user preferred real
+ * recordings over synth approximations. Kept here in case
+ * someone wants the synth fallback later. Set SOUND_FILES[event]
+ * to undefined to fall back to this.
  */
 function playKidsYay(delayMs = 0): void {
-  // (freq, startOffset, gain) — multiple voices, each its own
-  // little envelope. Frequencies are Hz; startOffset is relative
-  // to the yays' base time so the cheers are clustered but not
-  // perfectly aligned. ~5 voices to feel like a small group.
   const voices: Array<[number, number, number]> = [
     [523.25,   0,  0.20], // C5 — the "yay!" root
     [659.25,  20,  0.18], // E5 — the "yay!" fifth
@@ -236,16 +239,16 @@ function playPattern(event: SoundEvent): void {
       playTone(880, 0.12, { type: 'square', gain: 0.12 });
       break;
     case 'skillUnlock':
-      // The meme. Party horn blast + kids yelling "yay".
-      // Synth approximation of a real party horn (brassier than
-      // the kazoo, with a quick pitch "blat" attack) followed by
-      // a small group-cheer arpeggio.
-      //
-      // Drop a real MP3 in web/public/sounds/skill-unlock.mp3
-      // and uncomment the SOUND_FILES entry for a higher-quality
-      // version.
-      playPartyHorn(220, 0.32, 18);
-      playKidsYay(60);
+      // No synth fallback — this one is intentionally meme-only
+      // and a synthesized version sounds ridiculous (the user
+      // called it '8-bit DOS'). Drop a real recording at
+      // /sounds/skill-unlock.mp3 and uncomment the SOUND_FILES
+      // entry above. The Mixkit 'Happy party horn sound' (0:02)
+      // + 'Birthday crowd party cheer' (0:05) work well; the
+      // YouTube SFX the user linked is a 0:02 'Party Horn
+      // Children Yay' that's also a good fit. The playFile()
+      // path uses the file if present, else no-op so we don't
+      // subject the user to synth noise.
       break;
     case 'bossKill':
       // Descending three-note stab (E4 → C4 → A3) — heavy, final.
