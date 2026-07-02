@@ -89,7 +89,7 @@ export const RECENT_BOSS_MEMORY = 10;
 // (500 HP) in 3 matched workouts at the upper end.
 export const BASE_MATCHED_DAMAGE = 60;
 export const BASE_BONUS_DAMAGE = 35;
-export const BASE_MISMATCHED_HEAL = 15;
+export const BASE_MISMATCHED_DAMAGE = 6;  // mismatched workouts deal a small amount of damage (was a heal that fed the boss; flipped so any workout at least chips away at the boss)
 
 // XP awarded per damage-dealing workout, scaled by match quality.
 // Even failed workouts (mismatched) give a small floor so the
@@ -224,7 +224,7 @@ export function damageForMatch(input: {
     // Mismatched: small heal (negative damage), capped to 1/4 of
     // BASE_MATCHED_DAMAGE so the user isn't punished too hard for
     // cardio on a strength day.
-    return { delta: -BASE_MISMATCHED_HEAL, matchType: 'mismatched' };
+    return { delta: BASE_MISMATCHED_DAMAGE, matchType: 'mismatched' };
   }
 
   // Bonus tag hits deal bonus damage on top of the matched base.

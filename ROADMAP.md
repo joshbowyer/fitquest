@@ -99,6 +99,19 @@
 
 ## Recently Fixed / Resolved
 
+- ✅ Mismatched workouts now *damage* the boss instead of healing
+  it. `BASE_MISMATCHED_HEAL` → `BASE_MISMATCHED_DAMAGE` (15 → 6) in
+  `api/src/lib/breach.ts`. The previous "any non-matching workout
+  feeds the boss 15 HP" behavior punished casual users and made the
+  boss feel invincible when life got in the way of the prescribed
+  split. Now any logged workout — matched, bonus, or mismatched —
+  chips away at the boss. Mismatched still deals the least (6 vs
+  60 matched / 95 matched+bonus), so matching the prescribed tags
+  is clearly the optimal play, but the user is never *punished* for
+  showing up. The portal-leak path (`api/src/lib/portalLeaks.ts`
+  `applyLeakDamage`) already delegates to `damageForMatch`, so the
+  flip applies there too without further code changes. Tests in
+  `breach.test.ts` updated for the new sign + constant name.
 - ✅ Portal-leak damage now auto-applied on every workout
   commit. Previously only the AttackLeakModal in /portal-leak
   fired `applyLeakDamage` -- logging a matching workout via

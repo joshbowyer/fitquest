@@ -5,7 +5,7 @@ import {
   damageForMatch,
   rewardForKill,
   BASE_MATCHED_DAMAGE,
-  BASE_MISMATCHED_HEAL,
+  BASE_MISMATCHED_DAMAGE,
   BASE_BONUS_DAMAGE,
   DAILY_DAMAGE_CAP_RATIO,
   REENCOUNTER_HP_MULT_PER_DEATH,
@@ -72,9 +72,10 @@ describe('damageForMatch', () => {
     expect(r.delta).toBe(BASE_MATCHED_DAMAGE + BASE_BONUS_DAMAGE);
     expect(r.matchType).toBe('bonus');
   });
-  it('heals (negative) on mismatched workout', () => {
+  it('deals a small chip of damage on mismatched workout (was: heal)', () => {
     const r = damageForMatch({ hitTags: ['cardio'], preferredTags: ['push'] });
-    expect(r.delta).toBe(-BASE_MISMATCHED_HEAL);
+    expect(r.delta).toBe(BASE_MISMATCHED_DAMAGE);
+    expect(r.delta).toBeGreaterThan(0);
     expect(r.matchType).toBe('mismatched');
   });
   it('caps volume bonus at 50%', () => {
@@ -87,11 +88,11 @@ describe('damageForMatch', () => {
 describe('damageForMatch edge cases', () => {
   it('handles empty hit tags', () => {
     const r = damageForMatch({ hitTags: [], preferredTags: ['push'] });
-    expect(r.delta).toBe(-BASE_MISMATCHED_HEAL);
+    expect(r.delta).toBe(BASE_MISMATCHED_DAMAGE);
   });
-  it('handles empty preferred tags (always mismatched)', () => {
+  it('handles empty preferred tags (always mismatched, still positive damage)', () => {
     const r = damageForMatch({ hitTags: ['push', 'chest'], preferredTags: [] });
-    expect(r.delta).toBeLessThan(0);
+    expect(r.delta).toBeGreaterThan(0);
   });
 });
 
