@@ -68,55 +68,55 @@ export async function userRoutes(app: FastifyInstance) {
     // Tick hearts on every /me read so the UI always reflects the
     // current regen state, even if the user has been offline for
     // days. tickHearts is a no-op for Casual mode (returns 5).
-    const hearts = await tickHearts(user.id);
+    const hearts = await tickHearts(me.id);
     // Count active Soulstones (unconsumed + not-yet-disintegrated).
     // Used by the classLock block below + the shop endpoint.
     const now = new Date();
     const soulstoneCount = await prisma.soulstone.count({
-      where: { userId: user.id, consumed: false, expiresAt: { gt: now } },
+      where: { userId: me.id, consumed: false, expiresAt: { gt: now } },
     });
     return {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      level: user.level,
-      xp: user.xp,
-      gold: user.gold,
+      id: me.id,
+      email: me.email,
+      username: me.username,
+      level: me.level,
+      xp: me.xp,
+      gold: me.gold,
       soulstones: soulstoneCount,
-      class: user.class,
-      units: user.units,
-      heightCm: user.heightCm,
-      wristCm: user.wristCm,
-      ankleCm: user.ankleCm,
-      forearmLengthCm: user.forearmLengthCm,
-      neckCircCm: user.neckCircCm,
-      shoulderCm: user.shoulderCm,
-      waistCm: user.waistCm,
-      sex: user.sex,
-      weightKg: user.weightKg,
-      bodyFatPct: user.bodyFatPct,
-      birthDate: user.birthDate,
-      createdAt: user.createdAt,
-      classChangedAt: user.classChangedAt,
-      classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount),
-      progress: progressInLevel(user.xp, user.level),
-      ordained: user.ordained,
-      spiritualDailyPrayers: user.spiritualDailyPrayers,
+      class: me.class,
+      units: me.units,
+      heightCm: me.heightCm,
+      wristCm: me.wristCm,
+      ankleCm: me.ankleCm,
+      forearmLengthCm: me.forearmLengthCm,
+      neckCircCm: me.neckCircCm,
+      shoulderCm: me.shoulderCm,
+      waistCm: me.waistCm,
+      sex: me.sex,
+      weightKg: me.weightKg,
+      bodyFatPct: me.bodyFatPct,
+      birthDate: me.birthDate,
+      createdAt: me.createdAt,
+      classChangedAt: me.classChangedAt,
+      classLock: getClassLockStatus(me.class, me.classChangedAt, me.birthDate, soulstoneCount),
+      progress: progressInLevel(me.xp, me.level),
+      ordained: me.ordained,
+      spiritualDailyPrayers: me.spiritualDailyPrayers,
       // `creatine` (boolean) is the legacy User field; `creatineActive`
       // is the new auto-derived flag (true when ≥3 of last 7 days have
       // a Creatine log). The lean-mass calc uses creatineActive.
-      creatine: user.creatine,
-      creatineActive: await isCreatineActive(user.id),
-      timezone: user.timezone,
+      creatine: me.creatine,
+      creatineActive: await isCreatineActive(me.id),
+      timezone: me.timezone,
       // Casual / Hardcore mode + heart state. Hearts is read-tick'd
       // above so the value here is fresh. multiplier is computed
       // here too so the UI doesn't have to redo the math.
-      mode: user.mode ?? 'CASUAL',
+      mode: me.mode ?? 'CASUAL',
       hearts,
-      heartMultiplier: heartMultiplier(hearts, user.mode ?? 'CASUAL'),
+      heartMultiplier: heartMultiplier(hearts, me.mode ?? 'CASUAL'),
       hardcoreCaps: HARDCORE_SUBSTANCE_CAPS,
-      latitude: user.latitude,
-      longitude: user.longitude,
+      latitude: me.latitude,
+      longitude: me.longitude,
     };
   });
 
