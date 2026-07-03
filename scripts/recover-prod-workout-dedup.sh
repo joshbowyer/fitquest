@@ -207,14 +207,20 @@ if [[ -n "$SKIP_CONSTRAINT_REASON" ]]; then
     info "Skipping constraint: $SKIP_CONSTRAINT_REASON"
     warn "Re-run without DRY_RUN and after dedup completes to apply."
 else
-    # Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS so re-running
-    # the script doesn't error if it was already applied.
-    info "Adding unique index on (userId, performedAt)..."
+    # Use ADD CONSTRAINT (not CREATE UNIQUE INDEX). Postgres won't
+    # let an index and a constraint with the same name coexist on
+    # the same table — the migration's `ADD CONSTRAINT
+    # Workout_userId_performedAt_key` would fail with "relation
+    # already exists" if this left a same-named index. The
+    # constraint has the same functional effect (uniqueness) and
+    # is what the migration wants to create anyway.
+    info "Adding unique constraint on (userId, performedAt)..."
     run_psql -c "
-        CREATE UNIQUE INDEX IF NOT EXISTS \"Workout_userId_performedAt_key\"
-        ON \"Workout\"(\"userId\", \"performedAt\");
-    " >/dev/null
-    ok "Index ensured on (userId, performedAt)."
+        ALTER TABLE \"Workout\"
+        ADD CONSTRAINT \"Workout_userId_performedAt_key\"
+        UNIQUE (\"userId\", \"performedAt\");
+    " 2>&1 | head -2
+    ok "Constraint ensured on (userId, performedAt)."
     warn "The FIT persist path still calls prisma.workout.create()."
     warn "With this index, a duplicate INSERT raises a Postgres"
     warn "unique-violation error (23505) — loud failure, no silent"
