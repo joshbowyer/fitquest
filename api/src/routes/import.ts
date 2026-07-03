@@ -39,6 +39,7 @@ async function persist(
   userId: string,
   fit: FitImportResult,
   importSource: WorkoutSource = WorkoutSource.WEB,
+  sourceFilename: string | null = null,
 ): Promise<CreatedRecord[]> {
   const created: CreatedRecord[] = [];
 
@@ -95,6 +96,7 @@ async function persist(
           duration,
           notes: `[FIT] ${notes}`,
           importSource,
+          sourceFilename,
           performedAt: w.startTime,
           trackJson: (w.trackpoints ?? []) as any,
         },
@@ -232,7 +234,7 @@ export async function importRoutes(app: FastifyInstance) {
     // bridge (it always batches) but keeping the API symmetric
     // means any future client can flag its origin.
     const singleSource = ImportSourceSchema.parse((req.query as any)?.source ?? undefined) ?? WorkoutSource.WEB;
-    const created = await persist(me.id, fit, singleSource);
+    const created = await persist(me.id, fit, singleSource, 'upload.fit');
     const fileResult: FileResult = {
       filename: 'upload.fit',
       fitKind: fit.kind,
@@ -288,7 +290,7 @@ export async function importRoutes(app: FastifyInstance) {
           continue;
         }
         const fit = parseFit(buf, me.timezone ?? 'UTC');
-        const created = await persist(me.id, fit, source);
+        const created = await persist(me.id, fit, source, f.filename);
         results.push({
           filename: f.filename,
           fitKind: fit.kind,
@@ -447,6 +449,82 @@ export async function importRoutes(app: FastifyInstance) {
       wipeFirst: body.wipeFirst,
     });
     return reply.send(result);
+  });
+
+  // GET /import/bridge-history — every bridge-uploaded Workout
+  // the user has, grouped by sourceFilename. The Import page
+  // renders this in a collapsed-by-default panel so the user can
+  // see exactly which .fit files the bridge has uploaded.
+  //
+  // If a row has sourceFilename IS NULL (older bridge uploads
+  // pre-migration), it's grouped under "(unknown filename)" so
+  // it still surfaces in the list. The file is per-Workout, so
+  // all Workouts from the same .fit share the filename and group
+  // together.
+  app.get('/bridge-history', async (req) => {
+    const me = await requireUser(req);
+    const rows = await prisma.workout.findMany({
+      where: { userId: me.id, importSource: WorkoutSource.BRIDGE },
+      orderBy: { performedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        notes: true,
+        performedAt: true,
+        duration: true,
+        sourceFilename: true,
+      },
+    });
+
+    // Group by sourceFilename (or '(unknown)' for null).
+    type FileGroup = {
+      filename: string;
+      workoutCount: number;
+      totalDurationMin: number;
+      firstPerformedAt: string;
+      lastPerformedAt: string;
+      workouts: Array<{
+        id: string;
+        name: string | null;
+        type: string | null;
+        performedAt: string;
+        duration: number | null;
+        notes: string | null;
+      }>;
+    };
+    const groups = new Map<string, FileGroup>();
+    for (const r of rows) {
+      const fn = r.sourceFilename ?? '(unknown)';
+      let g = groups.get(fn);
+      if (!g) {
+        g = {
+          filename: fn,
+          workoutCount: 0,
+          totalDurationMin: 0,
+          firstPerformedAt: r.performedAt.toISOString(),
+          lastPerformedAt: r.performedAt.toISOString(),
+          workouts: [],
+        };
+        groups.set(fn, g);
+      }
+      g.workoutCount += 1;
+      g.totalDurationMin += r.duration ?? 0;
+      if (r.performedAt.toISOString() > g.lastPerformedAt) g.lastPerformedAt = r.performedAt.toISOString();
+      if (r.performedAt.toISOString() < g.firstPerformedAt) g.firstPerformedAt = r.performedAt.toISOString();
+      g.workouts.push({
+        id: r.id,
+        name: r.name,
+        type: r.notes?.startsWith('[FIT]') ? r.notes.slice(5, r.notes.indexOf('·', 5) > 0 ? r.notes.indexOf('·', 5) : undefined)?.trim() : null,
+        performedAt: r.performedAt.toISOString(),
+        duration: r.duration,
+        notes: r.notes,
+      });
+    }
+    // Newest file first
+    const files = Array.from(groups.values()).sort((a, b) =>
+      b.lastPerformedAt.localeCompare(a.lastPerformedAt),
+    );
+    return { totalFiles: files.length, totalWorkouts: rows.length, files };
   });
 }
 /**

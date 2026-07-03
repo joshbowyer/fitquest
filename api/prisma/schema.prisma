@@ -504,6 +504,11 @@ model Workout {
   /// see which activities came in via the FitQuestBridge APK vs.
   /// a manual drag-and-drop into the web dropzone.
   importSource           WorkoutSource           @default(WEB)
+  /// Original .fit filename (when importSource = BRIDGE). Lets
+  /// the /import page render a per-file history so the user can
+  /// see which specific bridge uploads made it. Null for web
+  /// imports + legacy rows.
+  sourceFilename        String?
   performedAt            DateTime                @default(now())
   createdAt              DateTime                @default(now())
   exercises              Exercise[]

@@ -85,6 +85,12 @@ export function ImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [bridgeOpen, setBridgeOpen] = useState(false);
+  // Collapsed-by-default for the persistent bridge-uploads history
+  // (the 'pending unlocks' panel above is about activity→skill
+  // matching — different data source).
+  const [bridgeHistoryOpen, setBridgeHistoryOpen] = useState(false);
+  // Per-file expanded state. Map<filename, boolean>.
+  const [bridgeFileOpen, setBridgeFileOpen] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const summaryQ = useQuery({
@@ -98,6 +104,16 @@ export function ImportPage() {
   const bridgeQ = useQuery({
     queryKey: ['import', 'bridge-summary'],
     queryFn: () => api<BridgeSummary>('/import/bridge-summary', { query: { days: 14 } }),
+    refetchInterval: 60_000,
+  });
+
+  // Full bridge-history: every bridge-uploaded Workout the
+  // user has, grouped by sourceFilename. Rendered below the
+  // pending-unlock panel as a collapsed-by-default list so it
+  // doesn't dominate the page.
+  const bridgeHistoryQ = useQuery({
+    queryKey: ['import', 'bridge-history'],
+    queryFn: () => api<BridgeHistory>('/import/bridge-history'),
     refetchInterval: 60_000,
   });
 
@@ -424,6 +440,109 @@ export function ImportPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </Panel>
+
+      {/* Bridge uploads history — every file the FitQuestBridge
+          APK has uploaded, grouped by sourceFilename. Collapsed
+          by default so the page stays scannable; clicking a file
+          expands to show the individual workouts that came from
+          it. Persists across sessions (lives in the DB, not
+          localStorage) so the user can come back tomorrow and
+          still see what was uploaded last week. */}
+      <Panel
+        title="Bridge uploads"
+        variant="amber"
+        className="mt-4"
+        action={
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono text-ink-300">
+              {bridgeHistoryQ.isLoading
+                ? '…'
+                : `${bridgeHistoryQ.data?.totalFiles ?? 0} file${(bridgeHistoryQ.data?.totalFiles ?? 0) === 1 ? '' : 's'} · ${bridgeHistoryQ.data?.totalWorkouts ?? 0} workout${(bridgeHistoryQ.data?.totalWorkouts ?? 0) === 1 ? '' : 's'}`}
+            </span>
+            <button
+              onClick={() => setBridgeHistoryOpen((o) => !o)}
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-neon-amber border border-ink-500/30 px-2 py-0.5"
+              aria-expanded={bridgeHistoryOpen}
+            >
+              {bridgeHistoryOpen ? '▾ collapse' : '▸ expand'}
+            </button>
+          </div>
+        }
+      >
+        {bridgeHistoryQ.isLoading ? (
+          <div className="text-[10px] font-mono text-ink-300">loading…</div>
+        ) : !bridgeHistoryQ.data || bridgeHistoryQ.data.totalFiles === 0 ? (
+          <div className="text-[10px] font-mono text-ink-400 italic text-center py-3">
+            No bridge uploads yet. Install FitQuestBridge + point it
+            at this server; new .fit files will appear here.
+          </div>
+        ) : !bridgeHistoryOpen ? (
+          <div className="text-[10px] font-mono text-ink-300">
+            Click ▸ expand to see the {bridgeHistoryQ.data.totalFiles}{' '}
+            file{bridgeHistoryQ.data.totalFiles === 1 ? '' : 's'}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {bridgeHistoryQ.data.files.map((f) => {
+              const isOpen = !!bridgeFileOpen[f.filename];
+              return (
+                <div
+                  key={f.filename}
+                  className="border border-ink-500/30 rounded-sm"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBridgeFileOpen((m) => ({ ...m, [f.filename]: !m[f.filename] }))
+                    }
+                    className="w-full flex items-baseline justify-between gap-2 px-2 py-1.5 hover:bg-neon-amber/5 text-left"
+                    aria-expanded={isOpen}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-ink-400 text-[10px] font-mono w-3">
+                        {isOpen ? '▾' : '▸'}
+                      </span>
+                      <span className="font-mono text-[12px] text-ink-100 truncate" title={f.filename}>
+                        {f.filename}
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-mono text-ink-400 shrink-0">
+                      {f.workoutCount} workout{f.workoutCount === 1 ? '' : 's'}
+                      {f.totalDurationMin > 0 && (
+                        <> · {Math.round(f.totalDurationMin)} min</>
+                      )}
+                      {' · '}
+                      {new Date(f.lastPerformedAt).toLocaleDateString()}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-ink-500/20 px-2 py-1.5 space-y-0.5 bg-bg-900/30">
+                      {f.workouts.map((w) => (
+                        <div
+                          key={w.id}
+                          className="text-[11px] font-mono flex items-baseline gap-2"
+                        >
+                          <span className="text-ink-200 truncate flex-1">
+                            {w.name ?? w.notes ?? '(unnamed)'}
+                          </span>
+                          {w.duration != null && (
+                            <span className="text-ink-400 shrink-0">
+                              {Math.round(w.duration)}m
+                            </span>
+                          )}
+                          <span className="text-ink-500 shrink-0 ml-auto">
+                            {formatRelative(w.performedAt)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </Panel>
