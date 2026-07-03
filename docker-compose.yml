@@ -34,7 +34,7 @@ services:
       API_HOST: 0.0.0.0
       COOKIE_SECRET: ${COOKIE_SECRET:-change-me-to-a-long-random-string-min-32-chars}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
-      WEB_ORIGIN_EXTRA: ${WEB_ORIGIN_EXTRA:-https://localhost}
+      WEB_ORIGIN_EXTRA: ${WEB_ORIGIN_EXTRA:-https://localhost,https://fitquest-api.joshbullock.net}
     ports:
       - "3001:3001"
 
