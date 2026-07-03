@@ -92,13 +92,15 @@ export type SoundEvent =
 // Per-event MP3 paths. When a real recording is dropped in at
 // `web/public/sounds/{event}.mp3` and added here, the synth fallback
 // is bypassed. Events without a file use the built-in synthwave
-// synth (see playPattern() below).
+// synth (see playPattern() below). skillUnlock stays mapped to
+// the YouTube 'Party Horn Children Yay' SFX — the user wanted
+// that one as a meme.
 const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
   // workoutComplete: '/sounds/workout-complete.mp3',
   // levelUp:        '/sounds/level-up.mp3',
   // achievement:    '/sounds/achievement.mp3',
   // restTimerDone:   '/sounds/rest-timer.mp3',
-  // skillUnlock:     '/sounds/skill-unlock.mp3',
+  skillUnlock:     '/sounds/skill-unlock.mp3',
   // bossKill:        '/sounds/boss-kill.mp3',
   // lootDrop:        '/sounds/loot-drop.mp3',
 };
@@ -124,19 +126,22 @@ function makeNoise(dur: number): AudioBufferSourceNode {
   return s;
 }
 
-/** ADSR envelope helper. start=time, a=attack, d=decay, peak=attack-peak, sus=sustain. */
-function envADSR(
+/** ADSR envelope helper. Quick attack to peak, then exponential decay to ~0 over the rest of the note's lifetime. The exponentialRamp uses the gain's current value as the start (after the linear attack ramp lands at peak), so a single ramp gives the full 'attack + ring-out' envelope. */
+function envPluck(
   g: GainNode,
   start: number,
-  a: number,
-  d: number,
+  durSec: number,
   peak: number,
-  sus: number,
 ): void {
   g.gain.cancelScheduledValues(start);
   g.gain.setValueAtTime(0.0001, start);
-  g.gain.linearRampToValueAtTime(peak, start + a);
-  g.gain.linearRampToValueAtTime(sus, start + a + d);
+  // Quick attack — 3ms linear ramp to peak.
+  g.gain.linearRampToValueAtTime(peak, start + 0.003);
+  // Decay over the rest of the note's lifetime. ExponentialRamp
+  // uses the current value at the call site — which is now
+  // `peak` because the linear ramp just scheduled it. The ramp
+  // ends at the start+attack+rest of the duration.
+  g.gain.exponentialRampToValueAtTime(0.0001, start + durSec);
 }
 
 /**
@@ -156,7 +161,6 @@ function playPad(
   if (!c || !unlocked || muted) return;
   const start = c.currentTime;
   const freq = 440 * Math.pow(2, (midi - 69) / 12);
-  const stop = start + durationSec + 0.5;
   // Two saws slightly detuned (chorus).
   const o1 = c.createOscillator();
   o1.type = 'sawtooth';
@@ -178,13 +182,11 @@ function playPad(
   o2.connect(lp);
   lp.connect(g);
   g.connect(c.destination);
-  envADSR(g, start, 0.6, 0.0, gain, 0.0001);
-  // Release tail — exponential decay after the sustain phase.
-  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  envPluck(g, start, durationSec, gain);
   o1.start(start);
   o2.start(start);
-  o1.stop(stop + 0.05);
-  o2.stop(stop + 0.05);
+  o1.stop(start + durationSec + 0.1);
+  o2.stop(start + durationSec + 0.1);
 }
 
 /**
@@ -195,8 +197,8 @@ function playPad(
  */
 function playPluck(
   midi: number,
-  durationSec = 0.18,
-  gain = 0.16,
+  durationSec = 0.30,
+  gain = 0.20,
 ): void {
   const c = ensureCtx();
   if (!c || !unlocked || muted) return;
@@ -215,8 +217,7 @@ function playPluck(
   o.connect(lp);
   lp.connect(g);
   g.connect(c.destination);
-  envADSR(g, start, 0.003, 0.0, gain, 0.0001);
-  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  envPluck(g, start, durationSec, gain);
   o.start(start);
   o.stop(stop + 0.02);
 }
@@ -229,8 +230,8 @@ function playPluck(
 function playLaser(
   startFreq = 2000,
   endFreq = 80,
-  durationSec = 0.18,
-  gain = 0.14,
+  durationSec = 0.30,
+  gain = 0.18,
 ): void {
   const c = ensureCtx();
   if (!c || !unlocked || muted) return;
@@ -249,8 +250,7 @@ function playLaser(
   o.connect(bp);
   bp.connect(g);
   g.connect(c.destination);
-  envADSR(g, start, 0.002, 0.0, gain, 0.0001);
-  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  envPluck(g, start, durationSec, gain);
   o.start(start);
   o.stop(stop + 0.02);
 }
@@ -261,9 +261,9 @@ function playLaser(
  * a snare (bandpass 1.5kHz), `high` for a hi-hat (highpass 6kHz).
  */
 function playNoiseHit(
-  durationSec = 0.12,
+  durationSec = 0.20,
   filterMode: 'low' | 'mid' | 'high' = 'mid',
-  gain = 0.18,
+  gain = 0.20,
 ): void {
   const c = ensureCtx();
   if (!c || !unlocked || muted) return;
@@ -286,8 +286,7 @@ function playNoiseHit(
   n.connect(f);
   f.connect(g);
   g.connect(c.destination);
-  envADSR(g, start, 0.001, 0.0, gain, 0.0001);
-  g.gain.exponentialRampToValueAtTime(0.0001, stop);
+  envPluck(g, start, durationSec, gain);
   n.start(start);
   n.stop(stop);
 }
@@ -328,31 +327,31 @@ function playPattern(event: SoundEvent): void {
       // played as overlapping plucks with a low sub-kick. The
       // hummm the user asked for, in ascending melodic form.
       playKick();
-      playPluck(60, 0.20, 0.18);  // C4
-      playPluck(63, 0.20, 0.16, ); // Eb4
-      playPluck(67, 0.25, 0.18);  // G4 — longer, lets the chord "ring"
+      playPluck(60, 0.45, 0.30);  // C4
+      playPluck(63, 0.45, 0.28);  // Eb4
+      playPluck(67, 0.55, 0.30);  // G4 — longer, lets the chord "ring"
       break;
     case 'levelUp':
       // Ascending arpeggio. C5 → E5 → G5 → C6 — the iconic RPG
       // level-up jingle, but with synthwave timbre (detuned
       // saws under lowpass). Each note is a short pluck.
-      playPluck(72, 0.10, 0.18);  // C5
-      playPluck(76, 0.10, 0.18);  // E5
-      playPluck(79, 0.12, 0.20);  // G5
-      playPluck(84, 0.30, 0.22);  // C6 — held, the payoff
+      playPluck(72, 0.20, 0.30);  // C5
+      playPluck(76, 0.20, 0.30);  // E5
+      playPluck(79, 0.22, 0.32);  // G5
+      playPluck(84, 0.45, 0.34);  // C6 — held, the payoff
       break;
     case 'achievement':
       // Short two-note "ping". The C major arpeggio sounds
       // positive and triumphant. Quick attack + fast decay.
-      playPluck(72, 0.08, 0.16);
-      playPluck(76, 0.18, 0.18);
+      playPluck(72, 0.18, 0.28);
+      playPluck(76, 0.32, 0.30);
       break;
     case 'restTimerDone':
       // Synthwave alarm: a mid-frequency descending pulse with
       // a lowpass sweep. Two-tone "bwong-bwong" so it's
       // clearly an alert, not a celebration.
-      playPluck(67, 0.10, 0.16);
-      playPluck(60, 0.20, 0.18);
+      playPluck(67, 0.20, 0.26);
+      playPluck(60, 0.40, 0.30);
       break;
     case 'skillUnlock':
       // Real recording from the YouTube SFX the user linked
@@ -367,16 +366,16 @@ function playPattern(event: SoundEvent): void {
     case 'bossKill':
       // Power-down: descending laser + low noise impact +
       // descending bass pad. The "boss is dead" sequence.
-      playLaser(1200, 80, 0.4, 0.18);   // descending pew
-      playNoiseHit(0.30, 'low', 0.22);    // sub impact
-      playPluck(48, 0.35, 0.18);         // low C — the death knell
+      playLaser(1200, 80, 0.5, 0.22);    // descending pew
+      playNoiseHit(0.45, 'low', 0.30);   // sub impact
+      playPluck(48, 0.55, 0.28);         // low C — the death knell
       break;
     case 'lootDrop':
       // Quick ascending laser + tiny noise tick. Classic
       // "you got an item" feedback. The user explicitly asked
       // for a laser-gun sound.
-      playLaser(400, 2200, 0.10, 0.16);  // ascending pew
-      playNoiseHit(0.05, 'high', 0.10);   // small tick
+      playLaser(400, 2200, 0.20, 0.22); // ascending pew
+      playNoiseHit(0.08, 'high', 0.16);  // small tick
       break;
   }
 }
