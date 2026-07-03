@@ -158,13 +158,6 @@ export function TodayPage() {
         <TodayActions />
       </div>
 
-      {/* Today's recovery stack — moved here from /recovery so the
-          user sees it first thing. State persists in localStorage so
-          it stays in sync if the user navigates to /recovery too. */}
-      <div className="mb-6">
-        <RecoveryPracticesPanel />
-      </div>
-
       {isLoading ? (
         <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
       ) : (
@@ -282,6 +275,19 @@ export function TodayPage() {
           </div>
         </>
       )}
+
+      {/* Today's recovery stack — moved here from above the
+          dailies/check-ins on mobile (where it pushed the
+          interactive items below the fold). On desktop the
+          2-column grid shows dailies + check-ins side by side
+          so the recovery stack was getting visually buried
+          above; putting it below keeps the morning flow
+          (dailies → check-ins → "what should I do for recovery?")
+          in a top-to-bottom order. State persists in
+          localStorage so it stays in sync with /recovery. */}
+      <div className="mt-6">
+        <RecoveryPracticesPanel />
+      </div>
 
       {/* Daily editor (create / edit) */}
       {(creating || editing) && (
