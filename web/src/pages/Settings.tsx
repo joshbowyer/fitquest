@@ -9,6 +9,7 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { TwoFactorSetup } from '@/components/TwoFactorSetup';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { ApiUrlSettingsTrigger } from '@/components/FirstRunApiUrl';
 import { useAuth } from '@/lib/auth';
 import { convertForDisplay, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames, formatDate, formatRelative } from '@/lib/format';
@@ -712,6 +713,7 @@ export function SettingsPage() {
       <PageHeader
         title="// Settings"
         subtitle="Display, data, account — all the dials in one place."
+        action={<ApiUrlSettingsTrigger />}
       />
 
       <div className="space-y-4 max-w-3xl">
