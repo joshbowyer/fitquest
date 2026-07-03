@@ -211,7 +211,11 @@ function playPluck(
   const lp = c.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.setValueAtTime(2500, start);
-  lp.frequency.exponentialRampToValueAtTime(400, stop);
+  // Floor at 900Hz instead of 400Hz — keeps the note's tail
+  // present instead of going muddy. The filter sweep still
+  // gives the analog "close" character without losing
+  // audibility.
+  lp.frequency.exponentialRampToValueAtTime(900, stop);
   lp.Q.value = 4;
   const g = c.createGain();
   o.connect(lp);
@@ -323,35 +327,41 @@ function playKick(): void {
 function playPattern(event: SoundEvent): void {
   switch (event) {
     case 'workoutComplete':
-      // Triumphant synthwave chord stab. C minor triad (C, Eb, G)
-      // played as overlapping plucks with a low sub-kick. The
-      // hummm the user asked for, in ascending melodic form.
+      // Triumphant synthwave chord stab — the 'hummm' the user
+      // asked for. C minor triad (C, Eb, G) as overlapping pad
+      // voices with a sub-kick underneath. Each pad is detuned
+      // saws through a lowpass for that warm analog sound. Notes
+      // sustain for ~1.2s so the chord actually 'rings' rather
+      // than blipping.
       playKick();
-      playPluck(60, 0.45, 0.30);  // C4
-      playPluck(63, 0.45, 0.28);  // Eb4
-      playPluck(67, 0.55, 0.30);  // G4 — longer, lets the chord "ring"
+      playPad(60, 1.20, 0.10);  // C4
+      playPad(63, 1.20, 0.10);  // Eb4
+      playPad(67, 1.20, 0.10);  // G4
       break;
     case 'levelUp':
-      // Ascending arpeggio. C5 → E5 → G5 → C6 — the iconic RPG
-      // level-up jingle, but with synthwave timbre (detuned
-      // saws under lowpass). Each note is a short pluck.
-      playPluck(72, 0.20, 0.30);  // C5
-      playPluck(76, 0.20, 0.30);  // E5
-      playPluck(79, 0.22, 0.32);  // G5
-      playPluck(84, 0.45, 0.34);  // C6 — held, the payoff
+      // Ascending arpeggio held as a sustained chord. C5 → E5
+      // → G5 → C6 — each note rings for ~1s so the progression
+      // builds. The C6 is held the longest (the payoff).
+      // Sustained pads (not plucks) so the icon level-up moment
+      // feels weighty.
+      playPad(72, 0.80, 0.12);  // C5
+      playPad(76, 0.80, 0.12);  // E5
+      playPad(79, 0.80, 0.12);  // G5
+      playPad(84, 1.40, 0.14);  // C6 — held, the payoff
       break;
     case 'achievement':
-      // Short two-note "ping". The C major arpeggio sounds
-      // positive and triumphant. Quick attack + fast decay.
-      playPluck(72, 0.18, 0.28);
-      playPluck(76, 0.32, 0.30);
+      // Two-note synthwave 'ping' — quick C major arpeggio.
+      // Sustained pads give it the 'trophy' feel, not a click.
+      playPad(72, 0.50, 0.12);  // C5
+      playPad(76, 0.80, 0.12);  // E5 — held a touch longer
       break;
     case 'restTimerDone':
-      // Synthwave alarm: a mid-frequency descending pulse with
-      // a lowpass sweep. Two-tone "bwong-bwong" so it's
-      // clearly an alert, not a celebration.
+      // Two-tone synthwave alarm. Quick pluck (the alert) +
+      // a sustained mid-low pad that lingers (the 'this is
+      // important' cue). Distinct from the celebratory events
+      // by being shorter + lower.
       playPluck(67, 0.20, 0.26);
-      playPluck(60, 0.40, 0.30);
+      playPad(60, 0.60, 0.10);
       break;
     case 'skillUnlock':
       // Real recording from the YouTube SFX the user linked
@@ -365,17 +375,19 @@ function playPattern(event: SoundEvent): void {
       break;
     case 'bossKill':
       // Power-down: descending laser + low noise impact +
-      // descending bass pad. The "boss is dead" sequence.
+      // sustained low pad. The 'boss is dead' sequence —
+      // dramatic and ominous.
       playLaser(1200, 80, 0.5, 0.22);    // descending pew
       playNoiseHit(0.45, 'low', 0.30);   // sub impact
-      playPluck(48, 0.55, 0.28);         // low C — the death knell
+      playPad(48, 1.50, 0.10);           // low C — the death knell, sustained
       break;
     case 'lootDrop':
-      // Quick ascending laser + tiny noise tick. Classic
-      // "you got an item" feedback. The user explicitly asked
-      // for a laser-gun sound.
+      // Quick ascending laser + tiny noise tick + brief pad.
+      // Classic 'you got an item' feedback. The user explicitly
+      // asked for a laser-gun sound.
       playLaser(400, 2200, 0.20, 0.22); // ascending pew
       playNoiseHit(0.08, 'high', 0.16);  // small tick
+      playPad(76, 0.30, 0.08);           // quick E5 bling
       break;
   }
 }
