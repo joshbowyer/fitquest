@@ -55,7 +55,7 @@ export function FirstRunApiUrl() {
         <div className="text-[10px] font-mono text-ink-400 space-y-0.5">
           <div>For local dev: <span className="neon-text-cyan">http://10.0.2.2:3001/api</span> (emulator → host).</div>
           <div>For same-origin: <span className="neon-text-cyan">https://fit.example.com/api</span> (web &amp; api on the same domain).</div>
-          <div>For split api domain: <span className="neon-text-cyan">https://api.fit.example.com/api</span> (separate caddy vhost, no /api prefix on the proxy itself — so the prefix is here).</div>
+          <div>For split api domain: <span className="neon-text-cyan">https://api.fit.example.com</span> (separate caddy vhost; the api routes are at /auth, /users, /measurements, etc. — no /api prefix on the api itself).</div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <NeonButton

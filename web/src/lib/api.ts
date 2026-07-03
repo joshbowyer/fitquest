@@ -1,10 +1,12 @@
-// In the browser the dev server proxies /api/* to the api
-// container, so '/api' works. In the Capacitor WebView there's
-// no proxy — the WebView fetches from the app's bundled origin
-// (https://localhost or app://), so the user has to point
-// the api at their real domain. The resolution chain in
-// @/lib/apiUrl handles localStorage (settable from the first-run
-// prompt) > build-time VITE_API_URL > '/api' default.
+// The api routes are mounted at /auth, /users, /measurements,
+// etc. — no /api prefix on the api itself. The web bundle uses
+// '/api' as a fallback because the Vite dev server proxies
+// /api/* to the api container in dev, and the caddy config for
+// the WEB domain strips /api before proxying. But the Capacitor
+// WebView calls the api directly (no proxy), so it should use
+// the bare api domain (e.g. https://api.fit.example.com) without
+// any /api prefix. The first-run prompt collects this URL and
+// persists to localStorage; subsequent calls use it verbatim.
 import { getApiBaseUrl } from './apiUrl';
 const API_BASE = getApiBaseUrl();
 
