@@ -38,20 +38,24 @@ export function FirstRunApiUrl() {
       <div className="space-y-3">
         <div className="text-sm text-ink-200">
           The FitQuest app needs to know where your server lives.
-          Enter the base URL (no trailing slash). The app will
-          remember it across launches.
+          Enter the base URL (no trailing slash). If the api is
+          reverse-proxied under a path (e.g. <code>/api</code>),
+          include that path here too — the app's requests
+          append to the base URL verbatim. The app remembers
+          the value across launches.
         </div>
         <input
           type="url"
           autoFocus
-          placeholder="https://fit.example.com"
+          placeholder="https://api.fit.example.com/api"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           className="input-neon w-full text-sm font-mono"
         />
-        <div className="text-[10px] font-mono text-ink-400">
-          For local dev: <span className="neon-text-cyan">http://10.0.2.2:3001</span> (emulator → host).
-          For prod: <span className="neon-text-cyan">https://fit.example.com</span>.
+        <div className="text-[10px] font-mono text-ink-400 space-y-0.5">
+          <div>For local dev: <span className="neon-text-cyan">http://10.0.2.2:3001/api</span> (emulator → host).</div>
+          <div>For same-origin: <span className="neon-text-cyan">https://fit.example.com/api</span> (web &amp; api on the same domain).</div>
+          <div>For split api domain: <span className="neon-text-cyan">https://api.fit.example.com/api</span> (separate caddy vhost, no /api prefix on the proxy itself — so the prefix is here).</div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <NeonButton
