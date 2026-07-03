@@ -63,8 +63,16 @@ async function build() {
   });
 
   await app.register(cookie, { secret: config.cookieSecret });
+  // CORS allowlist: primary web origin + the extra list. The
+  // Capacitor app loads at https://localhost (its androidScheme)
+  // so that needs to be in here, or the preflight for any
+  // cross-origin fetch from the WebView to the api fails.
+  // WEB_ORIGIN_EXTRA is a comma-separated list of additional
+  // allowed origins for cases where the api domain != the web
+  // domain (e.g. api.fitquest.app vs fitquest.app) — the user
+  // types the api domain in the app's first-run prompt.
   await app.register(cors, {
-    origin: config.webOrigin,
+    origin: [config.webOrigin, ...config.webOriginExtra],
     credentials: true,
   });
   await app.register(multipart, {

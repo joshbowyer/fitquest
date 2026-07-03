@@ -111,7 +111,11 @@ export function setTrustedDeviceCookie(reply: FastifyReply, token: string) {
   reply.setCookie(TRUSTED_DEVICE_COOKIE, token, {
     httpOnly: true,
     secure: !config.isDev,
-    sameSite: 'lax',
+    // SameSite=None in prod so the Capacitor WebView (which loads
+    // at https://localhost) can send this cookie on cross-site
+    // requests to the api domain. See setSessionCookie for the
+    // matching comment.
+    sameSite: config.isDev ? 'lax' : 'none',
     path: '/',
     maxAge: 90 * 24 * 60 * 60,
     signed: true,

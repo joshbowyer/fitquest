@@ -42,6 +42,7 @@ services:
       # Behind Portainer's edge proxy: https://your-domain.tld
       # Direct (no reverse proxy): http://localhost:3001
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3001}
+      WEB_ORIGIN_EXTRA: ${WEB_ORIGIN_EXTRA:-https://localhost}
     # Expose api port only if you're not running a reverse proxy.
     # If using Caddy / nginx / Portainer edge, remove this and the
     # web container's port — the proxy will route traffic.
