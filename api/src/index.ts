@@ -81,6 +81,19 @@ async function build() {
 
   app.get('/health', async () => ({ ok: true, ts: Date.now() }));
 
+  // Debug endpoint: dev only. Returns the cookies + the
+  // session+user state so the user can verify the WebView is
+  // sending the right cookie. Used to debug "data gone in the
+  // Capacitor app" where /users/me works but other routes 401.
+  if (config.isDev) {
+    app.get('/_debug/auth', async (req) => ({
+      cookies: req.cookies,
+      cookieHeader: req.headers.cookie ?? null,
+      origin: req.headers.origin ?? null,
+      host: req.headers.host ?? null,
+    }));
+  }
+
   await app.register(authRoutes, { prefix: '/auth' });
   await app.register(userRoutes, { prefix: '/users' });
   await app.register(measurementRoutes, { prefix: '/measurements' });
