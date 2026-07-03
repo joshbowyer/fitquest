@@ -456,10 +456,16 @@ model Measurement {
   /// are estimates. Morning report's body-comp insight weights by
   /// confidence (see api/src/lib/measurementSource.ts).
   source     MeasurementSource @default(UNKNOWN)
+  /// Original .fit filename (when imported via the FitQuestBridge
+  /// APK or via the web /import page). Lets the /import page's
+  /// "Bridge uploads" panel show the source file. Null for
+  /// legacy rows + manual in-app logs.
+  sourceFilename String?
 
   @@unique([userId, metric, recordedAt])
   @@index([userId, metric, recordedAt])
   @@index([userId, metric, source, recordedAt])
+  @@index([userId, sourceFilename])
 }
 
 model GeneticMax {
@@ -1887,10 +1893,15 @@ model DailyLog {
   goldDelta Int      @default(0)
   xpDelta   Int      @default(0)
   loggedAt  DateTime @default(now())
+  /// Original .fit filename (when imported via the FitQuestBridge
+  /// APK). Lets the /import page's "Bridge uploads" panel show
+  /// the source file. Null for legacy rows + manual in-app logs.
+  sourceFilename String?
 
   @@index([userId, dailyKey, loggedAt])
   @@index([userId, loggedAt])
   @@index([dailyId, loggedAt])
+  @@index([userId, sourceFilename])
 }
 
 // ============================================================

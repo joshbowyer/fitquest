@@ -27,6 +27,26 @@ type BridgeSummary = {
   }>;
 };
 
+// Per-file history of every .fit the bridge has uploaded.
+// Items are unioned across Workout + Measurement + DailyLog
+// so a single file that produced 1 workout + 3 measurements +
+// 2 daily-logs shows all 6 rows under the same filename.
+type BridgeHistoryItem =
+  | { kind: 'workout'; id: string; name: string | null; duration: number | null; performedAt: string; notes: string | null }
+  | { kind: 'measurement'; id: string; metric: string; value: number; unit: string; recordedAt: string; notes: string | null }
+  | { kind: 'daily_log'; id: string; dailyKey: string; loggedAt: string; goldDelta: number; xpDelta: number };
+type BridgeHistory = {
+  totalFiles: number;
+  totalItems: number;
+  files: Array<{
+    filename: string;
+    firstAt: string;
+    lastAt: string;
+    counts: { workout: number; measurement: number; daily_log: number };
+    items: BridgeHistoryItem[];
+  }>;
+};
+
 type FitKind = 'activity' | 'sleep' | 'hrv' | 'monitor' | 'metrics' | 'unknown';
 
 type CreatedRecord =
@@ -460,7 +480,7 @@ export function ImportPage() {
             <span className="text-[10px] font-mono text-ink-300">
               {bridgeHistoryQ.isLoading
                 ? '…'
-                : `${bridgeHistoryQ.data?.totalFiles ?? 0} file${(bridgeHistoryQ.data?.totalFiles ?? 0) === 1 ? '' : 's'} · ${bridgeHistoryQ.data?.totalWorkouts ?? 0} workout${(bridgeHistoryQ.data?.totalWorkouts ?? 0) === 1 ? '' : 's'}`}
+                : `${bridgeHistoryQ.data?.totalFiles ?? 0} file${(bridgeHistoryQ.data?.totalFiles ?? 0) === 1 ? '' : 's'} · ${bridgeHistoryQ.data?.totalItems ?? 0} item${(bridgeHistoryQ.data?.totalItems ?? 0) === 1 ? '' : 's'}`}
             </span>
             <button
               onClick={() => setBridgeHistoryOpen((o) => !o)}
@@ -510,32 +530,61 @@ export function ImportPage() {
                       </span>
                     </span>
                     <span className="text-[10px] font-mono text-ink-400 shrink-0">
-                      {f.workoutCount} workout{f.workoutCount === 1 ? '' : 's'}
-                      {f.totalDurationMin > 0 && (
-                        <> · {Math.round(f.totalDurationMin)} min</>
-                      )}
+                      {f.counts.workout > 0 && <>{f.counts.workout}W </>}
+                      {f.counts.measurement > 0 && <>{f.counts.measurement}M </>}
+                      {f.counts.daily_log > 0 && <>{f.counts.daily_log}D </>}
                       {' · '}
-                      {new Date(f.lastPerformedAt).toLocaleDateString()}
+                      {new Date(f.lastAt).toLocaleDateString()}
                     </span>
                   </button>
                   {isOpen && (
                     <div className="border-t border-ink-500/20 px-2 py-1.5 space-y-0.5 bg-bg-900/30">
-                      {f.workouts.map((w) => (
+                      {f.items.map((it) => (
                         <div
-                          key={w.id}
+                          key={`${it.kind}-${it.id}`}
                           className="text-[11px] font-mono flex items-baseline gap-2"
                         >
-                          <span className="text-ink-200 truncate flex-1">
-                            {w.name ?? w.notes ?? '(unnamed)'}
+                          <span className="text-ink-500 shrink-0 w-3">
+                            {it.kind === 'workout' ? '⚔' : it.kind === 'measurement' ? '◇' : '☾'}
                           </span>
-                          {w.duration != null && (
-                            <span className="text-ink-400 shrink-0">
-                              {Math.round(w.duration)}m
-                            </span>
+                          {it.kind === 'workout' ? (
+                            <>
+                              <span className="text-ink-200 truncate flex-1">
+                                {it.name ?? it.notes ?? '(unnamed workout)'}
+                              </span>
+                              {it.duration != null && (
+                                <span className="text-ink-400 shrink-0">
+                                  {Math.round(it.duration)}m
+                                </span>
+                              )}
+                              <span className="text-ink-500 shrink-0 ml-auto">
+                                {formatRelative(it.performedAt)}
+                              </span>
+                            </>
+                          ) : it.kind === 'measurement' ? (
+                            <>
+                              <span className="text-ink-200 truncate flex-1">
+                                {it.metric} <span className="text-ink-400">=</span> {it.value}{it.unit}
+                              </span>
+                              <span className="text-ink-500 shrink-0 ml-auto">
+                                {formatRelative(it.recordedAt)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-ink-200 truncate flex-1">
+                                {it.dailyKey}
+                                {it.goldDelta + it.xpDelta > 0 && (
+                                  <span className="text-ink-400">
+                                    {' '}+{it.goldDelta}g / +{it.xpDelta}xp
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-ink-500 shrink-0 ml-auto">
+                                {formatRelative(it.loggedAt)}
+                              </span>
+                            </>
                           )}
-                          <span className="text-ink-500 shrink-0 ml-auto">
-                            {formatRelative(w.performedAt)}
-                          </span>
                         </div>
                       ))}
                     </div>

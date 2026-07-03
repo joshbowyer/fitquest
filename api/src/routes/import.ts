@@ -83,8 +83,23 @@ async function persist(
           : w.sport === 'yoga' || w.sport === 'pilates'
           ? 'MOBILITY'
           : 'OTHER';
-      const created_row = await prisma.workout.create({
-        data: {
+      // Upsert keyed on the (userId, performedAt) unique index.
+      // Previously this was a `create` call — but the recent
+      // migration added the unique constraint, so a re-import
+      // of the same .fit would fail with P2002 and roll back
+      // the whole transaction. Use upsert so re-imports
+      // dedupe cleanly. On update, only touch the mutable
+      // fields (notes, name, trackJson, sourceFilename,
+      // duration). The user's other Workout fields (importSource,
+      // type) shouldn't change on re-import.
+      const created_row = await prisma.workout.upsert({
+        where: {
+          userId_performedAt: {
+            userId,
+            performedAt: w.startTime,
+          },
+        },
+        create: {
           userId,
           type: type as any,
           // Auto-name from location + sport when the track has
@@ -100,7 +115,23 @@ async function persist(
           performedAt: w.startTime,
           trackJson: (w.trackpoints ?? []) as any,
         },
+        update: {
+          name: await activityTitle(w.sport, w.trackpoints),
+          duration,
+          notes: `[FIT] ${notes}`,
+          sourceFilename,
+          trackJson: (w.trackpoints ?? []) as any,
+        },
       });
+      // Detect "this is a fresh insert" vs "an update" so the
+      // downstream WORKOUT daily log + race-time inference don't
+      // re-run for re-imports. Prisma's upsert doesn't return
+      // a flag, so we use a createdAt-vs-now heuristic. A re-import
+      // of a workout from a few seconds ago would re-run the
+      // side effects (harmless but slightly wasteful); anything
+      // older counts as a re-import and skips them.
+      const ageMs = Date.now() - created_row.createdAt.getTime();
+      const isFreshInsert = ageMs < 5000;
       // Mark today's WORKOUT daily complete (if applicable)
       if (fallbackDaily) {
         const daily = await prisma.dailyLog.create({
@@ -158,11 +189,13 @@ async function persist(
           unit: unitFor(m.metric),
           notes: m.notes ?? null,
           recordedAt: m.recordedAt,
+          sourceFilename,
         },
         update: {
           value: m.value,
           unit: unitFor(m.metric),
           notes: m.notes ?? null,
+          sourceFilename,
         },
       });
       created.push({
@@ -451,80 +484,101 @@ export async function importRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  // GET /import/bridge-history — every bridge-uploaded Workout
-  // the user has, grouped by sourceFilename. The Import page
+  // GET /import/bridge-history — every bridge-uploaded item
+  // the user has, across all three tables (Workout, Measurement,
+  // DailyLog), grouped by sourceFilename. The Import page
   // renders this in a collapsed-by-default panel so the user can
-  // see exactly which .fit files the bridge has uploaded.
+  // see exactly which .fit files the bridge has uploaded
+  // (including pure-sleep, pure-HRV, monitor-only files that
+  // never produced a Workout row).
   //
-  // If a row has sourceFilename IS NULL (older bridge uploads
-  // pre-migration), it's grouped under "(unknown filename)" so
-  // it still surfaces in the list. The file is per-Workout, so
-  // all Workouts from the same .fit share the filename and group
-  // together.
+  // If a row has sourceFilename IS NULL (legacy bridge uploads
+  // before the sourceFilename migration), it's grouped under
+  // "(unknown filename)" so it still surfaces in the list.
   app.get('/bridge-history', async (req) => {
     const me = await requireUser(req);
-    const rows = await prisma.workout.findMany({
-      where: { userId: me.id, importSource: WorkoutSource.BRIDGE },
-      orderBy: { performedAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        notes: true,
-        performedAt: true,
-        duration: true,
-        sourceFilename: true,
-      },
-    });
+    const userId = me.id;
 
-    // Group by sourceFilename (or '(unknown)' for null).
-    type FileGroup = {
-      filename: string;
-      workoutCount: number;
-      totalDurationMin: number;
-      firstPerformedAt: string;
-      lastPerformedAt: string;
-      workouts: Array<{
-        id: string;
-        name: string | null;
-        type: string | null;
-        performedAt: string;
-        duration: number | null;
-        notes: string | null;
-      }>;
-    };
-    const groups = new Map<string, FileGroup>();
-    for (const r of rows) {
-      const fn = r.sourceFilename ?? '(unknown)';
-      let g = groups.get(fn);
-      if (!g) {
-        g = {
-          filename: fn,
-          workoutCount: 0,
-          totalDurationMin: 0,
-          firstPerformedAt: r.performedAt.toISOString(),
-          lastPerformedAt: r.performedAt.toISOString(),
-          workouts: [],
-        };
-        groups.set(fn, g);
-      }
-      g.workoutCount += 1;
-      g.totalDurationMin += r.duration ?? 0;
-      if (r.performedAt.toISOString() > g.lastPerformedAt) g.lastPerformedAt = r.performedAt.toISOString();
-      if (r.performedAt.toISOString() < g.firstPerformedAt) g.firstPerformedAt = r.performedAt.toISOString();
-      g.workouts.push({
-        id: r.id,
-        name: r.name,
-        type: r.notes?.startsWith('[FIT]') ? r.notes.slice(5, r.notes.indexOf('·', 5) > 0 ? r.notes.indexOf('·', 5) : undefined)?.trim() : null,
-        performedAt: r.performedAt.toISOString(),
-        duration: r.duration,
-        notes: r.notes,
+    // Three parallel reads, one per table. All filtered to
+    // importSource = BRIDGE (well — Measurement + DailyLog don't
+    // carry importSource; the bridge is the only writer that
+    // sets sourceFilename on those tables, so the filename
+    // filter alone is sufficient).
+    const [workoutRows, measurementRows, dailyLogRows] = await Promise.all([
+      prisma.workout.findMany({
+        where: { userId, importSource: WorkoutSource.BRIDGE },
+        orderBy: { performedAt: 'desc' },
+        select: { id: true, name: true, notes: true, performedAt: true, duration: true, sourceFilename: true },
+      }),
+      prisma.measurement.findMany({
+        where: { userId, sourceFilename: { not: null } },
+        orderBy: { recordedAt: 'desc' },
+        select: { id: true, metric: true, value: true, unit: true, recordedAt: true, sourceFilename: true, notes: true },
+      }),
+      prisma.dailyLog.findMany({
+        where: { userId, sourceFilename: { not: null } },
+        orderBy: { loggedAt: 'desc' },
+        select: { id: true, dailyKey: true, loggedAt: true, sourceFilename: true, goldDelta: true, xpDelta: true },
+      }),
+    ]);
+
+    // Normalize all rows into a single shape keyed by the
+    // originating table. Union'd before grouping so a file
+    // that produced 1 workout + 3 measurements + 2 daily-logs
+    // shows all 6 rows under the same filename.
+    type Item =
+      | { kind: 'workout'; id: string; name: string | null; duration: number | null; performedAt: string; notes: string | null }
+      | { kind: 'measurement'; id: string; metric: string; value: number; unit: string; recordedAt: string; notes: string | null }
+      | { kind: 'daily_log'; id: string; dailyKey: string; loggedAt: string; goldDelta: number; xpDelta: number };
+    const all: Array<{ filename: string; ts: string; item: Item }> = [];
+    for (const w of workoutRows) {
+      all.push({
+        filename: w.sourceFilename ?? '(unknown)',
+        ts: w.performedAt.toISOString(),
+        item: { kind: 'workout', id: w.id, name: w.name, duration: w.duration, performedAt: w.performedAt.toISOString(), notes: w.notes },
       });
     }
-    // Newest file first
-    const files = Array.from(groups.values()).sort((a, b) =>
-      b.lastPerformedAt.localeCompare(a.lastPerformedAt),
+    for (const m of measurementRows) {
+      all.push({
+        filename: m.sourceFilename ?? '(unknown)',
+        ts: m.recordedAt.toISOString(),
+        item: { kind: 'measurement', id: m.id, metric: m.metric, value: m.value, unit: m.unit, recordedAt: m.recordedAt.toISOString(), notes: m.notes },
+      });
+    }
+    for (const d of dailyLogRows) {
+      all.push({
+        filename: d.sourceFilename ?? '(unknown)',
+        ts: d.loggedAt.toISOString(),
+        item: { kind: 'daily_log', id: d.id, dailyKey: d.dailyKey, loggedAt: d.loggedAt.toISOString(), goldDelta: d.goldDelta, xpDelta: d.xpDelta },
+      });
+    }
+
+    // Group by filename.
+    type FileGroup = {
+      filename: string;
+      firstAt: string;
+      lastAt: string;
+      counts: { workout: number; measurement: number; daily_log: number };
+      items: Item[];
+    };
+    const byFile = new Map<string, FileGroup>();
+    for (const { filename, ts, item } of all) {
+      let g = byFile.get(filename);
+      if (!g) {
+        g = { filename, firstAt: ts, lastAt: ts, counts: { workout: 0, measurement: 0, daily_log: 0 }, items: [] };
+        byFile.set(filename, g);
+      }
+      g.items.push(item);
+      g.counts[item.kind] += 1;
+      if (ts > g.lastAt) g.lastAt = ts;
+      if (ts < g.firstAt) g.firstAt = ts;
+    }
+    // Newest file first.
+    const files = Array.from(byFile.values()).sort((a, b) =>
+      b.lastAt.localeCompare(a.lastAt),
     );
-    return { totalFiles: files.length, totalWorkouts: rows.length, files };
+    const totalItems = all.length;
+    return { totalFiles: files.length, totalItems, files };
   });
 }
 /**
