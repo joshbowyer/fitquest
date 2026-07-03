@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { type UnitSystem } from '@/lib/units';
 import { classNames } from '@/lib/format';
 
 /**
@@ -119,6 +121,8 @@ type Props = {
 
 export function MorningPopup({ forceShow = false, onDismiss }: Props) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const system: UnitSystem = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
   const [open, setOpen] = useState(false);
   const [revealedCount, setRevealedCount] = useState(0);
   const [heartsAnim, setHeartsAnim] = useState<number | null>(null);
@@ -304,7 +308,9 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
                 detail={q.data.recap.weighInLogged
                   ? 'logged'
                   : q.data.recap.latestWeightKg != null
-                    ? `last ${q.data.recap.latestWeightKg.toFixed(1)} kg`
+                    ? `last ${(system === 'IMPERIAL'
+                        ? (q.data.recap.latestWeightKg * 2.20462).toFixed(1) + ' lb'
+                        : q.data.recap.latestWeightKg.toFixed(1) + ' kg')}`
                     : 'none'} />
               <RecapCell label="Recovery" ok={q.data.recap.recoveryScore != null && q.data.recap.recoveryScore >= 60}
                 detail={q.data.recap.recoveryScore != null ? `${q.data.recap.recoveryScore}/100` : 'n/a'} />
