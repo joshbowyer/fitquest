@@ -1,4 +1,12 @@
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
+// In the browser the dev server proxies /api/* to the api
+// container, so '/api' works. In the Capacitor WebView there's
+// no proxy — the WebView fetches from the app's bundled origin
+// (https://localhost or app://), so the user has to point
+// the api at their real domain. The resolution chain in
+// @/lib/apiUrl handles localStorage (settable from the first-run
+// prompt) > build-time VITE_API_URL > '/api' default.
+import { getApiBaseUrl } from './apiUrl';
+const API_BASE = getApiBaseUrl();
 
 export class ApiError extends Error {
   status: number;
