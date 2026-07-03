@@ -92,17 +92,15 @@ export type SoundEvent =
 // Per-event MP3 paths. When a real recording is dropped in at
 // `web/public/sounds/{event}.mp3` and added here, the synth fallback
 // is bypassed. Events without a file use the built-in synthwave
-// synth (see playPattern() below). skillUnlock stays mapped to
-// the YouTube 'Party Horn Children Yay' SFX — the user wanted
-// that one as a meme.
+// synth (see playPattern() below).
 const SOUND_FILES: Partial<Record<SoundEvent, string>> = {
-  // workoutComplete: '/sounds/workout-complete.mp3',
-  // levelUp:        '/sounds/level-up.mp3',
-  // achievement:    '/sounds/achievement.mp3',
-  // restTimerDone:   '/sounds/rest-timer.mp3',
+  workoutComplete: '/sounds/workout-complete.mp3',
+  levelUp:        '/sounds/level-up.mp3',
+  achievement:    '/sounds/achievement.mp3',
+  restTimerDone:   '/sounds/rest-timer.mp3',
   skillUnlock:     '/sounds/skill-unlock.mp3',
-  // bossKill:        '/sounds/boss-kill.mp3',
-  // lootDrop:        '/sounds/loot-drop.mp3',
+  bossKill:        '/sounds/boss-kill.mp3',
+  lootDrop:        '/sounds/loot-drop.mp3',
 };
 
 // =============================================================
