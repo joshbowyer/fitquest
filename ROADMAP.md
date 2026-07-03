@@ -103,23 +103,13 @@
 
 ## Backlog (from user notes, in priority order)
 
-### Bugs / data-correctness
-
-- **New-user dashboard radials don't populate** after entering
-  measurements. Only `LEAN_MASS` + `FFMI` (the auto-derived
-  ones) render; the others (`BODY_FAT_PCT`, `WEIGHT`, `WAIST`,
-  `SHOULDER_WAIST_RATIO`) stay blank even after a measurement
-  is logged. Likely cause: the WEIGHT/BODY_FAT_PCT radials read
-  from the `Measurement` table but the new-user flow writes
-  them only to `User.weightKg` / `User.bodyFatPct`. Fallback
-  to the User row when no Measurement exists.
-- **New-user HomeBase shield starts at 60, not 100.** Code at
-  `api/src/lib/penance.ts:198-208` and `api/src/routes/habits.ts:194-198`
-  both create HomeBase with `shield: 100, tier: 'FORTIFIED'`.
-  User reports shield=60 on a fresh account. Need to confirm
-  whether something fires between registration and first
-  HomeBase GET that drops shield by 40, or whether the user is
-  on a stale image.
+(was: dashboard radials + HomeBase shield — both shipped in
+commit f1f940c. New users see all four body-comp gauges
+populate from the User.* fields as a fallback when no
+Measurement row exists, and HomeBase's `firePenance` is now
+idempotent + bypasses SP for activity-driven unlocks. The
+morning popup also now shows weight in the user's units —
+imperial users see lb, not kg — shipped in 2388dd9.)
 
 ### Polish
 
