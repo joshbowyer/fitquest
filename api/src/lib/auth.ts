@@ -117,6 +117,9 @@ export function setTrustedDeviceCookie(reply: FastifyReply, token: string) {
     // matching comment.
     sameSite: config.isDev ? 'lax' : 'none',
     path: '/',
+    // Match setSessionCookie's domain so both cookies are
+    // scoped to the same parent (e.g. .joshbullock.net).
+    domain: process.env.API_COOKIE_DOMAIN || (config.isDev ? '' : '.joshbullock.net'),
     maxAge: 90 * 24 * 60 * 60,
     signed: true,
   });
