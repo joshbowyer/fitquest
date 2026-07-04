@@ -6,6 +6,17 @@
     </linearGradient>
   </defs>
   <rect width="32" height="32" rx="6" fill="#05050a"/>
-  <path d="M16 6 L26 26 H6 Z" fill="none" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/>
-  <circle cx="16" cy="20" r="2.5" fill="#00f0ff"/>
+  <!--
+    Triangle scaled to ~50% of the canvas (was 20x20, now 12x12).
+    Android's adaptive-icon foreground masks to an inner circle of
+    radius 33dp out of 108dp (~31% of canvas, radius 9.78 in a 32x32
+    viewBox). The previous triangle's corners sat at distance ~14 from
+    center — well outside the safe zone — so launcher shapes (circle,
+    squircle, rounded-square) clipped the tips. New triangle's
+    farthest point is ~8.5 from center, comfortably inside the safe
+    zone. The cyan dot shrinks proportionally so it stays balanced
+    inside the smaller triangle.
+  -->
+  <path d="M16 10 L22 22 L10 22 Z" fill="none" stroke="url(#g)" stroke-width="1.5" stroke-linejoin="round"/>
+  <circle cx="16" cy="19" r="1.6" fill="#00f0ff"/>
 </svg>

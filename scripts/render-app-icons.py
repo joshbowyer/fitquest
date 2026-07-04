@@ -25,8 +25,16 @@ from pathlib import Path
 from PIL import Image
 
 SVG = Path("/home/josh/claw-code/FitnessStats/web/public/favicon.svg")
-OUT_BASE = Path("/home/josh/claw-code/FitnessStats/web/android/app/src/main/res")
-OUT_BRIDGE = Path("/home/josh/claw-code/FitQuestBridge/app/src/main/res")
+# The Capacitor Android shell was extracted from web/android/ (gitignored)
+# into its own repo at /home/josh/claw-code/fitquest-android/. The
+# FitQuestBridge folder was renamed FitQuestBridge -> fitquest-bridge
+# to match its github repo name. Override either path via env var
+# if your checkout lives somewhere else.
+import os
+OUT_BASE = Path(os.environ.get("FITQUEST_ANDROID_RES") or
+                "/home/josh/claw-code/fitquest-android/app/src/main/res")
+OUT_BRIDGE = Path(os.environ.get("FITQUEST_BRIDGE_RES") or
+                  "/home/josh/claw-code/fitquest-bridge/app/src/main/res")
 
 DENSITIES = [
     ("mdpi", 48),
