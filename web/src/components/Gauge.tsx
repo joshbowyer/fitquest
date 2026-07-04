@@ -30,6 +30,18 @@ type Props = {
   color?: GaugeColor;
   size?: number;
   showPct?: boolean;
+  /**
+   * If true, the gauge is "less is better" (e.g. RHR, 1mi/5K).
+   * The "X% OVER" warning is suppressed because exceeding the
+   * dial's max means the user out-performed the ceiling — a
+   * personal best, not a problem to flag. (For these metrics
+   * consider using IdealGauge instead — it'll visualise the
+   * "ideal in the middle" semantics correctly. This prop is
+   * here for the basic Gauge so we can still render them
+   * somewhere with the warning off rather than misleading the
+   * user.)
+   */
+  lessIsBetter?: boolean;
 };
 
 const START_ANGLE = 135; // SVG: 0=right, 90=down, 135=bottom-left
@@ -64,6 +76,7 @@ export function Gauge({
   size = 200,
   showPct = true,
   subtitle,
+  lessIsBetter = false,
 }: Props & { subtitle?: string }) {
   const id = useId();
   const meta = METRICS[metric];
@@ -72,18 +85,26 @@ export function Gauge({
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
 
-  const { pct, clamped, angle, tickPositions, hasValue, noMax } = useMemo(() => {
+  const { pct, clamped, clampedExtreme, angle, tickPositions, hasValue, noMax } = useMemo(() => {
     const hasValue = value != null && Number.isFinite(value);
     const noMax = !max || !Number.isFinite(max);
     const range = max - min;
     const pct = hasValue && !noMax
       ? Math.max(0, Math.min(1, ((value as number) - min) / range))
       : 0;
+    // `clamped` = any value above max (gates the dial indicator at the
+    //   top end). For "less is better" metrics, exceeding the max
+    //   is a personal best, not a data issue.
     const clamped = hasValue && !noMax ? (value as number) > max : false;
+    // `clampedExtreme` = value > 2× max (gates the "X% OVER" warning
+    //   to genuinely out-of-range values, e.g. typos like typing
+    //   "5000" instead of "50" for RHR). Also suppressed entirely
+    //   when `lessIsBetter` is true.
+    const clampedExtreme = hasValue && !noMax && (value as number) > max * 2;
     const angle = START_ANGLE + pct * SWEEP;
     const tickPositions = Array.from({ length: 11 }, (_, i) => START_ANGLE + (i / 10) * SWEEP);
-    return { pct, clamped, angle, tickPositions, hasValue, noMax };
-  }, [value, min, max]);
+    return { pct, clamped, clampedExtreme, angle, tickPositions, hasValue, noMax };
+  }, [value, min, max, lessIsBetter]);
 
   const cx = 100;
   const cy = 100;
@@ -257,8 +278,14 @@ export function Gauge({
           </>
         )}
 
-        {/* Exceeded marker */}
-        {clamped && value != null && max > 0 && (
+        {/* Exceeded marker — only show for genuinely out-of-range values
+            (value > 2× max) so the warning flags data-entry errors,
+            not personal-best overflows. Suppressed entirely for
+            less-is-better metrics since exceeding the max there is a
+            win, not a problem. (For "more is better" metrics, a
+            slightly-over-max value still gets the indicator at 100%
+            — just no warning ribbon.) */}
+        {clampedExtreme && value != null && max > 0 && (
           <text
             x={cx}
             y={cy + 50}
@@ -266,7 +293,7 @@ export function Gauge({
             fontSize="9"
             fill="#ff2bd6"
             className="font-mono"
-            style={{ filter: 'drop-shadow(0 0 3px #ff2bd6)' }}
+            style={{ filter: `drop-shadow(0 0 3px #ff2bd6)` }}
           >
             ! {(((value as number) / max) * 100 - 100).toFixed(0)}% OVER
           </text>

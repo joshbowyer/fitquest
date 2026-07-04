@@ -15,7 +15,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 // user-enterable. LEAN_MASS = weight × (1 - bf%). FFMI is computed
 // from LBM and height in the Status panel. We hide these from
 // the manual entry picker so users don't enter conflicting values.
-const DERIVED_METRICS: MetricType[] = ['LEAN_MASS', 'FFMI'];
+const DERIVED_METRICS: MetricType[] = ['LEAN_MASS', 'FFMI', 'SHOULDER_WAIST_RATIO'];
 
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 

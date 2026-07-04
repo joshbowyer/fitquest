@@ -76,6 +76,22 @@ export const METRIC_IDEAL_BANDS: Partial<Record<MetricType, IdealBands>> = {
     max: 150,
     subtitle: 'elite 60–80 ms · healthy 40–95',
   },
+  RESTING_HR: {
+    // RHR is "ideal in the middle": elite athletes sit at 40-50, healthy
+    // at 50-60, warn at 60-70, far at 70+. Symmetric around the elite
+    // midpoint (45). Uses the same dial range as the old "elite in
+    // the middle" semantics — a logged RHR of 50 sits at the
+    // edge of the elite band, healthy lands in the cyan ring
+    // around the top, warn fans out toward 60-70, anything
+    // above 70 pushes the indicator past the "70+" mark.
+    min: 30,        // extreme bradycardia (athletes on beta-blockers, etc.)
+    eliteMin: 40,
+    eliteMax: 50,
+    healthyMin: 40,
+    healthyMax: 60,
+    max: 80,        // +20 bpm above the warn/far boundary for visual room
+    subtitle: 'elite 40–50 bpm · healthy 50–60 · warn 60–70 · 70+ far',
+  },
   ONE_MILE_TIME: {
     // Threshold bands for "less is better". Elite is anything below
     // 5:30 (330s). Healthy is anything below 9:00 (540s) that isn't

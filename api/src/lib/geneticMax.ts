@@ -155,8 +155,18 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
       return round1(Math.max(35, ceiling));
     }
     case 'RESTING_HR': {
-      // Genetic/resting "good" floor ~ 45-50
-      return 45;
+      // Resting heart rate is "lower is better" — the "genetic max" here
+      // means the *unhealthy threshold* (above which the user is in
+      // the far band), not the best-achievable floor. The dashboard
+      // now renders RHR via IdealGauge with bands 40-50 elite,
+      // 50-60 healthy, 60-70 warn, 70+ far (see web/src/lib/metricBands.ts),
+      // so this value is the "max acceptable" anchor.
+      //
+      // Was 45 (the best-achievable floor) — wrong: it made the old
+      // basic-Gauge max read as 45 against a logged value of 50
+      // ("11% OVER"), since the gauge is calibrated as "more is
+      // better". Returning 70 here gives the right semantic.
+      return 70;
     }
     case 'HRV': {
       // "Excellent" range upper, age-adjusted

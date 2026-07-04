@@ -40,11 +40,12 @@ import { MetricTrendChart } from '@/components/MetricTrendChart';
 import { Link } from 'react-router-dom';
 
 // Metrics that use the IdealGauge (top-center = elite, fan-out bands).
-// Body fat / HRV are "ideal in the middle"; 1mi / 5K are threshold-mode
-// (less is better) — both supported by IdealGauge.
+// Body fat / HRV / RHR are "ideal in the middle"; 1mi / 5K are
+// threshold-mode (less is better) — both supported by IdealGauge.
 const idealMetricKeys = new Set([
   'BODY_FAT_PCT',
   'HRV',
+  'RESTING_HR',
   'ONE_MILE_TIME',
   'FIVE_K_TIME',
 ]);
@@ -658,7 +659,13 @@ export function DashboardPage() {
                       }
                       value={value}
                       min={min}
-                      max={max?.value ?? meta.defaultMin * 1.5}
+                      // Fallback max grows with the user's actual logged
+                      // performance: at minimum defaultMin × 1.5, but
+                      // bumped to value × 1.5 when the user has logged
+                      // anything higher. Stops L-Sit (defaultMin=5,
+                      // defaultMax=7.5) from clamping every realistic
+                      // value into the "X% OVER" zone.
+                      max={max?.value ?? Math.max(value != null ? value * 1.5 : 0, meta.defaultMin * 1.5)}
                       color={cfg.color}
                       size={170}
                     />
