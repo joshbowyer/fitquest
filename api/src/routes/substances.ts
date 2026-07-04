@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { SubstanceCategory } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { lastSundayMidnightUtc } from '../lib/timezone.js';
 
 // ============================================================================
 // Substance log — one-shot events (NOT a daily checklist).
@@ -123,9 +124,12 @@ export async function substanceRoutes(app: FastifyInstance) {
       // weekly cap (5 drinks) — same threshold the morning report
       // uses. We skip the DB query when the user isn't in Hardcore.
       if (me.mode === 'HARDCORE') {
-        const startOfWeek = new Date();
-        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Sun
-        startOfWeek.setHours(0, 0, 0, 0);
+        // Most recent Sunday at local midnight in the user's tz —
+        // matches the morning-report heart-loss cron. Was previously
+        // server-local Sunday (= UTC), off by up to a day for non-UTC
+        // users (e.g. NYC user logging drinks Sun 10pm EDT counted as
+        // last week's drinks).
+        const startOfWeek = lastSundayMidnightUtc(me.timezone ?? null);
         const weekCount = await prisma.substanceLog.count({
           where: {
             userId: me.id,

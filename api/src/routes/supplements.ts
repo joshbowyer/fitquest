@@ -3,19 +3,7 @@ import { z } from 'zod';
 import { TrackedItemCategory, TrackedItemUnit } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-
-// ---- Helpers ----
-
-function todayInTz(timezone: string | null): string {
-  const tz = timezone || 'UTC';
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-}
+import { todayInTz, localMidnightUtc, localDayKey } from '../lib/timezone.js';
 
 // ---- Schemas ----
 
@@ -223,9 +211,11 @@ export async function supplementsRoutes(app: FastifyInstance) {
   // GET /supplements/summary — last 7 days rolled up, per name
   app.get('/summary', async (req) => {
     const me = await requireUser(req);
-    const since = new Date();
-    since.setDate(since.getDate() - 7);
-    since.setHours(0, 0, 0, 0);
+    const tz = me.timezone ?? null;
+    // Lower bound = local midnight 7 days ago in the user's tz.
+    // Was `new Date(); setDate(-7); setHours(0,0,0,0)` which is UTC
+    // anchored — off by ±1 day at each edge for non-UTC users.
+    const since = new Date(localMidnightUtc(todayInTz(tz), tz ?? 'UTC').getTime() - 7 * 24 * 60 * 60 * 1000);
     const logs = await prisma.supplementLog.findMany({
       where: { userId: me.id, takenAt: { gte: since } },
       orderBy: { takenAt: 'desc' },
@@ -233,8 +223,9 @@ export async function supplementsRoutes(app: FastifyInstance) {
     const byName = new Map<string, { days: Set<string>; latestDoseMg: number | null; latestAt: string }>();
     for (const l of logs) {
       const key = l.name.toLowerCase();
-      const d = new Date(l.takenAt);
-      const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      // Bucket by the user's local date — was previously server-local
+      // (UTC), which double-counted or skipped days for non-UTC users.
+      const dayKey = localDayKey(new Date(l.takenAt), tz);
       const cur = byName.get(key) ?? { days: new Set<string>(), latestDoseMg: null, latestAt: l.takenAt.toISOString() };
       cur.days.add(dayKey);
       cur.latestDoseMg = l.doseMg ?? cur.latestDoseMg;
@@ -289,8 +280,15 @@ export async function supplementsRoutes(app: FastifyInstance) {
  * was before the new tracking system landed). Uses 3-of-last-7-days.
  */
 export async function isCreatineActive(userId: string): Promise<boolean> {
-  const since = new Date();
-  since.setDate(since.getDate() - 7);
+  // Look up the user's tz — exported helpers don't have `me` in scope.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone ?? null;
+  const since = new Date(
+    localMidnightUtc(todayInTz(tz), tz ?? 'UTC').getTime() - 7 * 24 * 60 * 60 * 1000,
+  );
   const logs = await prisma.supplementLog.findMany({
     where: {
       userId,
@@ -301,8 +299,9 @@ export async function isCreatineActive(userId: string): Promise<boolean> {
   });
   const days = new Set<string>();
   for (const l of logs) {
-    const d = new Date(l.takenAt);
-    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    // Bucket by user's local date — was server-local UTC, which
+    // miscounted days at the UTC/local boundary.
+    days.add(localDayKey(new Date(l.takenAt), tz));
   }
   return days.size >= 3;
 }

@@ -9,6 +9,7 @@ import {
 } from '../lib/correlations.js';
 import { generateInsights, getInsightsSummary } from '../lib/insights.js';
 import { setVolumeKg } from '../lib/exerciseVolume.js';
+import { todayInTz, localMidnightUtc, localDayKey } from '../lib/timezone.js';
 
 export async function insightRoutes(app: FastifyInstance) {
   app.get('/summary', async (req) => {
@@ -98,22 +99,30 @@ export async function insightRoutes(app: FastifyInstance) {
       },
     });
 
-    // Bucket by ISO week (Monday-start). Pad to 12 weeks so the chart
-    // shows empty weeks for periods of no training.
+    // Bucket by ISO week (Monday-start) in the USER's tz. Was using
+    // server-local (UTC) week boundaries + UTC bucket keys — for a
+    // NYC user that misbucketed workouts near the local/UTC day
+    // boundary and labelled weeks with UTC dates that didn't match
+    // the user's wall clock.
+    const tz = me.timezone ?? null;
+    const mondayDateStrInTz = (at: Date): string => {
+      // Get the local date of `at` in tz, then walk back to the
+      // Monday of that week (still in tz) and return its YYYY-MM-DD.
+      const localDate = localDayKey(at, tz);
+      const midnight = localMidnightUtc(localDate, tz ?? 'UTC');
+      const dow = midnight.getUTCDay(); // 0=Sun..6=Sat
+      const daysBack = (dow + 6) % 7;
+      const mondayInstant = new Date(midnight.getTime() - daysBack * 86400000);
+      return localDayKey(mondayInstant, tz);
+    };
     const buckets: Record<string, { volume: number; sessions: number; minutes: number }> = {};
     for (let i = 0; i < weeks; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i * 7);
-      const monday = new Date(d);
-      monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-      monday.setHours(0, 0, 0, 0);
-      buckets[monday.toISOString().slice(0, 10)] = { volume: 0, sessions: 0, minutes: 0 };
+      const d = new Date(Date.now() - i * 7 * 86400000);
+      const key = mondayDateStrInTz(d);
+      buckets[key] = { volume: 0, sessions: 0, minutes: 0 };
     }
     for (const w of workouts) {
-      const monday = new Date(w.performedAt);
-      monday.setDate(w.performedAt.getDate() - ((w.performedAt.getDay() + 6) % 7));
-      monday.setHours(0, 0, 0, 0);
-      const key = monday.toISOString().slice(0, 10);
+      const key = mondayDateStrInTz(new Date(w.performedAt));
       if (!buckets[key]) continue;
       const vol = w.exercises.reduce(
         (s, ex) =>

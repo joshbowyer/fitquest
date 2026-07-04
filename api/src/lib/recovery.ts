@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { todayInTz, localMidnightUtc, localDayKey } from './timezone.js';
 
 export type RecoveryComponent = {
   metric: string;
@@ -56,16 +57,16 @@ function scaleSubscore(v: number, inverted = false): number {
   return Math.round((inverted ? 1 - pct : pct) * 100);
 }
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
+function startOfDay(d: Date, tz: string | null): Date {
+  // Local midnight in the user's tz — was previously
+  // `new Date(d); setHours(0,0,0,0)` which snapped to server-local
+  // (UTC in Docker) and excluded late-evening previous-day logs.
+  return localMidnightUtc(localDayKey(d, tz), tz ?? 'UTC');
 }
 
-async function latestOfDay(userId: string, metric: string, day: Date): Promise<number | null> {
-  const start = startOfDay(day);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+async function latestOfDay(userId: string, metric: string, day: Date, tz: string | null): Promise<number | null> {
+  const start = startOfDay(day, tz);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const m = await prisma.measurement.findFirst({
     where: { userId, metric: metric as any, recordedAt: { gte: start, lt: end } },
     orderBy: { recordedAt: 'desc' },
@@ -85,8 +86,9 @@ async function baseline30d(userId: string, metric: string): Promise<number | nul
   return result._avg.value;
 }
 
-export async function computeRecoveryForDate(userId: string, day: Date = new Date()): Promise<RecoveryScore> {
-  const dayKey = day.toISOString().slice(0, 10);
+export async function computeRecoveryForDate(userId: string, day: Date = new Date(), tz: string | null = null): Promise<RecoveryScore> {
+  // tz-aware day key. Was `day.toISOString().slice(0, 10)` (UTC).
+  const dayKey = localDayKey(day, tz);
 
   // Get baselines (only used for HRV and RESTING_HR)
   const hrvBaseline = await baseline30d(userId, 'HRV');
@@ -95,7 +97,7 @@ export async function computeRecoveryForDate(userId: string, day: Date = new Dat
   // Gather raw values for today
   const values: Record<string, number | null | undefined> = {};
   for (const m of TRACKED_METRICS) {
-    values[m] = await latestOfDay(userId, m, day);
+    values[m] = await latestOfDay(userId, m, day, tz);
   }
 
   // Compute subscores
@@ -190,15 +192,22 @@ export async function computeRecoveryForDate(userId: string, day: Date = new Dat
 }
 
 export async function computeRecovery(userId: string): Promise<RecoveryScore> {
+  // Look up the user's tz once — needed for tz-aware day boundaries.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone ?? null;
+
   // Today
-  const today = await computeRecoveryForDate(userId);
+  const today = await computeRecoveryForDate(userId, new Date(), tz);
 
   // 7-day trend: compute recovery for each of the last 7 days
   const dailyScores: number[] = [];
   for (let i = 1; i <= 7; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const r = await computeRecoveryForDate(userId, d);
+    const r = await computeRecoveryForDate(userId, d, tz);
     if (r.score != null) dailyScores.push(r.score);
   }
   today.trend =

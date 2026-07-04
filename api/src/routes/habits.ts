@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { clampShield, tierForShield } from '../lib/penance.js';
+import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),
@@ -60,8 +61,11 @@ export async function habitRoutes(app: FastifyInstance) {
   // GET /habits — list the user's habits with today's counts
   app.get('/', async (req) => {
     const me = await requireUser(req);
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const tz = me.timezone ?? null;
+    // TZ-aware "today" lower bound: local midnight in the user's tz.
+    // Was previously server-local (UTC in Docker), which excluded
+    // late-evening previous-day logs from the today count.
+    const startOfDay = localMidnightUtc(todayInTz(tz), tz ?? 'UTC');
 
     const [habits, todayLogs] = await Promise.all([
       prisma.habit.findMany({
@@ -237,8 +241,8 @@ export async function habitRoutes(app: FastifyInstance) {
   // GET /habits/today — counts for the Today widget on Dashboard
   app.get('/today-summary', async (req) => {
     const me = await requireUser(req);
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const tz = me.timezone ?? null;
+    const startOfDay = localMidnightUtc(todayInTz(tz), tz ?? 'UTC');
     const [active, todayLogs] = await Promise.all([
       prisma.habit.count({ where: { userId: me.id, archived: false } }),
       prisma.habitLog.findMany({

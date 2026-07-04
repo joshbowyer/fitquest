@@ -5,6 +5,7 @@ import type { DayOfWeek as DayOfWeekType } from '@prisma/client';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRecovery } from '../lib/recovery.js';
+import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(80),
@@ -30,8 +31,15 @@ const updateSchema = createSchema.partial().extend({
 
 // Day-of-week index for JavaScript getDay() (0=Sun..6=Sat).
 // We use the same enum values on both sides so this lookup is direct.
-function todayDay(): DayOfWeekType {
-  return ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()] as DayOfWeek;
+// TZ-aware: compute today's date in the user's tz (DST-safe noon
+// anchor), then take getUTCDay — same pattern fetchDailiesForDate
+// uses for the dateStr branch. Was previously `new Date().getDay()`
+// which returned the SERVER's local weekday (UTC in Docker) and made
+// a NYC user at 8pm EDT see tomorrow's dailies.
+function todayDay(tz: string | null): DayOfWeekType {
+  const dateStr = todayInTz(tz ?? null);
+  const noonUtc = new Date(`${dateStr}T12:00:00Z`);
+  return ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][noonUtc.getUTCDay()] as DayOfWeek;
 }
 
 // Built-in daily IDs. We synthesize these on-the-fly rather than
@@ -116,11 +124,13 @@ async function fetchDailiesForDate(
     const dow = ['SUN','MON','TUE','WED','THU','FRI','SAT'][dt.getUTCDay()];
     today = dow as DayOfWeekType;
   } else {
-    startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    tomorrow = new Date(startOfDay);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    today = todayDay();
+    // Default "today" in the user's tz — was previously server-local
+    // (UTC in Docker), which made a NYC user at 8pm EDT see
+    // tomorrow's dailies because UTC had already rolled over.
+    const todayStr = todayInTz(tz);
+    startOfDay = localMidnightUtc(todayStr, tz);
+    tomorrow = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    today = todayDay(tz);
   }
 
   const [userDailies, routineDays, todayLogs, recentWorkout] = await Promise.all([
@@ -358,8 +368,13 @@ app.get('/today', async (req) => {
   app.post<{ Params: { id: string } }>('/:id/complete', async (req, reply) => {
     const me = await requireUser(req);
     const id = (req.params as any).id;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Idempotency lower bound = local midnight in the user's tz.
+    // Was previously `new Date(); .setHours(0,0,0,0)` which is the
+    // server's local midnight (UTC in Docker) — a NYC user could
+    // complete the same daily twice in the 4h between UTC midnight
+    // and local midnight the next day.
+    const tz = me.timezone ?? null;
+    const today = localMidnightUtc(todayInTz(tz), tz ?? 'UTC');
 
     // Resolve to a Daily row + dailyKey. Built-ins don't have rows but
     // we still log them via the synthetic dailyKey.

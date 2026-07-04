@@ -1,13 +1,49 @@
 import { prisma } from './prisma.js';
+import { localMidnightUtc, localDayKey } from './timezone.js';
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+// =============================================================================
+// Streak counters + today-status helpers.
+// =============================================================================
+//
+// All bucket keys + day boundaries used to be computed in the server's
+// local time (= UTC in Docker) via `new Date().setHours(0,0,0,0)` and
+// `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`. For non-UTC
+// users (e.g. America/New_York), that misbucketed measurements
+// across the UTC/local boundary — a 11pm-EDT weigh-in counted as
+// "tomorrow", and a late-evening previous-day log fell off the
+// today-streak count.
+//
+// The fixes below thread the user's tz through every helper. The
+// public exports still take only `userId` to avoid breaking callers;
+// each function looks up the user's tz from the DB once and uses it
+// for every bucket key + day boundary in its computation.
+
+// Day key in the user's tz — the canonical bucket key for streak
+// counters. Distinct from `localDayKey` in lib/timezone.ts (which
+// returns the same string but is shared with other modules).
+function dayKey(d: Date, tz: string | null): string {
+  return localDayKey(d, tz);
 }
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
+// Local-midnight UTC instant for the given instant in the user's tz.
+function startOfDay(d: Date, tz: string | null): Date {
+  return localMidnightUtc(localDayKey(d, tz), tz ?? 'UTC');
+}
+
+// Convert a dayKey string (YYYY-MM-DD) back to a local-midnight UTC
+// instant in the user's tz.
+function dayKeyToInstant(k: string, tz: string | null): Date {
+  return localMidnightUtc(k, tz ?? 'UTC');
+}
+
+// Look up the user's tz once. Returns null if the user is missing
+// (callers fall back to UTC).
+async function userTz(userId: string): Promise<string | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  return u?.timezone ?? null;
 }
 
 export type WeighInStreak = {
@@ -17,6 +53,7 @@ export type WeighInStreak = {
 };
 
 export async function getWeighInStreak(userId: string): Promise<WeighInStreak> {
+  const tz = await userTz(userId);
   const measurements = await prisma.measurement.findMany({
     where: { userId, metric: 'WEIGHT' },
     orderBy: { recordedAt: 'desc' },
@@ -29,22 +66,15 @@ export async function getWeighInStreak(userId: string): Promise<WeighInStreak> {
   // Collect unique local-time day keys
   const days = new Set<string>();
   for (const m of measurements) {
-    days.add(dayKey(new Date(m.recordedAt)));
+    days.add(dayKey(new Date(m.recordedAt), tz));
   }
   const sortedDesc = Array.from(days)
-    .map((k) => {
-      const parts = k.split('-').map(Number);
-      const y = parts[0] ?? 1970;
-      const m = parts[1] ?? 0;
-      const d = parts[2] ?? 1;
-      return startOfDay(new Date(y, m, d));
-    })
+    .map((k) => dayKeyToInstant(k, tz))
     .sort((a, b) => b.getTime() - a.getTime());
 
   // Current streak: start from today or yesterday, count consecutive days
-  const today = startOfDay(new Date());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const today = startOfDay(new Date(), tz);
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   let current = 0;
   if (sortedDesc[0]!.getTime() === today.getTime() || sortedDesc[0]!.getTime() === yesterday.getTime()) {
     current = 1;
@@ -87,9 +117,9 @@ export type WeighInToday = {
 };
 
 export async function getWeighInToday(userId: string): Promise<WeighInToday> {
-  const start = startOfDay(new Date());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const tz = await userTz(userId);
+  const start = startOfDay(new Date(), tz);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const today = await prisma.measurement.findFirst({
     where: {
       userId,
@@ -112,10 +142,10 @@ export type WeightTrendPoint = {
 };
 
 export async function getWeightTrend(userId: string, days: number = 7): Promise<WeightTrendPoint[]> {
-  const start = startOfDay(new Date());
-  start.setDate(start.getDate() - (days - 1));
-  const end = new Date(start);
-  end.setDate(end.getDate() + days);
+  const tz = await userTz(userId);
+  const start = startOfDay(new Date(), tz);
+  start.setTime(start.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
 
   const measurements = await prisma.measurement.findMany({
     where: {
@@ -130,7 +160,7 @@ export async function getWeightTrend(userId: string, days: number = 7): Promise<
   const firstOfDay = new Map<string, { value: number; ts: number }>();
   for (const m of measurements) {
     const d = new Date(m.recordedAt);
-    const k = dayKey(d);
+    const k = dayKey(d, tz);
     const existing = firstOfDay.get(k);
     if (!existing || m.recordedAt.getTime() < existing.ts) {
       firstOfDay.set(k, { value: m.value, ts: m.recordedAt.getTime() });
@@ -139,9 +169,8 @@ export async function getWeightTrend(userId: string, days: number = 7): Promise<
 
   const series: WeightTrendPoint[] = [];
   for (let i = 0; i < days; i++) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    const k = dayKey(d);
+    const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+    const k = dayKey(d, tz);
     const entry = firstOfDay.get(k);
     series.push({
       date: d.toISOString(),
@@ -163,6 +192,7 @@ export async function getMetricStreak(
   userId: string,
   metric: 'WEIGHT' | string
 ): Promise<{ current: number; longest: number }> {
+  const tz = await userTz(userId);
   const measurements = await prisma.measurement.findMany({
     where: { userId, metric: metric as any },
     orderBy: { recordedAt: 'desc' },
@@ -172,21 +202,14 @@ export async function getMetricStreak(
 
   const days = new Set<string>();
   for (const m of measurements) {
-    days.add(dayKey(new Date(m.recordedAt)));
+    days.add(dayKey(new Date(m.recordedAt), tz));
   }
   const sortedDesc = Array.from(days)
-    .map((k) => {
-      const parts = k.split('-').map(Number);
-      const y = parts[0] ?? 1970;
-      const mo = parts[1] ?? 0;
-      const d = parts[2] ?? 1;
-      return startOfDay(new Date(y, mo, d));
-    })
+    .map((k) => dayKeyToInstant(k, tz))
     .sort((a, b) => b.getTime() - a.getTime());
 
-  const today = startOfDay(new Date());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const today = startOfDay(new Date(), tz);
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   let current = 0;
   if (
     sortedDesc[0]!.getTime() === today.getTime() ||
@@ -225,6 +248,7 @@ export async function getCategoryStreak(
   userId: string,
   category: string
 ): Promise<{ current: number; longest: number }> {
+  const tz = await userTz(userId);
   const measurements = await prisma.measurement.findMany({
     where: { userId },
     orderBy: { recordedAt: 'desc' },
@@ -235,7 +259,7 @@ export async function getCategoryStreak(
   // Group by day -> set of metrics that day
   const byDay = new Map<string, Set<string>>();
   for (const m of measurements) {
-    const k = dayKey(new Date(m.recordedAt));
+    const k = dayKey(new Date(m.recordedAt), tz);
     if (!byDay.has(k)) byDay.set(k, new Set());
     byDay.get(k)!.add(m.metric);
   }
@@ -252,20 +276,13 @@ export async function getCategoryStreak(
       }
       return false;
     })
-    .map(([k]) => {
-      const parts = k.split('-').map(Number);
-      const y = parts[0] ?? 1970;
-      const mo = parts[1] ?? 0;
-      const d = parts[2] ?? 1;
-      return startOfDay(new Date(y, mo, d));
-    })
+    .map(([k]) => dayKeyToInstant(k, tz))
     .sort((a, b) => b.getTime() - a.getTime());
 
   if (days.length === 0) return { current: 0, longest: 0 };
 
-  const today = startOfDay(new Date());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  const today = startOfDay(new Date(), tz);
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   let current = 0;
   if (days[0]!.getTime() === today.getTime() || days[0]!.getTime() === yesterday.getTime()) {
     current = 1;
@@ -297,9 +314,9 @@ export async function getTodayHabitStatus(
   metrics: string[]
 ): Promise<Record<string, { logged: boolean; value: number | null; recordedAt: string | null }>> {
   if (metrics.length === 0) return {};
-  const start = startOfDay(new Date());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const tz = await userTz(userId);
+  const start = startOfDay(new Date(), tz);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   const measurements = await prisma.measurement.findMany({
     where: {
       userId,

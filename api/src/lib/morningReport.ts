@@ -727,7 +727,11 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
   // entries (yesterday / today) sort first so the most actionable
   // items are at the top of the list.
   if (payload.heartLossEvents.length > 0) {
-    const today = new Date().toISOString().slice(0, 10);
+    // "Today" must be the user's local date — sourceDate is also a
+    // user-tz date string. Was previously `new Date().toISOString()
+    // .slice(0,10)` (UTC), which misbucketed events that fell on
+    // either side of midnight local vs UTC.
+    const today = todayInTz(opts.timezone ?? user?.timezone ?? null);
     const sorted = [...payload.heartLossEvents].sort((a, b) => {
       const aRecent = a.sourceDate >= today ? 1 : 0;
       const bRecent = b.sourceDate >= today ? 1 : 0;
@@ -1116,13 +1120,15 @@ async function fireMissedAllDailiesPenance(
     const today = todayInTz(timezone);
     if (!today) return;
     // Convert today's YYYY-MM-DD to a UTC Date at midnight in the
-    // user's tz, then back off one calendar day.
+    // user's tz, then derive yesterday's date-string in tz and
+    // resolve back to local-midnight UTC. Previously used
+    // `setHours(0,0,0,0)` on a UTC instant — which snapped to the
+    // server's local midnight (UTC) and produced the wrong 24h window
+    // for any non-UTC user.
     const todayMidnight = localMidnightUtc(today, timezone ?? 'UTC');
-    const yesterday = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
-    const startOfDay = new Date(yesterday);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(yesterday);
-    endOfDay.setHours(23, 59, 59, 999);
+    const yesterdayDateStr = todayInTz(timezone, new Date(todayMidnight.getTime() - 12 * 60 * 60 * 1000));
+    const startOfDay = localMidnightUtc(yesterdayDateStr, timezone ?? 'UTC');
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     // The user must have at least one daily configured (or a
     // WORKOUT / SPIRITUAL:* built-in key in their cadence) for
@@ -1210,11 +1216,14 @@ export async function fireHardcoreHeartPenalties(
     const today = todayInTz(timezone);
     if (!today) return;
     const todayMidnight = localMidnightUtc(today, timezone ?? 'UTC');
-    const yesterdayMidnight = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
-    const startOfYesterday = new Date(yesterdayMidnight);
-    startOfYesterday.setHours(0, 0, 0, 0);
-    const endOfYesterday = new Date(yesterdayMidnight);
-    endOfYesterday.setHours(23, 59, 59, 999);
+    // Derive yesterday's local-date string in tz and resolve back to
+    // local-midnight UTC. Previously used `setHours(0,0,0,0)` on a
+    // UTC instant, which snapped to server-local (UTC) midnight and
+    // produced the wrong 24h window for non-UTC users.
+    const yesterdayDateStr = todayInTz(timezone, new Date(todayMidnight.getTime() - 12 * 60 * 60 * 1000));
+    const yesterdayMidnight = localMidnightUtc(yesterdayDateStr, timezone ?? 'UTC');
+    const startOfYesterday = yesterdayMidnight;
+    const endOfYesterday = new Date(yesterdayMidnight.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     // Helper: try to record a HeartLossEvent + lose a heart. The
     // unique constraint on (userId, kind, sourceDate) makes the

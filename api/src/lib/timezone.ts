@@ -60,6 +60,33 @@ export function localMidnightUtc(localDate: string, timezone: string): Date {
   return new Date(new Date(`${localDate}T00:00:00Z`).getTime() - offsetMin * 60_000);
 }
 
+/// Return the local-date (YYYY-MM-DD) at the given instant in the
+/// given timezone. Used as a per-row bucket key for streak counting,
+/// correlation analysis, daily-bucketed nudges, etc — anywhere a
+/// record's calendar day matters in the user's frame of reference
+/// rather than the server's.
+///
+/// Distinct from todayInTz() (which is "what is today's date?") and
+/// from localMidnightUtc() (which returns a UTC instant). This one
+/// returns a STRING suitable for use as a Map/Set key.
+///
+/// Falls back to the UTC date on Intl error so the bucket key is at
+/// least well-defined (and matches what the rest of the codebase
+/// used to do before this helper existed).
+export function localDayKey(d: Date, tz: string | null): string {
+  const t = tz || 'UTC';
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: t,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
 /// Return the most recent Sunday 00:00 (in the given timezone) as a
 /// UTC Date. Used by the Hardcore heart-regen cron: every Sunday
 /// the user gets +1 heart. Always returns a Sunday at-or-before
