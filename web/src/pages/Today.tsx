@@ -330,6 +330,12 @@ export function TodayPage() {
         subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
         action={
           <div className="flex items-center gap-3">
+            <Link
+              to="/calendar"
+              className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1"
+            >
+              ◷ Calendar
+            </Link>
             <div className="font-mono text-sm">
               <span className="text-ink-300 text-xs uppercase tracking-widest">Done: </span>
               <span className={`text-xl ml-1 ${counts.completed === counts.total && counts.total > 0 ? 'neon-text-lime' : 'neon-text-cyan'}`}>

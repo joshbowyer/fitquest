@@ -4,6 +4,7 @@ import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { DashboardPage } from './pages/Dashboard';
 import { ActivitiesPage } from './pages/Activities';
+import { CalendarPage } from './pages/Calendar';
 import { RoutinesPage } from './pages/Routines';
 import { PortalLeakPage } from './pages/PortalLeak';
 import { ActivityDetailPage } from './pages/ActivityDetail';
@@ -79,6 +80,7 @@ export default function App() {
       <Route path="/routines/:id" element={<RequireAuth><RoutinesPage /></RequireAuth>} />
       <Route path="/measurements" element={<RequireAuth><MeasurementsPage /></RequireAuth>} />
       <Route path="/today" element={<RequireAuth><TodayPage /></RequireAuth>} />
+      <Route path="/calendar" element={<RequireAuth><CalendarPage /></RequireAuth>} />
       <Route path="/habits" element={<RequireAuth><HabitsPage /></RequireAuth>} />
       <Route path="/nutrition" element={<RequireAuth><NutritionPage /></RequireAuth>} />
       <Route path="/recovery" element={<RequireAuth><RecoveryPage /></RequireAuth>} />

@@ -69,17 +69,30 @@ const CreateMealSchema = z.object({
 
 export async function mealRoutes(app: FastifyInstance) {
   // GET /meals/today
-  // Returns the user's meal entries for today, grouped by meal,
-  // with totals rolled up.
+  // Returns the user's meal entries for the requested local date
+  // (defaults to today), grouped by meal, with totals rolled up.
   //
   // CRITICAL: "today" is defined in the USER's IANA timezone, not
   // UTC. A meal logged at 11pm EDT is "today" for the user even
   // though 11pm EDT = 03:00 UTC the next day. We compute since/until
   // in the user's tz so late-evening meals aren't lost.
+  //
+  // `?date=YYYY-MM-DD` is used by the Calendar view to query meals
+  // for a specific local date. Validation is strict — invalid
+  // date strings return 400 rather than silently defaulting to
+  // today (which would mask client bugs).
   app.get('/today', async (req) => {
     const me = await requireUser(req);
+    const q = z
+      .object({
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+          .optional(),
+      })
+      .parse(req.query);
     const tz = me.timezone || 'UTC';
-    const date = todayInTz(tz);
+    const date = q.date ?? todayInTz(tz);
     const since = localMidnightUtc(date, tz);
     const until = new Date(since.getTime() + 24 * 60 * 60 * 1000);
     const entries = await prisma.mealEntry.findMany({

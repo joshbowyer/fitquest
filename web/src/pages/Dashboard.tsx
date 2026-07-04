@@ -360,9 +360,14 @@ export function DashboardPage() {
         title="// Stat Sheet"
         subtitle={`${user.classDisplay ?? cls?.label ?? 'Unclassed'} // ${user.username}`}
         action={
-          <Link to="/settings" className="btn-ghost text-[10px]">
-            ⚙ Settings
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/calendar" className="btn-ghost text-[10px]">
+              ◷ Calendar
+            </Link>
+            <Link to="/settings" className="btn-ghost text-[10px]">
+              ⚙ Settings
+            </Link>
+          </div>
         }
       />
 

@@ -29,6 +29,7 @@ const NAV: NavItem[] = [
   { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
   { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },
   { to: '/forecast',     label: 'Forecast',   icon: '☀', mobile: true },
+  { to: '/calendar',     label: 'Calendar',   icon: '◷', mobile: false },
   { to: '/import',       label: 'Import',     icon: '↥', mobile: false },
   { to: '/nutrition',    label: 'Nutrition',  icon: '⌬', mobile: false },
   { to: '/habits',       label: 'Habits',     icon: '✓', mobile: false },
