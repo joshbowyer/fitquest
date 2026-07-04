@@ -63,6 +63,38 @@ async function build() {
   });
 
   await app.register(cookie, { secret: config.cookieSecret });
+  // /_debug/req — diagnostic: log every incoming request with
+  // its path, method, cookies (names only), and the response
+  // status. Lets the user see exactly what's coming into the
+  // api when something 401s. Always on (no auth, no cost).
+  // View with: curl https://<api>/_debug/req
+  let lastReq: { path: string; method: string; status: number; cookies: string[]; ts: number; userAgent: string } | null = null;
+  app.addHook('onRequest', async (req) => {
+    const cookieNames = Object.keys(req.cookies || {});
+    lastReq = {
+      path: req.url,
+      method: req.method,
+      status: 0, // filled in by onResponse
+      cookies: cookieNames,
+      ts: Date.now(),
+      userAgent: req.headers['user-agent'] || '',
+    };
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    if (lastReq && lastReq.path === req.url && lastReq.method === req.method) {
+      lastReq.status = reply.statusCode;
+    }
+    // Also log a one-liner so the user can scan the api container
+    // logs for 401s and other failures.
+    const cookieInfo = Object.keys(req.cookies || {}).join(',') || '-';
+    app.log.info({
+      path: req.url,
+      method: req.method,
+      status: reply.statusCode,
+      cookies: cookieInfo,
+    }, 'req');
+  });
+  app.get('/_debug/req', async () => ({ lastReq }));
   // CORS allowlist: primary web origin + the extra list. The
   // Capacitor app loads at https://localhost (its androidScheme)
   // so that needs to be in here, or the preflight for any
