@@ -131,6 +131,20 @@ imperial users see lb, not kg — shipped in 2388dd9.)
 
 ### Identity / auth
 
+- **Capacitor APK: persist session across app restarts.** Closing
+  + reopening the app currently forces a re-login. The session
+  cookie is `httpOnly` + `secure` + `SameSite=None; Domain=.parent`,
+  which is correct for the cross-site WebView fetch — but Android
+  WebView cookies are process-memory-resident by default and get
+  wiped on process death unless the app uses CookieManager +
+  `CookieSyncManager`/`flush()` at the right boundary. Need to
+  confirm the Capacitor app's webview config preserves cookies
+  across activity recreation + process death, and add a
+  "remember me" path if it doesn't. See if a fresh launch with a
+  valid `fitquest_session` cookie can hit `/users/me` without a
+  login round-trip; if not, the cookie's being lost on process
+  death.
+
 (was: admin reset-items button — shipped in commit 4c18a0f.
 Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
 button + per-user 'Wipe items' buttons. 5 unit tests cover the
@@ -166,6 +180,28 @@ scopes + the equip-state-wiped-with-row assertion.)
 
 ## Recently Fixed / Resolved
 
+- ✅ Capacitor APK: login worked but most data-fetch routes 401'd.
+  Commit `ba5f740` ("share session cookie across subdomains") added
+  `domain` + `sameSite: 'none'` to `setTrustedDeviceCookie` so the
+  trusted-device cookie could cross between sibling vhosts, but the
+  comment literally said *"Match setSessionCookie's domain"* while
+  the session cookie itself never got the matching fields — so the
+  session cookie stayed host-only. In the Capacitor APK's WebView at
+  `https://localhost`, login set the cookie on whichever vhost the
+  login POST hit (e.g. `fitquest-api.joshbullock.net`), but most
+  subsequent fetches went cross-host and the browser refused to send
+  the host-only cookie → 401. Applied the matching `domain:
+  process.env.API_COOKIE_DOMAIN ?? ''` + `sameSite: config.isDev ?
+  'lax' : 'none'` to `setSessionCookie` so both cookies share the
+  same parent-domain scope and are actually sent cross-site.
+  Documented `API_COOKIE_DOMAIN` in `.env.example` as REQUIRED for
+  any deployment with sibling api+web vhosts (silent fallback to
+  host-only was the original bug). Also added `GET /_debug/req` to
+  the api: an `onRequest`/`onResponse` hook pair captures the most
+  recent incoming request (path/method/cookies/status/UA) and logs
+  every request as a one-liner — used to confirm the fix, retained
+  for future 401-hunting. Commits `0ef4542` (fix) and `2b3edc1`
+  (diagnostic).
 - ✅ Mismatched workouts now *damage* the boss instead of healing
   it. `BASE_MISMATCHED_HEAL` → `BASE_MISMATCHED_DAMAGE` (15 → 6) in
   `api/src/lib/breach.ts`. The previous "any non-matching workout
