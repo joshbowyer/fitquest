@@ -49,6 +49,42 @@ type StatusResponse = {
   painSummary: Record<string, { latest: number; avg: number; count: number; latestAt: string }>;
 };
 
+// Returns the recommended-next-muscle for today. Comes from
+// /forecast (so the user gets a single consistent answer whether
+// they look at /forecast or /status). Optional — null when the
+// user has no recent workout data to base a recommendation on.
+type ForecastResponse = {
+  recommendation: {
+    bodyPart: string;
+    score: number;
+    lastWorkedAt: string | null;
+  } | null;
+};
+
+// Muscle-group labels for the bodyPart strings that
+// `recommendMuscle()` returns. These are aggregate training
+// groups, not the same as BodyPartMeta.id (which is per-anatomy).
+const PART_LABELS: Record<string, string> = {
+  push: 'Push (chest / shoulders / triceps)',
+  pull: 'Pull (back / biceps)',
+  legs: 'Legs (quads / hams / glutes / calves)',
+  core: 'Core (abs / obliques / lower back)',
+  back: 'Back',
+  chest: 'Chest',
+  shoulder: 'Shoulders',
+  glutes: 'Glutes',
+  biceps: 'Biceps',
+  triceps: 'Triceps',
+  mobility: 'Mobility / stretch',
+  cardio: 'Cardio',
+  traps: 'Traps',
+  forearms: 'Forearms',
+};
+function partLabel(p: string): string {
+  if (PART_LABELS[p]) return PART_LABELS[p];
+  return p.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function StatusPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -58,6 +94,16 @@ export function StatusPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['status'],
     queryFn: () => api<StatusResponse>('/status'),
+  });
+
+  // Recommended-next-muscle from /forecast (server-computed via
+  // api/src/lib/recommendMuscle.ts). Same answer the user gets on
+  // the /forecast page — just rendered here next to the recovery
+  // block. Cached for 60s to match the rest of the page.
+  const recQ = useQuery({
+    queryKey: ['forecast', 'recommendation'],
+    queryFn: () => api<ForecastResponse>('/forecast'),
+    staleTime: 60_000,
   });
 
   // Today's weigh-in (tz-aware via the same endpoint WeighInPanel uses).
@@ -127,6 +173,65 @@ export function StatusPage() {
         title="Status"
         subtitle="Holographic readout of your body. Click to log pain. Color = recovery status."
       />
+
+      {/* Top row — Recovery + Recommended side-by-side, ABOVE the
+          3D avatar. The user asked for this reordering so the
+          actionable signal ("work this muscle today") sits at
+          the top of the page. On mobile these stack into a single
+          column. Outside the ErrorBoundary so the recovery /
+          recommendation signals are always visible even if the
+          body model crashes. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
+        {avgRecovery != null && (
+          <Panel title="Recovery" variant={fatigued > 3 ? 'magenta' : 'lime'}>
+            <div className="space-y-2">
+              <div className="text-center">
+                <div
+                  className="text-3xl font-display"
+                  style={{
+                    color: recoveryToColor(avgRecovery),
+                    textShadow: `0 0 8px ${recoveryToColor(avgRecovery)}`,
+                  }}
+                >
+                  {avgRecovery}
+                </div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+                  Avg Recovery
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
+                <div>
+                  <div className="text-lg text-neon-lime">{recovered}</div>
+                  <div className="text-ink-400">ready</div>
+                </div>
+                <div>
+                  <div className="text-lg text-neon-amber">
+                    {data!.recovery.filter((r) => r.score >= 50 && r.score < 80).length}
+                  </div>
+                  <div className="text-ink-400">active</div>
+                </div>
+                <div>
+                  <div className="text-lg text-neon-magenta">{fatigued}</div>
+                  <div className="text-ink-400">fatigued</div>
+                </div>
+              </div>
+            </div>
+          </Panel>
+        )}
+
+        <Panel title="Recommended Next" variant="cyan">
+          {recQ.isLoading ? (
+            <div className="text-[10px] font-mono text-ink-300">loading…</div>
+          ) : !recQ.data?.recommendation ? (
+            <div className="text-[10px] font-mono text-ink-300 italic">
+              Log a workout to get a recommendation.
+            </div>
+          ) : (
+            <RecommendationCard rec={recQ.data.recommendation} />
+          )}
+        </Panel>
+      </div>
+
       <ErrorBoundary>
         <StatusBody
           user={user}
@@ -309,43 +414,6 @@ function StatusBody({
               })()}
             </div>
           </Panel>
-
-          {avgRecovery != null && (
-            <Panel title="Recovery" variant={fatigued > 3 ? 'magenta' : 'lime'}>
-              <div className="space-y-2">
-                <div className="text-center">
-                  <div
-                    className="text-3xl font-display"
-                    style={{
-                      color: recoveryToColor(avgRecovery),
-                      textShadow: `0 0 8px ${recoveryToColor(avgRecovery)}`,
-                    }}
-                  >
-                    {avgRecovery}
-                  </div>
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
-                    Avg Recovery
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
-                  <div>
-                    <div className="text-lg text-neon-lime">{recovered}</div>
-                    <div className="text-ink-400">ready</div>
-                  </div>
-                  <div>
-                    <div className="text-lg text-neon-amber">
-                      {data!.recovery.filter((r) => r.score >= 50 && r.score < 80).length}
-                    </div>
-                    <div className="text-ink-400">active</div>
-                  </div>
-                  <div>
-                    <div className="text-lg text-neon-magenta">{fatigued}</div>
-                    <div className="text-ink-400">fatigued</div>
-                  </div>
-                </div>
-              </div>
-            </Panel>
-          )}
 
           {data && data.worked.length > 0 && (
             <Panel title="Recently Worked" variant="cyan">
@@ -861,4 +929,42 @@ function timeAgo(iso: string): string {
   const days = Math.round(hours / 24);
   if (days === 1) return 'yesterday';
   return `${days}d ago`;
+}
+
+/**
+ * Card for the recommended-next-muscle recommendation. Mirrors the
+ * styling of the Forecast-page "Suggestion" block, which used to
+ * live there before the user moved it here.
+ */
+function RecommendationCard({ rec }: { rec: { bodyPart: string; score: number; lastWorkedAt: string | null } }) {
+  // Score → color: 90+ lime (excellent), 60-89 cyan (good), <60 amber
+  // (fair — the part is technically fresh but low base fitness).
+  const color = rec.score >= 90 ? 'neon-lime' : rec.score >= 60 ? 'neon-cyan' : 'neon-amber';
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-2">
+        <div
+          className={`font-display text-2xl text-${color}`}
+          style={{ textShadow: '0 0 8px currentColor' }}
+        >
+          {partLabel(rec.bodyPart)}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+        <div>
+          <div className="text-ink-400 uppercase tracking-widest">Recovery</div>
+          <div className={`text-base font-display text-${color}`}>{rec.score}/100</div>
+        </div>
+        <div>
+          <div className="text-ink-400 uppercase tracking-widest">Last Worked</div>
+          <div className="text-base font-mono text-ink-100">
+            {rec.lastWorkedAt ? timeAgo(rec.lastWorkedAt) : '—'}
+          </div>
+        </div>
+      </div>
+      <div className="text-[10px] font-mono text-ink-300 pt-1 border-t border-current/10">
+        Highest recovery score, hasn't been worked in 12h+.
+      </div>
+    </div>
+  );
 }

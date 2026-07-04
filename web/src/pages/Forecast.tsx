@@ -153,11 +153,8 @@ const PART_LABELS: Record<string, string> = {
   LAT_L: 'Lats',
   LAT_R: 'Lats',
 };
-function partLabel(p: string): string {
-  if (PART_LABELS[p]) return PART_LABELS[p];
-  // Titlecase + underscores → spaces as a last-ditch fallback
-  return p.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
+// PART_LABELS + partLabel() helper moved to /status page for the
+// recommended-muscle card (it was the only consumer).
 
 const METRIC_LABELS: Record<string, string> = {
   HRV: 'HRV',
@@ -243,6 +240,14 @@ function activityTone(v: 'ok' | 'caution' | 'skip'): 'lime' | 'amber' | 'magenta
 function DayCard({ day, idx }: { day: DailyWeather; idx: number }) {
   const ins = day.insight;
   const tone = verdictTone(ins.verdict);
+  // Feels-like delta: how much warmer or colder the day actually
+  // "feels" vs. the raw high. >+5° means it'll feel noticeably
+  // hotter (humidity / wind chill) and < -5° means colder. Uses
+  // peakHeat from the DayInsight (peak apparent_temp across the
+  // day, computed server-side from Open-Meteo's apparent_temperature).
+  const feelsDeltaF = ins.peakHeat != null
+    ? ins.peakHeat.apparentTempF - day.tempMax
+    : null;
   return (
     <div className={classNames(
       'p-3 border rounded-sm space-y-2',
@@ -261,6 +266,15 @@ function DayCard({ day, idx }: { day: DailyWeather; idx: number }) {
         <span className="text-ink-400"> / </span>
         <span className="text-ink-300">{day.tempMin.toFixed(0)}°</span>
       </div>
+      {/* Feels-like delta — small, only when it differs meaningfully. */}
+      {feelsDeltaF != null && Math.abs(feelsDeltaF) >= 3 && (
+        <div className="text-[10px] font-mono text-ink-300 -mt-1">
+          feels {ins.peakHeat!.apparentTempF.toFixed(0)}°{' '}
+          <span className={feelsDeltaF > 0 ? 'text-neon-amber' : 'text-neon-cyan'}>
+            ({feelsDeltaF > 0 ? '+' : ''}{feelsDeltaF.toFixed(0)}°)
+          </span>
+        </div>
+      )}
       {/* One-line verdict + headline */}
       <div className={`text-[10px] font-mono neon-text-${tone}`}>
         <span className="mr-1">{verdictGlyph(ins.verdict)}</span>
@@ -344,8 +358,6 @@ export function ForecastPage() {
   const readiness = data?.readiness;
   const score = readiness?.score ?? null;
   const color = scoreColor(score);
-  const recommendation = data?.recommendation ?? null;
-  const recColor = recommendation ? scoreColor(recommendation.score) : 'cyan';
   const weather = data?.weather ?? null;
   const hasLocation = data?.location != null;
 
@@ -404,7 +416,13 @@ export function ForecastPage() {
           {weather && (
             <div className="space-y-4">
               <WeatherCard data={weather} />
-              <div className="grid grid-cols-3 gap-2">
+              {/* 3-day cards: vertical stack on mobile (one card per
+                  row, full width), 3-column grid on desktop. The
+                  side-by-side layout was too squished on narrow
+                  viewports — each card is dense (verdict + best
+                  window + activity advice + UV) and needs the
+                  breathing room. */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {weather.daily.map((d, i) => (
                   <DayCard key={d.date} day={d} idx={i} />
                 ))}
@@ -461,28 +479,9 @@ export function ForecastPage() {
               ))}
             </div>
 
-            {/* Recommendation */}
-            {recommendation && (
-              <div className="pt-3 mt-1 border-t border-current/10">
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-                  Suggestion
-                </div>
-                <div className="flex items-center gap-2">
-                  <div
-                    className={classNames('font-display text-lg neon-text-' + recColor)}
-                    style={{ textShadow: '0 0 8px currentColor' }}
-                  >
-                    {partLabel(recommendation.bodyPart)}
-                  </div>
-                  <div className={classNames('text-[10px] font-mono neon-text-' + recColor)}>
-                    {recommendation.score}/100
-                  </div>
-                </div>
-                <div className="text-[10px] font-mono text-ink-300 mt-1">
-                  Highest recovery score; hasn't been worked in {hoursAgo(recommendation.lastWorkedAt)}.
-                </div>
-              </div>
-            )}
+            {/* Recommendation moved to /status (side-by-side with the
+                recovery block). This card stays focused on weather +
+                readiness. */}
           </div>
         </Panel>
       </div>
@@ -570,14 +569,4 @@ function AirQualityCard({ data }: { data: NonNullable<ForecastResponse['airQuali
       </div>
     </Panel>
   );
-}
-
-function hoursAgo(iso: string | null): string {
-  if (!iso) return 'a while';
-  const ms = Date.now() - new Date(iso).getTime();
-  const h = Math.round(ms / (60 * 60 * 1000));
-  if (h < 1) return 'less than an hour';
-  if (h < 24) return `${h}h`;
-  const d = Math.round(h / 24);
-  return `${d}d`;
 }
