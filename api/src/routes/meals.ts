@@ -240,6 +240,32 @@ export async function mealRoutes(app: FastifyInstance) {
       },
     });
 
+    // Auto-link substances (caffeine / alcohol / nicotine) from
+    // the food name. Logging "coffee" should also tick today's
+    // caffeine; logging "stout beer" should tick alcohol. The
+    // helper in lib/substanceLinker.ts is pure substring matching
+    // — low-hanging fruit, not a parser. Best-effort: a failure
+    // here doesn't fail the meal log.
+    try {
+      const { inferSubstanceLinks } = await import('../lib/substanceLinker.js');
+      const resolvedFood = await prisma.foodItem.findUnique({ where: { id: foodId } });
+      const links = inferSubstanceLinks(resolvedFood?.name);
+      for (const link of links) {
+        await prisma.substanceLog.create({
+          data: {
+            userId: me.id,
+            category: link.category,
+            form: link.form,
+            amount: link.amount,
+            unit: link.unit,
+            loggedAt: entry.loggedAt,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[meals] substance link failed', err);
+    }
+
     // Small per-meal shield bump. We don't check the user's enable
     // toggle here — firePenance does that internally — so a user
     // who's turned this off won't see the effect, just the others.
