@@ -91,8 +91,26 @@ export async function setSessionCookie(reply: FastifyReply, token: string) {
   reply.setCookie(config.cookieName, token, {
     httpOnly: true,
     secure: !config.isDev,
-    sameSite: 'lax',
+    // SameSite=None in prod so the Capacitor WebView (which loads
+    // at https://localhost) sends this cookie on cross-site
+    // requests to the api domain. In dev we keep Lax since the
+    // vite proxy makes everything same-origin. Matches
+    // setTrustedDeviceCookie's sameSite logic.
+    sameSite: config.isDev ? 'lax' : 'none',
     path: '/',
+    // Scope to the parent domain so requests to EITHER vhost
+    // (the web origin + the api origin, both subdomains of the
+    // same parent) carry the cookie. The original "share session
+    // cookie across subdomains" fix (ba5f740) only added this to
+    // the trusted-device cookie; the session cookie was missed
+    // and stayed host-only, which is why the Capacitor APK logged
+    // in but most data-fetch routes 401'd depending on which
+    // vhost the fetch happened to hit. Matches
+    // setTrustedDeviceCookie. REQUIRED in prod — leaving it
+    // unset falls back to host-only and silently re-introduces
+    // the bug. Set e.g. API_COOKIE_DOMAIN=.example.com in your
+    // deploy env.
+    domain: process.env.API_COOKIE_DOMAIN ?? '',
     maxAge: config.sessionTtlDays * 24 * 60 * 60,
     signed: true,
   });
@@ -118,7 +136,9 @@ export function setTrustedDeviceCookie(reply: FastifyReply, token: string) {
     sameSite: config.isDev ? 'lax' : 'none',
     path: '/',
     // Match setSessionCookie's domain so both cookies are
-    // scoped to the same parent (e.g. .joshbullock.net).
+    // scoped to the same parent. Required when the web and api
+    // vhosts are sibling subdomains — see API_COOKIE_DOMAIN in
+    // .env.example.
     domain: process.env.API_COOKIE_DOMAIN ?? '',
     maxAge: 90 * 24 * 60 * 60,
     signed: true,
