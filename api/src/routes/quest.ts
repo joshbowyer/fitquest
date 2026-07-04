@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { localDayKey } from '../lib/timezone.js';
 import {
   WORLDS,
   getWorld,
@@ -183,8 +184,16 @@ async function loadSleepHistory(userId: string) {
     orderBy: { recordedAt: 'desc' },
     take: 90,
   });
+  // Look up the user's tz for tz-aware date keys. Was previously
+  // `s.recordedAt.toISOString().slice(0, 10)` which produced UTC
+  // dates — a sleep logged at 11pm EDT showed up as tomorrow's date.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone ?? null;
   return sleeps.map((s: { recordedAt: Date; value: number }) => ({
-    date: s.recordedAt.toISOString().slice(0, 10),
+    date: localDayKey(new Date(s.recordedAt), tz),
     hours: s.value,
   }));
 }

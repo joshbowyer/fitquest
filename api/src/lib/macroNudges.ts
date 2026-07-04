@@ -16,6 +16,7 @@
  */
 
 import { prisma } from './prisma.js';
+import { localDayKey } from './timezone.js';
 
 // ---- Sleep-overlap nudge thresholds ----
 
@@ -229,15 +230,18 @@ export function hydrationLowRule(
   waterRows: Array<{ value: number; recordedAt: Date }>,
   targetMl: number,
   now: Date,
+  tz: string | null = null,
 ): Nudge | null {
   const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const recent = waterRows.filter((w) => w.recordedAt.getTime() >= since.getTime());
   if (recent.length === 0) return null;
-  // Bucket per local day using UTC date (timezone-correct bucketing
-  // is the dashboard's job; this is a coarse aggregate).
+  // Bucket per user-tz day — was previously UTC-date bucketing
+  // (the comment said "coarse aggregate, dashboard handles tz") but
+  // a coarse aggregate that drifts by a day at midnight is still
+  // wrong for non-UTC users.
   const perDay = new Map<string, number>();
   for (const w of recent) {
-    const day = w.recordedAt.toISOString().slice(0, 10);
+    const day = localDayKey(new Date(w.recordedAt), tz);
     perDay.set(day, (perDay.get(day) ?? 0) + w.value);
   }
   if (perDay.size < 3) return null;
@@ -404,6 +408,7 @@ export async function buildMacroNudges(
   tz: string = 'UTC',
   waterTargetMl: number = 0,
 ): Promise<MacroNudgesResult> {
+  void waterTargetMl; // used downstream
   const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const since14d = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
@@ -467,7 +472,7 @@ export async function buildMacroNudges(
     caffeineLateRule(caffeine, hrv, now, tz),
     caffeineClusterRule(caffeine, now),
     creatineGapRule(!!user?.creatine, creatineLogs, now),
-    hydrationLowRule(water, waterTargetMl, now),
+    hydrationLowRule(water, waterTargetMl, now, tz),
     ...overlaps,
   ];
 

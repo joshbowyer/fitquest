@@ -17,6 +17,7 @@
 import { z } from 'zod';
 import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig } from './llm.js';
+import { localDayKey } from './timezone.js';
 
 export const CURRENT_PROMPT_VERSION = 1;
 
@@ -80,6 +81,14 @@ export async function gatherMetricInsightData(args: {
     lt: new Date(now.getTime() - days * day),
   });
 
+  // Look up the user's tz once so coverage-day bucketing matches
+  // their frame of reference, not the server's UTC clock.
+  const userRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = userRow?.timezone ?? null;
+
   async function loadWindow(days: number): Promise<{
     avg: number | null;
     delta: number | null;
@@ -111,7 +120,7 @@ export async function gatherMetricInsightData(args: {
     const priorAvg = priorRows.length ? priorRows.reduce((s, r) => s + r.value, 0) / priorRows.length : null;
     const delta = avg != null && priorAvg != null ? avg - priorAvg : null;
     const deltaPct = avg != null && priorAvg != null && priorAvg !== 0 ? (avg - priorAvg) / priorAvg : null;
-    const coverageDays = new Set(rows.map((r) => r.recordedAt.toISOString().slice(0, 10))).size;
+    const coverageDays = new Set(rows.map((r) => localDayKey(new Date(r.recordedAt), tz))).size;
     return {
       avg,
       delta,

@@ -1,6 +1,7 @@
 import { AchievementCategory, type PrismaClient } from './prisma.js';
 import { prisma } from './prisma.js';
 import { getWeighInStreak, getCategoryStreak } from './streaks.js';
+import { localDayKey } from './timezone.js';
 
 type Criteria =
   | { kind: 'workout_count'; gte: number }
@@ -208,6 +209,7 @@ export async function checkAchievements(
   const ownedIds = new Set(user.achievements.map((a) => a.achievementId));
   const all = await tx.achievement.findMany();
   const newlyUnlocked: string[] = [];
+  const tz = user.timezone ?? null;
 
   // Helper: latest measurement of a metric
   const latest = (metric: string) => {
@@ -222,19 +224,20 @@ export async function checkAchievements(
   };
 
   // Streak: distinct workout days, count consecutive ending today/yesterday
-  const days = new Set(user.workouts.map((w) => new Date(w.performedAt).toDateString()));
+  // Buckets use localDayKey (user-tz) — was toDateString() (server-local UTC).
+  const days = new Set(user.workouts.map((w) => localDayKey(new Date(w.performedAt), tz)));
   let streak = 0;
   for (let i = 0; i < 365; i++) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toDateString();
+    const d = localDayKey(new Date(Date.now() - i * 24 * 60 * 60 * 1000), tz);
     if (days.has(d)) streak++;
     else if (i > 0) break;
   }
 
   // Prayer streak
-  const prayerDays = new Set(user.prayerLogs.map((p) => new Date(p.loggedAt).toDateString()));
+  const prayerDays = new Set(user.prayerLogs.map((p) => localDayKey(new Date(p.loggedAt), tz)));
   let prayerStreak = 0;
   for (let i = 0; i < 365; i++) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toDateString();
+    const d = localDayKey(new Date(Date.now() - i * 24 * 60 * 60 * 1000), tz);
     if (prayerDays.has(d)) prayerStreak++;
     else if (i > 0) break;
   }
@@ -262,7 +265,7 @@ export async function checkAchievements(
   // Weigh-in data (count + streak)
   const weighInMeasurements = user.measurements.filter((m) => m.metric === 'WEIGHT');
   const weighInCount = new Set(
-    weighInMeasurements.map((m) => new Date(m.recordedAt).toDateString())
+    weighInMeasurements.map((m) => localDayKey(new Date(m.recordedAt), tz))
   ).size;
   const weighInStreakData = await getWeighInStreak(userId);
   const weighInStreak = weighInStreakData.current;

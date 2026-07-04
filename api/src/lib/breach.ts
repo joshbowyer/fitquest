@@ -27,6 +27,7 @@
 import type { Prisma, PrismaClient, WorkoutType } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
 import { pickItemOfRarity } from './portalLeaks.js';
+import { localDayKey } from './timezone.js';
 
 export const BREACH_UNLOCK_LEVEL = 10;
 
@@ -383,6 +384,15 @@ export async function applyWorkoutDamage(
   const progress = await getOrCreateProgress(userId, prisma);
   if (progress.status !== 'ACTIVE' || !progress.currentBossId) return null;
 
+  // Look up the user's tz for tz-aware damage-cap day boundaries.
+  // The damageToday/damageDayKey pair is reset whenever the local
+  // date rolls over in the user's tz — was previously UTC midnight.
+  const userRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = userRow?.timezone ?? null;
+
   const boss = await prisma.breachBoss.findUnique({ where: { id: progress.currentBossId } });
   if (!boss) return null;
 
@@ -420,7 +430,7 @@ export async function applyWorkoutDamage(
 
   // Daily cap (positive damage only — heals aren't capped).
   let appliedDelta = delta;
-  const dayKey = todayKey();
+  const dayKey = todayKey(tz);
   let damageToday = progress.damageToday || 0;
   let damageDayKey = progress.damageDayKey || dayKey;
   if (damageDayKey !== dayKey) {
@@ -651,7 +661,10 @@ function randInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function todayKey(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function todayKey(tz: string | null): string {
+  // Today's date in the user's tz — was previously server-local
+  // (UTC in Docker), so a NYC user who deals damage at 11pm EDT
+  // (= 03:00 UTC next day) rolled into the next damage-cap day at
+  // 7pm local. Now uses the shared localDayKey helper.
+  return localDayKey(new Date(), tz);
 }

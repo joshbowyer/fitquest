@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { setVolumeKg } from './exerciseVolume.js';
+import { localDayKey, localMidnightUtc } from './timezone.js';
 
 export type Correlation = {
   habit: string;
@@ -30,9 +31,11 @@ const HABIT_METRICS = [
 /// other measurements rather than read from a single row. Each
 /// entry has a label + a builder function that takes the user's
 /// full measurement history and returns a date -> value map.
-type SyntheticHabitBuilder = (userId: string, from: Date, to: Date) => Promise<DailyMap>;
+/// `tz` is threaded through so day-bucketing matches the user's
+/// frame of reference rather than the server's UTC clock.
+type SyntheticHabitBuilder = (userId: string, from: Date, to: Date, tz: string | null) => Promise<DailyMap>;
 const SYNTHETIC_HABITS: Record<string, SyntheticHabitBuilder> = {
-  WORKOUT_FREQUENCY_7D: async (userId, from, to) => {
+  WORKOUT_FREQUENCY_7D: async (userId, from, to, tz) => {
     // Rolling 7-day workout count for each day in the window.
     // A day with no workouts scores 0; we only emit days in the
     // window so the correlator can align with outcomes.
@@ -42,7 +45,7 @@ const SYNTHETIC_HABITS: Record<string, SyntheticHabitBuilder> = {
     });
     const byDate: DailyMap = new Map();
     for (const w of workouts) {
-      const k = dayKey(new Date(w.performedAt));
+      const k = dayKey(new Date(w.performedAt), tz);
       byDate.set(k, (byDate.get(k) ?? 0) + 1);
     }
     // Roll up: for every day in window, sum workouts in last 7 days.
@@ -52,10 +55,10 @@ const SYNTHETIC_HABITS: Record<string, SyntheticHabitBuilder> = {
     const endMs = to.getTime();
     for (let t = startMs; t < endMs; t += 24 * 60 * 60 * 1000) {
       const d = new Date(t);
-      const k = dayKey(d);
+      const k = dayKey(d, tz);
       let count = 0;
       for (let back = 0; back < 7; back++) {
-        const dk = dayKey(new Date(t - back * 24 * 60 * 60 * 1000));
+        const dk = dayKey(new Date(t - back * 24 * 60 * 60 * 1000), tz);
         count += byDate.get(dk) ?? 0;
       }
       // Only emit the day if there was at least one workout in
@@ -65,24 +68,24 @@ const SYNTHETIC_HABITS: Record<string, SyntheticHabitBuilder> = {
     }
     return out;
   },
-  SLEEP_DEBT_3D: async (userId, from, to) => {
+  SLEEP_DEBT_3D: async (userId, from, to, tz) => {
     // Cumulative hours under 7.5/day over the prior 3 days.
     // Positive = sleep debt, 0 = caught up, negative = surplus.
     // The daily Measurement row stores nightly sleep; we want
     // each calendar day's value to reflect the prior 3 days'
     // aggregate debt so "today" is the most-recent 3-day window.
-    const map = await habitDaily(userId, 'SLEEP_HOURS', from, to);
+    const map = await habitDaily(userId, 'SLEEP_HOURS', from, to, tz);
     const out: DailyMap = new Map();
     const startMs = from.getTime();
     const endMs = to.getTime();
     for (let t = startMs; t < endMs; t += 24 * 60 * 60 * 1000) {
       let debt = 0;
       for (let back = 1; back <= 3; back++) {
-        const k = dayKey(new Date(t - back * 24 * 60 * 60 * 1000));
+        const k = dayKey(new Date(t - back * 24 * 60 * 60 * 1000), tz);
         const h = map.get(k) ?? 0;
         debt += 7.5 - h;
       }
-      out.set(dayKey(new Date(t)), debt);
+      out.set(dayKey(new Date(t), tz), debt);
     }
     return out;
   },
@@ -126,24 +129,24 @@ const OUTCOME_LABELS: Record<string, string> = {
 type OutcomeBuilder = (userId: string, from: Date, to: Date) => Promise<DailyMap>;
 const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
   WORKOUT_VOLUME: async (userId, from, to) => {
-    const { volume } = await workoutDaily(userId, from, to);
+    const { volume } = await workoutDaily(userId, from, to, tz);
     return volume;
   },
   AVG_RPE: async (userId, from, to) => {
-    const { rpe } = await workoutDaily(userId, from, to);
+    const { rpe } = await workoutDaily(userId, from, to, tz);
     return rpe;
   },
   PR_COUNT: async (userId, from, to) => {
-    const { pr } = await workoutDaily(userId, from, to);
+    const { pr } = await workoutDaily(userId, from, to, tz);
     return pr;
   },
   NEXT_DAY_ENERGY: async (userId, from, to) => {
-    const m = await habitDaily(userId, 'ENERGY', from, to);
-    return shiftKeysByOneDay(m);
+    const m = await habitDaily(userId, 'ENERGY', from, to, tz);
+    return shiftKeysByOneDay(m, tz);
   },
   NEXT_DAY_MOOD: async (userId, from, to) => {
-    const m = await habitDaily(userId, 'MOOD', from, to);
-    return shiftKeysByOneDay(m);
+    const m = await habitDaily(userId, 'MOOD', from, to, tz);
+    return shiftKeysByOneDay(m, tz);
   },
   WEIGHT_TREND_7D: async (userId, from, to) => {
     // Per-day weight, then convert to 7-day rolling slope.
@@ -156,16 +159,16 @@ const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
     });
     const byDate: DailyMap = new Map();
     for (const m of weights) {
-      byDate.set(dayKey(new Date(m.recordedAt)), m.value);
+      byDate.set(dayKey(new Date(m.recordedAt), tz), m.value);
     }
     const out: DailyMap = new Map();
     const startMs = from.getTime();
     const endMs = to.getTime();
     for (let t = startMs; t < endMs; t += 24 * 60 * 60 * 1000) {
-      const k = dayKey(new Date(t));
+      const k = dayKey(new Date(t), tz);
       const today = byDate.get(k);
       if (today == null) continue;
-      const weekAgo = byDate.get(dayKey(new Date(t - 7 * 24 * 60 * 60 * 1000)));
+      const weekAgo = byDate.get(dayKey(new Date(t - 7 * 24 * 60 * 60 * 1000), tz));
       if (weekAgo == null) continue;
       out.set(k, today - weekAgo);
     }
@@ -179,25 +182,26 @@ const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
     const out: DailyMap = new Map();
     for (const w of workouts) {
       if (w.duration == null) continue;
-      const k = dayKey(new Date(w.performedAt));
+      const k = dayKey(new Date(w.performedAt), tz);
       out.set(k, (out.get(k) ?? 0) + w.duration);
     }
     return out;
   },
   SET_VOLUME: async (userId, from, to) => {
-    const { sets } = await workoutDaily(userId, from, to);
+    const { sets } = await workoutDaily(userId, from, to, tz);
     return sets;
   },
 };
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+function dayKey(d: Date, tz: string | null): string {
+  // Bucket by the user's local date — was previously server-local
+  // (UTC in Docker), which double-counted or skipped days at the
+  // UTC/local boundary for non-UTC users.
+  return localDayKey(d, tz);
 }
 
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
+function startOfDay(d: Date, tz: string | null): Date {
+  return localMidnightUtc(localDayKey(d, tz), tz ?? 'UTC');
 }
 
 function pearson(xs: number[], ys: number[]): number {
@@ -224,14 +228,14 @@ type DailyMap = Map<string, number | null>;
 /**
  * Build a map of date -> value for a habit metric. Takes the latest of the day.
  */
-async function habitDaily(userId: string, metric: string, from: Date, to: Date): Promise<DailyMap> {
+async function habitDaily(userId: string, metric: string, from: Date, to: Date, tz: string | null): Promise<DailyMap> {
   const measurements = await prisma.measurement.findMany({
     where: { userId, metric: metric as any, recordedAt: { gte: from, lt: to } },
     orderBy: { recordedAt: 'asc' },
   });
   const map: DailyMap = new Map();
   for (const m of measurements) {
-    const k = dayKey(new Date(m.recordedAt));
+    const k = dayKey(new Date(m.recordedAt), tz);
     // Take the LAST measurement of the day for sleep/wellness (reflects "today's state")
     map.set(k, m.value);
   }
@@ -244,7 +248,8 @@ async function habitDaily(userId: string, metric: string, from: Date, to: Date):
 async function workoutDaily(
   userId: string,
   from: Date,
-  to: Date
+  to: Date,
+  tz: string | null
 ): Promise<{ volume: DailyMap; rpe: DailyMap; pr: DailyMap; sets: DailyMap }> {
   const me = await prisma.user.findUnique({ where: { id: userId }, select: { weightKg: true } });
   const userWeightKg = me?.weightKg ?? 0;
@@ -258,7 +263,7 @@ async function workoutDaily(
   const setCount: DailyMap = new Map();
 
   for (const w of workouts) {
-    const k = dayKey(new Date(w.performedAt));
+    const k = dayKey(new Date(w.performedAt), tz);
     let dayVolume = volume.get(k) ?? 0;
     let rpe = rpeSum.get(k);
     if (!rpe) { rpe = { sum: 0, count: 0 }; rpeSum.set(k, rpe); }
@@ -280,7 +285,7 @@ async function workoutDaily(
     where: { userId, achievedAt: { gte: from, lt: to } },
   });
   for (const p of prs) {
-    const k = dayKey(new Date(p.achievedAt));
+    const k = dayKey(new Date(p.achievedAt), tz);
     prCount.set(k, (prCount.get(k) ?? 0) + 1);
   }
 
@@ -291,7 +296,7 @@ async function workoutDaily(
   return { volume, rpe: rpeMap, pr: prCount, sets: setCount };
 }
 
-function shiftKeysByDays(map: DailyMap, days: number): DailyMap {
+function shiftKeysByDays(map: DailyMap, days: number, tz: string | null): DailyMap {
   // Returns a new map where key for date D contains the value for
   // date D - days. Used for lag analysis: a positive `days` shifts
   // the habit forward so day-D's value is what was recorded on
@@ -301,20 +306,19 @@ function shiftKeysByDays(map: DailyMap, days: number): DailyMap {
   if (days === 0) return map;
   const out: DailyMap = new Map();
   for (const [k, v] of map) {
-    const parts = k.split('-').map(Number);
-    const y = parts[0] ?? 1970;
-    const mo = parts[1] ?? 0;
-    const d = parts[2] ?? 1;
-    const dt = new Date(y, mo, d);
-    dt.setDate(dt.getDate() + days);
-    out.set(dayKey(dt), v);
+    // Parse YYYY-MM-DD and shift by `days`, keeping the result in
+    // the user's tz. Was `new Date(y, mo, d)` which constructs in
+    // server-local time (= UTC in Docker) — off by the tz offset.
+    const dt = localMidnightUtc(k, tz ?? 'UTC');
+    const shifted = new Date(dt.getTime() + days * 24 * 60 * 60 * 1000);
+    out.set(dayKey(shifted, tz), v);
   }
   return out;
 }
 
 /// Backwards-compatible alias used by insights.ts and tests.
-function shiftKeysByOneDay(map: DailyMap): DailyMap {
-  return shiftKeysByDays(map, 1);
+function shiftKeysByOneDay(map: DailyMap, tz: string | null): DailyMap {
+  return shiftKeysByDays(map, 1, tz);
 }
 
 function alignPair(a: DailyMap, b: DailyMap): { xs: number[]; ys: number[] } {
@@ -351,6 +355,14 @@ export async function computeCorrelations(
   const topN = options.topN ?? 10;
   const lags = options.lags ?? [0, 1, 2];
 
+  // Look up the user's tz — every dayKey + startOfDay in this
+  // function (and the helpers it calls) needs it.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone ?? null;
+
   const to = new Date();
   to.setDate(to.getDate() + 1); // include today
   const from = new Date();
@@ -360,10 +372,10 @@ export async function computeCorrelations(
   // measurements; the label map keys them all consistently.
   const habitMaps: Record<string, DailyMap> = {};
   for (const h of HABIT_METRICS) {
-    habitMaps[h] = await habitDaily(userId, h, from, to);
+    habitMaps[h] = await habitDaily(userId, h, from, to, tz);
   }
   for (const [name, build] of Object.entries(SYNTHETIC_HABITS)) {
-    habitMaps[name] = await build(userId, from, to);
+    habitMaps[name] = await build(userId, from, to, tz);
   }
 
   // Build outcome maps. These flow from the builder registry;
@@ -392,7 +404,7 @@ export async function computeCorrelations(
     for (const outcome of outcomeKeys) {
       if (skip?.has(outcome)) continue;
       for (const lag of lags) {
-        const habitShifted = shiftKeysByDays(habitMaps[habit]!, lag);
+        const habitShifted = shiftKeysByDays(habitMaps[habit]!, lag, tz);
         const { xs, ys } = alignPair(habitShifted, outcomeMaps[outcome]!);
         const n = xs.length;
         if (n < minN) continue;
