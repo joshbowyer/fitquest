@@ -357,6 +357,7 @@ export function CalendarPage() {
               pain={dayPain}
               substances={daySubs}
               isFuture={selectedDate > today}
+              isToday={selectedDate === today}
             />
           )}
         </Panel>
@@ -374,11 +375,13 @@ function DayDetail({
   pain,
   substances,
   isFuture,
+  isToday,
 }: {
   detail: DayPayload;
   meals: TodayMealsResponse | undefined;
   pain: PainLog[];
   substances: SubstanceLog[];
+  isToday: boolean;
   isFuture: boolean;
 }) {
   const r = detail.recap;
@@ -450,11 +453,12 @@ function DayDetail({
       {(detail.workouts ?? []).length > 0 && <WorkoutsSection workouts={detail.workouts ?? []} />}
 
       {/* Dailies (built-in + user + spiritual) with done/missed
-          status. For past + today, show the actual state: done =
-          green check, not-done = red X. For future dates the whole
-          DayDetail short-circuits above so this section never
-          renders with fake "missed" data. */}
-      <DailiesSection dailies={detail.dailies} />
+          status. For past dates, undone = red X (truly missed).
+          For today, undone = empty gray box (still actionable —
+          the user can complete before midnight). For future
+          dates the whole DayDetail short-circuits above so this
+          section never renders with fake "missed" data. */}
+      <DailiesSection dailies={detail.dailies} isToday={isToday} />
 
       {/* Meals — same data the /today dashboard shows, scoped to
           the selected date. */}
@@ -509,7 +513,7 @@ function Stat({ label, value, color, detail }: { label: string; value: string; c
   );
 }
 
-function DailiesSection({ dailies }: { dailies: DayPayload['dailies'] }) {
+function DailiesSection({ dailies, isToday }: { dailies: DayPayload['dailies']; isToday: boolean }) {
   const all = [
     ...dailies.userDailies.map((d) => ({ id: d.id, name: d.name, done: d.todayDone, kind: 'user' as const })),
     ...dailies.builtins.map((d) => ({ id: d.id, name: d.id, done: d.todayDone, kind: 'builtin' as const })),
@@ -525,33 +529,46 @@ function DailiesSection({ dailies }: { dailies: DayPayload['dailies'] }) {
         </div>
       </div>
       <div className="space-y-0.5 text-[10px] font-mono">
-        {all.map((d) => (
-          <div key={d.id} className="flex items-center gap-2">
-            {/* Done = green box with white check. Undone = red box
-                with white X. No strikethrough anywhere — the box +
-                color tells the story. Done text stays slightly muted
-                white (text-ink-200) so the user can still see what
-                was completed at a glance. */}
-            <span
-              className={classNames(
-                'w-3 h-3 border shrink-0 grid place-items-center font-bold text-[10px] leading-none',
-                d.done
-                  ? 'bg-neon-lime border-neon-lime text-bg-900'
-                  : 'bg-rose-500/30 border-rose-400 text-rose-300',
-              )}
-            >
-              {d.done ? '✓' : '×'}
-            </span>
-            <span
-              className={classNames(
-                'truncate',
-                d.done ? 'text-ink-200' : 'text-ink-300',
-              )}
-            >
-              {d.name}
-            </span>
-          </div>
-        ))}
+        {all.map((d) => {
+          // Tri-state box:
+          //   done  (any day)  → green box, white ✓
+          //   undone (today)   → empty gray box, no icon. "Still
+          //                      actionable" — the user can still
+          //                      complete before midnight. Not a
+          //                      failure, so no red.
+          //   undone (past)    → rose box, rose × — truly missed.
+          let boxClass: string;
+          let textClass: string;
+          let icon: string;
+          if (d.done) {
+            boxClass = 'bg-neon-lime border-neon-lime text-bg-900';
+            textClass = 'text-ink-200';
+            icon = '✓';
+          } else if (isToday) {
+            boxClass = 'border-ink-500/40';
+            textClass = 'text-ink-300';
+            icon = '';
+          } else {
+            boxClass = 'bg-rose-500/30 border-rose-400 text-rose-300';
+            textClass = 'text-ink-300';
+            icon = '×';
+          }
+          return (
+            <div key={d.id} className="flex items-center gap-2">
+              <span
+                className={classNames(
+                  'w-3 h-3 border shrink-0 grid place-items-center font-bold text-[10px] leading-none',
+                  boxClass,
+                )}
+              >
+                {icon}
+              </span>
+              <span className={classNames('truncate', textClass)}>
+                {d.name}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
