@@ -110,7 +110,7 @@ async function publicUser(user: any) {
     birthDate: user.birthDate,
     createdAt: user.createdAt,
     classChangedAt: user.classChangedAt,
-    classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount),
+    classLock: getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount, undefined, user.timezone ?? null),
     ordained: user.ordained,
     isAdmin: user.isAdmin,
     spiritualDailyPrayers: user.spiritualDailyPrayers,

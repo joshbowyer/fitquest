@@ -1,4 +1,5 @@
 import type { User } from './prisma.js';
+import { localDayKey, localMidnightUtc } from './timezone.js';
 
 /**
  * Class lock rules. The user can change their class once a year, on (or
@@ -35,15 +36,32 @@ export const CLASS_LOCK_MS = ONE_YEAR_MS;
 /**
  * Compute the next birthday (this year if still upcoming, next year
  * otherwise). Returns null if no birthDate provided.
+ *
+ * The original implementation read month/day/hour/minute/second off
+ * the DB Date with `getMonth()/getDate()/getHours()` — those return
+ * SERVER-local values (UTC in Docker), not the user's tz. For a
+ * user born Sep 15 12:00 EDT, the DB stores Sep 15 16:00 UTC, and
+ * getDate() returns 15 only by coincidence — getHours() returns 16,
+ * not 12, and the constructed anniversary is off by the tz offset.
+ *
+ * tz-aware version: extract month/day/hour/etc. in the user's tz via
+ * Intl.DateTimeFormat, then construct the anniversary as local-midnight
+ * UTC + time-of-day offset.
  */
-export function nextBirthday(birthDate: Date | null | undefined, now: Date = new Date()): Date | null {
+export function nextBirthday(
+  birthDate: Date | null | undefined,
+  now: Date = new Date(),
+  tz: string | null = null,
+): Date | null {
   if (!birthDate) return null;
-  const bday = new Date(birthDate);
-  // Set the birthday to this year, time-of-day preserved
-  const thisYear = new Date(now.getFullYear(), bday.getMonth(), bday.getDate(), bday.getHours(), bday.getMinutes(), bday.getSeconds(), bday.getMilliseconds());
-  if (thisYear.getTime() > now.getTime()) return thisYear;
+  const bdayLocal = localDayKey(birthDate, tz); // YYYY-MM-DD in tz
+  const [bMonth, bDay] = [Number(bdayLocal.slice(5, 7)), Number(bdayLocal.slice(8, 10))];
+  const tod = timeOfDayInTz(birthDate, tz);
+  const thisYear = Number(localDayKey(now, tz).slice(0, 4));
+  const candidate = anniversaryUtc(thisYear, bMonth, bDay, tod, tz);
+  if (candidate.getTime() > now.getTime()) return candidate;
   // Already passed this year — next year's
-  return new Date(now.getFullYear() + 1, bday.getMonth(), bday.getDate(), bday.getHours(), bday.getMinutes(), bday.getSeconds(), bday.getMilliseconds());
+  return anniversaryUtc(thisYear + 1, bMonth, bDay, tod, tz);
 }
 
 
@@ -56,31 +74,48 @@ function firstBirthdayAfter(
   classChangedAt: Date,
   birthDate: Date,
   _now: Date = new Date(),
+  tz: string | null = null,
 ): Date {
-  // Start with the birthday in the year of the change
-  const candidate = new Date(
-    classChangedAt.getFullYear(),
-    birthDate.getMonth(),
-    birthDate.getDate(),
-    birthDate.getHours(),
-    birthDate.getMinutes(),
-    birthDate.getSeconds(),
-    birthDate.getMilliseconds(),
+  const bdayLocal = localDayKey(birthDate, tz);
+  const [bMonth, bDay] = [Number(bdayLocal.slice(5, 7)), Number(bdayLocal.slice(8, 10))];
+  const tod = timeOfDayInTz(birthDate, tz);
+  const startYear = Number(localDayKey(classChangedAt, tz).slice(0, 4));
+  const candidate = anniversaryUtc(startYear, bMonth, bDay, tod, tz);
+  if (candidate.getTime() > classChangedAt.getTime()) return candidate;
+  return anniversaryUtc(startYear + 1, bMonth, bDay, tod, tz);
+}
+
+/// Extract just the time-of-day portion (H+M+S+ms) of `d` in `tz`.
+/// Returned in ms-since-midnight local time so callers can add it
+/// to a local-midnight UTC instant.
+function timeOfDayInTz(d: Date, tz: string | null): number {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz ?? 'UTC',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? '0');
+  const h = get('hour') === 24 ? 0 : get('hour');
+  return h * 3600_000 + get('minute') * 60_000 + get('second') * 1000;
+}
+
+/// Construct the UTC instant of an anniversary (year/month/day at
+/// time-of-day) in the user's tz.
+function anniversaryUtc(
+  year: number,
+  month: number,
+  day: number,
+  todMs: number,
+  tz: string | null,
+): Date {
+  const midnight = localMidnightUtc(
+    `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    tz ?? 'UTC',
   );
-  // If the change happened after the birthday in that year, the
-  // next unlock is the following year's birthday.
-  if (candidate.getTime() <= classChangedAt.getTime()) {
-    return new Date(
-      classChangedAt.getFullYear() + 1,
-      birthDate.getMonth(),
-      birthDate.getDate(),
-      birthDate.getHours(),
-      birthDate.getMinutes(),
-      birthDate.getSeconds(),
-      birthDate.getMilliseconds(),
-    );
-  }
-  return candidate;
+  return new Date(midnight.getTime() + todMs);
 }
 
 // Class Evolution Tree — mirrors the web side.
@@ -123,6 +158,7 @@ export function getClassLockStatus(
   birthDate?: Date | null,
   soulstoneCount: number = 0,
   now: Date = new Date(),
+  tz: string | null = null,
 ): ClassLockStatus {
   // No class picked yet, or no change recorded: free to pick.
   if (!userClass || !classChangedAt) {
@@ -143,7 +179,7 @@ export function getClassLockStatus(
   // classChangedAt. So if they changed on June 1, 2025 and their
   // birthday is Jan 19, the next unlock is Jan 19, 2026.
   if (birthDate) {
-    const nextUnlock = firstBirthdayAfter(classChangedAt, birthDate, now);
+    const nextUnlock = firstBirthdayAfter(classChangedAt, birthDate, now, tz);
     if (nextUnlock.getTime() <= now.getTime()) {
       return {
         locked: false,
@@ -222,10 +258,11 @@ export function assertCanChangeClass(
   user: Pick<User, 'class' | 'classChangedAt' | 'birthDate'>,
   newClass: string | null,
   soulstoneCount: number = 0,
+  tz: string | null = null,
 ): { useSoulstone: boolean } {
   if (!newClass) return { useSoulstone: false };
   if (user.class === newClass) return { useSoulstone: false };
-  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount);
+  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount, undefined, tz);
   if (!status.locked) return { useSoulstone: false };
   if (status.canUseSoulstone) return { useSoulstone: true };
   const err: any = new Error(

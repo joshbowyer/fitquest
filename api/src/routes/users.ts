@@ -98,7 +98,7 @@ export async function userRoutes(app: FastifyInstance) {
       birthDate: me.birthDate,
       createdAt: me.createdAt,
       classChangedAt: me.classChangedAt,
-      classLock: getClassLockStatus(me.class, me.classChangedAt, me.birthDate, soulstoneCount),
+      classLock: getClassLockStatus(me.class, me.classChangedAt, me.birthDate, soulstoneCount, undefined, me.timezone ?? null),
       progress: progressInLevel(me.xp, me.level),
       ordained: me.ordained,
       spiritualDailyPrayers: me.spiritualDailyPrayers,
@@ -134,7 +134,7 @@ export async function userRoutes(app: FastifyInstance) {
       const activeSoulstoneCount = await prisma.soulstone.count({
         where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
       });
-      const verdict = assertCanChangeClass(me, body.class, activeSoulstoneCount);
+      const verdict = assertCanChangeClass(me, body.class, activeSoulstoneCount, me.timezone ?? null);
       soulstoneConsumed = verdict.useSoulstone;
     }
 
