@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { NeonButton } from '@/components/NeonButton';
+import { ApiUrlLoginTrigger } from '@/components/FirstRunApiUrl';
 
 type TotpStep = {
   /// We've already submitted username+password. Now we need
@@ -170,11 +171,14 @@ export function LoginPage() {
             {busy ? 'Authenticating…' : '→ Enter'}
           </NeonButton>
         </form>
-        <div className="mt-6 text-center text-xs font-mono text-ink-300">
-          New operative?{' '}
-          <Link to="/register" className="neon-text-cyan hover:underline">
-            Register
-          </Link>
+        <div className="mt-6 flex flex-col items-center gap-2 text-xs font-mono text-ink-300">
+          <div>
+            New operative?{' '}
+            <Link to="/register" className="neon-text-cyan hover:underline">
+              Register
+            </Link>
+          </div>
+          <ApiUrlLoginTrigger />
         </div>
       </div>
     </div>

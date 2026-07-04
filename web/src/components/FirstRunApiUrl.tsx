@@ -1,8 +1,20 @@
 /**
- * First-run prompt + settings reset for the Capacitor app.
+ * First-run prompt + settings reset + login-page "change api
+ * server" trigger for the Capacitor app + web.
+ *
  * When the user opens the app for the first time, the bundled
  * web app has no idea where the api server is. This modal asks
  * for the api base URL and persists it to localStorage.
+ *
+ * Three mounting sites:
+ *   - FirstRunApiUrl (root, first-run only) — auto-opens when
+ *     no URL is set yet.
+ *   - ApiUrlSettingsTrigger (Settings page) — button-triggered,
+ *     "Change API url".
+ *   - ApiUrlLoginTrigger (Login page) — button-triggered, so
+ *     the user can recover from a misconfigured URL when login
+ *     fails. Without this, the user is locked out of the app
+ *     with no way to change the URL.
  *
  * Always shows the current stored URL (or "unset" if never
  * configured) so the user can verify what the app is using —
@@ -23,106 +35,114 @@ import { Modal } from './Modal';
 import { NeonButton } from './NeonButton';
 import { getApiBaseUrl, getApiBaseUrlSource, setApiBaseUrl, clearApiBaseUrl } from '@/lib/apiUrl';
 
-export function FirstRunApiUrl() {
-  const [open, setOpen] = useState(false);
+// Shared form body. Three mounting sites render the same fields;
+// extracting them keeps the validation + save logic in one place.
+// `onSaved` is called after a successful save (parent can close
+// the modal, reload the page, etc.). `onClose` is called when
+// the user dismisses without saving.
+function ApiUrlFormBody({ onSaved, onClose }: { onSaved?: () => void; onClose: () => void }) {
   const [value, setValue] = useState('');
   const [stored, setStored] = useState('');
 
   useEffect(() => {
-    // Read the current value (or "unset" if never set) so the
-    // user can verify what's stored. The modal opens on first
-    // load when no URL is set; on subsequent loads it stays
-    // closed unless the user explicitly resets via the modal
-    // trigger in /settings.
     const cur = getApiBaseUrl();
     setStored(cur);
-    if (getApiBaseUrlSource() === 'default') {
-      setValue('');
-      setOpen(true);
-    } else {
-      setOpen(false);
-    }
+    setValue(cur);
   }, []);
 
-  if (!open) return null;
+  function save() {
+    const v = value.trim().replace(/\/+$/, ''); // strip trailing slashes
+    if (!v) return;
+    setApiBaseUrl(v);
+    onSaved?.();
+  }
 
   return (
-    <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md">
-      <div className="space-y-3">
-        <div className="text-sm text-ink-200">
-          The FitQuest app needs the <strong>api domain</strong> (NOT
-          the web domain). The api has its own caddy vhost that
-          reverse-proxies to the api container — the web
-          domain serves the SPA shell and won't answer api
-          requests.
+    <div className="space-y-3">
+      <div className="text-sm text-ink-200">
+        Set the <strong>api domain</strong> (NOT the web domain).
+        The api container is on its own caddy vhost that
+        reverse-proxies to api:3001.
+      </div>
+      {stored && (
+        <div className="text-[10px] font-mono text-ink-400 bg-bg-900/40 border border-ink-700/30 px-2 py-1">
+          <span className="text-ink-500">Currently stored:</span>{' '}
+          <span className="text-neon-amber break-all">{stored}</span>
         </div>
+      )}
+      <input
+        type="url"
+        autoFocus
+        placeholder="https://api.fit.example.com"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="input-neon w-full text-sm font-mono"
+      />
+      <div className="flex justify-between gap-2 pt-1">
         {stored && (
-          <div className="text-[10px] font-mono text-ink-400 bg-bg-900/40 border border-ink-700/30 px-2 py-1">
-            <span className="text-ink-500">Currently stored:</span>{' '}
-            <span className="text-neon-amber break-all">{stored}</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              clearApiBaseUrl();
+              setStored('');
+              setValue('');
+            }}
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-rose-400 px-2 py-1"
+          >
+            Clear stored
+          </button>
         )}
-        <input
-          type="url"
-          autoFocus
-          placeholder="https://api.fit.example.com"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="input-neon w-full text-sm font-mono"
-        />
-        <div className="text-[10px] font-mono text-ink-400 space-y-0.5">
-          <div>Your api domain (the one with the caddy vhost pointing at api:3001):</div>
-          <div className="neon-text-cyan">https://fitquest-api.joshbullock.net</div>
-          <div className="mt-1 text-ink-500">NOT <code className="text-rose-400">https://fitquest.joshbullock.net</code> — that&apos;s the web domain, every request will hit the SPA shell.</div>
-        </div>
-        <div className="flex justify-between gap-2 pt-1">
-          {stored && (
+        <div className="flex items-center gap-2">
+          {onClose && (
             <button
               type="button"
-              onClick={() => {
-                clearApiBaseUrl();
-                setStored('');
-                setValue('');
-              }}
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-rose-400 px-2 py-1"
+              onClick={onClose}
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-ink-200 px-2 py-1"
             >
-              Clear stored
+              Cancel
             </button>
           )}
           <NeonButton
             variant="lime"
-            onClick={() => {
-              const v = value.trim().replace(/\/+$/, ''); // strip trailing slashes
-              if (v) {
-                setApiBaseUrl(v);
-                setOpen(false);
-                // Reload to pick up the new api base.
-                window.location.reload();
-              }
-            }}
+            onClick={save}
             disabled={!value.trim()}
           >
             Save &amp; Continue
           </NeonButton>
         </div>
       </div>
+    </div>
+  );
+}
+
+export function FirstRunApiUrl() {
+  // Auto-opens on mount when no URL is set yet. Once the user
+  // saves, the page reloads and the modal stays closed.
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (getApiBaseUrlSource() === 'default') setOpen(true);
+    else setOpen(false);
+  }, []);
+  if (!open) return null;
+  return (
+    <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md">
+      <ApiUrlFormBody
+        onSaved={() => window.location.reload()}
+        onClose={() => setOpen(false)}
+      />
     </Modal>
   );
 }
 
 /**
  * Trigger button for re-opening the api url prompt. Mount this
- * somewhere accessible (e.g. on the Settings page) so users can
- * recover from a misconfigured URL without uninstalling the apk.
+ * somewhere accessible (e.g. on the Settings page or the Login
+ * page) so users can recover from a misconfigured URL without
+ * uninstalling the apk.
  */
-export function ApiUrlSettingsTrigger() {
+function ApiUrlTrigger({ label = 'Change API url', buttonClass = '' }: { label?: string; buttonClass?: string }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState('');
-  const [stored, setStored] = useState('');
-
   function openPrompt() {
-    setStored(getApiBaseUrl());
-    setValue(getApiBaseUrl());
     setOpen(true);
   }
   if (!open) {
@@ -130,64 +150,41 @@ export function ApiUrlSettingsTrigger() {
       <button
         type="button"
         onClick={openPrompt}
-        className="text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-neon-cyan border border-ink-500/30 px-2 py-1"
+        className={
+          buttonClass ||
+          'text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-neon-cyan border border-ink-500/30 px-2 py-1'
+        }
       >
-        Change API url
+        {label}
       </button>
     );
   }
   return (
     <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md">
-      <div className="space-y-3">
-        <div className="text-sm text-ink-200">
-          Set the <strong>api domain</strong> (NOT the web domain).
-          The api container is on its own caddy vhost that
-          reverse-proxies to api:3001.
-        </div>
-        {stored && (
-          <div className="text-[10px] font-mono text-ink-400 bg-bg-900/40 border border-ink-700/30 px-2 py-1">
-            <span className="text-ink-500">Currently stored:</span>{' '}
-            <span className="text-neon-amber break-all">{stored}</span>
-          </div>
-        )}
-        <input
-          type="url"
-          autoFocus
-          placeholder="https://api.fit.example.com"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="input-neon w-full text-sm font-mono"
-        />
-        <div className="flex justify-between gap-2 pt-1">
-          {stored && (
-            <button
-              type="button"
-              onClick={() => {
-                clearApiBaseUrl();
-                setStored('');
-                setValue('');
-              }}
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-rose-400 px-2 py-1"
-            >
-              Clear stored
-            </button>
-          )}
-          <NeonButton
-            variant="lime"
-            onClick={() => {
-              const v = value.trim().replace(/\/+$/, '');
-              if (v) {
-                setApiBaseUrl(v);
-                setOpen(false);
-                window.location.reload();
-              }
-            }}
-            disabled={!value.trim()}
-          >
-            Save &amp; Continue
-          </NeonButton>
-        </div>
-      </div>
+      <ApiUrlFormBody
+        onSaved={() => window.location.reload()}
+        onClose={() => setOpen(false)}
+      />
     </Modal>
+  );
+}
+
+// Backwards-compatible export used by /settings.
+export function ApiUrlSettingsTrigger() {
+  return <ApiUrlTrigger label="Change API url" />;
+}
+
+/**
+ * Login-page "change API server" trigger. Same body as the
+ * Settings trigger but styled for the Login card (so the user
+ * notices it when they're stuck). Shows the same "currently
+ * stored" field so they can spot the typo in their existing URL.
+ */
+export function ApiUrlLoginTrigger() {
+  return (
+    <ApiUrlTrigger
+      label="Change API server"
+      buttonClass="text-[10px] font-mono uppercase tracking-widest text-neon-amber hover:text-neon-cyan border border-neon-amber/40 px-2 py-1"
+    />
   );
 }
