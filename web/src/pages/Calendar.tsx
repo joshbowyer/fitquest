@@ -352,6 +352,7 @@ export function CalendarPage() {
               meals={meals}
               pain={dayPain}
               substances={daySubs}
+              isFuture={selectedDate > today}
             />
           )}
         </Panel>
@@ -368,13 +369,27 @@ function DayDetail({
   meals,
   pain,
   substances,
+  isFuture,
 }: {
   detail: DayPayload;
   meals: TodayMealsResponse | undefined;
   pain: PainLog[];
   substances: SubstanceLog[];
+  isFuture: boolean;
 }) {
   const r = detail.recap;
+  // Future dates are placeholder days — show an empty state for
+  // every section. We deliberately don't render "all dailies
+  // marked as missed" because that would look like the user
+  // failed to do their dailies, when really the day just hasn't
+  // happened yet.
+  if (isFuture) {
+    return (
+      <div className="text-[10px] font-mono text-ink-300 italic py-4 text-center">
+        Future date — nothing to show yet.
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       {/* Headline row — workout, sleep, weigh-in, recovery score */}
@@ -420,7 +435,17 @@ function DayDetail({
         </div>
       )}
 
-      {/* Dailies (built-in + user + spiritual) with done/missed status */}
+      {/* Workouts — list with name + type + duration. The recap
+          stat cell above only shows the count + first name; the
+          full list lives here so multi-workout days are visible
+          (e.g. "AM lift + PM conditioning" both render). */}
+      {detail.workouts.length > 0 && <WorkoutsSection workouts={detail.workouts} />}
+
+      {/* Dailies (built-in + user + spiritual) with done/missed
+          status. For past + today, show the actual state: done =
+          green check, not-done = red X. For future dates the whole
+          DayDetail short-circuits above so this section never
+          renders with fake "missed" data. */}
       <DailiesSection dailies={detail.dailies} />
 
       {/* Meals — same data the /today dashboard shows, scoped to
@@ -434,6 +459,34 @@ function DayDetail({
 
       {/* Substances — caffeine / alcohol / nicotine etc. */}
       {substances.length > 0 && <SubstancesSection substances={substances} />}
+    </div>
+  );
+}
+
+function WorkoutsSection({ workouts }: { workouts: DayPayload['workouts'] }) {
+  return (
+    <div className="border-t border-current/10 pt-2">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">
+        Workouts ({workouts.length})
+      </div>
+      <div className="space-y-0.5 text-[10px] font-mono">
+        {workouts.map((w) => (
+          <div key={w.id} className="flex items-center gap-2">
+            <span className="text-neon-lime">⚔</span>
+            <span className="text-ink-200 truncate flex-1">
+              {w.name}
+              {w.type && w.type !== 'STRENGTH' && (
+                <span className="text-ink-500 ml-1">· {w.type.toLowerCase()}</span>
+              )}
+            </span>
+            {w.duration != null && (
+              <span className="text-ink-500 shrink-0">
+                {Math.round(w.duration / 60)}m
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -466,22 +519,25 @@ function DailiesSection({ dailies }: { dailies: DayPayload['dailies'] }) {
       <div className="space-y-0.5 text-[10px] font-mono">
         {all.map((d) => (
           <div key={d.id} className="flex items-center gap-2">
+            {/* Done = green box with white check. Undone = red box
+                with white X. No strikethrough anywhere — the box +
+                color tells the story. Done text stays slightly muted
+                white (text-ink-200) so the user can still see what
+                was completed at a glance. */}
             <span
               className={classNames(
-                'w-3 h-3 border shrink-0',
+                'w-3 h-3 border shrink-0 grid place-items-center font-bold text-[10px] leading-none',
                 d.done
-                  ? 'bg-neon-lime border-neon-lime'
-                  : 'border-ink-500/40',
+                  ? 'bg-neon-lime border-neon-lime text-bg-900'
+                  : 'bg-rose-500/30 border-rose-400 text-rose-300',
               )}
             >
-              {d.done && (
-                <span className="block text-bg-900 text-[10px] leading-none text-center font-bold">✓</span>
-              )}
+              {d.done ? '✓' : '×'}
             </span>
             <span
               className={classNames(
                 'truncate',
-                d.done ? 'text-ink-200' : 'text-ink-400 line-through',
+                d.done ? 'text-ink-200' : 'text-ink-300',
               )}
             >
               {d.name}
