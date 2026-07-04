@@ -131,19 +131,19 @@ imperial users see lb, not kg — shipped in 2388dd9.)
 
 ### Identity / auth
 
-- **Capacitor APK: persist session across app restarts.** Closing
-  + reopening the app currently forces a re-login. The session
-  cookie is `httpOnly` + `secure` + `SameSite=None; Domain=.parent`,
-  which is correct for the cross-site WebView fetch — but Android
-  WebView cookies are process-memory-resident by default and get
-  wiped on process death unless the app uses CookieManager +
-  `CookieSyncManager`/`flush()` at the right boundary. Need to
-  confirm the Capacitor app's webview config preserves cookies
-  across activity recreation + process death, and add a
-  "remember me" path if it doesn't. See if a fresh launch with a
-  valid `fitquest_session` cookie can hit `/users/me` without a
-  login round-trip; if not, the cookie's being lost on process
-  death.
+(was: Capacitor APK session persistence — was actually collateral
+of the data-loading bug, NOT a separate CookieManager flush
+issue. Once `setSessionCookie` got the matching `domain` +
+`sameSite: 'none'` fix, cookies set during login were stored with
+a parent-domain scope that survives the WebView's normal cookie
+write cycle, so a fresh app launch with the same APK installed
+re-authenticates via `GET /auth/me` against the persisted cookie
+without prompting for credentials. The CookieManager flush
+override turned out not to be needed. Diagnostic: `docker
+compose logs -f api | grep '"msg":"req"'` while force-closing +
+reopening the APK showed a single `GET /auth/me` carrying the
+`fitquest_session` cookie returning 200, no MainActivity change
+required.)
 
 (was: admin reset-items button — shipped in commit 4c18a0f.
 Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
