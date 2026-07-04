@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -43,8 +44,14 @@ export function PainCard() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<{ bodyPart: string; intensity: number; notes: string } | null>(null);
 
-  // Fetch last 30 days so the sparkline has enough data.
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Fetch last 30 days so the sparkline has enough data. Memoize the
+  // timestamp so the queryKey is stable across re-renders — otherwise
+  // every render produces a new string and react-query treats each as
+  // a brand-new query, perpetually starting fresh fetches and
+  // showing the loading state. (This was the cause of the Pain block
+  // being "stuck at loading" — the fetch never gets to settle because
+  // the key keeps shifting under it.)
+  const since = useMemo(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), []);
   const logsQ = useQuery({
     queryKey: ['pain-logs', since],
     queryFn: () => api<PainLogsResponse>(`/pain-logs?since=${encodeURIComponent(since)}`),
