@@ -183,6 +183,57 @@ export type RecoveryMarker = {
   lastWorkedAt: string | null;
 };
 
+// User body measurements used to scale the avatar so the
+// hologram actually looks like the user, not a generic figure.
+// All fields optional — missing values fall back to the
+// reference frame (175cm / 110cm shoulders / 80cm waist) that
+// the BODY_PARTS positions were authored against.
+export type UserMeasurements = {
+  heightCm: number;
+  shoulderCm: number;
+  waistCm: number;
+};
+
+// Reference frame — the BODY_PARTS positions/sizes are authored
+// for an "average" 175cm / 110cm-shoulders / 80cm-waist adult. The
+// scales below multiply positions and sizes so a smaller or
+// larger user gets a proportionally-scaled hologram.
+const REF_HEIGHT_CM = 175;
+const REF_SHOULDER_CM = 110;
+const REF_WAIST_CM = 80;
+
+type AvatarScales = {
+  /** Y-axis scale: torso/limb length + head + neck position. */
+  heightScale: number;
+  /** X-axis scale for upper-body parts (shoulders, chest, back). */
+  shoulderScale: number;
+  /** X-axis scale for mid/lower-body parts (abs, obliques, hips, quads). */
+  waistScale: number;
+};
+
+function computeScales(m: UserMeasurements | undefined): AvatarScales {
+  if (!m) return { heightScale: 1, shoulderScale: 1, waistScale: 1 };
+  return {
+    heightScale: m.heightCm / REF_HEIGHT_CM,
+    shoulderScale: m.shoulderCm / REF_SHOULDER_CM,
+    waistScale: m.waistCm / REF_WAIST_CM,
+  };
+}
+
+// Per-part X-axis scale. Arms + shoulders use shoulderScale
+// (upper-body width); abs + obliques + hips + legs use waistScale
+// (mid-body width). Front/back muscle rows (pecs, upper back)
+// split the difference so the torso doesn't skew.
+function xScaleFor(part: BodyPartMeta, s: AvatarScales): number {
+  switch (part.group) {
+    case 'head':  return 1;
+    case 'arm':   return s.shoulderScale;
+    case 'core':  return s.waistScale;
+    case 'torso': return (s.shoulderScale + s.waistScale) / 2;
+    case 'leg':   return s.waistScale;
+  }
+}
+
 type Props = {
   painMarkers?: PainMarker[];
   workedMarkers?: MuscleWorkedMarker[];
@@ -192,6 +243,11 @@ type Props = {
   rotate?: boolean;
   height?: number | string;
   className?: string;
+  /** Optional user measurements for scaling the avatar so the
+   *  hologram looks like the user, not a generic figure. When
+   *  omitted, the default frame (175cm / 110cm shoulders / 80cm
+   *  waist) is used — i.e. the original "one size fits all" look. */
+  userMeasurements?: UserMeasurements;
 };
 
 /**
@@ -217,6 +273,7 @@ export function BodyModel({
   rotate = true,
   height = 'clamp(360px, 70vh, 600px)',
   className,
+  userMeasurements,
 }: Props) {
   const painByPart = useMemo(() => {
     const m = new Map<BodyPartId, PainMarker>();
@@ -235,6 +292,11 @@ export function BodyModel({
     for (const marker of recoveryMarkers) m.set(marker.bodyPart, marker);
     return m;
   }, [recoveryMarkers]);
+
+  // Per-frame scales. Memoized so we don't recompute every render
+  // — every BodyPartMesh in the map below needs to know them and
+  // they're cheap but stable per the user.
+  const scales = useMemo(() => computeScales(userMeasurements), [userMeasurements]);
 
   return (
     <div
@@ -276,6 +338,7 @@ export function BodyModel({
               recovery={recoveryByPart.get(part.id) ?? null}
               onClick={onPartClick}
               onHover={onPartHover}
+              scales={scales}
             />
           ))}
         </SpinningGroup>
@@ -351,6 +414,7 @@ function BodyPartMesh({
   recovery,
   onClick,
   onHover,
+  scales,
 }: {
   part: BodyPartMeta;
   pain: PainMarker | null;
@@ -358,6 +422,7 @@ function BodyPartMesh({
   recovery: RecoveryMarker | null;
   onClick: (part: BodyPartMeta) => void;
   onHover?: (part: BodyPartMeta | null) => void;
+  scales: AvatarScales;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -391,10 +456,104 @@ function BodyPartMesh({
     ? 0.55 + (volumeBand === 'heavy' ? 0.2 : 0)
     : 0.25;
 
+  // ----------------------------------------------------------------
+  // Measurement-based scaling. Per-part X-axis scale comes from
+  // xScaleFor() (shoulderScale for arms, waistScale for legs,
+  // blended for torso). Y is always heightScale (limb length +
+  // head + neck vertical position). Y positions are absolute so
+  // the head sits at the top of the body even when the user is
+  // short.
+  // ----------------------------------------------------------------
+  const xS = xScaleFor(part, scales);
+  const yS = scales.heightScale;
+  // Apply the per-part scaling. Position is [x, y, z] — only Y
+  // scales (X position is "from the centerline" so scaling it
+  // would push the head sideways). Z is depth, not scaled.
+  const scaledPos: [number, number, number] = [
+    part.position[0] * xS,
+    part.position[1] * yS,
+    part.position[2] * xS,
+  ];
+  // Size is [width, height, depth]. Y (limb length) scales by
+  // heightScale; X (lateral width) and Z (depth) scale by xS so
+  // the part stays proportional on width.
+  const scaledSize: [number, number, number] = [
+    part.size[0] * xS,
+    part.size[1] * yS,
+    part.size[2] * xS,
+  ];
+
+  // ----------------------------------------------------------------
+  // Contoured shape: pick a more anatomical geometry for the
+  // major body regions. Head → sphere (head is round), neck →
+  // small cylinder, arms + legs → tapered cylinders (thicker at
+  // the proximal end, thinner distally — the natural muscle
+  // taper). Everything else stays a box (was already a reasonable
+  // shape for the small body parts like obliques + wrists). The
+  // size args below are tuned against the reference frame (175cm
+  // user); the xS / yS scale on top sizes them to the actual
+  // user.
+  // ----------------------------------------------------------------
+  type ShapeArgs =
+    | { kind: 'box';     args: [number, number, number] }
+    | { kind: 'sphere';  args: [number, number, number] }
+    | { kind: 'cylinder'; args: [number, number, number, number] } // radiusTop, radiusBottom, height, segments
+    ;
+
+  function pickShape(p: BodyPartMeta, size: [number, number, number]): ShapeArgs {
+    if (p.id === 'HEAD') {
+      // Slightly oblate so it reads as a head, not a perfect ball.
+      return { kind: 'sphere', args: [size[0] / 0.9, 24, 16] };
+    }
+    if (p.id === 'NECK') {
+      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.55, size[1], 16] };
+    }
+    if (p.group === 'arm' && (p.id === 'BICEP_L' || p.id === 'BICEP_R' || p.id === 'TRICEP_L' || p.id === 'TRICEP_R')) {
+      // Upper arm: tapered cylinder. Thicker at the shoulder
+      // (top), thinner at the elbow (bottom).
+      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.40, size[1], 16] };
+    }
+    if (p.group === 'arm' && (p.id === 'FOREARM_L' || p.id === 'FOREARM_R')) {
+      // Forearm: slightly thinner at the wrist (bottom).
+      return { kind: 'cylinder', args: [size[0] * 0.45, size[0] * 0.30, size[1], 16] };
+    }
+    if (p.group === 'leg' && (p.id === 'QUAD_L' || p.id === 'QUAD_R' || p.id === 'HAMSTRING_L' || p.id === 'HAMSTRING_R')) {
+      // Thigh: thicker at the hip (top), thinner at the knee.
+      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.40, size[1], 16] };
+    }
+    if (p.group === 'leg' && (p.id === 'CALF_L' || p.id === 'CALF_R')) {
+      return { kind: 'cylinder', args: [size[0] * 0.50, size[0] * 0.35, size[1], 16] };
+    }
+    if (p.id === 'PECTORAL' || p.id === 'BACK_UPPER') {
+      // Chest/upper back: slightly flattened ellipsoid. Sphere
+      // geometry is scalable per axis (radiusX, radiusY, radiusZ)
+      // — we use a sphere then scale via the parent group below.
+      return { kind: 'sphere', args: [size[0] / 0.9, 20, 14] };
+    }
+    // Default: the original box. Keeps the file's geometry
+    // minimal-churn — abs, obliques, glutes, wrists, ankles,
+    // feet, traps, neck-of-body, etc. all stay as boxes (which
+    // were already a reasonable shape for those small parts).
+    return { kind: 'box', args: size };
+  }
+
+  const shape = pickShape(part, scaledSize);
+
+  // For sphere geometry we want a non-uniform scale (ellipsoid)
+  // — e.g. HEAD should be slightly oblate, PECTORAL should be
+  // wider than it is deep. Wrap the sphere in a group with
+  // that scale. For cylinder + box the args already include
+  // the size, no extra scale needed.
+  const useEllipsoidScale = shape.kind === 'sphere' && (
+    part.id === 'HEAD' ||
+    part.id === 'PECTORAL' ||
+    part.id === 'BACK_UPPER'
+  );
+
   return (
-    <group position={part.position}>
-      {/* Inner mesh — the muscle box itself. Static emissive boost
-          when recently worked so the box is visibly brighter than
+    <group position={scaledPos}>
+      {/* Inner mesh — the muscle itself. Static emissive boost
+          when recently worked so the part is visibly brighter than
           its idle neighbors. (No per-frame animation; that lagged
           the browser and was removed in commit fca74ac's follow-up.) */}
       <mesh
@@ -413,7 +572,9 @@ function BodyPartMesh({
           onClick(part);
         }}
       >
-        <boxGeometry args={part.size} />
+        {shape.kind === 'box' && <boxGeometry args={shape.args} />}
+        {shape.kind === 'sphere' && <sphereGeometry args={shape.args} />}
+        {shape.kind === 'cylinder' && <cylinderGeometry args={shape.args} />}
         <meshStandardMaterial
           color="#1a1c26"
           emissive={baseColor}
@@ -425,22 +586,37 @@ function BodyPartMesh({
         />
       </mesh>
 
-      {/* Outer wireframe outline */}
-      <mesh>
-        <boxGeometry args={part.size} />
-        <meshBasicMaterial
-          color={baseColor}
-          wireframe
-          transparent
-          opacity={wireOpacity}
-        />
-      </mesh>
+      {/* Outer wireframe outline — same shape as the inner mesh so
+          the contour reads consistently. The wireframe picks up
+          the part's recovery color so the user can see at a
+          glance "this muscle is recovered / primed / spent". */}
+      <group scale={useEllipsoidScale ? [
+        // Make the sphere ellipsoid-shaped: wider in X, deeper in Z,
+        // matching the actual width/height/depth of the part.
+        scaledSize[0] / shape.args[0],
+        scaledSize[1] / shape.args[0],
+        scaledSize[2] / shape.args[0],
+      ] : [1, 1, 1]}>
+        <mesh>
+          {shape.kind === 'box' && <boxGeometry args={shape.args} />}
+          {shape.kind === 'sphere' && <sphereGeometry args={shape.args} />}
+          {shape.kind === 'cylinder' && <cylinderGeometry args={shape.args} />}
+          <meshBasicMaterial
+            color={baseColor}
+            wireframe
+            transparent
+            opacity={wireOpacity}
+          />
+        </mesh>
+      </group>
 
       {/* Pain marker — magenta/red sphere, ALWAYS shown when pain exists.
           Sits on top of the recovery wireframe so you can see
-          "overworked AND hurting" simultaneously. */}
+          "overworked AND hurting" simultaneously. Position uses
+          the scaled size (height × yS) so the offset follows the
+          part's actual rendered height. */}
       {pain && (
-        <group position={[0, part.size[1] / 2 + 0.18, 0]}>
+        <group position={[0, scaledSize[1] / 2 + 0.18, 0]}>
           <mesh>
             <sphereGeometry args={[0.1, 16, 16]} />
             <meshBasicMaterial color={intensityToColor(pain.intensity)} />

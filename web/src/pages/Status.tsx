@@ -342,6 +342,17 @@ function StatusBody({
             onPartClick={(p) => setSelected(p)}
             onPartHover={(p) => setHovered(p)}
             height={560}
+            // Scale the avatar to the user's actual body so it
+            // reads as "you" rather than a generic figure. height
+            // drives the Y-axis (limb length + head/neck vertical
+            // position); shoulder/waist drive the X-axis (chest
+            // width, arm/leg girth). Reference frame = 175cm /
+            // 110cm-shoulders / 80cm-waist.
+            userMeasurements={{
+              heightCm: user.heightCm ?? 175,
+              shoulderCm: user.shoulderCm ?? 110,
+              waistCm: user.waistCm ?? 80,
+            }}
           />
           {hovered && (
             <div className="mt-2 px-3 py-2 border border-neon-cyan/40 bg-bg-900/80 text-xs font-mono">
