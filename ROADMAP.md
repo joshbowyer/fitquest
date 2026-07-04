@@ -140,20 +140,48 @@ scopes + the equip-state-wiped-with-row assertion.)
 
 ### Measurements
 
-- **Genetic-max consistency between /measurements and
-  /dashboard.** Both pages read from the same `geneticMax`
-  table, so a manual override set via the "set max from
-  latest measurement" button on /measurements propagates to
-  the dashboard too. The user has hit this with neck: the
-  formula-computed ceiling (`wristCm × 2.9`) gets shadowed
-  by a stored manual override equal to their current
-  measurement, so the dashboard displays "your current
-  measurement = your genetic max" — misleading. Fix: surface
-  the formula-computed value alongside the stored value (e.g.
-  "Genetic Max: 50 (manual, formula says 45)"), and add a
-  "reset to formula" affordance next to the override. Same
-  pattern for any metric where the formula and the user's
-  current measurement diverge meaningfully.
+- **Genetic-max consistency between /profile, /measurements,
+  and /dashboard.** All three pages need to surface the same
+  value for the same metric, but three independent code paths
+  each had a divergence bug:
+  - **/profile `previewMax()` function** (web/src/pages/Profile.tsx
+    :62-89) had drifted from the canonical formula in
+    `api/src/lib/geneticMax.ts`. Three formulas were wrong:
+    - **NECK** returned the user's *current* `neckCircCm`
+      (a mirror of the latest measurement) instead of the
+      ceiling from wrist/height. Neck can grow (traps), so
+      the genetic max must be a ceiling, not a snapshot.
+      **FIXED in `f68b653`** — now matches the api formula
+      exactly.
+    - **WAIST** had a formula (h × 0.161 or w × 1.9) but the
+      api dropped waist from genetic maxes entirely (it's a
+      "lean minimum", not a "growth ceiling"). **FIXED in
+      `f68b653`**.
+    - **BENCH_1RM** used w × 1.0 as a bodyweight proxy; the
+      api uses `weightKg × 1.5` as a proper 1.5× bw strength
+      ceiling. **FIXED in `f68b653`**.
+  - **/measurements and /dashboard** both read from the same
+    `geneticMax` table, so a manual override set via the
+    "set max from latest measurement" button on /measurements
+    propagates to the dashboard too. The user has hit this
+    with neck: the formula-computed ceiling (`wristCm × 2.9`)
+    gets shadowed by a stored manual override equal to their
+    current measurement, so the dashboard displays "your
+    current measurement = your genetic max" — misleading.
+    Fix: surface the formula-computed value alongside the
+    stored value (e.g. "Genetic Max: 50 (manual, formula says
+    45)"), and add a "reset to formula" affordance next to
+    the override. Same pattern for any metric where the
+    formula and the user's current measurement diverge
+    meaningfully.
+  - **Prevent future drift.** The `previewMax` doc comment
+    now flags this — if you edit the api formula, update the
+    local copy at the same time. Consider extracting
+    `previewMax` to a shared `web/src/lib/geneticMax.ts`
+    imported by all three pages (Profile, Measurements,
+    Dashboard's preview helpers) so there's only one source
+    of truth. Low-priority refactor — the current drift is
+    fixed, and the doc comment is the safety net.
 - **Remove v-taper (`SHOULDER_WAIST_RATIO`) from the
   /measurements sidebar.** It's already in `NEVER_SURFACED`
   (filtered out of check-ins + dashboard) because it's
