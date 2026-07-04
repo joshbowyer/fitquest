@@ -18,88 +18,21 @@
 
 ## Active (in progress)
 
-- **Forecast page (`/forecast`).** New page that answers two
-  questions in one glance: "should I train outside today?" and
-  "what should I work?"
-  - **Weather:** Open-Meteo (free, no API key) for current
-    conditions + 3-day daily forecast. Cache keyed by rounded
-    lat/lng (same scheme as `GeoCache`) with a 1-hour TTL —
-    matches Open-Meteo's own update cadence and keeps the call
-    count well under the 10k/day free-tier ceiling for a single
-    user. WMO weather code → short label + icon glyph + an
-    outdoor-friendliness verdict per day (no-go: thunderstorms /
-    snow / >5mm rain / >100°F / sustained 30+ mph winds; caution
-    bands for >90°F or <32°F).
-  - **Readiness:** existing `computeRecovery(userId)` —
-    HRV/sleep/RHR/soreness/stress/energy/mood composite score
-    with 7-day trend, same data the `/recovery` page shows.
-  - **Recommendation:** new `recommendMuscle(userId)` helper
-    picks the highest-scoring body part that hasn't been worked
-    in the last 12 h. Extracted the per-part recovery math
-    out of `routes/status.ts` into a new
-    `api/src/lib/recommendMuscle.ts` so the same numbers drive
-    both the avatar on `/status` and this recommendation.
-  - **Location:** new `User.latitude` / `User.longitude` Float?
-    columns. Explicit setting wins; otherwise the route falls
-    back to the most-recent workout's trackJson centroid via
-    the existing `centroidOfTrack()` helper in `api/src/lib/geo.ts`.
-    422 with `needsLocation: true` when neither source has data
-    — the page renders an actionable empty state pointing at
-    Profile.
-  - **Profile UI:** new "Home location (for /forecast)" panel
-    on Profile with manual lat/lng inputs, a "Use device
-    location" button (`navigator.geolocation.getCurrentPosition`),
-    and a "Clear (use workout GPS)" affordance. Saves with the
-    main profile-save button + invalidates `['forecast']`.
-  - **Nav:** added to the desktop sidebar + mobile overlay via
-    the existing `NAV` array in `web/src/components/Layout.tsx`
-    with `icon: '☀'`, `mobile: true` so it's a top-level
-    primary nav item.
-  - **Migration:** `20260702140000_user_forecast_location` adds
-    the two lat/lng columns + a new `WeatherCache` table
-    (mirrors the `GeoCache` pattern: `key` = round3 lat/lng,
-    `payload` JSON, `fetchedAt`). Also resolved two
-    previously-failed migrations (`drop_soulstone_counter` and
-    `workout_unique_per_user_time`) — the dev DB had 151
-    duplicate Workout rows from the earlier FitQuestBridge
-    re-upload flood; the dedup pass cleared them and the unique
-    constraint now installs cleanly.
-  - **Air quality (added in the same iteration):** new
-    `getWeatherBundle()` in `api/src/lib/forecast.ts` fetches
-    the forecast + the air-quality endpoint
-    (`https://air-quality-api.open-meteo.com/v1/air-quality`)
-    in parallel and stores both in the same `WeatherCache` row.
-    Open-Meteo's AQ endpoint only exposes hourly data, so the
-    server aggregates daily peaks (max pm2_5 / pm10 / US AQI
-    per local day) and surfaces them alongside the current
-    nowcast. The page renders a third card with the headline
-    AQI number, the EPA band ("Good" / "Moderate" / "Unhealthy
-    for sensitive groups" / etc.), the PM2.5/PM10 μg/m³ values,
-    and a 3-day peak-per-day strip so the user can plan around
-    wildfire smoke, ozone, etc. No pollen (per user preference).
-    No new API key — same Open-Meteo provider.
-  - **Geocoding search (added in the same iteration):** new
-    `GET /geocode?q=<city or postal>` proxy around
-    Open-Meteo's free `geocoding-api.open-meteo.com/v1/search`
-    endpoint. Profile's home-location panel now has a search
-    input — type "Kennesaw" or "30144", pick a result, the
-    lat/lng inputs auto-fill. The picker is explicit-save
-    (matches the rest of Profile: no surprise writes). The
-    same panel also surfaces "View on map ↗" (opens OSM with
-    the current draft coords as a crosshair) and the existing
-    "Use device location" / "Clear" buttons. The Profile save
-    flow was rewritten so the location panel has its own Save
-    button instead of relying on the Frame panel's save button
-    (which was far above and visually disconnected — the
-    previous "Saves with the main profile save button below"
-    hint was misleading because there was no obvious "main"
-    button on the page).
-  - **Empty state copy cleanup:** the bottom "Tip" Panel that
-    said "see above" was removed; the in-page empty state now
-    self-contains the Profile link. The workout-GPS fallback
-    hint is a small grey one-liner below the cards (only shown
-    when the user is actually on the workout-GPS fallback),
-    not a Panel.
+- **Forecast page (`/forecast`).** Mostly built (weather + 3-day
+  daily + air quality + geocoding + readiness score). What's
+  still open:
+  - **"Feels like" temperature** — Open-Meteo doesn't expose
+    apparent/feels-like directly. Either pull from a second
+    source (accuweather / weather.gov) or compute it from
+    wind chill / heat index formulas (NOAA standard).
+  - **3-day forecast on mobile is too squished** — three side-
+    by-side day cards don't fit narrow viewports. Change to
+    a vertical stack (today on top, tomorrow below, day-after
+    below) so each card gets full width.
+  - **Recommended-muscle block doesn't belong here.** Move it
+    off `/forecast` onto `/status`, sitting side-by-side with
+    the recovery block (so they share a row on desktop). Put
+    the combined block *above* the 3D avatar, not below it.
 
 ## Backlog (from user notes, in priority order)
 
@@ -150,36 +83,263 @@ Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
 button + per-user 'Wipe items' buttons. 5 unit tests cover the
 scopes + the equip-state-wiped-with-row assertion.)
 
+### Nutrition & Food
+
+- **Unify the /today nutrition modal with /nutrition's food
+  entry modal.** Today's modal doesn't show recent foods or the
+  saved-foods quick-log; /nutrition's does. They should share
+  one component, parameterized by context (today-as-snack vs
+  /nutrition-as-meal).
+- **Auto-link substances to food entries.** If the food name
+  contains "coffee", "kombucha", "matcha", "espresso", etc.,
+  auto-tick the matching caffeine substance log row. Same for
+  alcohol/wine/beer and nicotine (low-hanging fruit; ship
+  caffeine first, then the others).
+- **Saved-foods row + logged-meal item use the same yellow
+  capsule chrome.** Right now saved-foods rows have a yellow
+  pill around the "Log" + "more options" buttons, but logged
+  items in the meal blocks (breakfast / lunch / dinner /
+  snacks) are bare gray text. Same yellow capsule for both,
+  with edit + delete inline.
+
+### Mobile & UX
+
+- **Reorganize nav menu items on mobile.** Currently drag-to-
+  reorder only works on the desktop sidebar. The mobile
+  overlay should support the same.
+- **Galaxy map on mobile is too small + mis-aligned.** Map
+  should be full-width on mobile, and the "Class:" / "Portal:"
+  text labels should drop below the map instead of sitting to
+  its right (the right-side stack doesn't fit at narrow widths).
+- **Remove the "⚙ Settings" button from the top of /dashboard.**
+  Settings already lives in the sidebar — the dashboard
+  duplicate is dead weight.
+- **Wire up web notifications (laptop / desktop browser).** Use
+  the Notification API on homebase shield drops, breach
+  defeat, boss kill, streak-break, etc. The Web Push API can
+  also deliver notifications when the tab is in the background.
+  Has to be opt-in (request permission on first trigger).
+
+### Gamification & Economy
+
+- **Stuff to spend gold on.** Right now gold is a passive
+  counter. Ideas: themed weapons + armor sets (equippable,
+  cosmetic, with set bonuses), holiday / seasonal items
+  (Halloween pumpkins, Christmas lights, etc.), UI themes
+  (color palettes for the neon glow). All cosmetic unless
+  we want to design a real prestige system around them.
+- **Change heart color to red.** Both in the hero bar and on
+  the HeartsCard. Hearts that have been lost should render as
+  dark gray (currently they render as a faint magenta — the
+  color is right for "you're in trouble" but the user wants
+  explicit red for full / dark gray for empty slots).
+- **Calendar view.** Pick a date and see what workouts /
+  weigh-ins / pain / habits / etc. happened that day, with
+  the morning popup / recovery score surfaced. Could land
+  on `/today?date=YYYY-MM-DD` or a dedicated `/calendar`.
+
+### Measurements
+
+- **Alternate bodyfat inputs (calipers / DEXA / BIA / Navy
+  tape).** Bodyfat is currently only one numeric input. Let
+  the user pick a method and enter method-specific values:
+  - **Caliper (3-site or 7-site):** mm readings → bodyfat % via
+    Jackson-Pollock formula. UI shows which 3 sites to pinch
+    (chest + abdomen + thigh for men, triceps + suprailium +
+    thigh for women) with a tip: "measure in the morning, the
+    day after fasting, ideally before training — water weight
+    swings can shift the reading 2-3%."
+  - **DEXA:** enter the bodyfat % directly from the scan
+    report. "Use the most recent scan within the last 90 days."
+  - **BIA (scale or handheld):** enter bodyfat % from the
+    device. "Best taken fasted, same time of day each week."
+  - **Navy tape method:** waist + neck + (height for women) →
+    bodyfat %. UI explains the formula and that women need
+    hip measurement too.
+  - Hook into the existing radial on the dashboard + any
+    other bodyfat entry point as a popup modal that picks
+    method then asks for the inputs.
+- **Split `BICEP` into `BICEP_RELAXED` and `BICEP_FLEXED`.**
+  Same migration shape as the existing `WAIST` / `NECK`
+  enum expansion. Schema change + UI for picking which one
+  the user is logging.
+- **Re-examine neck circumference genetic-max logic.** Current
+  code uses the user's current neck measurement as their
+  genetic max — wrong because neck can definitely grow with
+  trap development. Either: (a) treat neck like other
+  measurements and let it track freely, (b) default to a
+  population baseline (e.g. 40cm / 15.75in) if no historical
+  peak exists. Compare with how wrist/ankle handle this.
+- **Body weight graph zoom (`yPad`).** Currently `+-20` — the
+  user wants `+-10` so the trend line is more readable.
+- **Body measurement photos with diff.** Upload a photo
+  alongside a measurement (or independently) and have a
+  side-by-side view that highlights the change vs. the
+  previous photo (overlay diff or just a slider to fade
+  between the two). Storage: S3-compatible or local disk;
+  probably needs a new migration for `MeasurementPhoto` rows
+  tied to the parent measurement.
+
+### Habits
+
+- **Habit tile visual state.** Default = neutral gray box.
+  Once checked = full green tint (whole tile), with the
+  check button itself also green. Negative habits similarly:
+  default gray, once crossed-off → red tint. Right now the
+  positive / negative split colors the unchecked state which
+  is wrong (it implies the user has done the habit before
+  they've actually done it today).
+
+### Homebase / Penance
+
+- **Restructure the penance templates panel.** Three changes:
+  1. **Drop the checkboxes from the templates section.**
+     They're not interactive — they read like a "click here
+     to enable" affordance, but they're just labels. Replace
+     with a small "active now" badge on rows that are
+     currently firing.
+  2. **Split into two sub-blocks.** "Shield damage" (the
+     negative triggers — missed dailies, no recovery, etc.)
+     and "Shield repair" (the positive triggers — completed
+     dailies, logged recovery, etc.). Two semantic columns,
+     not one mixed list.
+  3. **Both sub-blocks start collapsed.** Currently the whole
+     panel is open by default — it's the longest single block
+     on `/homebase` and drowns the actual shield status at
+     the top. Collapse-by-default lets the user drill in
+     when curious.
+
+### Portal Leaks
+
+- **Leaks should not expire.** Stacking already works (no
+  short-circuit on new spawn) but `tickLeakGrowth` still marks
+  leaks past the 48h TTL as `EXPIRED`. User wants leaks to
+  persist until killed — they're punishment for the user's
+  slippage, and expiring them softens that. Drops the daily
+  tick's "expire" branch; growth-tick (HP +8/day) stays. The
+  8 HP/day escalation already makes neglected leaks worse
+  than fresh ones, so there's still a soft self-balancing
+  mechanism.
+
 ## Stretch / Future
 
-- **AI HUD agent** — Cortana-style assistant that knows your
-  data and can answer questions ("how did I sleep this week?").
-  Could be an LLM-powered insights panel that calls into the
-  same APIs the dashboard does.
-- **Gadgetbridge live push/pull** — uploads land via the
-  FitQuestBridge helper APK (vanilla Gadgetbridge + SAF-granted
-  export dir + bridge APK watching the dir). The PR for
-  upstream Gadgetbridge is no longer blocking. Next step: add
-  a "rebuild & install" reminder to the bridge's notification
-  when GB's API changes (rare).
-- **Nutrition tracker enhancements** — barcode lookup,
-  restaurant menu scan, etc. The base tracker is live (AI
-  estimated macros from free-text descriptions).
-- **Native Android app** — wrap the web app (or build native)
-  for scheduled toast notifications / reminders for workouts,
-  weigh-ins, recovery, examen, etc. Web push can do some of
-  this but native has reliable scheduled local notifications,
-  background sync, and homescreen widgets. Use Capacitor /
-  TWA / RN / native — pick after scoping.
-- **Sound / audio system** — SFX for level-up, raid damage,
-  rest-timer done, workout logged, boss defeat, leak spawn.
-  Currently silent. Needs an audio service (howler.js / web
-  audio API), mute toggle in user prefs, and per-event hooks
-  fired from the existing event system.
-- **3D avatar / STATUS hologram polish.**
+- **AI coach / HUD with selectable personalities.** Pick a
+  voice and the LLM system prompt + tone changes
+  accordingly. Personality presets (mix-and-match
+  intensity × religious-secular × silly-serious, not all
+  four corners need to be filled):
+  - **Slightly intense priest bodybuilder** — uses Catholic /
+    monastic imagery mixed with hypertrophy talk. "Your
+    shoulders are a yoke — load them and reap."
+  - **Bob Ross / Mr. Rogers gentle** — extremely soft,
+    affirming, never negative. "We'll just add a little
+    happy little set here."
+  - **Drill sergeant** — direct but not gratuitously
+    foul-mouthed. No "drop and give me twenty" trope.
+  - **Minmaxxing zoomer / Zyzz bro** — subcultural gym-bro
+    slang. "Aesthetic. We pump. We shrek. We wither the
+    rec."
+  - **Stereotypical AI personal health assistant** — generic
+    polite. "I've noticed your sleep was below your 7-day
+    average — would you like to discuss?"
+  - The selection is per-user (saved on User, default = the
+    last one picked). Backend: add a `coachPersonality`
+    enum to User; the admin's existing LLM config gets a
+    `coachSystemPromptOverrides` map keyed by personality.
+- **3D avatar polish (rendering + shape).** Two parts:
+  1. **Scale the avatar to user measurements.** Body height
+     sets the avatar's vertical scale; shoulder / waist
+     ratio sets the v-taper; arm circumference sets the
+     limb width. `User.heightCm` + `User.shoulderCm` +
+     `User.waistCm` already exist — wire them into the
+     Three.js render params so the avatar looks like *the
+     user*, not a generic figure.
+  2. **More contoured / humanoid muscle groups.** Current
+     avatar uses disjointed 3D rectangles for each muscle
+     group. Replace with anatomical meshes (or
+     parametric primitives like tapered cylinders for the
+     arms / legs, a real torso shape, a head sphere) so
+     the silhouette reads as a person rather than a stack
+     of boxes.
+- **Gadgetbridge rebuild-reminder.** The
+  `joshbowyer/fitquest-bridge` APK ships periodic background-
+  poll uploads via SAF-granted dir watching. Next step: when
+  GB's FIT-export API changes (rare), surface a "rebuild &
+  install" reminder in the bridge's foreground-service
+  notification so the user knows to grab a new APK.
+
+## Dropped (moved here to keep them out of the active lists)
+
+- ~~Native Android app~~ — shipped as the Capacitor wrapper at
+  [`joshbowyer/fitquest-android`](https://github.com/joshbowyer/fitquest-android).
+  V1.0.0 (cookie + DeleteButton + tz fixes) and v1.0.1 (smaller
+  adaptive-icon triangle) released. The roadmap item was a
+  pre-Capacitor "wrap or build native?" question — answered
+  "wrap, via Capacitor."
+- ~~Gadgetbridge live push/pull~~ — shipped as
+  [`joshbowyer/fitquest-bridge`](https://github.com/joshbowyer/fitquest-bridge).
+  v1.0.0 released. Only the rebuild-reminder follow-up
+  remains (in Stretch / Future above).
+- ~~Sound / audio system~~ — shipped. Web Audio API synth
+  tones (oscillator + ADSR envelope) wired into Workouts
+  onSuccess → workoutComplete, SkillTree level-up →
+  levelUp, RestTimer on hit-zero → restTimerDone, SkillTree
+  on unlock → skillUnlock, Achievements diff → achievement.
+  Settings → Sound panel has a mute toggle persisted to
+  localStorage. The soundBus also exposes `playFile(event)`
+  for future MP3 swaps — drop files in `web/public/sounds/`
+  and add the path to `SOUND_FILES` in
+  `web/src/lib/soundBus.ts`.
+- ~~Nutrition tracker enhancements — barcode lookup,
+  restaurant menu scan~~ — superseded by the Ask-AI multi-
+  entry flow (`/foods/ask-ai-multi`) which estimates macros
+  from a free-text description. Barcode / menu-scan were nice-
+  to-haves but the AI path covers most of the use case with
+  zero extra infrastructure. Revisit if a specific user
+  request comes in.
+- ~~Email verification + password reset.~~ No email integration
+  in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
 
+- ✅ Server-UTC bug: app was rolling non-UTC users over to
+  tomorrow. The api container runs in UTC; 17 places across
+  11 files used server-local time (`new Date().setHours(0,0,0,0)`,
+  `new Date().getDay()`, `new Date().toISOString().slice(0,10)`,
+  `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`) where the
+  user's IANA timezone was needed. Fixed in three commits:
+  `aff9368` (dailies.ts / morningReport.ts / habits.ts /
+  supplements.ts / substances.ts / insights.ts / recovery.ts /
+  streaks.ts — the user-reported "rolled to tomorrow" symptom
+  + 7 related critical bugs), `762cf9c` (correlations.ts /
+  breach.ts / achievements.ts / quest.ts / macroNudges.ts /
+  metricInsight.ts — deeper per-row day-key drift in analytics),
+  and `3b8ad9a` (classLock.ts — birthday anniversary, the
+  last of the sweep). Added `localDayKey(d, tz)` to
+  `api/src/lib/timezone.ts` as the canonical per-row bucket
+  key. The user's profile timezone (`User.timezone`) now
+  drives every day boundary. (One pre-existing test failure
+  on both this branch and main: `classLock.test.ts` "returns
+  { useSoulstone: true } when locked but user has a soulstone"
+  — the test puts `soulstones: 1` on the user object but
+  `assertCanChangeClass` reads `soulstoneCount` from its own
+  parameter, default 0. Filed for follow-up.)
+- ✅ PainCard on /today stuck at loading. The `since` query
+  param was being computed inline on every render
+  (`new Date(Date.now() - 30d).toISOString()`), so the
+  queryKey changed on every render → react-query treated each
+  render as a brand-new query → perpetual loading. Fixed
+  with `useMemo(() => ..., [])` so `since` is captured once
+  on mount. (`f718b5f`)
+- ✅ Capacitor APK favicon too big for adaptive-icon safe
+  zone. Triangle was 20x20 of a 32x32 viewBox (62.5%); the
+  farthest point from center was ~14 units, well outside
+  Android's inner-33dp safe-zone radius (~9.78 in viewBox
+  units), so launcher shapes clipped the tips. Scaled to
+  12x12 (38% of canvas), cyan dot from r=2.5 → r=1.6.
+  All 5 mipmap densities + adaptive-icon foreground
+  regenerated via `scripts/render-app-icons.py`. Shipped
+  as `fitquest-android` v1.0.1. (`e2a87ce`)
 - ✅ Capacitor APK: login worked but most data-fetch routes 401'd.
   Commit `ba5f740` ("share session cookie across subdomains") added
   `domain` + `sameSite: 'none'` to `setTrustedDeviceCookie` so the
@@ -565,49 +725,8 @@ scopes + the equip-state-wiped-with-row assertion.)
 ## Nice-to-haves (backlog)
 
 - Dark/light theme toggle (currently only dark)
-- Push notifications (web push API for homebase shield drops,
-  breach defeat, etc.)
 
-(was: sound/audio system — shipped. Settings → Sound panel
-has a mute toggle (persisted to localStorage) plus per-event
-preview buttons. Web Audio API synth tones (oscillator +
-ADSR envelope) — no MP3 files, no howler.js dependency. v1
-events wired into Workouts onSuccess → workoutComplete,
-Workouts + SkillTree on level-up → levelUp, RestTimer on
-hit-zero → restTimerDone (replaces the inline AudioContext
-beep), SkillTree on unlock → skillUnlock (the meme),
-Achievements diff → achievement. The soundBus also exposes
-`playFile(event)` for future MP3 swaps — drop files in
-web/public/sounds/ and add the path to SOUND_FILES in
-web/src/lib/soundBus.ts to upgrade any event. Mute state is
-persisted via `fitquest:sound:muted` in localStorage. Audio
-context is unlocked on the first user gesture (pointerdown
-/ keydown) per browser autoplay policy.)
-
-(also: skill-unlock queue + activity→skill matching, shipped.
-New PendingSkillUnlock table + lib/skillMatching.ts + two
-new endpoints (POST /skills/check-eligible, GET /skills
-/pending-unlocks, POST /skills/pending-unlocks/:id/dismiss).
-The matching pass runs server-side on every workout commit
-+ on demand via the check-eligible endpoint, creates a
-PendingSkillUnlock row for each (skill, workout, set) tuple
-that satisfies a locked skill's test threshold. The SkillTree
-page renders the queue one modal at a time on mount (FIFO),
-each modal showing the matched set details (reps × weight,
-exercise name, date) so the user can verify before unlocking.
-Skills with unmet prerequisites are filtered out of the
-queue. Sibling PENDING rows for the same skillId are
-auto-DISMISSED on unlock. POST /skills/unlock accepts an
-optional pendingUnlockId to use the snapshotted set as the
-unlock result. Skill points are bypassed for pending-driven
-unlocks (the user paid the cost by doing the workout). The
-synth-approximated kazoo + yayyy "skillUnlock" sound plays
-on every successful unlock — both manual and from the
-queue. The diff-based "playSound('achievement')" hook in
-the Achievements page fires whenever a new achievement
-unlock is detected in the query data.)
-
-## Dropped
-
-- ~~Email verification + password reset.~~ No email integration
-  in this app. Dropped per user direction.
+(was: sound/audio system — shipped, see Dropped section.)
+(was: web push notifications — moved to Backlog → Mobile & UX
+as a real, scoped item with the Notification API + Web Push
+detail.)
