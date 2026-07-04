@@ -5,6 +5,7 @@ import { Panel } from './Panel';
 import { NeonButton } from './NeonButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
+import { useValueChange, emitNotification } from '@/lib/notifyBus';
 
 type RoutineResponse = {
   weeklyGoal: number;
@@ -42,6 +43,16 @@ export function RoutinePanel() {
   const { data, isLoading } = useQuery({
     queryKey: ['routine'],
     queryFn: () => api<RoutineResponse>('/routine'),
+  });
+
+  // Streak-break notification. The streak resets when the user
+  // misses a weekly workout. Fires a system notification when
+  // the streak count DECREASES (i.e. they just broke it). Skipped
+  // when notifications aren't enabled.
+  useValueChange(data?.currentStreak, (newStreak, oldStreak) => {
+    if (newStreak != null && oldStreak != null && newStreak < oldStreak) {
+      emitNotification('streakBreak');
+    }
   });
   const daysQ = useQuery({
     queryKey: ['routine', 'days'],

@@ -15,6 +15,14 @@ import { convertForDisplay, displayUnit, displayValue, type UnitSystem } from '@
 import { classNames, formatDate, formatRelative } from '@/lib/format';
 import { getFrameSize, frameDescription } from '@/lib/frame';
 import { isMuted, setMuted, playSound, primeAudio, type SoundEvent } from '@/lib/soundBus';
+import {
+  isNotificationsEnabled,
+  setNotificationsEnabled,
+  requestNotificationPermission,
+  getNotificationPermission,
+  emitNotification,
+  type NotifyEvent,
+} from '@/lib/notifyBus';
 import type { GeneticMax, Measurement, MetricType } from '@/lib/types';
 import { METRICS, METRICS_BY_CATEGORY } from '@/lib/types';
 
@@ -122,6 +130,186 @@ function SoundSection() {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Notifications section — opt-in browser notifications for the
+ * same events the Sound section covers, plus a few server-driven
+ * ones (shield drop, breach defeat, streak break) that the
+ * Sound bus doesn't have. Foreground only — when the tab is
+ * visible + focused, the notification is suppressed (the user
+ * can already see what just happened). For native push delivery
+ * (browser closed entirely), a Service Worker + VAPID is needed;
+ * out of scope for v1.
+ */
+function NotificationsSection() {
+  // Mirrors soundBus: local state is the source of UI truth,
+  // module-level isNotificationsEnabled() is the source of truth
+  // for emitNotification().
+  const [enabled, setEnabled] = useState(() => isNotificationsEnabled());
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
+    typeof Notification === 'undefined' ? 'unsupported' : getNotificationPermission(),
+  );
+  // Tracks whether we just denied in this session so the toggle
+  // doesn't keep asking. Persists the deny via localStorage
+  // (set by the notifyBus helper).
+  const [busy, setBusy] = useState(false);
+  const [denialMessage, setDenialMessage] = useState<string | null>(null);
+
+  const isUnsupported = perm === 'unsupported';
+  const isGranted = perm === 'granted';
+  const isDenied = perm === 'denied';
+
+  async function handleToggle() {
+    if (isUnsupported) return;
+    if (!enabled) {
+      // Turning ON — ask for permission first.
+      setBusy(true);
+      setDenialMessage(null);
+      const next = await requestNotificationPermission();
+      setPerm(next);
+      if (next === 'granted') {
+        setNotificationsEnabled(true);
+        setEnabled(true);
+        // Fire a test notification so the user knows it works.
+        try {
+          emitNotification('achievement');
+        } catch {
+          // silent — the user just saw the in-app reward overlay
+        }
+      } else {
+        // Denied (or dismissed). Don't enable the toggle — the
+        // browser shows the prompt again only after a user gesture
+        // on the actual permission UI in site settings. Surface a
+        // helpful message.
+        setNotificationsEnabled(false);
+        setEnabled(false);
+        setDenialMessage(
+          next === 'denied'
+            ? 'Browser blocked notifications. Enable them in your browser\u2019s site settings for this URL.'
+            : 'Permission request was dismissed. Try again to enable.',
+        );
+      }
+      setBusy(false);
+    } else {
+      // Turning OFF — no permission change needed.
+      setNotificationsEnabled(false);
+      setEnabled(false);
+    }
+  }
+
+  // Test button: fires the achievement test notification. Skipped
+  // when the tab is in the foreground (suppressed by emitNotification).
+  // The user can switch to a different tab to see it.
+  function handleTest() {
+    emitNotification('achievement');
+  }
+
+  const statusLabel = isUnsupported
+    ? 'unsupported'
+    : isGranted
+      ? 'on'
+      : isDenied
+        ? 'blocked'
+        : 'ask';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-mono text-ink-200">
+            System notifications for shield drops, breach defeats,
+            boss kills, level-ups, achievements, streak breaks, rest
+            timer, and workout commits.
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 mt-1">
+            {isUnsupported
+              ? 'Your browser doesn\u2019t support the Notification API.'
+              : isGranted
+                ? 'Granted. Suppressed while the tab is in the foreground (so it doesn\u2019t double up with the in-app overlay).'
+                : isDenied
+                  ? 'Blocked. Enable in your browser\u2019s site settings to use this.'
+                  : 'Opt-in. We\u2019ll request browser permission the first time you turn this on.'}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={isUnsupported || busy}
+          className={classNames(
+            'px-3 h-9 text-[10px] font-mono uppercase tracking-widest border min-w-[80px]',
+            isUnsupported
+              ? 'border-ink-500/40 text-ink-500 cursor-not-allowed'
+              : enabled
+                ? 'border-neon-lime text-neon-lime bg-neon-lime/5 hover:bg-neon-lime/15'
+                : 'border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan',
+          )}
+          title={
+            isUnsupported
+              ? 'Notification API not available'
+              : enabled
+                ? 'Turn off browser notifications'
+                : isDenied
+                  ? 'Browser blocked notifications'
+                  : 'Turn on browser notifications'
+          }
+        >
+          {busy ? '…' : enabled ? 'On' : 'Ask'}
+        </button>
+      </div>
+      {denialMessage && (
+        <div className="text-[10px] font-mono text-neon-amber border border-neon-amber/30 bg-neon-amber/5 px-2 py-1">
+          {denialMessage}
+        </div>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 pt-2 border-t border-ink-700/30">
+        <button
+          type="button"
+          disabled={!isGranted || !enabled}
+          onClick={handleTest}
+          className={classNames(
+            'flex items-center gap-2 px-2 py-1.5 border text-left text-[11px] font-mono',
+            !isGranted || !enabled
+              ? 'border-ink-500/20 text-ink-500 cursor-not-allowed'
+              : 'border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan',
+          )}
+        >
+          <span className="text-base">★</span>
+          <span className="flex-1 truncate">Test notification</span>
+          <span className="text-[9px] uppercase tracking-widest text-ink-400">fire</span>
+        </button>
+      </div>
+      <div className="text-[9px] font-mono text-ink-500 pt-1">
+        Status: <span className={classNames(
+          isGranted ? 'text-neon-lime' : isDenied ? 'text-neon-amber' : 'text-ink-300'
+        )}>{statusLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact action label for the Notifications Panel header.
+ * Mirrors the muted status of the Sound panel above.
+ */
+function NotificationsAction() {
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
+    typeof Notification === 'undefined' ? 'unsupported' : getNotificationPermission(),
+  );
+  const [enabled, setEnabledState] = useState(() => isNotificationsEnabled());
+  return (
+    <span
+      className={classNames(
+        'text-[10px] font-mono',
+        perm === 'unsupported' ? 'text-ink-500'
+          : enabled && perm === 'granted' ? 'text-neon-lime'
+          : perm === 'denied' ? 'text-neon-amber'
+          : 'text-ink-400',
+      )}
+    >
+      {perm === 'unsupported' ? 'unsupported' : enabled && perm === 'granted' ? 'on' : perm === 'denied' ? 'blocked' : 'off'}
+    </span>
   );
 }
 
@@ -948,6 +1136,17 @@ export function SettingsPage() {
           }
         >
           <SoundSection />
+        </Panel>
+
+        {/* NOTIFICATIONS */}
+        <Panel
+          title="Notifications"
+          variant="cyan"
+          action={
+            <NotificationsAction />
+          }
+        >
+          <NotificationsSection />
         </Panel>
 
         {/* FRAME */}

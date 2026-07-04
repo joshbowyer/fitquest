@@ -29,6 +29,8 @@
  * explicit permission prompt.
  */
 
+import { emitNotification as emitNotificationImpl, type NotifyEvent } from './notifyBus.js';
+
 let ctx: AudioContext | null = null;
 let unlocked = false;
 let muted = false;
@@ -430,6 +432,41 @@ export async function playSound(event: SoundEvent): Promise<void> {
   } catch {
     // silent fallback
   }
+}
+
+// =============================================================
+// playSound() + emitNotification() combined call. Pages use this
+// when both sound + system notification should fire on the same
+// event. Avoids importing notifyBus in every call site.
+// =============================================================
+
+// Compile-time guard: every SoundEvent must be a valid NotifyEvent
+// so we can map 1:1. If a new SoundEvent is added without a
+// matching NotifyEvent, TS errors here.
+// NotifyEvent has extra values (shieldDrop, breachDefeat,
+// streakBreak) that don't have a sound. We just need the
+// SoundEvent ⊆ NotifyEvent direction.
+type _AssertSoundSubset = SoundEvent extends NotifyEvent ? true : 'SoundEvent has values not in NotifyEvent';
+const _check: _AssertSoundSubset = true; void _check;
+
+/**
+ * Play the sound for the event AND fire a system notification (if
+ * the user has opted in). Pages can replace their `playSound(e)`
+ * call with `playSoundAndNotify(e)` for a single import + a
+ * single line.
+ */
+export async function playSoundAndNotify(event: SoundEvent): Promise<void> {
+  // Fire-and-forget: notify is suppressed when the tab is in the
+  // foreground (no double-up with the in-app reward overlay) and
+  // when the user hasn't enabled notifications. So we don't need
+  // to await or check the result.
+  try {
+    emitNotificationImpl(event as NotifyEvent);
+  } catch {
+    // silent — already swallowed inside emitNotification, but
+    // belt-and-suspenders.
+  }
+  await playSound(event);
 }
 
 export function isMuted(): boolean {

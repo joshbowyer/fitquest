@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { playSound } from '@/lib/soundBus';
+import { playSoundAndNotify } from '@/lib/soundBus';
 
 type Props = {
   onTick?: (secondsRemaining: number) => void;
@@ -47,7 +47,7 @@ setSeconds((s) => {
               // Audio cue when the timer hits zero — same shared
               // bus as the rest of the app's SFX. Honors the
               // user's mute toggle from Settings → Sound.
-              playSound('restTimerDone');
+              playSoundAndNotify('restTimerDone');
               onCompleteRef.current?.();
               return 0;
             }
@@ -138,10 +138,10 @@ setSeconds((s) => {
 }
 
 function beep() {
-  // Replaced by playSound('restTimerDone') from the shared
+  // Replaced by playSoundAndNotify('restTimerDone') from the shared
   // soundBus — see the timer body above. Kept as a no-op export
   // for any future direct callers (e.g. dev tools).
-  try { playSound('restTimerDone'); } catch { /* silent */ }
+  try { playSoundAndNotify('restTimerDone'); } catch { /* silent */ }
 }
 
 // Preset durations in seconds. Used by the dashboard tab to let the

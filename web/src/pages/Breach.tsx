@@ -15,6 +15,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { useValueChange, emitNotification } from '@/lib/notifyBus';
 import { randomUuid } from '@/lib/uuid';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -102,6 +103,20 @@ export function BreachPage() {
     queryKey: ['breach'],
     queryFn: () => api<BreachResponse>('/breach'),
     refetchInterval: 30_000,
+  });
+
+  // Breach-defeat notification. Polled every 30s + on invalidation
+  // (which the claim/skip mutations trigger). Fires a system
+  // notification when the breach status transitions from ACTIVE
+  // to VICTORY or COOLDOWN (i.e. the Maw just died). Also fires
+  // bossKill + lootDrop for the "the Maw is down, loot incoming"
+  // combo since the breach page already detects this.
+  useValueChange(data?.progress.status, (newStatus, oldStatus) => {
+    if (oldStatus === 'ACTIVE' && (newStatus === 'VICTORY' || newStatus === 'COOLDOWN')) {
+      emitNotification('breachDefeat');
+      emitNotification('bossKill');
+      emitNotification('lootDrop');
+    }
   });
 
   const claim = useMutation({

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useValueChange, emitNotification } from '@/lib/notifyBus';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from './Layout';
 import { Panel } from './Panel';
@@ -26,6 +27,17 @@ export function HomeBaseCard() {
     queryKey: ['home-base'],
     queryFn: () => api<HomeBaseData>('/home-base'),
     staleTime: 60_000,
+  });
+
+  // Shield-drop notification. Polled every staleTime (60s) +
+  // whenever the component re-mounts. Fires a system notification
+  // when the shield value DECREASES (anything that damages the
+  // home base — penance, breach escape, etc.). Skipped when the
+  // user hasn't opted in (emitNotification no-ops).
+  useValueChange(q.data?.shield, (newShield, oldShield) => {
+    if (newShield != null && oldShield != null && newShield < oldShield) {
+      emitNotification('shieldDrop');
+    }
   });
 
   const data = q.data;

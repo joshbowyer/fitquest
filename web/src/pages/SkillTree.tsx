@@ -10,7 +10,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
 import { CLASS_META } from '@/lib/types';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
-import { playSound } from '@/lib/soundBus';
+import { playSoundAndNotify } from '@/lib/soundBus';
 
 // Tailwind text-neon-* class for the user's class accent. Used by
 // the calitree PNG icons (via mask-image + background-color:
@@ -737,13 +737,13 @@ export function SkillTreePage() {
             level: res.newLevel,
             previousLevel: res.newLevel - 1,
           });
-          playSound('levelUp');
+          playSoundAndNotify('levelUp');
         }
         // Skill-unlock sound — the meme. Fires on every successful
         // unlock (manual or auto). Mute state from Settings →
         // Sound applies. playSound() is fire-and-forget so we
         // don't block the modal close.
-        playSound('skillUnlock');
+        playSoundAndNotify('skillUnlock');
         setSelected(null);
       }
     },

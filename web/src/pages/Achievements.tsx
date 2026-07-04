@@ -6,7 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import type { Achievement } from '@/lib/types';
 import { classNames } from '@/lib/format';
-import { playSound } from '@/lib/soundBus';
+import { playSoundAndNotify } from '@/lib/soundBus';
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
   CONSISTENCY:   { label: 'Consistency', color: '#ffc34d' },
@@ -56,7 +56,7 @@ export function AchievementsPage() {
     if (prev) {
       const newly = items.filter((a) => a.unlocked && !prev.has(a.id));
       for (const a of newly.slice(0, 5)) {
-        playSound('achievement');
+        playSoundAndNotify('achievement');
       }
     }
     prevUnlockedIds.current = currentIds;
