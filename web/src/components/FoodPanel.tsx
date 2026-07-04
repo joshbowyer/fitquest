@@ -5,6 +5,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { DeleteButton } from '@/components/DeleteButton';
 import { classNames } from '@/lib/format';
 import {
   type FoodMatch,
