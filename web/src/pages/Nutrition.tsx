@@ -13,6 +13,7 @@ import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { FoodPanel } from '@/components/FoodPanel';
 import { MealSections } from '@/components/MealSections';
 import { DailyTotalsBar } from '@/components/DailyTotalsBar';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 // ============================================================================
 // Nutrition page (post FoodYou rewrite)
@@ -60,7 +61,15 @@ export function NutritionPage() {
 
       {/* Two-column: Food tracker (left) + Meal sections (right) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 md:mb-6">
-        <FoodPanel />
+        {/* ErrorBoundary so a render error inside FoodPanel (or its
+            modals — ManageSavedFoodsModal, LogMealModal, etc) shows
+            an inline red error message instead of unmounting the
+            whole tree. Same pattern as commit 152a448's Quest-page
+            fix, but applied proactively before the next import-
+            missing / undefined-reference bug hits. */}
+        <ErrorBoundary>
+          <FoodPanel />
+        </ErrorBoundary>
         <MealSections />
       </div>
 
