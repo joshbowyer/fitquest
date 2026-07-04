@@ -11,6 +11,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { getLocalHour, localTodayStartUtc } from '@/lib/timezone';
+import { type MealEntry } from '@/lib/types';
 
 /**
  * Window event the parent page dispatches when a non-tile UI
@@ -622,6 +623,24 @@ function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void
     },
   }, 300);
 
+  // Recently EATEN (logged meals) — complements the "Recently used"
+  // (saved foods) section above. Same data the /nutrition page's
+  // RecentFoodsModal shows. Lets the user re-log the same meal they
+  // ate yesterday/last week without re-typing macros.
+  const recentMealsQ = useQuery({
+    queryKey: ['meals', 'recent', 7],
+    queryFn: () => api<{ items: MealEntry[] }>('/meals?days=7'),
+  });
+  // Dedup: many entries per food (one per log). Keep most-recent.
+  const dedupedMeals: MealEntry[] = [];
+  const seenMeal = new Set<string>();
+  for (const m of recentMealsQ.data?.items ?? []) {
+    const k = `${m.food.source}|${m.food.sourceId}|${m.food.name.toLowerCase()}`;
+    if (seenMeal.has(k)) continue;
+    seenMeal.add(k);
+    dedupedMeals.push(m);
+  }
+
   return (
     <div className="space-y-4">
       <input
@@ -715,6 +734,66 @@ function FoodSearchMode({ meal, onClose }: { meal: MealType; onClose: () => void
           </div>
         )}
       </div>
+
+      {/* Recently eaten — logged meals from the last 7 days. The user
+          asked to add this; without it, the /today modal is missing
+          the "I had the same thing yesterday" quick-log path that
+          the /nutrition page has via RecentFoodsModal. */}
+      {dedupedMeals.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-2">
+            Recently eaten
+          </div>
+          {dedupedMeals.slice(0, 6).map((m) => (
+            <div key={`${m.food.source}-${m.food.sourceId}-${m.id}`} className="flex items-center justify-between border-b border-ink-700/30 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs truncate">{m.food.name}</div>
+                <div className="text-[10px] font-mono text-ink-500">
+                  {Math.round(m.served.calories)} kcal · {Math.round(m.served.proteinG)}g P · {Math.round(m.served.carbG)}g C · {Math.round(m.served.fatG)}g F
+                  {' · '}
+                  <span className="text-ink-400">{MEAL_LABELS[m.meal]}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  // Re-log with the same per-serving macros the user
+                  // had. Server upserts the FoodItem via (source,
+                  // sourceId) so we don't duplicate the row.
+                  api('/meals', {
+                    method: 'POST',
+                    body: {
+                      source: m.food.source,
+                      sourceId: m.food.sourceId,
+                      name: m.food.name,
+                      brand: m.food.brand,
+                      servingSizeG: m.food.servingSizeG,
+                      calories: m.served.calories,
+                      proteinG: m.served.proteinG,
+                      carbG: m.served.carbG,
+                      fatG: m.served.fatG,
+                      fiberG: m.served.fiberG ?? null,
+                      sugarG: m.served.sugarG ?? null,
+                      sodiumMg: m.served.sodiumMg ?? null,
+                      imageUrl: m.food.imageUrl,
+                      sourceUrl: null,
+                      meal,
+                      servings: 1,
+                    },
+                  }).then(() => {
+                    qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+                    qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
+                    onClose();
+                  });
+                }}
+                className="px-2 py-0.5 text-[10px] font-mono border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10 rounded shrink-0"
+              >
+                Log
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

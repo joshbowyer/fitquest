@@ -180,13 +180,15 @@ function MealItemRow({
           )}
         </div>
       </div>
-      {/* Always-visible action buttons. Hidden-on-hover-only is
-          hostile on mobile (no hover state) and easy to miss on
-          desktop. Muted by default, full color on hover. */}
-      <div className="flex items-center gap-0.5 shrink-0">
+      {/* Always-visible action buttons. Wrapped in the same yellow
+          capsule chrome as the saved-foods row's [+ log ▾] so
+          both entry types look consistent in the UI — bare gray
+          text was easy to miss and felt like a different kind of
+          element. Muted text by default, full color on hover. */}
+      <div className="flex items-center shrink-0 border border-neon-amber/50 rounded-sm">
         <button
           onClick={() => onEdit(entry)}
-          className="px-1.5 py-0.5 text-[10px] font-mono text-ink-500 hover:text-neon-cyan hover:bg-neon-cyan/10"
+          className="px-1.5 py-0.5 text-[10px] font-mono text-neon-amber hover:bg-neon-amber/10"
           title="Edit meal / servings / note"
         >
           edit
@@ -195,7 +197,7 @@ function MealItemRow({
           onClick={() => {
             if (confirm(`Remove "${entry.food.name}"?`)) onDelete(entry.id);
           }}
-          className="px-1.5 py-0.5 text-[10px] font-mono text-ink-500 hover:text-rose-400 hover:bg-rose-400/10"
+          className="px-1.5 py-0.5 text-[10px] font-mono text-rose-400 hover:bg-rose-400/10 border-l border-neon-amber/50"
           title="Remove this entry"
         >
           ×
