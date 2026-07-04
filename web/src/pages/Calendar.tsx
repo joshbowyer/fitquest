@@ -82,11 +82,15 @@ type SubstanceLog = {
 
 // The morning-popup returns a comprehensive payload; the calendar
 // only renders a subset of fields so we type-narrow it here.
+// `workouts` was added in the v1.0.2 morning-popup shape — older
+// servers (pre-2309089) don't include it, so the field is
+// optional with a default of [] so the calendar renders on those
+// too (just without the per-workout list).
 type DayPayload = {
   date: string;
   mode: 'CASUAL' | 'HARDCORE';
   hearts: number;
-  workouts: Array<{ id: string; name: string; type: string; duration: number | null; performedAt: string }>;
+  workouts?: Array<{ id: string; name: string | null; type: string; duration: number | null; performedAt: string }>;
   sleep: { value: number; recordedAt: string } | null;
   latestWeight: { value: number; recordedAt: string } | null;
   recovery: { score: number | null; components?: any[] } | null;
@@ -438,8 +442,12 @@ function DayDetail({
       {/* Workouts — list with name + type + duration. The recap
           stat cell above only shows the count + first name; the
           full list lives here so multi-workout days are visible
-          (e.g. "AM lift + PM conditioning" both render). */}
-      {detail.workouts.length > 0 && <WorkoutsSection workouts={detail.workouts} />}
+          (e.g. "AM lift + PM conditioning" both render). Older
+          morning-popup responses (pre-2309089) don't include the
+          `workouts` array; the optional chaining + `?? []` keeps
+          the calendar rendering on those servers too (just with
+          no per-workout list). */}
+      {(detail.workouts ?? []).length > 0 && <WorkoutsSection workouts={detail.workouts ?? []} />}
 
       {/* Dailies (built-in + user + spiritual) with done/missed
           status. For past + today, show the actual state: done =
@@ -463,7 +471,7 @@ function DayDetail({
   );
 }
 
-function WorkoutsSection({ workouts }: { workouts: DayPayload['workouts'] }) {
+function WorkoutsSection({ workouts }: { workouts: NonNullable<DayPayload['workouts']> }) {
   return (
     <div className="border-t border-current/10 pt-2">
       <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">

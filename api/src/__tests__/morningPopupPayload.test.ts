@@ -14,6 +14,16 @@ const MorningPopupPayload = z.object({
   xp: z.number().int().min(0),
   hearts: z.number().int().min(0).max(5),
   dailies: z.any(), // shape covered by /dailies/today
+  // Full workout list for the day — used by the Calendar page
+  // to render every session. New in 2309089; older test samples
+  // predate this so we mark it optional.
+  workouts: z.array(z.object({
+    id: z.string(),
+    name: z.string().nullable(),
+    type: z.string(),
+    duration: z.number().nullable(),
+    performedAt: z.string(),
+  })).optional(),
   recap: z.object({
     workoutLogged: z.boolean(),
     workoutCount: z.number().int().min(0),
@@ -40,10 +50,14 @@ describe('MorningPopupPayload schema', () => {
       xp: 120,
       hearts: 5,
       dailies: { date: '2026-06-29', counts: { total: 3, completed: 2 } },
+      workouts: [
+        { id: 'w1', name: 'Push', type: 'STRENGTH', duration: 3600, performedAt: '2026-06-29T14:00:00.000Z' },
+        { id: 'w2', name: 'PM conditioning', type: 'CARDIO', duration: 1800, performedAt: '2026-06-29T18:00:00.000Z' },
+      ],
       recap: {
         workoutLogged: true,
-        workoutCount: 1,
-        workoutNames: ['Push'],
+        workoutCount: 2,
+        workoutNames: ['Push', 'PM conditioning'],
         sleepHours: 7.2,
         weighInLogged: false,
         latestWeightKg: 175.5,

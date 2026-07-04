@@ -290,6 +290,17 @@ app.get('/today', async (req) => {
         // heart-loss trigger). Skipped dailies are NOT surfaced as
         // missed — those are legitimate opt-outs.
         dailies: dailiesForDate,
+        // Full workout list for the day (name, type, duration,
+        // performedAt). Used by the Calendar page to render a
+        // list of every session — recap below just carries a
+        // summary (count + first 3 names) for the morning popup.
+        workouts: workouts.map((w) => ({
+          id: w.id,
+          name: w.name,
+          type: w.type,
+          duration: w.duration,
+          performedAt: w.performedAt.toISOString(),
+        })),
         recap: {
           workoutLogged: workouts.length > 0,
           workoutCount: workouts.length,
