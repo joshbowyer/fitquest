@@ -37,24 +37,25 @@ export function HeartsCard() {
     // block exists so the row stays balanced and so a user who
     // doesn't know about the Hardcore toggle can discover it.
     return (
-      <div className="panel relative p-4 border border-neon-lime/30 bg-neon-lime/5">
+      <div className="panel relative p-4 border border-rose-500/30 bg-rose-500/5">
         <header className="flex items-center justify-between mb-2">
-          <span className="font-display tracking-widest text-[10px] uppercase text-neon-lime">
+          <span className="font-display tracking-widest text-[10px] uppercase text-rose-300">
             ◆ Casual · Hearts
           </span>
-          <span className="text-[10px] font-mono tabular-nums text-neon-lime/80">
+          <span className="text-[10px] font-mono tabular-nums text-rose-300">
             ×{mult.toFixed(2)}
           </span>
         </header>
 
         {/* Filled row — casual hearts never deplete, so render all
-            MAX_HEARTS filled in the lime tone. Same unicode chars as
+            MAX_HEARTS filled in red. Same unicode chars as
             Hardcore so the row visually parallels the other column. */}
         <div className="flex items-center gap-1 text-2xl mb-2 select-none">
           {Array.from({ length: MAX_HEARTS }, (_, i) => (
             <span
               key={i}
-              style={{ color: '#9bff5c', textShadow: '0 0 4px currentColor' }}
+              className="text-rose-400"
+              style={{ textShadow: '0 0 4px #fb7185' }}
               aria-label="heart filled"
             >
               ♥
@@ -75,12 +76,10 @@ export function HeartsCard() {
     );
   }
 
-  // Hardcore mode: existing 0-10 heart visualization.
-  const tone =
-    hearts === 0 ? 'magenta' :
-    hearts <= 4 ? 'amber' :
-    'cyan';
-
+  // Hardcore mode: existing 0-10 heart visualization. Hearts are
+  // always red regardless of count — the count is conveyed by
+  // the gap between filled and empty slots, not by the color.
+  // The message below carries the urgency.
   const message =
     hearts === 0 ? '⚠ Zero hearts — ×0.00, no rewards. Regen Sunday.' :
     hearts <= 2 ? 'Hearts low — penalty is heavy. Try to log a workout before Sunday.' :
@@ -88,67 +87,46 @@ export function HeartsCard() {
     'Full hearts. No penalty.';
 
   return (
-    <div className={classNames(
-      'panel relative p-4 border',
-      tone === 'magenta' && 'border-neon-magenta/50 bg-neon-magenta/10',
-      tone === 'amber' && 'border-neon-amber/40 bg-neon-amber/5',
-      tone === 'cyan' && 'border-neon-cyan/30 bg-neon-cyan/5',
-    )}>
+    <div className="panel relative p-4 border border-rose-500/30 bg-rose-500/5">
       <header className="flex items-center justify-between mb-2">
-        <span className={classNames(
-          'font-display tracking-widest text-[10px] uppercase',
-          tone === 'magenta' && 'text-neon-magenta',
-          tone === 'amber' && 'text-neon-amber',
-          tone === 'cyan' && 'text-neon-cyan',
-        )}>
+        <span className="font-display tracking-widest text-[10px] uppercase text-rose-300">
           ◆ Hardcore · Hearts
         </span>
-        <span className={classNames(
-          'text-[10px] font-mono tabular-nums',
-          tone === 'magenta' && 'text-rose-300',
-          tone === 'amber' && 'text-amber-300',
-          tone === 'cyan' && 'text-cyan-300',
-        )}>
+        <span className="text-[10px] font-mono tabular-nums text-rose-300">
           ×{mult.toFixed(2)}
         </span>
       </header>
 
-      {/* Hearts in a row. Filled = current count. Empty = depleted.
-          Uses unicode hearts so it renders without an icon library.
-          At ≤3 hearts the whole row gets the heart-warn pulse so
-          even a glance catches the "you're low" state. */}
+      {/* Hearts in a row. Filled = current count (red), empty =
+          depleted (dark gray, not merely faded). At ≤3 hearts the
+          whole row gets the heart-warn pulse so even a glance
+          catches the "you're low" state. */}
       <div className={classNames(
         'flex items-center gap-1 text-2xl mb-2 select-none',
         hearts <= 3 && 'animate-heart-warn',
       )}>
-        {Array.from({ length: MAX_HEARTS }, (_, i) => (
-          <span
-            key={i}
-            className={classNames(
-              i < hearts ? '' : 'opacity-20 grayscale',
-              tone === 'magenta' && i < hearts && 'animate-pulse',
-            )}
-            style={{
-              color: tone === 'magenta' ? '#ff5cff' :
-                     tone === 'amber' ? '#ffc34d' :
-                     '#9bff5c',
-              textShadow: tone === 'magenta' && i < hearts
-                ? '0 0 8px #ff5cff'
-                : '0 0 4px currentColor',
-            }}
-            aria-label={i < hearts ? 'heart filled' : 'heart empty'}
-          >
-            ♥
-          </span>
-        ))}
+        {Array.from({ length: MAX_HEARTS }, (_, i) => {
+          const filled = i < hearts;
+          return (
+            <span
+              key={i}
+              className={filled
+                ? 'text-rose-400'
+                : 'text-ink-600'
+              }
+              style={filled
+                ? { textShadow: '0 0 4px #fb7185' }
+                : undefined
+              }
+              aria-label={filled ? 'heart filled' : 'heart empty'}
+            >
+              ♥
+            </span>
+          );
+        })}
       </div>
 
-      <div className={classNames(
-        'text-[10px] font-mono',
-        tone === 'magenta' && 'text-rose-300',
-        tone === 'amber' && 'text-amber-300',
-        tone === 'cyan' && 'text-ink-400',
-      )}>
+      <div className="text-[10px] font-mono text-rose-300">
         {message}
         <div className="mt-0.5 text-ink-500">
           Regen: 1 heart per Sunday (week-anchored). Loss: missed workout,

@@ -163,26 +163,31 @@ export function Layout({ children }: Props) {
                   <span
                     className={classNames(
                       'text-base leading-none select-none',
-                      user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
                       (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
                     )}
                   >
                     {Array.from({ length: 10 }, (_, i) => (
                       <span
                         key={i}
-                        className={i < (user.hearts ?? 10) ? '' : 'opacity-25 grayscale'}
+                        className={i < (user.hearts ?? 10)
+                          // Filled hearts: red (the canonical "hearts
+                          // have weight" color, regardless of mode).
+                          // Lost hearts: dark gray (depleted, not
+                          // merely faded — the user lost them).
+                          ? 'text-rose-400'
+                          : 'text-ink-600'
+                        }
+                        style={i < (user.hearts ?? 10)
+                          ? { textShadow: '0 0 4px #fb7185' }
+                          : undefined
+                        }
                         aria-label={i < (user.hearts ?? 10) ? 'heart filled' : 'heart empty'}
                       >
                         ♥
                       </span>
                     ))}
                   </span>
-                  <span
-                    className={classNames(
-                      'text-[10px] font-mono tabular-nums',
-                      user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
-                    )}
-                  >
+                  <span className="text-[10px] font-mono tabular-nums text-rose-300">
                     ×{(user.heartMultiplier ?? 1).toFixed(2)}
                   </span>
                 </div>
