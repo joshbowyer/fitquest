@@ -140,6 +140,75 @@ scopes + the equip-state-wiped-with-row assertion.)
 
 ### Measurements
 
+- **Genetic-max consistency between /measurements and
+  /dashboard.** Both pages read from the same `geneticMax`
+  table, so a manual override set via the "set max from
+  latest measurement" button on /measurements propagates to
+  the dashboard too. The user has hit this with neck: the
+  formula-computed ceiling (`wristCm × 2.9`) gets shadowed
+  by a stored manual override equal to their current
+  measurement, so the dashboard displays "your current
+  measurement = your genetic max" — misleading. Fix: surface
+  the formula-computed value alongside the stored value (e.g.
+  "Genetic Max: 50 (manual, formula says 45)"), and add a
+  "reset to formula" affordance next to the override. Same
+  pattern for any metric where the formula and the user's
+  current measurement diverge meaningfully.
+- **Remove v-taper (`SHOULDER_WAIST_RATIO`) from the
+  /measurements sidebar.** It's already in `NEVER_SURFACED`
+  (filtered out of check-ins + dashboard) because it's
+  auto-computed from shoulders ÷ waist. But the /measurements
+  page renders `METRICS_BY_CATEGORY` directly and still
+  includes it as a manual entry. Drop it from the sidebar —
+  it's surfaced in the dashboard's body-comp radials and
+  recomputed automatically.
+- **Split /measurements into category cards (2 per row).**
+  Currently the sidebar is a single column of category groups
+  stacked vertically — a long scroll on tall viewports. Render
+  it as a 2-column grid of category cards (HYPERTROPHY +
+  STRENGTH in row 1, BODY_COMP + CARDIO in row 2, etc),
+  each card collapsible with a header label + count of
+  metrics inside. Mirrors the morning/evening/weekly check-in
+  block layout for visual consistency.
+- **Resting HR radial is broken + wrong range.** The RHR
+  gauge currently uses `meta.defaultMin (50)` as min and
+  `defaultMin × 1.5 (75)` as max — so the dial range is 50..75,
+  and a logged RHR of 50 (typical healthy user) reads as the
+  *start* of the dial but with the max = genetic max for
+  RHR = 45 (the genetic-max formula returns the *best
+  achievable* floor, not the upper bound). Result: a logged
+  50 reads as "11% over" because 50 > 45. Three fixes
+  (separate but related):
+  1. **Switch RHR to an IdealGauge (ideal-in-the-middle).**
+     Bands: `40-50 elite`, `50-60 healthy`, `60-70 warn`,
+     `70+ far`. Add to `idealMetricKeys` in Dashboard.tsx
+     and add the band config to `metricBands.ts`.
+  2. **Fix the generic `Gauge` component's "X% OVER"
+     warning.** Currently any value above the dial max shows
+     "! X% OVER" in magenta. For "more is better" metrics
+     this is correct, but for "less is better" metrics
+     (RHR, 1mi/5K, etc) exceeding the max means the user
+     *out-performed* the dial — celebrate, don't warn. Gate
+     the warning behind a `lessIsBetter` prop or only show
+     it when the value is more than ~2× the max (genuine
+     data-entry error).
+  3. **Fix the RHR genetic-max formula.** Currently returns
+     45 (the "best achievable" floor). It should return the
+     *unhealthy threshold* (70-75), which is what the gauge
+     max should be. Adjust `computeGeneticMax('RESTING_HR', ...)`
+     in `api/src/lib/geneticMax.ts` to return 70 (or an
+     age-adjusted equivalent).
+- **L-Sit radial is visually different from other calisthenics
+  gauges.** User reports L-Sit renders distinctly from
+  plank / push-up / pull-up / dead-hang. Most likely cause:
+  the L_SIT_HOLD defaultMin is `5` (seconds) and the dial
+  range ends up `5..7.5` — every realistic value (10s+) clamps
+  to max and triggers the "! X% OVER" warning, which is a
+  magenta ribbon the other gauges don't show. Fixing the
+  "X% OVER" warning above (suppress for less-is-better +
+  gate behind a sane threshold) resolves this naturally.
+  Verify with all five calisthenics radials side-by-side once
+  fixed.
 - **Alternate bodyfat inputs (calipers / DEXA / BIA / Navy
   tape).** Bodyfat is currently only one numeric input. Let
   the user pick a method and enter method-specific values:
