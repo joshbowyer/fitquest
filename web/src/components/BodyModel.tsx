@@ -484,72 +484,18 @@ function BodyPartMesh({
   ];
 
   // ----------------------------------------------------------------
-  // Contoured shape: pick a more anatomical geometry for the
-  // major body regions. Head → sphere (head is round), neck →
-  // small cylinder, arms + legs → tapered cylinders (thicker at
-  // the proximal end, thinner distally — the natural muscle
-  // taper). Everything else stays a box (was already a reasonable
-  // shape for the small body parts like obliques + wrists). The
-  // size args below are tuned against the reference frame (175cm
-  // user); the xS / yS scale on top sizes them to the actual
-  // user.
+  // Mesh: back to boxGeometry. The earlier "contoured" attempt
+  // (spheres for head/chest, tapered cylinders for arms/legs) was
+  // visually broken — the sphere radius was mis-scaled (head
+  // sphere at radius 0.5 was 2x the size of the head's 0.45-wide
+  // box, engulfing everything) and the cylinders didn't visibly
+  // communicate "humanoid" any better than the boxes. Sticking with
+  // the abstract Tron-style box mesh for now — the measurement-
+  // based scaling (this file's other role) is the part that
+  // actually paid off. A proper contoured humanoid avatar would
+  // be a separate project (load a glTF character mesh + animate it
+  // via R3F) — out of scope for this iteration.
   // ----------------------------------------------------------------
-  type ShapeArgs =
-    | { kind: 'box';     args: [number, number, number] }
-    | { kind: 'sphere';  args: [number, number, number] }
-    | { kind: 'cylinder'; args: [number, number, number, number] } // radiusTop, radiusBottom, height, segments
-    ;
-
-  function pickShape(p: BodyPartMeta, size: [number, number, number]): ShapeArgs {
-    if (p.id === 'HEAD') {
-      // Slightly oblate so it reads as a head, not a perfect ball.
-      return { kind: 'sphere', args: [size[0] / 0.9, 24, 16] };
-    }
-    if (p.id === 'NECK') {
-      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.55, size[1], 16] };
-    }
-    if (p.group === 'arm' && (p.id === 'BICEP_L' || p.id === 'BICEP_R' || p.id === 'TRICEP_L' || p.id === 'TRICEP_R')) {
-      // Upper arm: tapered cylinder. Thicker at the shoulder
-      // (top), thinner at the elbow (bottom).
-      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.40, size[1], 16] };
-    }
-    if (p.group === 'arm' && (p.id === 'FOREARM_L' || p.id === 'FOREARM_R')) {
-      // Forearm: slightly thinner at the wrist (bottom).
-      return { kind: 'cylinder', args: [size[0] * 0.45, size[0] * 0.30, size[1], 16] };
-    }
-    if (p.group === 'leg' && (p.id === 'QUAD_L' || p.id === 'QUAD_R' || p.id === 'HAMSTRING_L' || p.id === 'HAMSTRING_R')) {
-      // Thigh: thicker at the hip (top), thinner at the knee.
-      return { kind: 'cylinder', args: [size[0] * 0.55, size[0] * 0.40, size[1], 16] };
-    }
-    if (p.group === 'leg' && (p.id === 'CALF_L' || p.id === 'CALF_R')) {
-      return { kind: 'cylinder', args: [size[0] * 0.50, size[0] * 0.35, size[1], 16] };
-    }
-    if (p.id === 'PECTORAL' || p.id === 'BACK_UPPER') {
-      // Chest/upper back: slightly flattened ellipsoid. Sphere
-      // geometry is scalable per axis (radiusX, radiusY, radiusZ)
-      // — we use a sphere then scale via the parent group below.
-      return { kind: 'sphere', args: [size[0] / 0.9, 20, 14] };
-    }
-    // Default: the original box. Keeps the file's geometry
-    // minimal-churn — abs, obliques, glutes, wrists, ankles,
-    // feet, traps, neck-of-body, etc. all stay as boxes (which
-    // were already a reasonable shape for those small parts).
-    return { kind: 'box', args: size };
-  }
-
-  const shape = pickShape(part, scaledSize);
-
-  // For sphere geometry we want a non-uniform scale (ellipsoid)
-  // — e.g. HEAD should be slightly oblate, PECTORAL should be
-  // wider than it is deep. Wrap the sphere in a group with
-  // that scale. For cylinder + box the args already include
-  // the size, no extra scale needed.
-  const useEllipsoidScale = shape.kind === 'sphere' && (
-    part.id === 'HEAD' ||
-    part.id === 'PECTORAL' ||
-    part.id === 'BACK_UPPER'
-  );
-
   return (
     <group position={scaledPos}>
       {/* Inner mesh — the muscle itself. Static emissive boost
@@ -572,9 +518,7 @@ function BodyPartMesh({
           onClick(part);
         }}
       >
-        {shape.kind === 'box' && <boxGeometry args={shape.args} />}
-        {shape.kind === 'sphere' && <sphereGeometry args={shape.args} />}
-        {shape.kind === 'cylinder' && <cylinderGeometry args={shape.args} />}
+        <boxGeometry args={scaledSize} />
         <meshStandardMaterial
           color="#1a1c26"
           emissive={baseColor}
@@ -586,29 +530,16 @@ function BodyPartMesh({
         />
       </mesh>
 
-      {/* Outer wireframe outline — same shape as the inner mesh so
-          the contour reads consistently. The wireframe picks up
-          the part's recovery color so the user can see at a
-          glance "this muscle is recovered / primed / spent". */}
-      <group scale={useEllipsoidScale ? [
-        // Make the sphere ellipsoid-shaped: wider in X, deeper in Z,
-        // matching the actual width/height/depth of the part.
-        scaledSize[0] / shape.args[0],
-        scaledSize[1] / shape.args[0],
-        scaledSize[2] / shape.args[0],
-      ] : [1, 1, 1]}>
-        <mesh>
-          {shape.kind === 'box' && <boxGeometry args={shape.args} />}
-          {shape.kind === 'sphere' && <sphereGeometry args={shape.args} />}
-          {shape.kind === 'cylinder' && <cylinderGeometry args={shape.args} />}
-          <meshBasicMaterial
-            color={baseColor}
-            wireframe
-            transparent
-            opacity={wireOpacity}
-          />
-        </mesh>
-      </group>
+      {/* Outer wireframe outline */}
+      <mesh>
+        <boxGeometry args={scaledSize} />
+        <meshBasicMaterial
+          color={baseColor}
+          wireframe
+          transparent
+          opacity={wireOpacity}
+        />
+      </mesh>
 
       {/* Pain marker — magenta/red sphere, ALWAYS shown when pain exists.
           Sits on top of the recovery wireframe so you can see
