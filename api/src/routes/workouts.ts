@@ -7,7 +7,6 @@ import { bestEstimatedOneRm, bestHoldDurationSec, isPrCandidate, isStaticHoldExe
 import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '../lib/xp.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
-import { leveledUp } from '../lib/petStats.js';
 import { checkRoutineProgress } from './routine.js';
 import { tickHearts, heartMultiplier } from '../lib/mode.js';
 import { setVolumeKg } from '../lib/exerciseVolume.js';
@@ -411,35 +410,12 @@ export async function workoutRoutes(app: FastifyInstance) {
         data: { xp: newXp, gold: newGold, level: newLevel },
       });
 
-      // Pet auto-train: 10% of the workout's XP routes to the
-      // user's pet. Only fires when the pet exists and isn't
-      // fainted — a fainted pet doesn't progress until the vet
-      // revives it. Level-ups trigger the same lifecycle side-
-      // effects as /pet/feed (evolvedAt at Lv5, armoredAt at Lv15).
-      const pet = await tx.petInstance.findUnique({ where: { userId: me.id } });
-      if (pet && !pet.faintedAt) {
-        const petXpGain = Math.floor(xp * 0.10);
-        if (petXpGain > 0) {
-          let petXp = pet.xp + petXpGain;
-          let petLevel = pet.level;
-          let evolvedAt = pet.evolvedAt;
-          let armoredAt = pet.armoredAt;
-          while (leveledUp(petXp, petLevel)) {
-            petLevel += 1;
-            if (petLevel === 5 && !evolvedAt) evolvedAt = new Date();
-            if (petLevel === 15 && !armoredAt) armoredAt = new Date();
-          }
-          await tx.petInstance.update({
-            where: { id: pet.id },
-            data: {
-              xp: petXp,
-              level: petLevel,
-              ...(evolvedAt && !pet.evolvedAt ? { evolvedAt } : {}),
-              ...(armoredAt && !pet.armoredAt ? { armoredAt } : {}),
-            },
-          });
-        }
-      }
+      // NOTE: pet XP used to be auto-trained from workout XP at a
+      // 10% rate. We removed that path — pets now grow via
+      //   - primary: /pet/feed (gold-bought food, +5 XP per food)
+      //   - secondary: combat XP from breach/quest/raid endpoints
+      //     (only when pet.deployed && pet.level >= 15)
+      // See RECIPES.md §"Food + training" for the full design.
 
       return {
         workout,

@@ -10,10 +10,206 @@
 // fitquest-sprites repo.
 // =============================================================
 
-export const PET_FOOD_GOLD_COST = 10;
+export const PET_FOOD_GOLD_COST = 50;
 export const PET_FOOD_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
-export const PET_BREED_BUY_GOLD_COST = 200;
+export const PET_BREED_BUY_GOLD_COST = 1000;
 export const PET_VET_GOLD_PER_LEVEL = 5;
+
+/// Combat XP awarded to a deployed, Lv15+ pet on each event.
+/// These are the bonuses granted by the combat endpoints
+/// (breach.ts / quest.ts / raids.ts). Below Lv15 or fainted
+/// or not deployed, the pet gets 0 combat XP.
+export const PET_XP_PER_MONSTER_KILL = 3;
+export const PET_XP_PER_BOSS_KILL = 15;
+export const PET_XP_PER_QUEST_LEVEL_CLEAR = 8;
+export const PET_XP_PER_RAID_BOSS_KILL = 10;
+
+/// HP the pet loses per combat event. Below 0 → faint.
+export const PET_HP_LOSS_PER_MONSTER = 5;
+export const PET_HP_LOSS_PER_BOSS = 20;
+
+// =============================================================
+// Combat XP + HP application.
+//
+// The combat endpoints (breach / quest / raid) call this helper
+// at the moment of each kill event. It checks the pet's deploy
+// status + combat eligibility and applies XP / HP loss / faint.
+//
+// XP gate: only when `deployed && level >= 15 && !faintedAt`.
+// HP loss: -5 per monster, -20 per boss (cumulative, persisted on
+//   PetInstance.hpAfterCombat).
+// Faint: HP hits ≤ 0 OR `forceFaint` true (draw/loss on boss).
+//   On faint, set deployed=false, snapshot boss progress (0-1) to
+//   lastFaintProgress, set faintedAt, set injuredAt (sprite stage).
+// Posthumous XP: call `grantPosthumousPetXp(userId, fullReward)`
+//   after the boss is killed. Returns the XP awarded (0 if no
+//   posthumous credit applies).
+// =============================================================
+
+type CombatTx = any; // Prisma transaction client
+
+export type CombatPetResult =
+  | { applied: false; reason: 'no_pet' | 'ineligible' | 'fainted' | 'not_deployed' }
+  | { applied: true; xpAwarded: number; hpAfter: number; faintedThisStep: boolean };
+
+/**
+ * Apply combat XP + HP to a pet after a single kill event.
+ * Pass `progressFraction` (0..1) for faint-snapshot bookkeeping.
+ * Pass `forceFaint: true` for draw/loss events that faint the
+ * pet regardless of HP. The caller passes `maxHp` (computed via
+ * maxHpForLevel outside the transaction) so we can interpret
+ * `hpAfterCombat = -1` ("never been in combat") as full HP.
+ */
+export async function applyCombatPetOutcome(
+  tx: CombatTx,
+  userId: string,
+  opts: {
+    xpAmount: number;
+    hpLoss: number;
+    progressFraction: number; // boss HP fraction lost at this moment
+    maxHp: number;
+    forceFaint?: boolean;
+  },
+): Promise<CombatPetResult> {
+  const pet = await tx.petInstance.findUnique({ where: { userId } });
+  if (!pet) return { applied: false, reason: 'no_pet' };
+  if (!pet.deployed) return { applied: false, reason: 'not_deployed' };
+  if (pet.level < 15) return { applied: false, reason: 'ineligible' };
+  if (pet.faintedAt) return { applied: false, reason: 'fainted' };
+
+  // Apply XP via the standard level-up loop.
+  const newXp = pet.xp + opts.xpAmount;
+  let newLevel = pet.level;
+  let evolvedAt = pet.evolvedAt;
+  let armoredAt = pet.armoredAt;
+  while (leveledUp(newXp, newLevel)) {
+    newLevel += 1;
+    if (newLevel === 5 && !evolvedAt) evolvedAt = new Date();
+    if (newLevel === 15 && !armoredAt) armoredAt = new Date();
+  }
+
+  // Apply HP loss. hpAfterCombat=-1 means "never been in combat,
+  // full HP implied" → start from maxHp. Otherwise start from the
+  // stored value (which the caller/serializer keeps in sync).
+  let hpAfter = pet.hpAfterCombat < 0 ? opts.maxHp : pet.hpAfterCombat;
+  hpAfter = Math.max(0, hpAfter - opts.hpLoss);
+
+  // Determine faint. Either HP hit 0 or the encounter force-fainted.
+  const willFaint = opts.forceFaint || hpAfter <= 0;
+  const now = new Date();
+
+  // If faint, capture the encounter progress snapshot for posthumous
+  // XP. Cap progress to [0, 1] for safety.
+  const snapshot = Math.max(0, Math.min(1, opts.progressFraction));
+
+  const update: any = {
+    xp: newXp,
+    level: newLevel,
+    hpAfterCombat: willFaint ? 0 : hpAfter,
+    ...(evolvedAt && !pet.evolvedAt ? { evolvedAt } : {}),
+    ...(armoredAt && !pet.armoredAt ? { armoredAt } : {}),
+  };
+  if (willFaint) {
+    update.faintedAt = now;
+    update.injuredAt = now;
+    update.deployed = false; // immediate removal from combat
+    update.lastFaintProgress = snapshot;
+  }
+
+  await tx.petInstance.update({ where: { id: pet.id }, data: update });
+
+  return {
+    applied: true,
+    xpAwarded: opts.xpAmount,
+    hpAfter,
+    faintedThisStep: willFaint,
+  };
+}
+
+/**
+ * XP-only combat grant (no HP loss, no faint). Used for events
+ * where the pet earns XP but isn't exposed to danger — e.g.
+ * completing a non-boss quest level. Same XP gate as
+ * applyCombatPetOutcome.
+ */
+export async function applyCombatPetXp(
+  tx: CombatTx,
+  userId: string,
+  xpAmount: number,
+): Promise<{ applied: boolean; xpAwarded: number }> {
+  const pet = await tx.petInstance.findUnique({ where: { userId } });
+  if (!pet) return { applied: false, xpAwarded: 0 };
+  if (!pet.deployed) return { applied: false, xpAwarded: 0 };
+  if (pet.level < 15) return { applied: false, xpAwarded: 0 };
+  if (pet.faintedAt) return { applied: false, xpAwarded: 0 };
+
+  const newXp = pet.xp + xpAmount;
+  let newLevel = pet.level;
+  let evolvedAt = pet.evolvedAt;
+  let armoredAt = pet.armoredAt;
+  while (leveledUp(newXp, newLevel)) {
+    newLevel += 1;
+    if (newLevel === 5 && !evolvedAt) evolvedAt = new Date();
+    if (newLevel === 15 && !armoredAt) armoredAt = new Date();
+  }
+  await tx.petInstance.update({
+    where: { id: pet.id },
+    data: {
+      xp: newXp,
+      level: newLevel,
+      ...(evolvedAt && !pet.evolvedAt ? { evolvedAt } : {}),
+      ...(armoredAt && !pet.armoredAt ? { armoredAt } : {}),
+    },
+  });
+  return { applied: true, xpAwarded: xpAmount };
+}
+
+/**
+ * Grant posthumous XP to a pet that fainted mid-encounter. The
+ * caller passes the full XP reward (e.g. 15 for boss kill) and
+ * the pet gets `lastFaintProgress × fullXp` rounded down. Also
+ * clears `lastFaintProgress` so it doesn't double-count if the
+ * caller invokes this twice.
+ */
+export async function grantPosthumousPetXp(
+  tx: CombatTx,
+  userId: string,
+  fullXpReward: number,
+): Promise<{ awarded: number; reason: 'no_pet' | 'no_progress_snapshot' | 'already_revived' }> {
+  const pet = await tx.petInstance.findUnique({ where: { userId } });
+  if (!pet) return { awarded: 0, reason: 'no_pet' };
+  if (!pet.faintedAt) return { awarded: 0, reason: 'already_revived' };
+  if (pet.lastFaintProgress == null) return { awarded: 0, reason: 'no_progress_snapshot' };
+  const awarded = Math.floor(pet.lastFaintProgress * fullXpReward);
+  if (awarded <= 0) {
+    // Just clear the snapshot — no XP to award.
+    await tx.petInstance.update({
+      where: { id: pet.id },
+      data: { lastFaintProgress: null },
+    });
+    return { awarded: 0, reason: 'no_progress_snapshot' };
+  }
+  const newXp = pet.xp + awarded;
+  let newLevel = pet.level;
+  let evolvedAt = pet.evolvedAt;
+  let armoredAt = pet.armoredAt;
+  while (leveledUp(newXp, newLevel)) {
+    newLevel += 1;
+    if (newLevel === 5 && !evolvedAt) evolvedAt = new Date();
+    if (newLevel === 15 && !armoredAt) armoredAt = new Date();
+  }
+  await tx.petInstance.update({
+    where: { id: pet.id },
+    data: {
+      xp: newXp,
+      level: newLevel,
+      lastFaintProgress: null,
+      ...(evolvedAt && !pet.evolvedAt ? { evolvedAt } : {}),
+      ...(armoredAt && !pet.armoredAt ? { armoredAt } : {}),
+    },
+  });
+  return { awarded, reason: 'already_revived' };
+}
 
 /** hp at level 1 = baseHp (50 puppy). Hops to baseHp*2 once evolved. */
 export function maxHpForLevel(level: number, baseHp: number): number {

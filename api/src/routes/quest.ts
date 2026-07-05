@@ -13,6 +13,10 @@ import {
   type RequirementProgress,
 } from '../lib/worlds.js';
 import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
+import {
+  applyCombatPetXp,
+  PET_XP_PER_QUEST_LEVEL_CLEAR,
+} from '../lib/petStats.js';
 
 export async function questRoutes(app: FastifyInstance) {
   // GET /worlds — list all worlds with the user's progress attached
@@ -131,6 +135,9 @@ export async function questRoutes(app: FastifyInstance) {
               gold: { increment: lvl.gold },
             },
           });
+          // Pet combat XP — quest level clear. XP only, no HP loss.
+          // Gate: deployed + Lv15+ + not fainted.
+          await applyCombatPetXp(prisma, me.id, PET_XP_PER_QUEST_LEVEL_CLEAR);
           // Themed equipment drop on first clear — ~25% chance so
           // the user sees loot trickle in as they progress through
           // worlds, without flooding their inventory. Drop is

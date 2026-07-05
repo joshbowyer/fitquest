@@ -58,6 +58,9 @@ export async function serializePet(petId: string) {
     isPuppy: !pet.evolvedAt,
     isArmored: !!pet.armoredAt,
     isFainted: !!pet.faintedAt,
+    isCombatEligible: pet.level >= 15 && !pet.faintedAt,
+    deployed: pet.deployed,
+    canDeploy: pet.level >= 15 && !pet.faintedAt,
     canToggleArmor: pet.level >= 15 && !pet.faintedAt,
     canFeed: !pet.faintedAt,
     canVet: !!pet.faintedAt,
@@ -68,6 +71,7 @@ export async function serializePet(petId: string) {
     attack: attackForLevel(pet.level, pet.breed.baseAttack),
     baseHp: pet.breed.baseHp,
     baseAttack: pet.breed.baseAttack,
+    lastFaintProgress: pet.lastFaintProgress,
     breed: {
       id: pet.breed.id,
       slug: pet.breed.slug,
@@ -235,7 +239,9 @@ app.post('/feed', async (req, reply) => {
   });
 
   // POST /pet/vet — revive a fainted pet. Cost = 10 + 5*level gold.
-  // Clears faintedAt and injuredAt; restores HP to breed baseHp*2.
+  // Clears faintedAt, injuredAt, and lastFaintProgress; restores HP
+  // to breed baseHp*2. Note: `deployed` stays false — user must
+  // explicitly re-deploy the pet after a revive.
   app.post('/vet', async (req, reply) => {
     const me = await requireUser(req);
     const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
@@ -271,6 +277,9 @@ app.post('/feed', async (req, reply) => {
           faintedAt: null,
           injuredAt: null,
           hpAfterCombat: restoredHp,
+          // Reset the faint-progress snapshot too — there's no
+          // mid-fight boss to credit any more.
+          lastFaintProgress: null,
         },
       });
       return { gold: updatedUser.gold, pet: updatedPet };
@@ -286,5 +295,38 @@ app.post('/feed', async (req, reply) => {
 
     await checkAchievements(me.id);
     return await serializePet(result.pet.id);
+  });
+
+  // POST /pet/toggle-deploy — flip the deployed flag on the pet.
+  // Only meaningful at Lv15+ (combat eligibility). Deploy defaults
+  // to false; user must opt in to receive combat XP. When fainted
+  // (either from HP=0 mid-fight or from a draw/loss), the combat
+  // endpoints auto-flip deployed=false; user can't redeploy until
+  // the vet revives.
+  // Re-deploying also clears any stale lastFaintProgress snapshot
+  // from a prior fight — it doesn't apply to the new fight.
+  app.post('/toggle-deploy', async (req, reply) => {
+    const me = await requireUser(req);
+    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
+    if (!pet) return reply.code(404).send({ error: 'No pet yet' });
+    if (pet.faintedAt) {
+      return reply.code(409).send({ error: 'Pet has fainted. Visit the vet first.' });
+    }
+    if (pet.level < 15) {
+      return reply.code(403).send({
+        error: 'Pet must be level 15+ to deploy in combat',
+        level: pet.level,
+      });
+    }
+    const updated = await prisma.petInstance.update({
+      where: { id: pet.id },
+      data: {
+        deployed: !pet.deployed,
+        // Clear any leftover progress snapshot on a deploy toggle
+        // — each fight should compute its own progress fresh.
+        lastFaintProgress: null,
+      },
+    });
+    return await serializePet(updated.id);
   });
 }

@@ -18,7 +18,7 @@ const BREEDS = [
     slug: 'german-shepherd',
     displayName: 'German Shepherd',
     species: 'dog',
-    costGold: 200,
+    costGold: 1000,
     isStarter: true, // always in stock
     colorVariants: JSON.stringify(['black-tan']),
     description:
@@ -32,7 +32,7 @@ const BREEDS = [
     slug: 'akita',
     displayName: 'Akita',
     species: 'dog',
-    costGold: 200,
+    costGold: 1000,
     isStarter: false,
     colorVariants: JSON.stringify(['red-fawn']),
     description:
@@ -46,7 +46,7 @@ const BREEDS = [
     slug: 'axolotl',
     displayName: 'Axolotl',
     species: 'amphibian',
-    costGold: 200,
+    costGold: 1000,
     isStarter: false,
     colorVariants: JSON.stringify(['leucistic']),
     description:

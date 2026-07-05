@@ -36,6 +36,9 @@ type Pet = {
   isPuppy: boolean;
   isArmored: boolean;
   isFainted: boolean;
+  isCombatEligible: boolean;
+  deployed: boolean;
+  canDeploy: boolean;
   canToggleArmor: boolean;
   canFeed: boolean;
   canVet: boolean;
@@ -46,6 +49,7 @@ type Pet = {
   attack: number;
   baseHp: number;
   baseAttack: number;
+  lastFaintProgress: number | null;
   breed: {
     id: string;
     slug: string;
@@ -146,6 +150,17 @@ export function PetPage() {
     },
     onError: (e: Error) =>
       setArmorError(e instanceof ApiError ? e.message : 'Toggle failed'),
+  });
+
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const deployM = useMutation({
+    mutationFn: () => api<Pet>('/pet/toggle-deploy', { method: 'POST' }),
+    onSuccess: () => {
+      setDeployError(null);
+      qc.invalidateQueries({ queryKey: ['pet'] });
+    },
+    onError: (e: Error) =>
+      setDeployError(e instanceof ApiError ? e.message : 'Toggle failed'),
   });
 
   const vetM = useMutation({
@@ -369,7 +384,7 @@ export function PetPage() {
                           feedM.mutate({ foodItemId: f.id, count: 1 });
                         }}
                       >
-                        {feedM.isPending ? 'Feeding…' : 'Feed (+1 XP)'}
+                        {feedM.isPending ? 'Feeding…' : 'Feed (+5 XP)'}
                       </NeonButton>
                     </div>
                   </div>
@@ -403,6 +418,34 @@ export function PetPage() {
                   </NeonButton>
                 </div>
                 {armorError && <div className="text-xs text-neon-magenta mt-1">{armorError}</div>}
+              </div>
+
+              {/* Deploy (combat XP eligibility) */}
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
+                    Deploy · {pet.deployed ? 'IN' : 'out'}
+                    <span className="ml-2 text-ink-400">
+                      {pet.canDeploy
+                        ? pet.deployed
+                          ? '(gains combat XP)'
+                          : '(unlocks at Lv 15, deploy to gain combat XP)'
+                        : pet.isFainted
+                        ? '(fainted, vet first)'
+                        : pet.level < 15
+                        ? `(unlocks at Lv 15, you are Lv ${pet.level})`
+                        : ''}
+                    </span>
+                  </div>
+                  <NeonButton
+                    variant={pet.deployed ? 'cyan' : 'amber'}
+                    disabled={!pet.canDeploy || deployM.isPending}
+                    onClick={() => deployM.mutate()}
+                  >
+                    {deployM.isPending ? '…' : pet.deployed ? 'Recall' : 'Deploy'}
+                  </NeonButton>
+                </div>
+                {deployError && <div className="text-xs text-neon-magenta mt-1">{deployError}</div>}
               </div>
 
               {/* Vet */}

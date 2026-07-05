@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import {
+  applyCombatPetXp,
+  PET_XP_PER_RAID_BOSS_KILL,
+} from '../lib/petStats.js';
 
 // Predefined raid bosses. Bosses have static stats — the party
 // leader picks which boss to summon but can't define the HP.
@@ -141,6 +145,9 @@ export async function raidRoutes(app: FastifyInstance) {
           },
         });
         await checkAchievements(m.userId);
+        // Pet combat XP — raid boss kill. Each member whose pet is
+        // deployed + Lv15+ + not fainted gets +10 XP.
+        await applyCombatPetXp(prisma, m.userId, PET_XP_PER_RAID_BOSS_KILL);
       }
     }
     return { contribution, raid: updated };

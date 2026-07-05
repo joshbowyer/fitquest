@@ -2751,9 +2751,21 @@ model PetInstance {
   colorVariant  String
   level         Int          @default(1)
   xp            Int          @default(0)
-  /// Persisted HP after the most recent combat event. -1 means
+/// Persisted HP after the most recent combat event. -1 means
   /// never been in combat (show full bar). Resets to baseHp on vet.
-  hpAfterCombat Int          @default(-1)
+  hpAfterCombat Int      @default(-1)
+  /// Whether the user has deployed this pet into active combat.
+  /// When true AND pet.level >= 15 AND !faintedAt, the combat
+  /// endpoints grant pet XP and HP loss. Defaults to false —
+  /// user must opt in even at Lv15+. When pet faints mid-fight,
+  /// this flips to false immediately.
+  deployed      Boolean   @default(false)
+  /// At the moment the pet fainted mid-encounter, this captures
+  /// the boss's HP fraction lost (0.0 to 1.0). On the eventual
+  /// boss kill, the pet is granted posthumous XP = lastFaintProgress
+  /// × fullXpReward. Cleared after the posthumous award fires, or
+  /// on next deploy toggle, or on vet revive.
+  lastFaintProgress Float?
   /// Set when HP first drops to 0 in combat. Cleared by /pet/vet.
   /// While non-null, the pet contributes 0 attack and is not
   /// usable in combat until revived.

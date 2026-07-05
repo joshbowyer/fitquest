@@ -28,6 +28,13 @@ import type { Prisma, PrismaClient, WorkoutType } from './prisma.js';
 import { prisma as defaultPrisma } from './prisma.js';
 import { pickItemOfRarity } from './portalLeaks.js';
 import { localDayKey } from './timezone.js';
+import {
+  applyCombatPetOutcome,
+  grantPosthumousPetXp,
+  maxHpForLevel,
+  PET_HP_LOSS_PER_BOSS,
+  PET_XP_PER_BOSS_KILL,
+} from './petStats.js';
 
 export const BREACH_UNLOCK_LEVEL = 10;
 
@@ -604,6 +611,32 @@ export async function claimKill(
       matchType: 'kill',
     },
   });
+
+  // Pet combat XP — boss kill. Awards full XP if the pet was
+  // deployed and survived; posthumous XP if it fainted mid-fight
+  // (proportional to lastFaintProgress). No XP if the pet wasn't
+  // deployed or wasn't combat-eligible. Also applies HP loss to
+  // the pet (cumulative across encounters).
+  const petForCombat = await prisma.petInstance.findUnique({
+    where: { userId },
+    include: { breed: true },
+  });
+  if (petForCombat) {
+    if (petForCombat.deployed && petForCombat.level >= 15 && !petForCombat.faintedAt) {
+      const maxHp = maxHpForLevel(petForCombat.level, petForCombat.breed.baseHp);
+      await applyCombatPetOutcome(prisma, userId, {
+        xpAmount: PET_XP_PER_BOSS_KILL,
+        hpLoss: PET_HP_LOSS_PER_BOSS,
+        progressFraction: 1.0,
+        maxHp,
+      });
+    } else if (petForCombat.faintedAt && petForCombat.lastFaintProgress != null) {
+      // Pet fainted mid-fight — posthumous credit proportional to
+      // boss HP fraction at moment of faint.
+      await grantPosthumousPetXp(prisma, userId, PET_XP_PER_BOSS_KILL);
+    }
+  }
+
   return reward;
 }
 

@@ -10,5 +10,5 @@
 -- the user feeds it via /pet/feed (which consumes unconsumed rows).
 
 INSERT INTO "ShopItem" ("id", "key", "name", "description", "cost", "effectKey", "effectValue", "effectDurationSec", "active", "createdAt") VALUES
-    ('shop_kibble',        'kibble',        'Premium Kibble',  'Crunchy bites for any dog. Each one feeds your companion for +1 XP.',                                  10, 'pet_food_dog',        1, NULL, true, CURRENT_TIMESTAMP),
-    ('shop_rainbow_worms', 'rainbow_worms', 'Rainbow Worms',   'Tiny wriggling treats for your water dragon. Each one feeds your axolotl for +1 XP.',                10, 'pet_food_amphibian', 1, NULL, true, CURRENT_TIMESTAMP);
+    ('shop_kibble',        'kibble',        'Premium Kibble',  'Crunchy bites for any dog. Each one feeds your companion for +5 XP.',                                  50, 'pet_food_dog',        5, NULL, true, CURRENT_TIMESTAMP),
+    ('shop_rainbow_worms', 'rainbow_worms', 'Rainbow Worms',   'Tiny wriggling treats for your water dragon. Each one feeds your axolotl for +5 XP.',                50, 'pet_food_amphibian', 5, NULL, true, CURRENT_TIMESTAMP);
