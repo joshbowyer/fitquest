@@ -33,7 +33,14 @@
 import { useState, useEffect } from 'react';
 import { Modal } from './Modal';
 import { NeonButton } from './NeonButton';
-import { getApiBaseUrl, getApiBaseUrlSource, setApiBaseUrl, clearApiBaseUrl } from '@/lib/apiUrl';
+import {
+  getApiBaseUrl,
+  getApiBaseUrlSource,
+  isApiUrlPromptDismissed,
+  markApiUrlPromptDismissed,
+  setApiBaseUrl,
+  clearApiBaseUrl,
+} from '@/lib/apiUrl';
 
 // Shared form body. Three mounting sites render the same fields;
 // extracting them keeps the validation + save logic in one place.
@@ -116,19 +123,42 @@ function ApiUrlFormBody({ onSaved, onClose }: { onSaved?: () => void; onClose: (
 }
 
 export function FirstRunApiUrl() {
-  // Auto-opens on mount when no URL is set yet. Once the user
-  // saves, the page reloads and the modal stays closed.
+  // Auto-opens on mount ONLY when (a) no URL is stored AND
+  // (b) the user has never dismissed the prompt. Once they save
+  // OR dismiss, we mark the prompt dismissed in localStorage and
+  // it never re-opens unless the user explicitly invokes the
+  // Settings / Login "Change API url" trigger (which sets
+  // `clearApiBaseUrl` + `clearApiUrlPromptDismissed` first).
   const [open, setOpen] = useState(false);
   useEffect(() => {
+    if (isApiUrlPromptDismissed()) {
+      setOpen(false);
+      return;
+    }
     if (getApiBaseUrlSource() === 'default') setOpen(true);
-    else setOpen(false);
   }, []);
   if (!open) return null;
   return (
-    <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md">
+    <Modal
+      open
+      onClose={() => {
+        // Closing without saving still marks the prompt as
+        // dismissed. The user can re-open it from Settings/Login.
+        markApiUrlPromptDismissed();
+        setOpen(false);
+      }}
+      title="Connect to your FitQuest server"
+      width="max-w-md"
+    >
       <ApiUrlFormBody
-        onSaved={() => window.location.reload()}
-        onClose={() => setOpen(false)}
+        onSaved={() => {
+          // setApiBaseUrl already marks dismissed internally.
+          window.location.reload();
+        }}
+        onClose={() => {
+          markApiUrlPromptDismissed();
+          setOpen(false);
+        }}
       />
     </Modal>
   );

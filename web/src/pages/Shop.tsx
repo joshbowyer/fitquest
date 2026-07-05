@@ -185,7 +185,7 @@ export function ShopPage() {
               : 'Available breeds'
           }
         >
-          {ownsPet && myPet && (
+          {myPet && (
             <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-neon-cyan/20">
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Your companion</div>
