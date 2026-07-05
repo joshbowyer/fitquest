@@ -98,14 +98,3 @@ export function clearApiBaseUrl(): void {
     // ignore
   }
 }
-
-export function getApiBaseUrlSource(): 'localStorage' | 'env' | 'default' {
-  try {
-    const stored = localStorage.getItem(LS_KEY);
-    if (stored && stored.trim()) return 'localStorage';
-  } catch {
-    // fall through
-  }
-  if ((import.meta.env.VITE_API_URL as string | undefined)?.trim()) return 'env';
-  return 'default';
-}
