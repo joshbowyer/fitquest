@@ -87,7 +87,7 @@ function expectedFoodEffectKey(species: string): string {
 }
 
 export function PetPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const qc = useQueryClient();
 
   const petQ = useQuery({
@@ -136,8 +136,8 @@ export function PetPage() {
     onSuccess: () => {
       setFeedError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
-      qc.invalidateQueries({ queryKey: ['user'] });
       qc.invalidateQueries({ queryKey: ['shop', 'items'] });
+      refresh();
     },
     onError: (e: Error) => setFeedError(e instanceof ApiError ? e.message : 'Feed failed'),
   });
@@ -168,7 +168,7 @@ export function PetPage() {
     onSuccess: () => {
       setVetError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
-      qc.invalidateQueries({ queryKey: ['user'] });
+      refresh();
     },
     onError: (e: Error) => setVetError(e instanceof ApiError ? e.message : 'Vet failed'),
   });

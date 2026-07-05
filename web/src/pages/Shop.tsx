@@ -56,7 +56,7 @@ type Pet = {
 };
 
 export function ShopPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const qc = useQueryClient();
   const [buyError, setBuyError] = useState<string | null>(null);
   const [foodError, setFoodError] = useState<string | null>(null);
@@ -97,8 +97,11 @@ export function ShopPage() {
     onSuccess: () => {
       setBuyError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
-      qc.invalidateQueries({ queryKey: ['user'] });
       qc.invalidateQueries({ queryKey: ['shop', 'pet-stock'] });
+      // The auth context stores the user object separately from
+      // react-query, so invalidating ['user'] does nothing. Call
+      // refresh() directly to update the hero-bar gold immediately.
+      refresh();
     },
     onError: (e: Error) => {
       setBuyError(e instanceof ApiError ? e.message : 'Purchase failed');
@@ -114,7 +117,7 @@ export function ShopPage() {
     onSuccess: () => {
       setFoodError(null);
       qc.invalidateQueries({ queryKey: ['shop', 'items'] });
-      qc.invalidateQueries({ queryKey: ['user'] });
+      refresh();
       setBusyFoodId(null);
     },
     onError: (e: Error) => {

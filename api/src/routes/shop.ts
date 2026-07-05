@@ -51,16 +51,19 @@ export async function shopRoutes(app: FastifyInstance) {
     });
     // For each item, also report the user's currently-held inventory
     // count (unconsumed + non-expired) so the shop UI can show
-    // "Owned: 2" badges etc.
+    // "Owned: 2" badges etc. Counts one-shot items (expiresAt=null)
+    // AND currently-active duration items (expiresAt > now).
     const now = new Date();
     const counts = await prisma.purchase.groupBy({
       by: ['itemId'],
       where: {
         userId: me.id,
         consumedAt: null,
-        ...(items.some((i: any) => i.effectDurationSec !== null)
-          ? { expiresAt: { gt: now } }
-          : {}),
+        // Match either: a row that has no expiry (one-shot food,
+        // streak_shield, heart_refill), OR a row whose expiry is
+        // still in the future (war_tincture / forge_tonic within
+        // their 24h window).
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       _count: { _all: true },
     });
