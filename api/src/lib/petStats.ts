@@ -15,9 +15,11 @@ export const PET_FOOD_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 export const PET_BREED_BUY_GOLD_COST = 1000;
 export const PET_VET_GOLD_PER_LEVEL = 5;
 
-/// No cap on pets per user. Earlier v1 had a 6-pet cap; we
-/// removed it so users can build out a full roster. The schema
-/// already supports many rows per user (no @unique on userId).
+/// Cap on pets per user. Enforced at /shop/buy-pet — returns 409
+/// if the user already has this many. The user can release a pet
+/// (via /pet/release) to make room. The schema's @@index on
+/// userId keeps roster queries fast.
+export const MAX_PETS_PER_USER = 6;
 
 /// Combat XP awarded to a deployed, Lv15+ pet on each event.
 /// These are the bonuses granted by the combat endpoints

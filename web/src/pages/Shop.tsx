@@ -182,7 +182,16 @@ export function ShopPage() {
       )}
 
       {breeds.length > 0 && (
-        <Panel variant="cyan" title={ownsPet ? 'Your companion' : 'Available breeds'}>
+        <Panel
+          variant="cyan"
+          title={
+            ownsPet
+              ? 'Your companion'
+              : (myPetQ.data?.pets?.length ?? 0) >= 6
+              ? 'Roster full'
+              : 'Available breeds'
+          }
+        >
           {ownsPet && myPet ? (
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -193,8 +202,23 @@ export function ShopPage() {
                 <NeonButton variant="cyan">Visit your pet</NeonButton>
               </Link>
             </div>
+          ) : (myPetQ.data?.pets?.length ?? 0) >= 6 ? (
+            /* Roster full — no pets adopted yet, but at cap (impossible
+               in practice, since the cap can only be hit AFTER
+               adopting). Edge case: defensive UI. */
+            <div className="text-center py-6">
+              <div className="text-sm text-ink-300">Your roster is full (6/6).</div>
+            </div>
           ) : (
             <>
+              <div className="flex items-baseline justify-between gap-2 mb-3">
+                <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
+                  Pick a breed to adopt
+                </div>
+                <div className="text-[10px] font-mono text-ink-400">
+                  Roster: {myPetQ.data?.pets?.length ?? 0}/6
+                </div>
+              </div>
               <div className="grid gap-4 md:grid-cols-3">
                 {breeds.map((b) => (
                   <BreedCard
@@ -244,6 +268,12 @@ export function ShopPage() {
                     </div>
                   )}
 
+                  {(myPetQ.data?.pets?.length ?? 0) >= 6 && (
+                    <div className="text-xs text-neon-amber border border-neon-amber/30 rounded p-2">
+                      Roster full (6/6). Release a pet on{' '}
+                      <Link to="/pet" className="underline">/pet</Link> to make room.
+                    </div>
+                  )}
                   {!canAffordPet && (
                     <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
                       Not enough gold. {selectedBreed.breed.costGold}g required, you have {user?.gold ?? 0}.

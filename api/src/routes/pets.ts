@@ -372,4 +372,31 @@ app.post('/feed', async (req, reply) => {
     });
     return await serializePet(updated.id);
   });
+
+  // POST /pet/release { petId } — release a pet from the roster.
+  // Hard-delete the PetInstance row. Cascades to PetFeedLog via
+  // the relation's onDelete: Cascade. The pet's sprite file is
+  // not touched (sprites are shared across all instances of a
+  // breed/variant, and we may want the same breed + variant
+  // combo again later).
+  //
+  // Frees one roster slot. No gold refund — this is a permanent
+  // release, not a sale. Like Pokémon's release-to-the-wild, but
+  // without a PC box to fall back to.
+  app.post('/release', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = petIdOnlySchema.parse(req.body ?? {});
+    const pet = await prisma.petInstance.findFirst({
+      where: body.petId ? { id: body.petId, userId: me.id } : { userId: me.id, faintedAt: null },
+    });
+    if (!pet) {
+      return reply.code(404).send({ error: 'Pet not found' });
+    }
+    await prisma.petInstance.delete({ where: { id: pet.id } });
+    return {
+      ok: true,
+      releasedPetId: pet.id,
+      releasedPetName: pet.name,
+    };
+  });
 }

@@ -192,6 +192,27 @@ export function PetPage() {
     onError: (e: Error) => setVetError(e instanceof ApiError ? e.message : 'Vet failed'),
   });
 
+  // Release — two-step confirmation state.
+  const [confirmingRelease, setConfirmingRelease] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+  const releaseM = useMutation({
+    mutationFn: (petId: string) =>
+      api<{ ok: boolean; releasedPetId: string; releasedPetName: string }>('/pet/release', {
+        method: 'POST',
+        body: { petId },
+      }),
+    onSuccess: () => {
+      setReleaseError(null);
+      setConfirmingRelease(false);
+      qc.invalidateQueries({ queryKey: ['pet'] });
+      qc.invalidateQueries({ queryKey: ['shop', 'pet-stock'] });
+      // If we released the active pet, reset the selectedPetId so
+      // the next render shows the new primary (or empty state).
+      setSelectedPetId(null);
+    },
+    onError: (e: Error) => setReleaseError(e instanceof ApiError ? e.message : 'Release failed'),
+  });
+
   const cooldownMs = useMemo(() => cooldownRemainingMs(pet?.lastFedAt ?? null), [pet?.lastFedAt, now]);
   const selectedFood = petFoods.find((f) => f.id === selectedFoodId) ?? petFoods[0];
   const ownsFood = (selectedFood?.owned ?? 0) > 0;
@@ -553,6 +574,55 @@ export function PetPage() {
                   </NeonButton>
                 </div>
                 {vetError && <div className="text-xs text-neon-magenta mt-1">{vetError}</div>}
+              </div>
+
+              {/* Release — two-step confirmation. Hard-deletes the
+                  PetInstance row (cascades to PetFeedLog). No gold
+                  refund. Frees one roster slot. */}
+              <div className="border-t border-rose-900/40 pt-3">
+                {!confirmingRelease ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-mono uppercase tracking-widest text-ink-400">
+                      Release · permanent
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingRelease(true)}
+                      className="text-[10px] font-mono uppercase tracking-widest text-rose-400 hover:text-rose-300 border border-rose-900/40 hover:border-rose-700/60 rounded px-2 py-1"
+                    >
+                      Release {pet.name}…
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded border border-rose-700/60 bg-rose-950/30 p-2 text-[11px] font-mono">
+                    <div className="text-rose-200 mb-2">
+                      Release <b>{pet.name}</b>? This is permanent. They won't
+                      come back, and there's no PC to store them. You can adopt
+                      again at the shop once you have an open slot.
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => releaseM.mutate(pet.id)}
+                        disabled={releaseM.isPending}
+                        className="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-white text-[10px] uppercase tracking-widest disabled:opacity-50"
+                      >
+                        {releaseM.isPending ? '…' : 'Yes, release'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingRelease(false)}
+                        disabled={releaseM.isPending}
+                        className="px-2 py-1 rounded border border-ink-500/40 text-ink-300 text-[10px] uppercase tracking-widest hover:border-ink-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {releaseError && (
+                      <div className="text-neon-magenta mt-2">{releaseError}</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 pt-2 border-t border-neon-cyan/10">
