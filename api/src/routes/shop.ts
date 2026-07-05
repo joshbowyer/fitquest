@@ -271,9 +271,14 @@ export async function shopRoutes(app: FastifyInstance) {
     }
 
     const result = await prisma.$transaction(async (tx: any) => {
-      const existing = await tx.petInstance.findUnique({ where: { userId: me.id } });
-      if (existing) {
-        return { error: 'already_owns_pet' as const, pet: existing };
+      // Multi-pet cap (MAX_PETS_PER_USER, currently 6). Count the
+      // user's existing pets — if they're at the cap, refuse. v1
+      // used to block any second adoption via the userId @unique
+      // constraint; that constraint is now dropped, so we enforce
+      // the cap in code instead.
+      const owned = await tx.petInstance.count({ where: { userId: me.id } });
+      if (owned >= 6) {
+        return { error: 'pet_cap_reached' as const, owned, max: 6 };
       }
       const u = await tx.user.findUnique({
         where: { id: me.id },
@@ -302,8 +307,12 @@ export async function shopRoutes(app: FastifyInstance) {
     });
 
     if ('error' in result) {
-      if (result.error === 'already_owns_pet') {
-        return reply.code(409).send({ error: 'You already own a pet' });
+      if (result.error === 'pet_cap_reached') {
+        return reply.code(409).send({
+          error: `Pet roster full (max ${result.max}). Visit /pet to manage your pets.`,
+          owned: result.owned,
+          max: result.max,
+        });
       }
       return reply.code(402).send({
         error: 'Not enough gold',

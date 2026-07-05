@@ -15,6 +15,11 @@ export const PET_FOOD_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 export const PET_BREED_BUY_GOLD_COST = 1000;
 export const PET_VET_GOLD_PER_LEVEL = 5;
 
+/// Cap on pets per user. Enforced at /shop/buy-pet — returns 409
+/// if the user already has this many. Six matches the classic
+/// "small party" model — adjustable if we need more.
+export const MAX_PETS_PER_USER = 6;
+
 /// Combat XP awarded to a deployed, Lv15+ pet on each event.
 /// These are the bonuses granted by the combat endpoints
 /// (breach.ts / quest.ts / raids.ts). Below Lv15 or fainted
@@ -124,6 +129,20 @@ export async function applyCombatPetOutcome(
     hpAfter,
     faintedThisStep: willFaint,
   };
+}
+
+/**
+ * Find the user's currently-deployed combat pet (at most one).
+ * Returns null if no pet is deployed, no pet exists, or the pet is
+ * fainted / below Lv15. The combat endpoints call this before
+ * granting pet XP — keeps the eligibility check in one place.
+ */
+export async function getDeployedCombatPet(userId: string) {
+  const { prisma } = await import('./prisma.js');
+  return prisma.petInstance.findFirst({
+    where: { userId, deployed: true, faintedAt: null },
+    include: { breed: true },
+  });
 }
 
 /**

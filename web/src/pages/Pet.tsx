@@ -64,6 +64,11 @@ type Pet = {
   createdAt: string;
 };
 
+type PetRoster = {
+  pets: Pet[];
+  primaryPetId: string | null;
+};
+
 const FEED_COOLDOWN_MS = 60 * 60 * 1000;
 
 function cooldownRemainingMs(lastFedAt: string | null): number {
@@ -93,12 +98,20 @@ export function PetPage() {
   const { user, refresh } = useAuth();
   const qc = useQueryClient();
 
-  const petQ = useQuery({
+  const rosterQ = useQuery({
     queryKey: ['pet'],
-    queryFn: () => api<Pet>('/pet'),
+    queryFn: () => api<PetRoster>('/pet'),
   });
 
-  const pet = petQ.data;
+  const roster = rosterQ.data;
+  const pets = roster?.pets ?? [];
+
+  // Which pet is the user looking at? Defaults to the server's
+  // primary (oldest); user can click another pet in the roster to
+  // switch the active view.
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
+  const activePetId = selectedPetId ?? roster?.primaryPetId ?? null;
+  const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [pets, activePetId]);
 
   const itemsQ = useQuery({
     queryKey: ['shop', 'items'],
@@ -134,8 +147,8 @@ export function PetPage() {
   }, []);
 
   const feedM = useMutation({
-    mutationFn: ({ foodItemId, count }: { foodItemId: string; count: number }) =>
-      api<Pet>('/pet/feed', { method: 'POST', body: { foodItemId, count } }),
+    mutationFn: ({ foodItemId, count, petId }: { foodItemId: string; count: number; petId: string }) =>
+      api<Pet>('/pet/feed', { method: 'POST', body: { foodItemId, count, petId } }),
     onSuccess: () => {
       setFeedError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
@@ -146,7 +159,8 @@ export function PetPage() {
   });
 
   const armorM = useMutation({
-    mutationFn: () => api<Pet>('/pet/toggle-armor', { method: 'POST' }),
+    mutationFn: (petId: string) =>
+      api<Pet>('/pet/toggle-armor', { method: 'POST', body: { petId } }),
     onSuccess: () => {
       setArmorError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
@@ -157,7 +171,8 @@ export function PetPage() {
 
   const [deployError, setDeployError] = useState<string | null>(null);
   const deployM = useMutation({
-    mutationFn: () => api<Pet>('/pet/toggle-deploy', { method: 'POST' }),
+    mutationFn: (petId: string) =>
+      api<Pet>('/pet/toggle-deploy', { method: 'POST', body: { petId } }),
     onSuccess: () => {
       setDeployError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
@@ -167,7 +182,8 @@ export function PetPage() {
   });
 
   const vetM = useMutation({
-    mutationFn: () => api<Pet>('/pet/vet', { method: 'POST' }),
+    mutationFn: (petId: string) =>
+      api<Pet>('/pet/vet', { method: 'POST', body: { petId } }),
     onSuccess: () => {
       setVetError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
@@ -180,7 +196,7 @@ export function PetPage() {
   const selectedFood = petFoods.find((f) => f.id === selectedFoodId) ?? petFoods[0];
   const ownsFood = (selectedFood?.owned ?? 0) > 0;
 
-  if (petQ.isLoading) {
+  if (rosterQ.isLoading) {
     return (
       <Layout>
         <PageHeader title="Pet" subtitle="Loading your companion…" />
@@ -188,33 +204,33 @@ export function PetPage() {
     );
   }
 
-  if (petQ.error) {
-    const err = petQ.error;
-    const status = err instanceof ApiError ? err.status : 0;
-    if (status === 404) {
-      // No pet yet — show empty state with link to shop.
-      return (
-        <Layout>
-          <PageHeader title="Pet" subtitle="Your loyal companion" />
-          <div className="mx-auto max-w-xl text-center py-16">
-            <div className="text-ink-300 mb-6">
-              You don't have a pet yet. Visit the shop to adopt your companion.
-            </div>
-            <Link to="/shop">
-              <NeonButton variant="cyan">Visit the Shop</NeonButton>
-            </Link>
-          </div>
-        </Layout>
-      );
-    }
+  if (rosterQ.error) {
+    const err = rosterQ.error;
     return (
       <Layout>
         <PageHeader title="Pet" />
-        <Panel variant="magenta" title="Could not load pet">
+        <Panel variant="magenta" title="Could not load pets">
           <div className="text-ink-300 text-sm">
             {err instanceof ApiError ? err.message : String(err)}
           </div>
         </Panel>
+      </Layout>
+    );
+  }
+
+  // No pets yet — empty state with link to shop.
+  if (pets.length === 0) {
+    return (
+      <Layout>
+        <PageHeader title="Pet" subtitle="Your loyal companion" />
+        <div className="mx-auto max-w-xl text-center py-16">
+          <div className="text-ink-300 mb-6">
+            You don't have a pet yet. Visit the shop to adopt your companion.
+          </div>
+          <Link to="/shop">
+            <NeonButton variant="cyan">Visit the Shop</NeonButton>
+          </Link>
+        </div>
       </Layout>
     );
   }
@@ -227,14 +243,64 @@ export function PetPage() {
   return (
     <Layout>
       <PageHeader
-        title={pet.name}
+        title="Pet"
         subtitle={
-          <>
-            Level {pet.level} {pet.breed.displayName} ·{' '}
-            <span className="text-ink-300">{pet.colorVariant}</span>
-          </>
+          pets.length > 0 ? (
+            <>Roster: {pets.length} pet{pets.length === 1 ? '' : 's'}</>
+          ) : (
+            'Your loyal companion'
+          )
         }
       />
+
+      {/* Roster selector — one card per pet. Click to inspect. The
+          active pet (white border) is the one the actions operate on. */}
+      {pets.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6 mb-4 max-w-4xl">
+          {pets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelectedPetId(p.id)}
+              className={`text-left rounded border p-2 transition-all bg-bg-900/40 hover:bg-bg-900/80 ${
+                p.id === activePetId
+                  ? 'border-neon-cyan'
+                  : 'border-neon-cyan/20 hover:border-neon-cyan/50'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1 mb-1">
+                <span className="text-sm font-display text-neon-cyan truncate">{p.name}</span>
+                {p.deployed && (
+                  <span
+                    className="text-[9px] font-mono uppercase tracking-widest text-neon-lime border border-neon-lime/40 rounded px-1"
+                    title="Deployed in combat"
+                  >
+                    LIVE
+                  </span>
+                )}
+                {p.faintedAt && (
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-neon-magenta border border-neon-magenta/40 rounded px-1">
+                    KO
+                  </span>
+                )}
+              </div>
+              <img
+                src={p.spritePath}
+                alt={p.name}
+                width={64}
+                height={64}
+                className="pixelated w-full max-w-[64px] h-auto mx-auto"
+                style={{ imageRendering: 'pixelated' }}
+              />
+              <div className="text-center mt-1">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+                  Lv {p.level} · {p.stage}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-[260px_1fr] max-w-4xl">
         {/* Sprite */}
@@ -402,7 +468,7 @@ export function PetPage() {
                         }
                         onClick={() => {
                           const f = petFoods.find((x) => x.id === selectedFoodId) ?? petFoods[0];
-                          feedM.mutate({ foodItemId: f.id, count: 1 });
+                          feedM.mutate({ foodItemId: f.id, count: 1, petId: pet.id });
                         }}
                       >
                         {feedM.isPending ? 'Feeding…' : 'Feed (+5 XP)'}
@@ -433,7 +499,7 @@ export function PetPage() {
                   <NeonButton
                     variant={pet.isArmored ? 'amber' : 'violet'}
                     disabled={!pet.canToggleArmor || armorM.isPending}
-                    onClick={() => armorM.mutate()}
+                    onClick={() => armorM.mutate(pet.id)}
                   >
                     {armorM.isPending ? '…' : pet.isArmored ? 'Remove Armor' : 'Equip Armor'}
                   </NeonButton>
@@ -461,7 +527,7 @@ export function PetPage() {
                   <NeonButton
                     variant={pet.deployed ? 'cyan' : 'amber'}
                     disabled={!pet.canDeploy || deployM.isPending}
-                    onClick={() => deployM.mutate()}
+                    onClick={() => deployM.mutate(pet.id)}
                   >
                     {deployM.isPending ? '…' : pet.deployed ? 'Recall' : 'Deploy'}
                   </NeonButton>
@@ -481,7 +547,7 @@ export function PetPage() {
                   <NeonButton
                     variant="magenta"
                     disabled={!pet.canVet || (user?.gold ?? 0) < 10 + 5 * pet.level || vetM.isPending}
-                    onClick={() => vetM.mutate()}
+                    onClick={() => vetM.mutate(pet.id)}
                   >
                     {vetM.isPending ? '…' : 'Revive'}
                   </NeonButton>

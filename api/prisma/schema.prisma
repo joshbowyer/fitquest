@@ -2741,7 +2741,11 @@ model PetBreed {
 /// never been in combat, full HP implied).
 model PetInstance {
   id            String       @id @default(cuid())
-  userId        String       @unique
+  /// No @unique: users can own multiple pets (up to MAX_PETS_PER_USER
+  /// enforced at the API level — see api/src/lib/petStats.ts). The
+  /// "primary" pet (the one shown by default on /pet) is the
+  /// oldest by createdAt.
+  userId        String
   user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   breedId       String
   breed         PetBreed     @relation(fields: [breedId], references: [id])
@@ -2787,6 +2791,7 @@ model PetInstance {
   feedLogs      PetFeedLog[]
 
   @@index([breedId])
+  @@index([userId])
 }
 
 /// Audit row for every successful /pet/feed call. Tracks gold

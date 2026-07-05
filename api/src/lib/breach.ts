@@ -30,6 +30,7 @@ import { pickItemOfRarity } from './portalLeaks.js';
 import { localDayKey } from './timezone.js';
 import {
   applyCombatPetOutcome,
+  getDeployedCombatPet,
   grantPosthumousPetXp,
   maxHpForLevel,
   PET_HP_LOSS_PER_BOSS,
@@ -617,12 +618,9 @@ export async function claimKill(
   // (proportional to lastFaintProgress). No XP if the pet wasn't
   // deployed or wasn't combat-eligible. Also applies HP loss to
   // the pet (cumulative across encounters).
-  const petForCombat = await prisma.petInstance.findUnique({
-    where: { userId },
-    include: { breed: true },
-  });
+  const petForCombat = await getDeployedCombatPet(userId);
   if (petForCombat) {
-    if (petForCombat.deployed && petForCombat.level >= 15 && !petForCombat.faintedAt) {
+    if (petForCombat.level >= 15) {
       const maxHp = maxHpForLevel(petForCombat.level, petForCombat.breed.baseHp);
       await applyCombatPetOutcome(prisma, userId, {
         xpAmount: PET_XP_PER_BOSS_KILL,

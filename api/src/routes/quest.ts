@@ -15,6 +15,7 @@ import {
 import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
 import {
   applyCombatPetXp,
+  getDeployedCombatPet,
   PET_XP_PER_QUEST_LEVEL_CLEAR,
 } from '../lib/petStats.js';
 
@@ -136,8 +137,13 @@ export async function questRoutes(app: FastifyInstance) {
             },
           });
           // Pet combat XP — quest level clear. XP only, no HP loss.
-          // Gate: deployed + Lv15+ + not fainted.
-          await applyCombatPetXp(prisma, me.id, PET_XP_PER_QUEST_LEVEL_CLEAR);
+          // Gate: pet.deployed && !faintedAt (handled inside
+          // applyCombatPetXp; we fetch via getDeployedCombatPet to
+          // share the same lookup across endpoints).
+          const deployedPet = await getDeployedCombatPet(me.id);
+          if (deployedPet) {
+            await applyCombatPetXp(prisma, me.id, PET_XP_PER_QUEST_LEVEL_CLEAR);
+          }
           // Themed equipment drop on first clear — ~25% chance so
           // the user sees loot trickle in as they progress through
           // worlds, without flooding their inventory. Drop is

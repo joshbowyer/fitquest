@@ -5,6 +5,7 @@ import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 import {
   applyCombatPetXp,
+  getDeployedCombatPet,
   PET_XP_PER_RAID_BOSS_KILL,
 } from '../lib/petStats.js';
 
@@ -147,7 +148,10 @@ export async function raidRoutes(app: FastifyInstance) {
         await checkAchievements(m.userId);
         // Pet combat XP — raid boss kill. Each member whose pet is
         // deployed + Lv15+ + not fainted gets +10 XP.
-        await applyCombatPetXp(prisma, m.userId, PET_XP_PER_RAID_BOSS_KILL);
+        const deployedPet = await getDeployedCombatPet(m.userId);
+        if (deployedPet) {
+          await applyCombatPetXp(prisma, m.userId, PET_XP_PER_RAID_BOSS_KILL);
+        }
       }
     }
     return { contribution, raid: updated };

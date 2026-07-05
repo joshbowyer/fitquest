@@ -14,6 +14,28 @@ import {
   xpToNextLevel,
 } from '../lib/petStats.js';
 
+/**
+ * Resolve which pet the user is acting on. If petId is provided,
+ * validate it belongs to the user. Otherwise return the user's
+ * primary pet (oldest by createdAt). Returns null if the user
+ * has no pets OR if the specified petId doesn't belong to them.
+ */
+async function resolvePet(userId: string, petId: string | undefined) {
+  if (petId) {
+    const p = await prisma.petInstance.findFirst({
+      where: { id: petId, userId },
+      include: { breed: true },
+    });
+    return p;
+  }
+  // No petId → primary = oldest by createdAt
+  return prisma.petInstance.findFirst({
+    where: { userId },
+    include: { breed: true },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
 const feedSchema = z.object({
   /// The ShopItem.id of the food the user wants to feed.
   /// Must be a pet_food_* effectKey matching the pet's species.
@@ -22,6 +44,13 @@ const feedSchema = z.object({
   /// How many units of food to feed at once. 1-50. Each unit gives
   /// the food's effectValue XP.
   count: z.number().int().min(1).max(50).default(1),
+  /// Optional petId. If omitted, the user's primary pet (oldest by
+  /// createdAt) is fed.
+  petId: z.string().min(1).optional(),
+});
+
+const petIdOnlySchema = z.object({
+  petId: z.string().min(1).optional(),
 });
 
 /**
@@ -88,13 +117,23 @@ export async function serializePet(petId: string) {
 }
 
 export async function petRoutes(app: FastifyInstance) {
-  // GET /pet — full derived state for the user's pet.
-  // 404 if the user hasn't adopted yet.
+  // GET /pet — full pet roster + active pet. Returns:
+  //   { pets: Pet[], primaryPetId: string|null }
+  // Sorted by createdAt asc; primary = oldest. Frontend renders
+  // the primary as the default view; user can click others to
+  // inspect.
   app.get('/', async (req, reply) => {
     const me = await requireUser(req);
-    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
-    if (!pet) return reply.code(404).send({ error: 'No pet yet' });
-    return await serializePet(pet.id);
+    const pets = await prisma.petInstance.findMany({
+      where: { userId: me.id },
+      include: { breed: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const serialized = await Promise.all(pets.map((p) => serializePet(p.id)));
+    return {
+      pets: serialized,
+      primaryPetId: serialized[0]?.id ?? null,
+    };
   });
 
   // POST /pet/feed { foodItemId, count? } — consume pet food from
@@ -107,10 +146,7 @@ export async function petRoutes(app: FastifyInstance) {
 app.post('/feed', async (req, reply) => {
     const me = await requireUser(req);
     const body = feedSchema.parse(req.body);
-    const pet = await prisma.petInstance.findUnique({
-      where: { userId: me.id },
-      include: { breed: true },
-    });
+    const pet = await resolvePet(me.id, body.petId);
     if (!pet) return reply.code(404).send({ error: 'No pet yet' });
     if (pet.faintedAt) {
       return reply.code(400).send({ error: 'Pet has fainted. Visit the vet first.' });
@@ -219,7 +255,8 @@ app.post('/feed', async (req, reply) => {
   // Only allowed at Lv15+ and only when not fainted.
   app.post('/toggle-armor', async (req, reply) => {
     const me = await requireUser(req);
-    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
+    const body = petIdOnlySchema.parse(req.body ?? {});
+    const pet = await resolvePet(me.id, body.petId);
     if (!pet) return reply.code(404).send({ error: 'No pet yet' });
     if (pet.faintedAt) {
       return reply.code(409).send({ error: 'Pet has fainted. Visit the vet first.' });
@@ -244,21 +281,14 @@ app.post('/feed', async (req, reply) => {
   // explicitly re-deploy the pet after a revive.
   app.post('/vet', async (req, reply) => {
     const me = await requireUser(req);
-    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
+    const body = petIdOnlySchema.parse(req.body ?? {});
+    const pet = await resolvePet(me.id, body.petId);
     if (!pet) return reply.code(404).send({ error: 'No pet yet' });
     if (!pet.faintedAt) {
       return reply.code(400).send({ error: 'Pet is not fainted' });
     }
     const cost = vetCostGold(pet.level);
-    const maxHp = maxHpForLevel(pet.level, /* baseHp known via serialize */ 100);
-    // We need the breed's baseHp to compute the restore-to value.
-    // Re-fetch with breed included (cheap — already cached likely).
-    const petWithBreed = await prisma.petInstance.findUnique({
-      where: { id: pet.id },
-      include: { breed: true },
-    });
-    if (!petWithBreed) return reply.code(404).send({ error: 'No pet yet' });
-    const restoredHp = maxHpForLevel(petWithBreed.level, petWithBreed.breed.baseHp);
+    const restoredHp = maxHpForLevel(pet.level, pet.breed.baseHp);
 
     const result = await prisma.$transaction(async (tx: any) => {
       const u = await tx.user.findUnique({ where: { id: me.id }, select: { gold: true } });
@@ -305,9 +335,13 @@ app.post('/feed', async (req, reply) => {
   // the vet revives.
   // Re-deploying also clears any stale lastFaintProgress snapshot
   // from a prior fight — it doesn't apply to the new fight.
+  //
+  // Only ONE pet per user may be deployed at a time. Toggling deploy
+  // on auto-recalls any other currently-deployed pet.
   app.post('/toggle-deploy', async (req, reply) => {
     const me = await requireUser(req);
-    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
+    const body = petIdOnlySchema.parse(req.body ?? {});
+    const pet = await resolvePet(me.id, body.petId);
     if (!pet) return reply.code(404).send({ error: 'No pet yet' });
     if (pet.faintedAt) {
       return reply.code(409).send({ error: 'Pet has fainted. Visit the vet first.' });
@@ -318,14 +352,23 @@ app.post('/feed', async (req, reply) => {
         level: pet.level,
       });
     }
-    const updated = await prisma.petInstance.update({
-      where: { id: pet.id },
-      data: {
-        deployed: !pet.deployed,
-        // Clear any leftover progress snapshot on a deploy toggle
-        // — each fight should compute its own progress fresh.
-        lastFaintProgress: null,
-      },
+    const willDeploy = !pet.deployed;
+    const updated = await prisma.$transaction(async (tx: any) => {
+      // If we're deploying this pet, recall any other deployed pet
+      // for this user first — only one can be deployed at a time.
+      if (willDeploy) {
+        await tx.petInstance.updateMany({
+          where: { userId: me.id, deployed: true, NOT: { id: pet.id } },
+          data: { deployed: false, lastFaintProgress: null },
+        });
+      }
+      return tx.petInstance.update({
+        where: { id: pet.id },
+        data: {
+          deployed: willDeploy,
+          lastFaintProgress: null,
+        },
+      });
     });
     return await serializePet(updated.id);
   });
