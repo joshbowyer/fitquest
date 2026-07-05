@@ -193,6 +193,35 @@ export async function adminRoutes(app: FastifyInstance) {
   // relations (workouts, measurements, raid contributions, etc.) so a
   // single delete cleans up the user. Sessions cascade too. Refuses
   // to delete yourself — that's almost always a misclick with a
+  // Reset a user's skill tree (unlock + pending-unlock rows). Admin
+  // override — used to debug skill-matching / prereq issues by
+  // letting an admin wipe the user's state and re-trigger the
+  // matching pass on the next workout. Cascades — pending-unlock
+  // rows are also wiped so the user doesn't have a backlog of
+  // already-pending skills to re-resolve.
+  app.post('/users/:id/reset-skills', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, username: true },
+    });
+    if (!target) return reply.code(404).send({ error: 'User not found' });
+    // Wipe the inbox first (no FK cascade from UserSkill), then
+    // the unlocked set. Two deletes wrapped in $transaction for
+    // idempotency if the same user is reset twice in quick
+    // succession.
+    const result = await prisma.$transaction(async (tx) => {
+      const pending = await tx.pendingSkillUnlock.deleteMany({
+        where: { userId: id },
+      });
+      const unlocked = await tx.userSkill.deleteMany({
+        where: { userId: id },
+      });
+      return { pendingDeleted: pending.count, unlockedDeleted: unlocked.count };
+    });
+    return { ok: true, user: target, ...result };
+  });
+
   // destructive, hard-to-reverse outcome.
   app.delete('/users/:id', async (req, reply) => {
     const me = await requireUser(req);

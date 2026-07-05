@@ -185,6 +185,7 @@ export function PetPage() {
   // Set as primary companion (changes which pet the /shop page
   // renders in the "Your companion" panel, and is what the
   // dashboard's pet card pulls from).
+  const [setPrimaryError, setSetPrimaryError] = useState<string | null>(null);
   const setPrimaryM = useMutation({
     mutationFn: (petId: string) =>
       api<{ ok: boolean; primaryPetId: string; pets: Pet[] }>('/pet/set-primary', {
@@ -192,7 +193,18 @@ export function PetPage() {
         body: { petId },
       }),
     onSuccess: () => {
+      setSetPrimaryError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
+    },
+    onError: (e: Error) => {
+      // Surface the failure inline so the user can tell the
+      // click registered. Without this the click "does nothing"
+      // and the badge below doesn't appear.
+      if (e instanceof ApiError) {
+        setSetPrimaryError(e.message);
+      } else {
+        setSetPrimaryError('Network error — try again');
+      }
     },
   });
 
@@ -299,7 +311,9 @@ export function PetPage() {
               type="button"
               onClick={() => setSelectedPetId(p.id)}
               className={`text-left rounded border p-2 transition-all bg-bg-900/40 hover:bg-bg-900/80 ${
-                p.id === activePetId
+                p.isPrimary
+                  ? 'border-neon-amber/80 ring-1 ring-neon-amber/40 bg-neon-amber/5'
+                  : p.id === activePetId
                   ? 'border-neon-cyan'
                   : 'border-neon-cyan/20 hover:border-neon-cyan/50'
               }`}
@@ -309,10 +323,10 @@ export function PetPage() {
                 <div className="flex items-center gap-1 shrink-0">
                   {p.isPrimary && (
                     <span
-                      className="text-[9px] font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/40 rounded px-1"
+                      className="text-[8px] font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/60 rounded px-1 bg-neon-amber/10"
                       title="Your primary companion"
                     >
-                      ★
+                      ★ PRIMARY
                     </span>
                   )}
                   {p.deployed && (
@@ -574,6 +588,11 @@ export function PetPage() {
               {pet.isPrimary && (
                 <div className="text-xs font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/30 rounded p-2 bg-neon-amber/5">
                   ★ {pet.name} is your primary companion.
+                </div>
+              )}
+              {setPrimaryError && (
+                <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
+                  Set-primary failed: {setPrimaryError}
                 </div>
               )}
 
