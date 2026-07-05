@@ -73,10 +73,13 @@ function cooldownRemainingMs(lastFedAt: string | null): number {
 }
 
 function formatCooldown(ms: number): string {
-  if (ms <= 0) return 'ready';
-  const minutes = Math.ceil(ms / 60000);
-  if (minutes < 60) return `${minutes}m cooldown`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m cooldown`;
+  if (ms <= 0) return '';
+  const totalMin = Math.ceil(ms / 60000);
+  if (totalMin < 60) return `${totalMin} minute${totalMin === 1 ? '' : 's'}`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (m === 0) return `${h} hour${h === 1 ? '' : 's'}`;
+  return `${h} hour${h === 1 ? '' : 's'} ${m} minute${m === 1 ? '' : 's'}`;
 }
 
 // One pet food per species — Premium Kibble (dogs), Rainbow Worms
@@ -235,7 +238,7 @@ export function PetPage() {
 
       <div className="grid gap-4 md:grid-cols-[260px_1fr] max-w-4xl">
         {/* Sprite */}
-        <Panel variant="cyan" title="Sprite" className="flex items-center justify-center p-2">
+        <Panel variant="cyan" className="flex items-center justify-center p-2">
           <img
             src={pet.spritePath}
             alt={pet.name}
@@ -261,11 +264,11 @@ export function PetPage() {
                     {pet.currentHp} / {pet.maxHp}
                   </span>
                 </div>
-                <div className="h-3 bg-bg-900 border border-neon-cyan/30 rounded">
+                <div className="h-3 bg-bg-900 border border-neon-lime/30 rounded">
                   <div
                     className={classNames(
                       'h-full rounded transition-all',
-                      pet.isFainted ? 'bg-neon-magenta' : 'bg-neon-cyan',
+                      pet.isFainted ? 'bg-neon-magenta' : 'bg-neon-lime',
                     )}
                     style={{ width: `${Math.max(0, Math.min(100, hpPct * 100))}%` }}
                   />
@@ -290,10 +293,17 @@ export function PetPage() {
 
               {/* Stats row */}
               <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="rounded border border-neon-cyan/20 p-2 text-center">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Attack</div>
-                  <div className="text-2xl font-display text-neon-cyan">{pet.attack}</div>
-                </div>
+                {pet.level >= 15 ? (
+                  <div className="rounded border border-neon-cyan/20 p-2 text-center">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Attack</div>
+                    <div className="text-2xl font-display text-neon-cyan">{pet.attack}</div>
+                  </div>
+                ) : (
+                  <div className="rounded border border-neon-cyan/20 p-2 text-center opacity-50">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Attack</div>
+                    <div className="text-xs font-mono text-ink-400 mt-1">unlocks at Lv 15</div>
+                  </div>
+                )}
                 <div className="rounded border border-neon-cyan/20 p-2 text-center">
                   <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Stage</div>
                   <div className="text-sm font-display text-neon-cyan mt-1">
@@ -325,11 +335,11 @@ export function PetPage() {
                   <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
                     Feed
                     <span className="ml-2 text-ink-400">
-                      {pet.canFeed
-                        ? cooldownMs > 0
-                          ? `(${formatCooldown(cooldownMs)})`
-                          : '(ready)'
-                        : '(fainted)'}
+                      {(() => {
+                        if (!pet.canFeed) return '(fainted)';
+                        if (cooldownMs <= 0) return null;
+                        return `(ready in ${formatCooldown(cooldownMs)})`;
+                      })()}
                     </span>
                   </div>
                   {petFoods.length > 1 && (
@@ -361,6 +371,17 @@ export function PetPage() {
                         {' · '}
                         {petFoods.find((f) => f.id === selectedFoodId)?.cost ?? petFoods[0].cost}g each
                       </div>
+                      {/* Full-state message — clear, readable */}
+                      {pet.canFeed && cooldownMs > 0 && (
+                        <div className="mt-2 text-xs font-mono text-neon-amber">
+                          {pet.name} is full. You can feed {pet.name} again in {formatCooldown(cooldownMs)}.
+                        </div>
+                      )}
+                      {!pet.canFeed && !pet.isFainted && (
+                        <div className="mt-2 text-xs font-mono text-neon-cyan">
+                          {pet.name} is hungry!
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {!ownsFood && (
