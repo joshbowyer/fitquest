@@ -244,6 +244,7 @@ function ResultInput({
 function UnlockModal({
   skill,
   unlockedNames,
+  unlockError,
   onClose,
   onUnlock,
   isPending,
@@ -256,6 +257,11 @@ function UnlockModal({
    * user isn't tempted to enter a result the server will reject.
    */
   unlockedNames: Set<string>;
+  /** Server-side error from the unlock attempt (prereq missing,
+   *  not enough SP, test not met, etc.). Surfaced inline so the
+   *  user knows why the modal didn't close + their input was
+   *  rejected. Null when no error. */
+  unlockError: string | null;
   onClose: () => void;
   onUnlock: (result: Record<string, number>) => void;
   isPending: boolean;
@@ -388,6 +394,11 @@ function UnlockModal({
             onChange={(v) => setResult((p) => typeof v === 'function' ? (v as (p: typeof p) => typeof p)(p) : { ...p, ...v } as typeof p)}
           />
         </div>
+        {unlockError && (
+          <div className="text-xs font-mono text-neon-magenta border border-neon-magenta/30 rounded p-2 bg-neon-magenta/5">
+            ✗ {unlockError}
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
           <NeonButton
@@ -745,15 +756,33 @@ export function SkillTreePage() {
         // don't block the modal close.
         playSoundAndNotify('skillUnlock');
         setSelected(null);
+        setUnlockError(null);
+      } else {
+        // Server returned ok: false (e.g. test not met). Surface
+        // the reason in the modal so the user can fix the input.
+        setUnlockError(res.reason ?? 'Unlock failed');
       }
     },
-    onError: (e) => {
+    onError: (e: Error) => {
+      // Real network / 400 (prereq missing, not enough SP, etc.).
+      // Previously this was console.error only — the modal closed
+      // and the user assumed the request hung. Surface the
+      // message inline.
       if (e instanceof ApiError) {
-        // Toast via the parent's setError or surface inline
-        console.error('Unlock failed:', e.message);
+        setUnlockError(e.message);
+      } else {
+        setUnlockError('Network error — try again');
       }
     },
   });
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
+  // Clear the unlock error whenever the user opens a different
+  // skill modal — otherwise a stale "Needs ≥3 reps" from the
+  // previous skill would carry over.
+  useEffect(() => {
+    setUnlockError(null);
+  }, [selected?.id]);
 
   if (!user) return null;
   if (!user.class) {
@@ -842,6 +871,7 @@ export function SkillTreePage() {
           unlockedNames={new Set(
             (treeQ.data?.items ?? []).filter((s) => s.unlocked).map((s) => s.name),
           )}
+          unlockError={unlockError}
           onClose={() => setSelected(null)}
           onUnlock={(result) =>
             unlockM.mutate({ skillId: selected.id, result })

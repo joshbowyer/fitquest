@@ -37,6 +37,7 @@ type Pet = {
   isArmored: boolean;
   isFainted: boolean;
   isCombatEligible: boolean;
+  isPrimary: boolean;
   deployed: boolean;
   canDeploy: boolean;
   canToggleArmor: boolean;
@@ -181,6 +182,20 @@ export function PetPage() {
       setDeployError(e instanceof ApiError ? e.message : 'Toggle failed'),
   });
 
+  // Set as primary companion (changes which pet the /shop page
+  // renders in the "Your companion" panel, and is what the
+  // dashboard's pet card pulls from).
+  const setPrimaryM = useMutation({
+    mutationFn: (petId: string) =>
+      api<{ ok: boolean; primaryPetId: string; pets: Pet[] }>('/pet/set-primary', {
+        method: 'POST',
+        body: { petId },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pet'] });
+    },
+  });
+
   const vetM = useMutation({
     mutationFn: (petId: string) =>
       api<Pet>('/pet/vet', { method: 'POST', body: { petId } }),
@@ -291,19 +306,29 @@ export function PetPage() {
             >
               <div className="flex items-center justify-between gap-1 mb-1">
                 <span className="text-sm font-display text-neon-cyan truncate">{p.name}</span>
-                {p.deployed && (
-                  <span
-                    className="text-[9px] font-mono uppercase tracking-widest text-neon-lime border border-neon-lime/40 rounded px-1"
-                    title="Deployed in combat"
-                  >
-                    LIVE
-                  </span>
-                )}
-                {p.faintedAt && (
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-neon-magenta border border-neon-magenta/40 rounded px-1">
-                    KO
-                  </span>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {p.isPrimary && (
+                    <span
+                      className="text-[9px] font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/40 rounded px-1"
+                      title="Your primary companion"
+                    >
+                      ★
+                    </span>
+                  )}
+                  {p.deployed && (
+                    <span
+                      className="text-[9px] font-mono uppercase tracking-widest text-neon-lime border border-neon-lime/40 rounded px-1"
+                      title="Deployed in combat"
+                    >
+                      LIVE
+                    </span>
+                  )}
+                  {p.faintedAt && (
+                    <span className="text-[9px] font-mono uppercase tracking-widest text-neon-magenta border border-neon-magenta/40 rounded px-1">
+                      KO
+                    </span>
+                  )}
+                </div>
               </div>
               <img
                 src={p.spritePath}
@@ -527,6 +552,30 @@ export function PetPage() {
                 </div>
                 {armorError && <div className="text-xs text-neon-magenta mt-1">{armorError}</div>}
               </div>
+
+              {/* Set as primary companion */}
+              {!pet.isPrimary && (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
+                    Primary
+                    <span className="ml-2 text-ink-400">
+                      (which one is "your companion" on /shop)
+                    </span>
+                  </div>
+                  <NeonButton
+                    variant="amber"
+                    disabled={setPrimaryM.isPending}
+                    onClick={() => setPrimaryM.mutate(pet.id)}
+                  >
+                    {setPrimaryM.isPending ? '…' : 'Set as primary'}
+                  </NeonButton>
+                </div>
+              )}
+              {pet.isPrimary && (
+                <div className="text-xs font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/30 rounded p-2 bg-neon-amber/5">
+                  ★ {pet.name} is your primary companion.
+                </div>
+              )}
 
               {/* Deploy (combat XP eligibility) */}
               <div>

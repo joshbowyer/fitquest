@@ -88,6 +88,7 @@ export async function serializePet(petId: string) {
     isArmored: !!pet.armoredAt,
     isFainted: !!pet.faintedAt,
     isCombatEligible: pet.level >= 15 && !pet.faintedAt,
+    isPrimary: pet.isPrimary,
     deployed: pet.deployed,
     canDeploy: pet.level >= 15 && !pet.faintedAt,
     canToggleArmor: pet.level >= 15 && !pet.faintedAt,
@@ -117,11 +118,12 @@ export async function serializePet(petId: string) {
 }
 
 export async function petRoutes(app: FastifyInstance) {
-  // GET /pet — full pet roster + active pet. Returns:
+  // GET /pet — full pet roster + primary pet. Returns:
   //   { pets: Pet[], primaryPetId: string|null }
-  // Sorted by createdAt asc; primary = oldest. Frontend renders
-  // the primary as the default view; user can click others to
-  // inspect.
+  // Primary selection: a pet with isPrimary=true wins; if multiple,
+  // we take the most recent (createdAt desc). If none is marked
+  // primary, fall back to the oldest pet (createdAt asc) so existing
+  // users with no isPrimary set still get a sensible default.
   app.get('/', async (req, reply) => {
     const me = await requireUser(req);
     const pets = await prisma.petInstance.findMany({
@@ -130,9 +132,14 @@ export async function petRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'asc' },
     });
     const serialized = await Promise.all(pets.map((p: any) => serializePet(p.id)));
+    const primary =
+      serialized.find((p) => p.isPrimary) ??
+      serialized.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ??
+      serialized[0] ??
+      null;
     return {
       pets: serialized,
-      primaryPetId: serialized[0]?.id ?? null,
+      primaryPetId: primary?.id ?? null,
     };
   });
 
@@ -397,6 +404,46 @@ app.post('/feed', async (req, reply) => {
       ok: true,
       releasedPetId: pet.id,
       releasedPetName: pet.name,
+    };
+  });
+
+  // POST /pet/set-primary { petId } — mark a pet as the user's
+  // primary companion. Sets isPrimary=true on the given pet and
+  // isPrimary=false on all other pets of the same user (atomic in
+  // one transaction). The primary pet is what /shop renders in
+  // the "Your companion" panel.
+  app.post('/set-primary', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = petIdOnlySchema.parse(req.body ?? {});
+    if (!body.petId) {
+      return reply.code(400).send({ error: 'petId required' });
+    }
+    const target = await prisma.petInstance.findFirst({
+      where: { id: body.petId, userId: me.id },
+    });
+    if (!target) {
+      return reply.code(404).send({ error: 'Pet not found' });
+    }
+    await prisma.$transaction(async (tx: any) => {
+      await tx.petInstance.updateMany({
+        where: { userId: me.id, NOT: { id: body.petId } },
+        data: { isPrimary: false },
+      });
+      await tx.petInstance.update({
+        where: { id: body.petId },
+        data: { isPrimary: true },
+      });
+    });
+    const pets = await prisma.petInstance.findMany({
+      where: { userId: me.id },
+      include: { breed: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const serialized = await Promise.all(pets.map((p: any) => serializePet(p.id)));
+    return {
+      ok: true,
+      pets: serialized,
+      primaryPetId: body.petId,
     };
   });
 }

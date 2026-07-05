@@ -64,6 +64,7 @@ export function ShopPage() {
   const { user, refresh } = useAuth();
   const qc = useQueryClient();
   const [buyError, setBuyError] = useState<string | null>(null);
+  const [buySuccess, setBuySuccess] = useState<string | null>(null);
   const [foodError, setFoodError] = useState<string | null>(null);
   const [selectedBreedId, setSelectedBreedId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -99,8 +100,16 @@ export function ShopPage() {
           colorVariant: variant,
         },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setBuyError(null);
+      setSelectedBreedId(null);
+      setName('');
+      setVariant(null);
+      // Flash a positive confirmation. The auto-dismiss keeps the
+      // form from staying cluttered when the user immediately goes
+      // to adopt another pet.
+      setBuySuccess(`Adopted ${name.trim() || 'pet'}! ${res.gold}g left.`);
+      window.setTimeout(() => setBuySuccess(null), 4000);
       qc.invalidateQueries({ queryKey: ['pet'] });
       qc.invalidateQueries({ queryKey: ['shop', 'pet-stock'] });
       // The auth context stores the user object separately from
@@ -271,6 +280,11 @@ export function ShopPage() {
                   {!canAffordPet && (
                     <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
                       Not enough gold. {selectedBreed.breed.costGold}g required, you have {user?.gold ?? 0}.
+                    </div>
+                  )}
+                  {buySuccess && (
+                    <div className="text-xs text-neon-lime border border-neon-lime/30 rounded p-2 bg-neon-lime/5">
+                      ✓ {buySuccess}
                     </div>
                   )}
                   {buyError && (

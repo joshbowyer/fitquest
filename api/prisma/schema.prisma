@@ -2758,9 +2758,16 @@ model PetInstance {
   colorVariant  String
   level         Int          @default(1)
   xp            Int          @default(0)
-/// Persisted HP after the most recent combat event. -1 means
+  /// Persisted HP after the most recent combat event. -1 means
   /// never been in combat (show full bar). Resets to baseHp on vet.
   hpAfterCombat Int      @default(-1)
+  /// User-chosen "primary" pet — the one shown in the /shop's
+  /// "Your companion" panel and on the /pet page roster's primary
+  /// slot. Defaults to false; the user can set it via
+  /// POST /pet/set-primary. If the user has multiple pets and
+  /// none of them is marked primary, the GET /pet endpoint falls
+  /// back to the oldest (createdAt asc).
+  isPrimary     Boolean   @default(false)
   /// Whether the user has deployed this pet into active combat.
   /// When true AND pet.level >= 15 AND !faintedAt, the combat
   /// endpoints grant pet XP and HP loss. Defaults to false —
