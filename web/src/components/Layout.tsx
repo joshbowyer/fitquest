@@ -41,6 +41,8 @@ const NAV: NavItem[] = [
   { to: '/skills',       label: 'Skill Tree', icon: '✦', mobile: false },
   { to: '/party',        label: 'Party',      icon: '⚑', mobile: false },
   { to: '/inventory',    label: 'Inventory',  icon: '⚔', mobile: false },
+  { to: '/shop',         label: 'Pet Shop',   icon: '⚞', mobile: false },
+  { to: '/pet',          label: 'Pet',        icon: '⚝', mobile: true  },
   { to: '/achievements', label: 'Achieve',    icon: '◆', mobile: false },
   { to: '/profile',      label: 'Profile',    icon: '◉', mobile: false },
   { to: '/settings',     label: 'Settings',    icon: '⚙', mobile: false },
