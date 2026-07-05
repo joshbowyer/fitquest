@@ -14,6 +14,9 @@ const purchaseSchema = z.object({
 });
 
 const buyPetSchema = z.object({
+  /// PetBreed.id (cuid). The user picks which breed from the
+  /// /shop/pet-stock list.
+  breedId: z.string().min(1),
   /// Owner-chosen name. 1-24 chars. Free text; we only enforce
   /// length and basic trim.
   name: z.string().trim().min(1).max(24),
@@ -197,63 +200,64 @@ export async function shopRoutes(app: FastifyInstance) {
   // to render "you already own one — visit /pet" copy.
   // ============================================================
 
-  // GET /shop/pet-stock — the current breed/variant up for adoption.
-  // Returns the starter breed always; v2 will rotate through
-  // non-starters weekly once multi-breed stock lands.
-  app.get('/pet-stock', async (req, reply) => {
+  // GET /shop/pet-stock — all breeds currently available for adoption.
+  // v1: returns every PetBreed row (rotation deferred until we have
+  // enough breeds to make a pool matter). Order: starter first, then
+  // alphabetical. Each entry also reports the foodEffectKey the UI
+  // can map to a ShopItem (`pet_food_<species>`) so the shop page
+  // can render a "buy food for this breed" hint next to each card.
+  app.get('/pet-stock', async (req) => {
     const me = await requireUser(req);
-    const breed = await prisma.petBreed.findFirst({
-      where: { isStarter: true },
-      orderBy: { slug: 'asc' },
+    const breeds = await prisma.petBreed.findMany({
+      orderBy: [{ isStarter: 'desc' }, { slug: 'asc' }],
     });
-    if (!breed) {
-      return reply.code(404).send({ error: 'No pet breed currently in stock' });
-    }
-    const stockBreed = breed;
-    const variants = JSON.parse(stockBreed.colorVariants) as string[];
-    // Default variant is the first entry. Future: read user's last
-    // preference or a weekly-rotation cron. For v1, first wins.
-    // Variants is non-empty by seed contract — every breed has at
-    // least one entry. `!` is safe here; if it ever isn't, the
-    // /buy-pet schema validation will reject the request anyway.
-    const colorVariant = variants[0]!;
     const stage = spriteStage({
       evolvedAt: null,
       armoredAt: null,
       injuredAt: null,
     });
     return {
-      breed: {
-        id: stockBreed.id,
-        slug: stockBreed.slug,
-        displayName: stockBreed.displayName,
-        species: stockBreed.species,
-        costGold: stockBreed.costGold,
-        description: stockBreed.description,
-        baseHp: stockBreed.baseHp,
-        baseAttack: stockBreed.baseAttack,
-        spriteBasePath: stockBreed.spriteBasePath,
-        colorVariants: variants,
-        spriteStages: JSON.parse(stockBreed.spriteStages) as string[],
-      },
-      colorVariant,
-      spritePath: spritePath(stockBreed, stage, colorVariant),
-      availableUntil: null, // v1: no rotation
+      breeds: breeds.map((b: any) => {
+        const variants = JSON.parse(b.colorVariants) as string[];
+        const colorVariant = variants[0]!;
+        return {
+          breed: {
+            id: b.id,
+            slug: b.slug,
+            displayName: b.displayName,
+            species: b.species,
+            costGold: b.costGold,
+            description: b.description,
+            baseHp: b.baseHp,
+            baseAttack: b.baseAttack,
+            spriteBasePath: b.spriteBasePath,
+            colorVariants: variants,
+            spriteStages: JSON.parse(b.spriteStages) as string[],
+            isStarter: b.isStarter,
+          },
+          defaultColorVariant: colorVariant,
+          defaultSpritePath: spritePath(b, stage, colorVariant),
+          foodEffectKey: `pet_food_${b.species}`,
+        };
+      }),
     };
   });
 
-  // POST /shop/buy-pet — adopt the starter puppy.
-  //   - 200g debit from User.gold (atomic with PetInstance insert)
+  // POST /shop/buy-pet — adopt a pet.
+  //   - debit User.gold (atomic with PetInstance insert)
   //   - 409 if user already owns a pet (v1 = one per user)
   //   - 402 if insufficient gold
   //   - 400 if colorVariant isn't on the breed
+  //   - 404 if breedId is unknown
   app.post('/buy-pet', async (req, reply) => {
     const me = await requireUser(req);
     const body = buyPetSchema.parse(req.body);
 
-    const breed = await prisma.petBreed.findFirst({ where: { isStarter: true } });
+    const breed = await prisma.petBreed.findUnique({
+      where: { id: body.breedId },
+    });
     if (!breed) {
-      return reply.code(404).send({ error: 'No pet breed currently in stock' });
+      return reply.code(404).send({ error: 'Unknown breed' });
     }
     const variants = JSON.parse(breed.colorVariants) as string[];
     if (!variants.includes(body.colorVariant)) {

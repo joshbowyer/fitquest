@@ -15,6 +15,17 @@ import { classNames } from '@/lib/format';
 // =============================================================
 type PetStage = 'puppy' | 'adult' | 'adultArmored' | 'injuredArmored';
 
+type ShopItem = {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  cost: number;
+  effectKey: string;
+  effectDurationSec: number | null;
+  owned: number;
+};
+
 type Pet = {
   id: string;
   name: string;
@@ -64,6 +75,13 @@ function formatCooldown(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m cooldown`;
 }
 
+// One pet food per species — Premium Kibble (dogs), Rainbow Worms
+// (amphibians), etc. The shop page shows them; this page reads the
+// list from /shop/items and filters to ones matching the pet's species.
+function expectedFoodEffectKey(species: string): string {
+  return `pet_food_${species}`;
+}
+
 export function PetPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -72,6 +90,29 @@ export function PetPage() {
     queryKey: ['pet'],
     queryFn: () => api<Pet>('/pet'),
   });
+
+  const pet = petQ.data;
+
+  const itemsQ = useQuery({
+    queryKey: ['shop', 'items'],
+    queryFn: () => api<{ items: ShopItem[] }>('/shop/items'),
+  });
+
+  // Pet foods only, filtered to ones matching this pet's species.
+  const petFoods = useMemo(() => {
+    if (!pet) return [] as ShopItem[];
+    const target = expectedFoodEffectKey(pet.breed.species);
+    return (itemsQ.data?.items ?? []).filter((it) => it.effectKey === target);
+  }, [itemsQ.data, pet]);
+
+  const [selectedFoodId, setSelectedFoodId] = useState<string | null>(null);
+
+  // Auto-select the first owned food once items load.
+  useEffect(() => {
+    if (selectedFoodId) return;
+    const first = petFoods.find((f) => f.owned > 0);
+    if (first) setSelectedFoodId(first.id);
+  }, [petFoods, selectedFoodId]);
 
   const [feedError, setFeedError] = useState<string | null>(null);
   const [armorError, setArmorError] = useState<string | null>(null);
@@ -86,12 +127,13 @@ export function PetPage() {
   }, []);
 
   const feedM = useMutation({
-    mutationFn: (count: number) =>
-      api<Pet>('/pet/feed', { method: 'POST', body: { count } }),
+    mutationFn: ({ foodItemId, count }: { foodItemId: string; count: number }) =>
+      api<Pet>('/pet/feed', { method: 'POST', body: { foodItemId, count } }),
     onSuccess: () => {
       setFeedError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
       qc.invalidateQueries({ queryKey: ['user'] });
+      qc.invalidateQueries({ queryKey: ['shop', 'items'] });
     },
     onError: (e: Error) => setFeedError(e instanceof ApiError ? e.message : 'Feed failed'),
   });
@@ -116,8 +158,9 @@ export function PetPage() {
     onError: (e: Error) => setVetError(e instanceof ApiError ? e.message : 'Vet failed'),
   });
 
-  const pet = petQ.data;
   const cooldownMs = useMemo(() => cooldownRemainingMs(pet?.lastFedAt ?? null), [pet?.lastFedAt, now]);
+  const selectedFood = petFoods.find((f) => f.id === selectedFoodId) ?? petFoods[0];
+  const ownsFood = (selectedFood?.owned ?? 0) > 0;
 
   if (petQ.isLoading) {
     return (
@@ -265,7 +308,7 @@ export function PetPage() {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
-                    Feed · 10g
+                    Feed
                     <span className="ml-2 text-ink-400">
                       {pet.canFeed
                         ? cooldownMs > 0
@@ -274,16 +317,71 @@ export function PetPage() {
                         : '(fainted)'}
                     </span>
                   </div>
-                  <NeonButton
-                    variant="lime"
-                    disabled={
-                      !pet.canFeed || cooldownMs > 0 || (user?.gold ?? 0) < 10 || feedM.isPending
-                    }
-                    onClick={() => feedM.mutate(1)}
-                  >
-                    {feedM.isPending ? 'Feeding…' : 'Feed (+1 XP)'}
-                  </NeonButton>
+                  {petFoods.length > 1 && (
+                    <select
+                      value={selectedFoodId ?? ''}
+                      onChange={(e) => setSelectedFoodId(e.target.value || null)}
+                      className="rounded border border-neon-cyan/30 bg-bg-900 px-2 py-1 text-xs text-ink-100 focus:outline-none focus:border-neon-cyan"
+                    >
+                      {petFoods.map((f) => (
+                        <option key={f.id} value={f.id} disabled={f.owned === 0}>
+                          {f.name} ({f.owned} owned)
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+
+                {/* Inline food card — always show if foods exist */}
+                {petFoods.length > 0 && (
+                  <div className="mt-2 rounded border border-neon-cyan/30 bg-bg-900/40 p-2 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-display text-neon-cyan">
+                        {petFoods.find((f) => f.id === selectedFoodId)?.name ?? petFoods[0].name}
+                      </div>
+                      <div className="text-[10px] font-mono text-ink-300">
+                        Owned: <span className="text-neon-cyan">
+                          {petFoods.find((f) => f.id === selectedFoodId)?.owned ?? petFoods[0].owned}
+                        </span>
+                        {' · '}
+                        {petFoods.find((f) => f.id === selectedFoodId)?.cost ?? petFoods[0].cost}g each
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {!ownsFood && (
+                        <Link
+                          to="/shop"
+                          className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:text-neon-cyan/80 underline"
+                        >
+                          buy →
+                        </Link>
+                      )}
+                      <NeonButton
+                        variant="lime"
+                        disabled={
+                          !pet.canFeed ||
+                          cooldownMs > 0 ||
+                          !ownsFood ||
+                          feedM.isPending
+                        }
+                        onClick={() => {
+                          const f = petFoods.find((x) => x.id === selectedFoodId) ?? petFoods[0];
+                          feedM.mutate({ foodItemId: f.id, count: 1 });
+                        }}
+                      >
+                        {feedM.isPending ? 'Feeding…' : 'Feed (+1 XP)'}
+                      </NeonButton>
+                    </div>
+                  </div>
+                )}
+
+                {petFoods.length === 0 && pet.canFeed && (
+                  <div className="mt-2 text-xs text-neon-amber border border-neon-amber/30 rounded p-2">
+                    No food for {pet.breed.displayName} in stock.{' '}
+                    <Link to="/shop" className="underline">Visit the shop</Link>.
+                  </div>
+                )}
+
                 {feedError && <div className="text-xs text-neon-magenta mt-1">{feedError}</div>}
               </div>
 

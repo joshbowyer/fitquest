@@ -5,7 +5,6 @@ import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
 import {
   PET_FOOD_COOLDOWN_MS,
-  PET_FOOD_GOLD_COST,
   attackForLevel,
   leveledUp,
   maxHpForLevel,
@@ -16,8 +15,12 @@ import {
 } from '../lib/petStats.js';
 
 const feedSchema = z.object({
-  /// How many food units to feed at once. 1-50. Each unit is +1 XP
-  /// and 10g.
+  /// The ShopItem.id of the food the user wants to feed.
+  /// Must be a pet_food_* effectKey matching the pet's species.
+  /// User must own at least `count` unconsumed Purchase rows for it.
+  foodItemId: z.string().min(1),
+  /// How many units of food to feed at once. 1-50. Each unit gives
+  /// the food's effectValue XP.
   count: z.number().int().min(1).max(50).default(1),
 });
 
@@ -90,14 +93,20 @@ export async function petRoutes(app: FastifyInstance) {
     return await serializePet(pet.id);
   });
 
-  // POST /pet/feed { count?: number } — 10g/feed, +1 XP each.
-  // 1-hour cooldown since the LAST feedAt; the cooldown applies
-  // per-call (not per count), so passing count=5 burns the same
-  // cooldown as count=1.
-  app.post('/feed', async (req, reply) => {
+  // POST /pet/feed { foodItemId, count? } — consume pet food from
+  // inventory to feed the user's pet. Each unit = foodItem.effectValue XP.
+// 1-hour cooldown since the LAST feedAt (per-call, not per count).
+//   - 400 if pet is fainted
+//   - 400 if on cooldown
+//   - 400 if foodItemId doesn't match the pet's species
+//   - 402 if user doesn't own enough of the food
+app.post('/feed', async (req, reply) => {
     const me = await requireUser(req);
     const body = feedSchema.parse(req.body);
-    const pet = await prisma.petInstance.findUnique({ where: { userId: me.id } });
+    const pet = await prisma.petInstance.findUnique({
+      where: { userId: me.id },
+      include: { breed: true },
+    });
     if (!pet) return reply.code(404).send({ error: 'No pet yet' });
     if (pet.faintedAt) {
       return reply.code(400).send({ error: 'Pet has fainted. Visit the vet first.' });
@@ -115,23 +124,55 @@ export async function petRoutes(app: FastifyInstance) {
       });
     }
 
-    const totalCost = PET_FOOD_GOLD_COST * body.count;
-    const result = await prisma.$transaction(async (tx: any) => {
-      const u = await tx.user.findUnique({ where: { id: me.id }, select: { gold: true } });
-      if (!u) throw new Error('user vanished mid-transaction');
-      if (u.gold < totalCost) {
-        return { error: 'insufficient_gold' as const, gold: u.gold, cost: totalCost };
-      }
-      const updatedUser = await tx.user.update({
-        where: { id: me.id },
-        data: { gold: { decrement: totalCost } },
-        select: { gold: true },
+    // Validate the food item exists, is active, and matches the pet's
+    // species (effectKey='pet_food_<species>').
+    const foodItem = await prisma.shopItem.findUnique({
+      where: { id: body.foodItemId },
+    });
+    if (!foodItem || !foodItem.active) {
+      return reply.code(404).send({ error: 'Unknown food item' });
+    }
+    const expectedEffectKey = `pet_food_${pet.breed.species}`;
+    if (foodItem.effectKey !== expectedEffectKey) {
+      return reply.code(400).send({
+        error: `${foodItem.name} is not food for ${pet.breed.displayName}. They eat ${expectedEffectKey === 'pet_food_dog' ? 'kibble' : 'something else'}.`,
+        expected: expectedEffectKey,
       });
-      const newXp = pet.xp + body.count;
+    }
+
+    const xpPerUnit = foodItem.effectValue || 1;
+    const xpGain = body.count * xpPerUnit;
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      // Pull unconsumed + non-expired Purchase rows for this user +
+      // food item, oldest first. LIMIT count.
+      const available = await tx.purchase.findMany({
+        where: {
+          userId: me.id,
+          itemId: body.foodItemId,
+          consumedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        orderBy: { purchasedAt: 'asc' },
+        take: body.count,
+      });
+      if (available.length < body.count) {
+        return {
+          error: 'insufficient_food' as const,
+          owned: available.length,
+          needed: body.count,
+        };
+      }
+      // Mark consumed.
+      await tx.purchase.updateMany({
+        where: { id: { in: available.map((p: any) => p.id) } },
+        data: { consumedAt: now },
+      });
+      // Apply XP + level-ups.
+      const newXp = pet.xp + xpGain;
       let level = pet.level;
       let evolvedAt = pet.evolvedAt;
       let armoredAt = pet.armoredAt;
-      // Apply level-ups in a loop in case count crosses multiple.
       while (leveledUp(newXp, level)) {
         level += 1;
         if (level === 5 && !evolvedAt) evolvedAt = now;
@@ -151,18 +192,18 @@ export async function petRoutes(app: FastifyInstance) {
         data: {
           petId: pet.id,
           fedAt: now,
-          foodGoldCost: PET_FOOD_GOLD_COST,
-          xpGained: body.count,
+          foodGoldCost: foodItem.cost, // historical cost per unit
+          xpGained: xpGain,
         },
       });
-      return { gold: updatedUser.gold, pet: updatedPet };
+      return { pet: updatedPet };
     });
 
     if ('error' in result) {
       return reply.code(402).send({
-        error: 'Not enough gold',
-        gold: result.gold,
-        cost: result.cost,
+        error: `Not enough ${foodItem.name}. You have ${result.owned}, need ${result.needed}.`,
+        owned: result.owned,
+        needed: result.needed,
       });
     }
 

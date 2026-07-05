@@ -8,10 +8,12 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 
 // =============================================================
-// Pet shop API types — same shapes the backend returns from
-// /shop/pet-stock and /shop/buy-pet.
+// Pet shop API types. /shop/pet-stock returns the breed list;
+// /shop/items returns the consumables catalog (Vital Tonic,
+// Kibble, Rainbow Worms, etc.). Both go through the same
+// /shop/purchase endpoint to debit gold.
 // =============================================================
-type PetStock = {
+type PetStockEntry = {
   breed: {
     id: string;
     slug: string;
@@ -24,10 +26,22 @@ type PetStock = {
     spriteBasePath: string;
     colorVariants: string[];
     spriteStages: string[];
+    isStarter: boolean;
   };
-  colorVariant: string;
-  spritePath: string;
-  availableUntil: string | null;
+  defaultColorVariant: string;
+  defaultSpritePath: string;
+  foodEffectKey: string;
+};
+
+type ShopItem = {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  cost: number;
+  effectKey: string;
+  effectDurationSec: number | null;
+  owned: number;
 };
 
 type Pet = {
@@ -36,21 +50,26 @@ type Pet = {
   stage: string;
   level: number;
   spritePath: string;
+  breed: {
+    species: string;
+  };
 };
 
 export function ShopPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  const [buyError, setBuyError] = useState<string | null>(null);
+  const [foodError, setFoodError] = useState<string | null>(null);
+  const [selectedBreedId, setSelectedBreedId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [variant, setVariant] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [busyFoodId, setBusyFoodId] = useState<string | null>(null);
 
   const stockQ = useQuery({
     queryKey: ['shop', 'pet-stock'],
-    queryFn: () => api<PetStock>('/shop/pet-stock'),
+    queryFn: () => api<{ breeds: PetStockEntry[] }>('/shop/pet-stock'),
   });
 
-  // Probe /pet to know whether the user already owns one.
   const myPetQ = useQuery({
     queryKey: ['pet'],
     queryFn: () => api<Pet>('/pet'),
@@ -60,28 +79,76 @@ export function ShopPage() {
     },
   });
 
+  const itemsQ = useQuery({
+    queryKey: ['shop', 'items'],
+    queryFn: () => api<{ items: ShopItem[] }>('/shop/items'),
+  });
+
   const buyM = useMutation({
     mutationFn: () =>
-      api<{ ok: boolean; petId: string; gold: number }>('/shop/buy-pet', {
+      api<{ ok: boolean; petId: string; gold: number; error?: string }>('/shop/buy-pet', {
         method: 'POST',
-        body: { name: name.trim(), colorVariant: variant },
+        body: {
+          breedId: selectedBreedId,
+          name: name.trim(),
+          colorVariant: variant,
+        },
       }),
     onSuccess: () => {
-      setError(null);
+      setBuyError(null);
       qc.invalidateQueries({ queryKey: ['pet'] });
       qc.invalidateQueries({ queryKey: ['user'] });
       qc.invalidateQueries({ queryKey: ['shop', 'pet-stock'] });
     },
     onError: (e: Error) => {
-      setError(e instanceof ApiError ? e.message : 'Purchase failed');
+      setBuyError(e instanceof ApiError ? e.message : 'Purchase failed');
     },
   });
 
-  const stock = stockQ.data;
+  const buyFoodM = useMutation({
+    mutationFn: (itemId: string) =>
+      api<{ ok: boolean; gold: number }>('/shop/purchase', {
+        method: 'POST',
+        body: { itemId },
+      }),
+    onSuccess: () => {
+      setFoodError(null);
+      qc.invalidateQueries({ queryKey: ['shop', 'items'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
+      setBusyFoodId(null);
+    },
+    onError: (e: Error) => {
+      setFoodError(e instanceof ApiError ? e.message : 'Could not buy food');
+      setBusyFoodId(null);
+    },
+  });
+
+  const breeds = stockQ.data?.breeds ?? [];
+  const items = itemsQ.data?.items ?? [];
   const myPet = myPetQ.data;
   const ownsPet = !!myPet && !(myPetQ.error instanceof ApiError && myPetQ.error.status === 404);
-  const canAfford = (user?.gold ?? 0) >= (stock?.breed.costGold ?? Infinity);
+
+  // Pet foods only — items whose effectKey starts with `pet_food_`.
+  // Match by species for the user's pet to highlight the right one.
+  const myPetSpecies = myPet?.breed?.species ?? null;
+  const petFoods = items.filter((it) => it.effectKey.startsWith('pet_food_'));
+  const myPetFoods = myPetSpecies
+    ? petFoods.filter((it) => it.effectKey === `pet_food_${myPetSpecies}`)
+    : [];
+  const allPetFoods = petFoods;
+
+  // When the user picks a breed, prep its defaults.
+  function pickBreed(b: PetStockEntry) {
+    setSelectedBreedId(b.breed.id);
+    setName((n) => n || b.breed.displayName.split(' ')[0]);
+    setVariant(b.defaultColorVariant);
+  }
+
+  const selectedBreed = breeds.find((b) => b.breed.id === selectedBreedId) ?? null;
   const validName = name.trim().length >= 1 && name.trim().length <= 24;
+  const canAffordPet = selectedBreed
+    ? (user?.gold ?? 0) >= selectedBreed.breed.costGold
+    : false;
 
   return (
     <Layout>
@@ -94,10 +161,10 @@ export function ShopPage() {
         }
       />
 
+      {/* === BREEDS === */}
       {stockQ.isLoading && (
         <Panel variant="cyan"><div className="text-ink-300">Loading…</div></Panel>
       )}
-
       {stockQ.error && (
         <Panel variant="magenta" title="Shop unavailable">
           <div className="text-ink-300 text-sm">
@@ -106,112 +173,202 @@ export function ShopPage() {
         </Panel>
       )}
 
-      {stock && (
-        <div className="grid gap-4 md:grid-cols-[300px_1fr] max-w-4xl">
-          {/* Sprite */}
-          <Panel variant="cyan" title={stock.breed.displayName} className="flex items-center justify-center p-2">
-            <img
-              src={stock.spritePath}
-              alt={stock.breed.displayName}
-              width={256}
-              height={256}
-              className="pixelated w-full max-w-[256px] h-auto"
-              style={{ imageRendering: 'pixelated' }}
-            />
-          </Panel>
-
-          {/* Hero card */}
-          <div className="space-y-4">
-            <Panel variant="cyan" title={`This week's puppy`}>
-              <div className="space-y-3">
-                <div className="text-sm text-ink-200">{stock.breed.description}</div>
-
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <div className="rounded border border-neon-cyan/20 p-2 text-center">
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Cost</div>
-                    <div className="text-2xl font-display text-neon-amber">{stock.breed.costGold}g</div>
-                  </div>
-                  <div className="rounded border border-neon-cyan/20 p-2 text-center">
-                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Your gold</div>
-                    <div className="text-2xl font-display text-neon-cyan">{user?.gold ?? 0}</div>
-                  </div>
-                </div>
-
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 pt-1">
-                  Base stats (Lv1 puppy): HP {stock.breed.baseHp} · Attack {stock.breed.baseAttack}
-                </div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
-                  Grows with you: auto-trains from workout XP, evolves to adult at Lv 5.
-                </div>
-
-                {ownsPet ? (
-                  <Link to="/pet">
-                    <NeonButton variant="cyan" className="w-full mt-2">Visit your pet</NeonButton>
-                  </Link>
-                ) : (
-                  <>
-                    {/* Adoption form */}
-                    <div className="border-t border-neon-cyan/20 pt-3 space-y-2">
-                      <div>
-                        <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-                          Name
-                        </label>
-                        <input
-                          type="text"
-                          value={name}
-                          maxLength={24}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="e.g. Rex"
-                          className="w-full rounded border border-neon-cyan/30 bg-bg-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:outline-none focus:border-neon-cyan"
-                        />
-                      </div>
-
-                      {stock.breed.colorVariants.length > 1 && (
-                        <div>
-                          <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-                            Color variant
-                          </label>
-                          <select
-                            value={variant ?? stock.colorVariant}
-                            onChange={(e) => setVariant(e.target.value)}
-                            className="w-full rounded border border-neon-cyan/30 bg-bg-900 px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-neon-cyan"
-                          >
-                            {stock.breed.colorVariants.map((v) => (
-                              <option key={v} value={v}>{v}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-
-                      {!canAfford && (
-                        <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
-                          Not enough gold. You need {stock.breed.costGold}g.
-                        </div>
-                      )}
-                      {error && (
-                        <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
-                          {error}
-                        </div>
-                      )}
-
-                      <NeonButton
-                        variant="cyan"
-                        disabled={!validName || !canAfford || buyM.isPending}
-                        onClick={() => buyM.mutate()}
-                        className="w-full"
-                      >
-                        {buyM.isPending
-                          ? 'Adopting…'
-                          : `Adopt for ${stock.breed.costGold}g`}
-                      </NeonButton>
-                    </div>
-                  </>
-                )}
+      {breeds.length > 0 && (
+        <Panel variant="cyan" title={ownsPet ? 'Your companion' : 'Available breeds'}>
+          {ownsPet && myPet ? (
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-display text-2xl text-neon-cyan">{myPet.name}</div>
+                <div className="text-xs text-ink-300 mt-1">Level {myPet.level} · {myPet.stage}</div>
               </div>
-            </Panel>
-          </div>
-        </div>
+              <Link to="/pet">
+                <NeonButton variant="cyan">Visit your pet</NeonButton>
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-3">
+                {breeds.map((b) => (
+                  <BreedCard
+                    key={b.breed.id}
+                    entry={b}
+                    selected={selectedBreedId === b.breed.id}
+                    canAfford={(user?.gold ?? 0) >= b.breed.costGold}
+                    onPick={() => pickBreed(b)}
+                  />
+                ))}
+              </div>
+
+              {selectedBreed && (
+                <div className="border-t border-neon-cyan/20 mt-4 pt-4 space-y-3">
+                  <div className="text-xs font-mono uppercase tracking-widest text-ink-300">
+                    Adopt {selectedBreed.breed.displayName}
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      maxLength={24}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Rex"
+                      className="w-full rounded border border-neon-cyan/30 bg-bg-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:outline-none focus:border-neon-cyan"
+                    />
+                  </div>
+
+                  {selectedBreed.breed.colorVariants.length > 1 && (
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                        Color variant
+                      </label>
+                      <select
+                        value={variant ?? selectedBreed.defaultColorVariant}
+                        onChange={(e) => setVariant(e.target.value)}
+                        className="w-full rounded border border-neon-cyan/30 bg-bg-900 px-3 py-2 text-sm text-ink-100 focus:outline-none focus:border-neon-cyan"
+                      >
+                        {selectedBreed.breed.colorVariants.map((v) => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {!canAffordPet && (
+                    <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
+                      Not enough gold. {selectedBreed.breed.costGold}g required, you have {user?.gold ?? 0}.
+                    </div>
+                  )}
+                  {buyError && (
+                    <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2">
+                      {buyError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-[10px] text-ink-300">
+                      Feeds from <span className="text-neon-cyan">pet food shop</span> below. Needs{' '}
+                      <span className="text-neon-amber">{selectedBreed.foodEffectKey}</span> matches.
+                    </div>
+                    <NeonButton
+                      variant="cyan"
+                      disabled={!validName || !canAffordPet || buyM.isPending}
+                      onClick={() => buyM.mutate()}
+                    >
+                      {buyM.isPending ? 'Adopting…' : `Adopt for ${selectedBreed.breed.costGold}g`}
+                    </NeonButton>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
       )}
+
+      {/* === PET FOOD === */}
+      <div className="mt-6">
+        <Panel variant="cyan" title="Pet food">
+          <div className="grid gap-3 md:grid-cols-2">
+            {allPetFoods.map((f) => {
+              const matchesMine = myPetSpecies ? f.effectKey === `pet_food_${myPetSpecies}` : false;
+              const canAfford = (user?.gold ?? 0) >= f.cost;
+              return (
+                <div
+                  key={f.id}
+                  className="rounded border border-neon-cyan/30 p-3 bg-bg-900/40 flex items-center justify-between gap-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display text-neon-cyan">{f.name}</span>
+                      {matchesMine && (
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-neon-lime border border-neon-lime/30 rounded px-1.5 py-0.5">
+                          for your pet
+                        </span>
+                      )}
+                      <span className="text-[10px] font-mono text-ink-300">
+                        ({f.effectKey.replace('pet_food_', '')})
+                      </span>
+                    </div>
+                    <div className="text-xs text-ink-300 mt-1">{f.description}</div>
+                    <div className="text-[10px] font-mono text-ink-400 mt-1">
+                      Owned: <span className="text-neon-cyan">{f.owned}</span>
+                    </div>
+                  </div>
+                  <NeonButton
+                    variant="lime"
+                    disabled={!canAfford || buyFoodM.isPending}
+                    onClick={() => {
+                      setBusyFoodId(f.id);
+                      buyFoodM.mutate(f.id);
+                    }}
+                  >
+                    {buyFoodM.isPending && busyFoodId === f.id
+                      ? '…'
+                      : `Buy (${f.cost}g)`}
+                  </NeonButton>
+                </div>
+              );
+            })}
+            {allPetFoods.length === 0 && (
+              <div className="text-ink-300 text-sm">No pet food in stock right now.</div>
+            )}
+          </div>
+          {foodError && (
+            <div className="text-xs text-neon-magenta border border-neon-magenta/30 rounded p-2 mt-3">
+              {foodError}
+            </div>
+          )}
+        </Panel>
+      </div>
     </Layout>
+  );
+}
+
+// ====== Breed card ======
+function BreedCard({
+  entry,
+  selected,
+  canAfford,
+  onPick,
+}: {
+  entry: PetStockEntry;
+  selected: boolean;
+  canAfford: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={`text-left rounded border p-2 transition-all bg-bg-900/40 hover:bg-bg-900/80 ${
+        selected ? 'border-neon-cyan' : 'border-neon-cyan/20 hover:border-neon-cyan/50'
+      }`}
+    >
+      <img
+        src={entry.defaultSpritePath}
+        alt={entry.breed.displayName}
+        width={256}
+        height={256}
+        className="pixelated w-full max-w-[200px] h-auto mx-auto"
+        style={{ imageRendering: 'pixelated' }}
+      />
+      <div className="text-center mt-2">
+        <div className="font-display text-base text-neon-cyan">{entry.breed.displayName}</div>
+        <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mt-1">
+          {entry.breed.species} · {entry.breed.colorVariants[0]}
+        </div>
+        <div className="flex items-center justify-center gap-2 mt-2">
+          <span className="text-xs font-display text-neon-amber">{entry.breed.costGold}g</span>
+          {!canAfford && <span className="text-[10px] text-neon-magenta">not enough</span>}
+          {entry.breed.isStarter && (
+            <span className="text-[10px] font-mono uppercase tracking-widest text-neon-lime border border-neon-lime/30 rounded px-1.5 py-0.5">
+              starter
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
