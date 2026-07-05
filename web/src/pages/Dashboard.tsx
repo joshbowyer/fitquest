@@ -233,6 +233,26 @@ export function DashboardPage() {
     queryKey: ['raid', 'active'],
     queryFn: () => api<{ raid: Raid | null }>('/raids/active'),
   });
+  // Pet roster — render the primary pet in the dashboard's pet card.
+  // Refreshed alongside the other dashboard queries.
+  const petQ = useQuery({
+    queryKey: ['pet'],
+    queryFn: () =>
+      api<{
+        pets: Array<{
+          id: string;
+          name: string;
+          spritePath: string;
+          level: number;
+          stage: string;
+          currentHp: number;
+          maxHp: number;
+          deployed: boolean;
+          faintedAt: string | null;
+        }>;
+        primaryPetId: string | null;
+      }>('/pet'),
+  });
   const [recomputeToast, setRecomputeToast] = useState<string | null>(null);
   const [detailMetric, setDetailMetric] = useState<import('@/lib/types').MetricType | null>(null);
 
@@ -425,6 +445,88 @@ export function DashboardPage() {
           </div>
         </Panel>
 
+        <Panel
+          variant="lime"
+          title={petQ.data?.pets?.length ? 'Pet' : 'Adopt a pet'}
+          className="flex flex-col"
+        >
+          {petQ.data?.pets?.length ? (
+            <>
+              {(() => {
+                const primary = petQ.data.pets[0];
+                const deployedPet = petQ.data.pets.find((p) => p.deployed) ?? primary;
+                const hpPct = deployedPet.maxHp > 0 ? (deployedPet.currentHp / deployedPet.maxHp) * 100 : 0;
+                return (
+                  <div className="flex items-center gap-3">
+                    <Link to="/pet" className="shrink-0">
+                      <img
+                        src={deployedPet.spritePath}
+                        alt={deployedPet.name}
+                        width={64}
+                        height={64}
+                        className={`pixelated w-16 h-16 ${deployedPet.faintedAt ? 'grayscale opacity-60' : ''}`}
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    </Link>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2 text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                        <Link to="/pet" className="text-neon-lime truncate hover:underline">
+                          {deployedPet.name}
+                        </Link>
+                        <span className="text-ink-300 tabular-nums shrink-0">
+                          {deployedPet.currentHp}/{deployedPet.maxHp}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-bg-900 border border-neon-lime/30 rounded">
+                        <div
+                          className={`h-full rounded transition-all ${deployedPet.faintedAt ? 'bg-neon-magenta' : 'bg-neon-lime'}`}
+                          style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between mt-1 text-[10px] font-mono">
+                        <span className="text-ink-400">Lv {deployedPet.level} · {deployedPet.stage}</span>
+                        {deployedPet.faintedAt ? (
+                          <span className="text-neon-magenta">✗ KO</span>
+                        ) : deployedPet.deployed ? (
+                          <span className="text-neon-lime">⚔ DEPLOYED</span>
+                        ) : (
+                          <span className="text-ink-400">on the bench</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              <Link
+                to="/pet"
+                className="block mt-2 text-center text-[10px] font-display tracking-widest neon-text-cyan hover:underline"
+              >
+                {petQ.data.pets.length > 1
+                  ? `→ MANAGE ROSTER (${petQ.data.pets.length} PETS)`
+                  : '→ VIEW PET'}
+              </Link>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <div className="text-xs font-mono text-ink-300 mb-3">No companion yet</div>
+              <Link
+                to="/shop"
+                className="inline-block px-3 py-1 rounded text-[10px] font-display tracking-widest neon-text-cyan border border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10"
+              >
+                → ADOPT AT SHOP
+              </Link>
+            </div>
+          )}
+        </Panel>
+
+        <HeartsCard />
+        <HomeBaseCard />
+      </div>
+
+      {/* Raid + Portal leak — share a row at lg, stack on smaller
+          screens. Raid is the active multiplayer boss; Portal leak
+          is the solo monster roster. Each is ~half width on lg. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
         <Panel variant="magenta" title="Raid" scanline>
           {raidQ.data?.raid ? (
             <>
@@ -455,15 +557,6 @@ export function DashboardPage() {
             </div>
           )}
         </Panel>
-
-        <HeartsCard />
-        <HomeBaseCard />
-      </div>
-
-      {/* Portal leak — full-width row right under the top hero so
-          an active leak is impossible to miss. The card collapses
-          to a small status strip when there's no active leak. */}
-      <div className="mb-4 md:mb-6">
         <PortalLeakCard />
       </div>
 

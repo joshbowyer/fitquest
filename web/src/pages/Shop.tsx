@@ -55,6 +55,11 @@ type Pet = {
   };
 };
 
+type PetRoster = {
+  pets: Pet[];
+  primaryPetId: string | null;
+};
+
 export function ShopPage() {
   const { user, refresh } = useAuth();
   const qc = useQueryClient();
@@ -72,7 +77,7 @@ export function ShopPage() {
 
   const myPetQ = useQuery({
     queryKey: ['pet'],
-    queryFn: () => api<Pet>('/pet'),
+    queryFn: () => api<PetRoster>('/pet'),
     retry: (failureCount, error) => {
       if (error instanceof ApiError && error.status === 404) return false;
       return failureCount < 2;
@@ -128,8 +133,8 @@ export function ShopPage() {
 
   const breeds = stockQ.data?.breeds ?? [];
   const items = itemsQ.data?.items ?? [];
-  const myPet = myPetQ.data;
-  const ownsPet = !!myPet && !(myPetQ.error instanceof ApiError && myPetQ.error.status === 404);
+  const myPet = myPetQ.data?.pets[0] ?? null; // primary pet (oldest)
+  const ownsPet = myPet !== null;
 
   // Pet foods only — items whose effectKey starts with `pet_food_`.
   // Match by species for the user's pet to highlight the right one.
