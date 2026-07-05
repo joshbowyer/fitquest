@@ -311,6 +311,10 @@ model User {
   pendingSkillUnlocks    PendingSkillUnlock[]
   purchases              Purchase[]
   soulstones             Soulstone[]
+  /// Adopted pet. One per user for v1 (single starter). v2 will
+  /// support multiple breeds and a per-breed adoption limit, but
+  /// the userId-uniqueness below is what v1 enforces.
+  pet                    PetInstance?
   // Breach boss progress. One row per user; lazily created on
   // first /breach GET after level 10 OR first workout-commit
   // while unlocked (whichever happens first). Defined as ? here
@@ -442,20 +446,20 @@ model User {
 }
 
 model Measurement {
-  id         String            @id @default(cuid())
-  userId     String
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  metric     MetricType
-  value      Float
-  unit       String
-  notes      String?
-  recordedAt DateTime          @default(now())
-  createdAt  DateTime          @default(now())
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric         MetricType
+  value          Float
+  unit           String
+  notes          String?
+  recordedAt     DateTime          @default(now())
+  createdAt      DateTime          @default(now())
   /// Method used to take body-fat or weight readings. DEXA/BOD_POD
   /// are the gold standard; calipers/BIA are noisy; VISUAL/MANUAL
   /// are estimates. Morning report's body-comp insight weights by
   /// confidence (see api/src/lib/measurementSource.ts).
-  source     MeasurementSource @default(UNKNOWN)
+  source         MeasurementSource @default(UNKNOWN)
   /// Original .fit filename (when imported via the FitQuestBridge
   /// APK or via the web /import page). Lets the /import page's
   /// "Bridge uploads" panel show the source file. Null for
@@ -514,7 +518,7 @@ model Workout {
   /// the /import page render a per-file history so the user can
   /// see which specific bridge uploads made it. Null for web
   /// imports + legacy rows.
-  sourceFilename        String?
+  sourceFilename         String?
   performedAt            DateTime                @default(now())
   createdAt              DateTime                @default(now())
   exercises              Exercise[]
@@ -1882,17 +1886,17 @@ model Daily {
 }
 
 model DailyLog {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dailyId   String
-  daily     Daily    @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyId        String
+  daily          Daily    @relation(fields: [dailyId], references: [id], onDelete: Cascade)
   // Stored so built-in dailies (which aren't real Daily rows) can
   // still be logged. Format e.g. "WORKOUT:MON".
-  dailyKey  String
-  goldDelta Int      @default(0)
-  xpDelta   Int      @default(0)
-  loggedAt  DateTime @default(now())
+  dailyKey       String
+  goldDelta      Int      @default(0)
+  xpDelta        Int      @default(0)
+  loggedAt       DateTime @default(now())
   /// Original .fit filename (when imported via the FitQuestBridge
   /// APK). Lets the /import page's "Bridge uploads" panel show
   /// the source file. Null for legacy rows + manual in-app logs.
@@ -2675,4 +2679,118 @@ model ActivityInsight {
   updatedAt     DateTime @updatedAt
 
   @@index([userId])
+}
+
+// =============================================================
+// Pet system (added 2026-07-04).
+//
+// Three new models: PetBreed (the catalog), PetInstance (one
+// per user), PetFeedLog (audit trail for gold-spent feed events).
+// All combat-derived state — HP per battle, current sprite stage,
+// armoured toggle — is computed from these rows plus workout XP
+// (10% auto-routed to the pet during the workout commit hook).
+//
+// A pet never dies; fainting just sets `faintedAt` and the user
+// pays the vet (10 + 5*level gold) to clear it. See HANDOFF.md
+// in the fitquest-sprites repo for the full design.
+// =============================================================
+
+/// Catalog of pet breeds. Each breed has its own sprite base
+/// path, color variants list, and per-breed base HP / Attack.
+/// Stock rotation is driven by `availableFrom`/`availableTo`;
+/// null = always in stock (the starter).
+model PetBreed {
+  id             String        @id @default(cuid())
+  /// Stable string key matching the sprite filename prefix.
+  /// e.g. "german-shepherd" → `german-shepherd-puppy.png`.
+  /// Don't change without a migration — sprite files reference it.
+  slug           String        @unique
+  displayName    String // "German Shepherd"
+  /// Coarse taxonomy: "dog", "cat", "amphibian", "bird", ...
+  species        String
+  costGold       Int // 200 for v1
+  isStarter      Boolean       @default(false)
+  /// JSON array of variant names keyed to file suffixes.
+  /// e.g. `["black-tan","white","liver"]` → files like
+  /// `german-shepherd-puppy-black-tan.png`. The first entry is
+  /// the default variant for new purchases.
+  colorVariants  String
+  /// Stock rotation window. Null = always in stock (the starter).
+  /// Otherwise the breed is in shop stock only between these dates.
+  availableFrom  DateTime?
+  availableTo    DateTime?
+  description    String
+  baseHp         Int           @default(50)
+  baseAttack     Int           @default(2)
+  /// File path within `web/public/sprites/pets/` minus extension
+  /// and variant suffix. Stages are `<spriteBasePath>-<stage>.png`
+  /// for the default variant, `<spriteBasePath>-<stage>-<variant>.png`
+  /// for specific variants.
+  spriteBasePath String
+  /// JSON array of stage names this breed supports, in order:
+  /// `["puppy","adult","adultArmored","injuredArmored"]`.
+  spriteStages   String
+  createdAt      DateTime      @default(now())
+  pets           PetInstance[]
+}
+
+/// One row per user, adopted pet. Combat-derived state goes on
+/// this row. The HP shown in the UI at any moment is computed as
+/// min(current hp from the last event, baseHp); `hpAfterCombat`
+/// is the persisted HP from the most recent combat event (-1 =
+/// never been in combat, full HP implied).
+model PetInstance {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  breedId       String
+  breed         PetBreed     @relation(fields: [breedId], references: [id])
+  /// Owner-named. Free-text input on /shop, 1-24 chars.
+  name          String
+  /// Selected at purchase time, must be one of PetBreed.colorVariants.
+  colorVariant  String
+  level         Int          @default(1)
+  xp            Int          @default(0)
+  /// Persisted HP after the most recent combat event. -1 means
+  /// never been in combat (show full bar). Resets to baseHp on vet.
+  hpAfterCombat Int          @default(-1)
+  /// Set when HP first drops to 0 in combat. Cleared by /pet/vet.
+  /// While non-null, the pet contributes 0 attack and is not
+  /// usable in combat until revived.
+  faintedAt     DateTime?
+  /// Set the first time the pet crosses level 5 (auto-evolve).
+  /// Sprite resolves to "adult" once this is set.
+  evolvedAt     DateTime?
+  /// Set when the user toggles armor on (allowed at Lv15+).
+  /// Sprite resolves to "adultArmored" while set; otherwise "adult".
+  armoredAt     DateTime?
+  /// Set when a Breach/Quest/Raid combat loss triggers the pet's
+  /// injury. Cleared by /pet/vet. Sprite resolves to
+  /// "injuredArmored" while set.
+  injuredAt     DateTime?
+  /// Timestamp of the most recent /pet/feed call. Used by the
+  /// 1-hour cooldown check.
+  lastFedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  feedLogs      PetFeedLog[]
+
+  @@index([breedId])
+}
+
+/// Audit row for every successful /pet/feed call. Tracks gold
+/// spent, XP granted, and when — useful for analytics and for
+/// computing lifetime pet spend if we ever need that.
+model PetFeedLog {
+  id           String      @id @default(cuid())
+  petId        String
+  pet          PetInstance @relation(fields: [petId], references: [id], onDelete: Cascade)
+  fedAt        DateTime    @default(now())
+  /// 10 per call in v1 (matches the shop cost). Recorded for
+  /// analytics, not enforced here — the API enforces it.
+  foodGoldCost Int
+  /// 1 per call in v1 (matches "+1 XP per feed"). Recorded for
+  /// analytics, not enforced here — the API increments pet.xp.
+  xpGained     Int
+
+  @@index([petId])
 }

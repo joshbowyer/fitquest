@@ -44,3 +44,6 @@ __pycache__/
 # `cd web && npx cap sync android && cd android && ./gradlew assembleDebug`)
 web/android/
 web/dist-mobile/
+# Stray root-level mobile build dir (mirrored above; the user's
+# local release script outputs to repo root in some setups).
+/dist-mobile/
