@@ -249,9 +249,24 @@ function scoreHour(
   else if (windGustMph > 20) s += 8;
   // Thunderstorms / heavy precip: hard no.
   if (weatherCode >= 95) s += 80;
-  else if (weatherCode >= 71 && weatherCode <= 86) s += 40; // snow
+  // WMO codes 71-77 = steady snow (slight → heavy + snow grains);
+  // 85-86 = snow showers. Codes 80-82 are RAIN showers, not snow —
+  // the old 71-86 range was eating them. (Atlanta in July returning
+  // "Heavy snow" with code 82 was the bug this fix.)
+  else if (isSnowCode(weatherCode)) s += 40;
   else if (weatherCode >= 61 && weatherCode <= 67) s += 25; // rain
   return s;
+}
+
+/**
+ * WMO weather codes for snow (not sleet/rain). Snow falls in
+ * 71-77 (steady snow at varying intensity + snow grains) and
+ * 85-86 (snow showers). Codes 78-79 are unspecified, 80-82 are
+ * rain showers, 83-84 are unknown/rain showers per the WMO
+ * spec — none of which should be labeled as snow.
+ */
+export function isSnowCode(code: number): boolean {
+  return (code >= 71 && code <= 77) || code === 85 || code === 86;
 }
 
 /**
@@ -365,7 +380,7 @@ export function summarizeDay(
   } else if (daily.windMax > 30) {
     headline = `Sustained winds ${Math.round(daily.windMax)}mph — rings unsafe.`;
     verdict = 'skip';
-  } else if (daily.weatherCode >= 71 && daily.weatherCode <= 86 && daily.precipSum > 2) {
+  } else if (isSnowCode(daily.weatherCode) && daily.precipSum > 2) {
     headline = 'Heavy snow — train inside or ski instead.';
     verdict = 'skip';
   } else if (daily.precipSum > 5) {
@@ -422,7 +437,7 @@ function rateRings(daily: { weatherCode: number; precipSum: number; windMax: num
   if (daily.weatherCode >= 95) {
     return { verdict: 'skip', reason: 'Thunderstorms' };
   }
-  if (daily.weatherCode >= 71 && daily.weatherCode <= 86) {
+  if (isSnowCode(daily.weatherCode)) {
     return { verdict: 'skip', reason: 'Snow' };
   }
   if (daily.precipSum > 2 || (daily.weatherCode >= 61 && daily.weatherCode <= 67)) {

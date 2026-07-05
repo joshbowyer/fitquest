@@ -134,7 +134,6 @@ export function ShopPage() {
   const breeds = stockQ.data?.breeds ?? [];
   const items = itemsQ.data?.items ?? [];
   const myPet = myPetQ.data?.pets[0] ?? null; // primary pet (oldest)
-  const ownsPet = myPet !== null;
 
   // Pet foods only — items whose effectKey starts with `pet_food_`.
   // Match by species for the user's pet to highlight the right one.
@@ -162,11 +161,7 @@ export function ShopPage() {
     <Layout>
       <PageHeader
         title="Pet Shop"
-        subtitle={
-          ownsPet
-            ? 'You already have a companion. Visit your pet.'
-            : 'Adopt a loyal companion. They grow with you.'
-        }
+        subtitle="Adopt a loyal companion. They grow with you."
       />
 
       {/* === BREEDS === */}
@@ -185,29 +180,28 @@ export function ShopPage() {
         <Panel
           variant="cyan"
           title={
-            ownsPet
-              ? 'Your companion'
-              : (myPetQ.data?.pets?.length ?? 0) >= 6
+            (myPetQ.data?.pets?.length ?? 0) >= 6
               ? 'Roster full'
               : 'Available breeds'
           }
         >
-          {ownsPet && myPet ? (
-            <div className="flex items-center justify-between gap-4">
+          {ownsPet && myPet && (
+            <div className="flex items-center justify-between gap-4 mb-4 pb-4 border-b border-neon-cyan/20">
               <div>
-                <div className="font-display text-2xl text-neon-cyan">{myPet.name}</div>
-                <div className="text-xs text-ink-300 mt-1">Level {myPet.level} · {myPet.stage}</div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Your companion</div>
+                <div className="font-display text-2xl text-neon-cyan mt-1">{myPet.name}</div>
+                <div className="text-xs text-ink-300 mt-0.5">
+                  Level {myPet.level} · {myPet.stage} · {myPet.breed.species}
+                </div>
               </div>
               <Link to="/pet">
                 <NeonButton variant="cyan">Visit your pet</NeonButton>
               </Link>
             </div>
-          ) : (myPetQ.data?.pets?.length ?? 0) >= 6 ? (
-            /* Roster full — no pets adopted yet, but at cap (impossible
-               in practice, since the cap can only be hit AFTER
-               adopting). Edge case: defensive UI. */
+          )}
+          {(myPetQ.data?.pets?.length ?? 0) >= 6 ? (
             <div className="text-center py-6">
-              <div className="text-sm text-ink-300">Your roster is full (6/6).</div>
+              <div className="text-sm text-ink-300">Your roster is full (6/6). Release a pet on /pet to make room.</div>
             </div>
           ) : (
             <>
