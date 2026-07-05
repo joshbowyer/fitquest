@@ -312,9 +312,12 @@ model User {
   purchases              Purchase[]
   soulstones             Soulstone[]
   /// Adopted pet. One per user for v1 (single starter). v2 will
-  /// support multiple breeds and a per-breed adoption limit, but
-  /// the userId-uniqueness below is what v1 enforces.
-  pet                    PetInstance?
+  /// Adopted pets. One user can own multiple pets (up to
+  /// MAX_PETS_PER_USER=6 enforced at the API level). Earlier v1
+  /// had `pet PetInstance?` (one-to-one) when the schema enforced
+  /// @unique on PetInstance.userId; that constraint is now dropped
+  /// for multi-pet support, so the relation here is one-to-many.
+  pets                  PetInstance[]
   // Breach boss progress. One row per user; lazily created on
   // first /breach GET after level 10 OR first workout-commit
   // while unlocked (whichever happens first). Defined as ? here

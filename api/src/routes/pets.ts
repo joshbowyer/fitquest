@@ -129,7 +129,7 @@ export async function petRoutes(app: FastifyInstance) {
       include: { breed: true },
       orderBy: { createdAt: 'asc' },
     });
-    const serialized = await Promise.all(pets.map((p) => serializePet(p.id)));
+    const serialized = await Promise.all(pets.map((p: any) => serializePet(p.id)));
     return {
       pets: serialized,
       primaryPetId: serialized[0]?.id ?? null,
