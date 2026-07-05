@@ -7,13 +7,14 @@
 // accretion disk; HP is shown as a glowing arc around the hole.
 // On kill, surfaces a VICTORY modal with the reward preview + claim.
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, postJson } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
+import { PetCombatCard } from '@/components/PetCombatCard';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { useValueChange, emitNotification } from '@/lib/notifyBus';
 import { randomUuid } from '@/lib/uuid';
@@ -104,6 +105,29 @@ export function BreachPage() {
     queryFn: () => api<BreachResponse>('/breach'),
     refetchInterval: 30_000,
   });
+
+  // Pet roster — we display the deployed combat pet below the boss
+  // HP bar so the user can see their pet's HP during the fight.
+  // Refetched alongside the breach query.
+  const petQ = useQuery({
+    queryKey: ['pet'],
+    queryFn: () =>
+      api<{ pets: Array<{
+        id: string;
+        name: string;
+        spritePath: string;
+        level: number;
+        stage: string;
+        currentHp: number;
+        maxHp: number;
+        attack: number;
+        deployed: boolean;
+        faintedAt: string | null;
+        injuredAt: string | null;
+      }> }>('/pet'),
+    refetchInterval: 30_000,
+  });
+  const deployedPet = petQ.data?.pets.find((p) => p.deployed) ?? null;
 
   // Breach-defeat notification. Polled every 30s + on invalidation
   // (which the claim/skip mutations trigger). Fires a system
@@ -298,6 +322,24 @@ export function BreachPage() {
                   </div>
                 )}
               </div>
+
+              {/* Pet HP — the deployed pet in this fight. */}
+              {deployedPet && (
+                <div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">
+                    Companion · {deployedPet.name}
+                  </div>
+                  <PetCombatCard pet={deployedPet} />
+                </div>
+              )}
+              {!deployedPet && petQ.data && petQ.data.pets.length > 0 && (
+                <Link
+                  to="/pet"
+                  className="block text-[10px] font-mono uppercase tracking-widest text-slate-500 hover:text-slate-300"
+                >
+                  No companion deployed. Visit /pet to deploy one →
+                </Link>
+              )}
 
               {/* Actions */}
               <div className="flex flex-wrap gap-2 pt-2">

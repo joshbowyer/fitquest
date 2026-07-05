@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { BossBar } from '@/components/BossBar';
+import { PetCombatCard } from '@/components/PetCombatCard';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
@@ -63,6 +64,26 @@ export function PartyPage() {
     queryKey: ['raid', 'history'],
     queryFn: () => api<{ items: any[] }>('/raids/history'),
   });
+  // Pet roster — show the deployed companion under the boss bar.
+  const petQ = useQuery({
+    queryKey: ['pet'],
+    queryFn: () =>
+      api<{ pets: Array<{
+        id: string;
+        name: string;
+        spritePath: string;
+        level: number;
+        stage: string;
+        currentHp: number;
+        maxHp: number;
+        attack: number;
+        deployed: boolean;
+        faintedAt: string | null;
+        injuredAt: string | null;
+      }> }>('/pet'),
+    refetchInterval: 5000,
+  });
+  const deployedPet = petQ.data?.pets.find((p) => p.deployed) ?? null;
 
   // Pending invites sent TO me. Always polled so I see them quickly
   // when someone adds me.
@@ -340,6 +361,14 @@ export function PartyPage() {
                   maxHp={raid.bossMaxHp}
                   status={raid.status}
                 />
+                {deployedPet && (
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+                      Companion · {deployedPet.name}
+                    </div>
+                    <PetCombatCard pet={deployedPet} />
+                  </div>
+                )}
                 <div>
                   <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">Damage Log</div>
                   <div className="space-y-1 max-h-64 overflow-y-auto">

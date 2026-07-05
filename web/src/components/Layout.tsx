@@ -150,45 +150,29 @@ export function Layout({ children }: Props) {
                 <span className="text-ink-300 text-[10px] uppercase tracking-widest">GOLD</span>
                 <span className="neon-text-amber text-lg font-bold">{user.gold}</span>
               </div>
-              {/* Hearts. Always visible (both Casual + Hardcore) so the
-                  user can see when they're missing things. Color
-                  reflects the mode: cyan in Casual (no penalty,
-                  just a visual signal), magenta in Hardcore (with
-                  the graduated XP/gold/raid penalty). At ≤3 hearts
-                  the row pulses red — even in Casual, the pulse is
-                  a soft "you're getting low" signal. */}
+              {/* HP bar (rendered from the user's hearts, max 10). Green
+                  fill regardless of Casual/Hardcore — the gradient of
+                  damage is the same. Multiplier shown next to it.
+                  Pulses red at ≤3 to signal "you're getting low." */}
               {user && (
                 <div
-                  className="flex items-center gap-1"
-                  title={`${user.hearts ?? 10} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+                  className={classNames(
+                    'flex items-center gap-1.5',
+                    (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
+                  )}
+                  title={`${Math.max(0, Math.min(10, user.hearts ?? 10))}/10 hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
                 >
-                  <span
-                    className={classNames(
-                      'text-base leading-none select-none',
-                      (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
-                    )}
-                  >
-                    {Array.from({ length: 10 }, (_, i) => (
-                      <span
-                        key={i}
-                        className={i < (user.hearts ?? 10)
-                          // Filled hearts: red (the canonical "hearts
-                          // have weight" color, regardless of mode).
-                          // Lost hearts: dark gray (depleted, not
-                          // merely faded — the user lost them).
-                          ? 'text-rose-400'
-                          : 'text-ink-600'
-                        }
-                        style={i < (user.hearts ?? 10)
-                          ? { textShadow: '0 0 4px #fb7185' }
-                          : undefined
-                        }
-                        aria-label={i < (user.hearts ?? 10) ? 'heart filled' : 'heart empty'}
-                      >
-                        ♥
-                      </span>
-                    ))}
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-ink-300">
+                    HP
                   </span>
+                  <div className="w-16 h-2 bg-bg-900 border border-neon-lime/30 rounded">
+                    <div
+                      className="h-full bg-neon-lime rounded transition-all"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, ((user.hearts ?? 10) / 10) * 100))}%`,
+                      }}
+                    />
+                  </div>
                   <span className="text-[10px] font-mono tabular-nums text-rose-300">
                     ×{(user.heartMultiplier ?? 1).toFixed(2)}
                   </span>
@@ -212,24 +196,25 @@ export function Layout({ children }: Props) {
             <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
               <span className="neon-text-cyan font-bold">L{user.level}</span>
               <span className="neon-text-amber">{user.gold}G</span>
-              <span
+              <div
                 className={classNames(
-                  'leading-none select-none',
-                  user.mode === 'HARDCORE' ? 'text-neon-magenta' : 'text-neon-cyan',
+                  'flex items-center gap-1',
                   (user.hearts ?? 10) <= 3 && 'animate-heart-warn',
                 )}
-                title={`${user.hearts ?? 10} hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
+                title={`${Math.max(0, Math.min(10, user.hearts ?? 10))}/10 hearts · ×${(user.heartMultiplier ?? 1).toFixed(2)} multiplier`}
               >
-                {Array.from({ length: 10 }, (_, i) => (
-                  <span
-                    key={i}
-                    className={i < (user.hearts ?? 10) ? '' : 'opacity-25 grayscale'}
-                    aria-label={i < (user.hearts ?? 10) ? 'heart filled' : 'heart empty'}
-                  >
-                    ♥
-                  </span>
-                ))}
-              </span>
+                <div className="w-12 h-1.5 bg-bg-900 border border-neon-lime/30 rounded">
+                  <div
+                    className="h-full bg-neon-lime rounded transition-all"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, ((user.hearts ?? 10) / 10) * 100))}%`,
+                    }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono tabular-nums text-rose-300">
+                  ×{(user.heartMultiplier ?? 1).toFixed(2)}
+                </span>
+              </div>
             </div>
           )}
         </div>
