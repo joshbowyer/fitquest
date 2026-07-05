@@ -3,9 +3,22 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import {
+  PET_BREED_BUY_GOLD_COST,
+  spritePath,
+  spriteStage,
+} from '../lib/petStats.js';
 
 const purchaseSchema = z.object({
   itemId: z.string().min(1),
+});
+
+const buyPetSchema = z.object({
+  /// Owner-chosen name. 1-24 chars. Free text; we only enforce
+  /// length and basic trim.
+  name: z.string().trim().min(1).max(24),
+  /// Must be one of PetBreed.colorVariants for the chosen breed.
+  colorVariant: z.string().min(1).max(40),
 });
 
 /**
@@ -171,6 +184,131 @@ export async function shopRoutes(app: FastifyInstance) {
       gold: result.user.gold,
       hearts: result.newHearts,
       purchaseId: result.purchaseId,
+    };
+  });
+
+  // ============================================================
+  // Pet shop routes.
+  //
+  // The v1 rotation is hardcoded: the starter breed is always
+  // in stock (`isStarter=true`), so users can always pick up
+  // their first puppy. If the user has already adopted, the
+  // endpoint still returns the current breed for the shop page
+  // to render "you already own one — visit /pet" copy.
+  // ============================================================
+
+  // GET /shop/pet-stock — the current breed/variant up for adoption.
+  // Returns the starter breed always; v2 will rotate through
+  // non-starters weekly once multi-breed stock lands.
+  app.get('/pet-stock', async (req, reply) => {
+    const me = await requireUser(req);
+    const breed = await prisma.petBreed.findFirst({
+      where: { isStarter: true },
+      orderBy: { slug: 'asc' },
+    });
+    if (!breed) {
+      return reply.code(404).send({ error: 'No pet breed currently in stock' });
+    }
+    const stockBreed = breed;
+    const variants = JSON.parse(stockBreed.colorVariants) as string[];
+    // Default variant is the first entry. Future: read user's last
+    // preference or a weekly-rotation cron. For v1, first wins.
+    // Variants is non-empty by seed contract — every breed has at
+    // least one entry. `!` is safe here; if it ever isn't, the
+    // /buy-pet schema validation will reject the request anyway.
+    const colorVariant = variants[0]!;
+    const stage = spriteStage({
+      evolvedAt: null,
+      armoredAt: null,
+      injuredAt: null,
+    });
+    return {
+      breed: {
+        id: stockBreed.id,
+        slug: stockBreed.slug,
+        displayName: stockBreed.displayName,
+        species: stockBreed.species,
+        costGold: stockBreed.costGold,
+        description: stockBreed.description,
+        baseHp: stockBreed.baseHp,
+        baseAttack: stockBreed.baseAttack,
+        spriteBasePath: stockBreed.spriteBasePath,
+        colorVariants: variants,
+        spriteStages: JSON.parse(stockBreed.spriteStages) as string[],
+      },
+      colorVariant,
+      spritePath: spritePath(stockBreed, stage, colorVariant),
+      availableUntil: null, // v1: no rotation
+    };
+  });
+
+  // POST /shop/buy-pet — adopt the starter puppy.
+  //   - 200g debit from User.gold (atomic with PetInstance insert)
+  //   - 409 if user already owns a pet (v1 = one per user)
+  //   - 402 if insufficient gold
+  //   - 400 if colorVariant isn't on the breed
+  app.post('/buy-pet', async (req, reply) => {
+    const me = await requireUser(req);
+    const body = buyPetSchema.parse(req.body);
+
+    const breed = await prisma.petBreed.findFirst({ where: { isStarter: true } });
+    if (!breed) {
+      return reply.code(404).send({ error: 'No pet breed currently in stock' });
+    }
+    const variants = JSON.parse(breed.colorVariants) as string[];
+    if (!variants.includes(body.colorVariant)) {
+      return reply.code(400).send({
+        error: 'Invalid colorVariant for this breed',
+        allowed: variants,
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      const existing = await tx.petInstance.findUnique({ where: { userId: me.id } });
+      if (existing) {
+        return { error: 'already_owns_pet' as const, pet: existing };
+      }
+      const u = await tx.user.findUnique({
+        where: { id: me.id },
+        select: { gold: true },
+      });
+      if (!u) throw new Error('user vanished mid-transaction');
+      if (u.gold < breed.costGold) {
+        return { error: 'insufficient_gold' as const, gold: u.gold, cost: breed.costGold };
+      }
+      const updated = await tx.user.update({
+        where: { id: me.id },
+        data: { gold: { decrement: breed.costGold } },
+        select: { gold: true },
+      });
+      const pet = await tx.petInstance.create({
+        data: {
+          userId: me.id,
+          breedId: breed.id,
+          name: body.name,
+          colorVariant: body.colorVariant,
+          level: 1,
+          xp: 0,
+        },
+      });
+      return { gold: updated.gold, pet };
+    });
+
+    if ('error' in result) {
+      if (result.error === 'already_owns_pet') {
+        return reply.code(409).send({ error: 'You already own a pet' });
+      }
+      return reply.code(402).send({
+        error: 'Not enough gold',
+        gold: result.gold,
+        cost: result.cost,
+      });
+    }
+
+    return {
+      ok: true,
+      gold: result.gold,
+      petId: result.pet.id,
     };
   });
 }

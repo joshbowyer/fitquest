@@ -28,6 +28,8 @@ import { HabitsPage } from './pages/Habits';
 import { NutritionPage } from './pages/Nutrition';
 import { RecoveryPage } from './pages/Recovery';
 import { ImportPage } from './pages/Import';
+import { ShopPage } from './pages/Shop';
+import { PetPage } from './pages/Pet';
 import { StatusPage } from './pages/Status';
 import { ToolsPage } from './pages/Tools';
 import { CheckInsPage } from './pages/CheckIns';
@@ -91,6 +93,8 @@ export default function App() {
       <Route path="/check-ins" element={<RequireAuth><CheckInsPage /></RequireAuth>} />
       <Route path="/body-comp" element={<RequireAuth><BodyCompPage /></RequireAuth>} />
       <Route path="/forecast" element={<RequireAuth><ForecastPage /></RequireAuth>} />
+      <Route path="/shop" element={<RequireAuth><ShopPage /></RequireAuth>} />
+      <Route path="/pet" element={<RequireAuth><PetPage /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
       <Route path="/skills" element={<RequireAuth><SkillTreePage /></RequireAuth>} />
       <Route path="/party" element={<RequireAuth><PartyPage /></RequireAuth>} />

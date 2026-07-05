@@ -42,6 +42,7 @@ import { homeBaseRoutes } from './routes/homeBase.js';
 import { breachRoutes } from './routes/breach.js';
 import { portalLeakRoutes } from './routes/portalLeaks.js';
 import { shopRoutes } from './routes/shop.js';
+import { petRoutes } from './routes/pets.js';
 import { exportRoutes } from './routes/export.js';
 import { forecastRoutes } from './routes/forecast.js';
 import { geocodeRoutes } from './routes/geocode.js';
@@ -168,6 +169,7 @@ async function build() {
   await app.register(breachRoutes, { prefix: '/breach' });
   await app.register(portalLeakRoutes, { prefix: '/portal-leak' });
   await app.register(shopRoutes, { prefix: '/shop' });
+  await app.register(petRoutes, { prefix: '/pet' });
   await app.register(forecastRoutes, { prefix: '/forecast' });
   await app.register(geocodeRoutes, { prefix: '/geocode' });
   await app.register(exportRoutes, { prefix: '' });
