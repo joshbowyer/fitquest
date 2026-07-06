@@ -170,10 +170,13 @@ export function ConstellationMap({
   const ringHex = classStripe ?? accentColor ?? '#14d6e8';
 
   return (
-    <div className="w-full h-full max-w-full max-h-full flex items-center justify-center">
+    // flex-1 on mobile so the SVG claims all available vertical
+    // space (the legend below is small). On desktop the SVG keeps
+    // its h-full which sizes it to whatever the parent gives it.
+    <div className="w-full flex-1 min-h-0 md:h-full md:flex-initial flex items-center justify-center">
       <svg
         viewBox="0 0 1000 600"
-        className="w-full h-full max-w-full max-h-full"
+        className="w-full h-full md:max-h-full"
         style={{ maxWidth: '100%', maxHeight: '100%' }}
         preserveAspectRatio="xMidYMid meet"
         role="img"

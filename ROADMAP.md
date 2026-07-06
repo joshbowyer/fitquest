@@ -171,16 +171,22 @@ with edit + delete inline.)
 
 ### Mobile & UX
 
-- **Reorganize nav menu items on mobile.** Currently drag-to-
-  reorder only works on the desktop sidebar. The mobile
-  overlay should support the same.
+- (was: Reorganize nav menu items on mobile — shipped in
+  `0cdbc8c`. Mobile menu overlay now supports drag-to-reorder
+  via the same `useNavOrder` hook the desktop sidebar uses.
+  Toggle button + drag-handle glyph + Done/reset buttons mirror
+  the desktop pattern. Order syncs across devices via the
+  shared localStorage key.)
 - **Galaxy map on mobile is too small + mis-aligned.** Map
   should be full-width on mobile, and the "Class:" / "Portal:"
   text labels should drop below the map instead of sitting to
   its right (the right-side stack doesn't fit at narrow widths).
-- **Remove the "⚙ Settings" button from the top of /dashboard.**
-  Settings already lives in the sidebar — the dashboard
-  duplicate is dead weight.
+  In progress: padding tightened + flex-1 on mobile + legend
+  wraps cleanly below. Test on a phone and confirm.
+- (was: Remove the "⚙ Settings" button from the top of
+  /dashboard — shipped in `0cdbc8c`. /dashboard's PageHeader
+  action now only shows the Calendar quick-link; Settings lives
+  in the sidebar where it always belonged.)
 - (was: wire up web notifications — shipped in `6cbe0c2`. Use
   the Notification API on homebase shield drops, breach
   defeat, boss kill, streak-break, etc. Has to be opt-in
@@ -195,12 +201,6 @@ with edit + delete inline.)
   (Halloween pumpkins, Christmas lights, etc.), UI themes
   (color palettes for the neon glow). All cosmetic unless
   we want to design a real prestige system around them.
-- (was: HeartsCard → HP bar swap — shipped in eb73bd5. The
-  dashboard HeartsCard now mirrors the hero bar (bg-neon-lime
-  fill, ink track, animate-heart-warn pulse at ≤3). Both
-  Casual and Hardcore modes. Pending unlock cards (skill
-  tree) still use red ♥ glyphs — different visual, kept
-  intentional.)
 - (was: Calendar view — shipped in `cd16301` + `2309089` +
   `26d95a7`. `/calendar` is a month grid + per-day recap that
   shows workouts, weigh-ins, pain, habits, dailies, and the
@@ -285,49 +285,39 @@ with edit + delete inline.)
   pin the RHR genetic-max to 70 (universal — no age/sex
   adjustment, since the unhealthy threshold doesn't shift
   meaningfully).)
-- **L-Sit radial is visually different from other calisthenics
-  gauges.** User reports L-Sit renders distinctly from
-  plank / push-up / pull-up / dead-hang. Most likely cause:
-  the L_SIT_HOLD defaultMin is `5` (seconds) and the dial
-  range ends up `5..7.5` — every realistic value (10s+) clamps
-  to max and triggers the "! X% OVER" warning, which is a
-  magenta ribbon the other gauges don't show. Fixing the
-  "X% OVER" warning above (suppress for less-is-better +
-  gate behind a sane threshold) resolves this naturally.
-  Verify with all five calisthenics radials side-by-side once
-  fixed.
-- **Alternate bodyfat inputs (calipers / DEXA / BIA / Navy
-  tape).** Bodyfat is currently only one numeric input. Let
-  the user pick a method and enter method-specific values:
-  - **Caliper (3-site or 7-site):** mm readings → bodyfat % via
-    Jackson-Pollock formula. UI shows which 3 sites to pinch
-    (chest + abdomen + thigh for men, triceps + suprailium +
-    thigh for women) with a tip: "measure in the morning, the
-    day after fasting, ideally before training — water weight
-    swings can shift the reading 2-3%."
-  - **DEXA:** enter the bodyfat % directly from the scan
-    report. "Use the most recent scan within the last 90 days."
-  - **BIA (scale or handheld):** enter bodyfat % from the
-    device. "Best taken fasted, same time of day each week."
-  - **Navy tape method:** waist + neck + (height for women) →
-    bodyfat %. UI explains the formula and that women need
-    hip measurement too.
-  - Hook into the existing radial on the dashboard + any
-    other bodyfat entry point as a popup modal that picks
-    method then asks for the inputs.
-- **Split `BICEP` into `BICEP_RELAXED` and `BICEP_FLEXED`.**
-  Same migration shape as the existing `WAIST` / `NECK`
-  enum expansion. Schema change + UI for picking which one
-  the user is logging.
+- (was: L-Sit radial visual diff — shipped in `ff107df`. Was
+  falling through to the plain Gauge (no zones, no warn/elite
+  coloring) because it was in `monotonicMetricKeys` but
+  missing from `METRIC_MONOTONIC_BANDS`. Added bands entry
+  (elite ≥1:00, healthy ≥0:30, max 3:00) — now renders with
+  the same lime/cyan/amber zone backgrounds as plank/dead-hang.)
+- (was: Alternate bodyfat inputs (calipers/DEXA/BIA/Navy) —
+  shipped in `eb73bd5`. New `BodyfatMethodPicker` modal with
+  4 methods (DEXA / BIA / Calipers 3-site Jackson-Pollock /
+  Navy tape). JP3 + Navy are sex-aware (men: chest/abdomen/
+  thigh, women: triceps/suprailium/thigh; Navy needs hip for
+  women). Formulas mirrored in `web/src/lib/bodyfat.ts` and
+  `api/src/lib/bodyfat.ts` (14 vitest assertions, all pass).
+  Submit goes to POST /measurements with the chosen `source`
+  field (CALIPERS / BIA / DEXA / NAVY_TAPE) so the morning
+  report's confidence weighting applies. Hooked into
+  MetricDetailModal (BODY_FAT_PCT row) and Profile.)
+- (was: Split `BICEP` into `BICEP_RELAXED` and `BICEP_FLEXED`
+  — shipped in `eb73bd5`. Migration
+  `20260706000000_bicep_split_flexed_relaxed` adds the two
+  new enum values and migrates existing Measurement +
+  GeneticMax rows to BICEP_FLEXED. Casey Butt formula gives
+  ~16.2cm ceiling for a 6" wrist; relaxed uses the same
+  formula × 0.92 (~14.9cm). bicep_40/bicep_45 achievements now
+  point at BICEP_FLEXED.)
+- (was: Body weight graph zoom (`yPad`) — shipped earlier;
+  `yPad` 20 → 10 in the /insights chart so the trend line is
+  more readable. Documented in Recently Fixed below.)
 - **Re-examine neck circumference genetic-max logic.** Current
   code uses the user's current neck measurement as their
   genetic max — wrong because neck can definitely grow with
   trap development. Either: (a) treat neck like other
   measurements and let it track freely, (b) default to a
-  population baseline (e.g. 40cm / 15.75in) if no historical
-  peak exists. Compare with how wrist/ankle handle this.
-- **Body weight graph zoom (`yPad`).** Currently `+-20` — the
-  user wants `+-10` so the trend line is more readable.
 - **Body measurement photos with diff.** Upload a photo
   alongside a measurement (or independently) and have a
   side-by-side view that highlights the change vs. the

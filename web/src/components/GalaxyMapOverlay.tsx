@@ -136,10 +136,14 @@ export function GalaxyMapOverlay({
       {/* Click on the SVG itself doesn't close — only the backdrop.
           Layout: full-viewport flex container, SVG scales to fit via
           preserveAspectRatio + max-w/max-h so the entire constellation
-          is visible without scrolling. On mobile, scales to width; on
-          desktop, scales to height (taller than wide). */}
+          is visible without scrolling.
+          Mobile (p-1, sm:p-2): the SVG fills the viewport width with
+          minimal padding so the map doesn't look tiny inside a sea of
+          empty backdrop. The legend below wraps onto its own row.
+          Desktop (md:p-16): generous padding around the map + the
+          SVG centres vertically. */}
       <div
-        className="w-full h-full flex flex-col items-center justify-center gap-3 p-2 md:p-16 md:gap-0"
+        className="w-full h-full flex flex-col items-center justify-center gap-2 p-1 sm:p-2 md:p-16 md:gap-0"
         onClick={(e) => e.stopPropagation()}
       >
         <ConstellationMap

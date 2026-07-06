@@ -76,6 +76,7 @@ export function AdminPage() {
   // `AdminUser` = wipe just that user (this one user got something
   // they shouldn't have). The wipe deletes the InventoryItem rows
   // — equip state lives on the same row so it's gone too.
+  const [resetSkillsTarget, setResetSkillsTarget] = useState<AdminUser | null>(null);
   const [resetItemsTarget, setResetItemsTarget] = useState<
     { scope: 'all' } | { scope: 'user'; user: AdminUser } | null
   >(null);
@@ -228,6 +229,37 @@ export function AdminPage() {
     },
   }, 800);
 
+  // Reset a user's skill tree (UserSkill rows + PendingSkillUnlock
+  // inbox). Used to debug skill-matching / prereq issues by wiping
+  // the user's state and letting the next workout commit re-trigger
+  // the matching pass from a clean slate. The api endpoint is
+  // POST /admin/users/:id/reset-skills — wraps both deletes in a
+  // $transaction so a second click during the first request is a
+  // safe no-op. Confirmation modal still gates the click (typed
+  // username) since this is destructive and the user would have
+  // to re-earn any unlocked skills.
+  const resetSkillsM = useDelayedMutation<
+    { ok: boolean; user: { id: string; username: string }; pendingDeleted: number; unlockedDeleted: number },
+    { id: string }
+  >({
+    mutationFn: ({ id }) =>
+      api<{ ok: boolean; user: { id: string; username: string }; pendingDeleted: number; unlockedDeleted: number }>(
+        `/admin/users/${id}/reset-skills`,
+        { method: 'POST' },
+      ),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Reset failed'),
+    onSuccess: (res) => {
+      setResetSkillsTarget(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['calisthenics-progress'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      alert(
+        `Reset ${res.user.username}: cleared ${res.unlockedDeleted} unlocked + ${res.pendingDeleted} pending. They can re-earn on their next workout.`,
+      );
+    },
+  }, 800);
+
   // ---- Render ----
   if (!user) {
     return (
@@ -285,6 +317,7 @@ export function AdminPage() {
                     onResetItems={() =>
                       setResetItemsTarget({ scope: 'user', user: u })
                     }
+                    onResetSkills={() => setResetSkillsTarget(u)}
                     isClearing2fa={clear2faM.isPending}
                     isTogglingAdmin={toggleAdminM.isPending}
                     isResettingItems={
@@ -292,6 +325,10 @@ export function AdminPage() {
                       resetItemsM.variables?.scope === 'user' &&
                       resetItemsM.variables.userId === u.id
                     }
+                    isResettingSkills={
+                      resetSkillsM.isPending && resetSkillsM.variables?.id === u.id
+                    }
+                    isSelf={u.id === user?.id}
                   />
                 ))}
               </div>
@@ -405,6 +442,20 @@ export function AdminPage() {
                               }
                             >
                               Wipe items
+                            </NeonButton>
+                            <NeonButton
+                              size="sm"
+                              variant="amber"
+                              onClick={() => setResetSkillsTarget(u)}
+                              disabled={
+                                (resetSkillsM.isPending && resetSkillsM.variables?.id === u.id) ||
+                                u.id === user?.id
+                              }
+                              title={u.id === user?.id ? "Can't reset your own skill tree" : 'Wipes UserSkill + PendingSkillUnlock rows'}
+                            >
+                              {resetSkillsM.isPending && resetSkillsM.variables?.id === u.id
+                                ? '…'
+                                : 'Reset skills'}
                             </NeonButton>
                           </div>
                         </td>
@@ -965,6 +1016,16 @@ export function AdminPage() {
         />
       )}
 
+      {/* -------- Reset-skills confirmation modal (per-user only) -------- */}
+      {resetSkillsTarget && (
+        <ResetSkillsModal
+          target={resetSkillsTarget}
+          onCancel={() => setResetSkillsTarget(null)}
+          onConfirm={(id) => resetSkillsM.run({ id })}
+          isPending={resetSkillsM.isPending}
+        />
+      )}
+
       {/* -------- Delete-user confirmation modal -------- */}
       <DeleteUserModal
         target={deleteTarget}
@@ -1036,9 +1097,11 @@ function UserCardMobile({
   onToggleAdmin,
   onDelete,
   onResetItems,
+  onResetSkills,
   isClearing2fa,
   isTogglingAdmin,
   isResettingItems,
+  isResettingSkills,
 }: {
   user: AdminUser;
   isSelf: boolean;
@@ -1047,9 +1110,11 @@ function UserCardMobile({
   onToggleAdmin: () => void;
   onDelete: () => void;
   onResetItems: () => void;
+  onResetSkills: () => void;
   isClearing2fa: boolean;
   isTogglingAdmin: boolean;
   isResettingItems: boolean;
+  isResettingSkills: boolean;
 }) {
   return (
     <div className="border border-ink-500/30 rounded p-3 bg-bg-900/40">
@@ -1123,6 +1188,15 @@ function UserCardMobile({
           disabled={isResettingItems}
         >
           Wipe items
+        </NeonButton>
+        <NeonButton
+          size="sm"
+          variant="amber"
+          onClick={onResetSkills}
+          disabled={isResettingSkills || isSelf}
+          title={isSelf ? "Can't reset your own skill tree" : 'Wipes UserSkill + PendingSkillUnlock rows'}
+        >
+          {isResettingSkills ? '…' : 'Reset skills'}
         </NeonButton>
       </div>
     </div>
@@ -1332,6 +1406,90 @@ function ResetItemsModal({
             loadingText={isAll ? 'Wiping all…' : `Wiping ${user!.username}…`}
           >
             {isAll ? 'Wipe ALL items' : `Wipe ${user!.username}'s items`}
+          </NeonButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Destructive-action confirmation for the per-user Reset Skills
+ * button. Mirrors DeleteUserModal + ResetItemsModal: typed-input
+ * gate so the admin has to type the username before the
+ * confirm button enables. Reset wipes the user's UserSkill +
+ * PendingSkillUnlock rows in one transaction — they re-earn on
+ * their next workout commit (matching pass runs against fresh
+ * exercise history). No "reset ALL users" path — the existing
+ * UserSkill/PendingSkillUnlock tables are user-scoped, so
+ * per-user reset is the only scope that makes sense.
+ */
+function ResetSkillsModal({
+  target,
+  onCancel,
+  onConfirm,
+  isPending,
+}: {
+  target: AdminUser | null;
+  onCancel: () => void;
+  onConfirm: (id: string) => void;
+  isPending: boolean;
+}) {
+  const [typed, setTyped] = useState('');
+  useEffect(() => {
+    setTyped('');
+  }, [target?.id]);
+  if (!target) return null;
+  const matches = typed === target.username;
+  return (
+    <Modal
+      open={!!target}
+      onClose={onCancel}
+      title={`Reset ${target.username}'s skill tree?`}
+      width="max-w-lg"
+    >
+      <div className="space-y-3">
+        <p className="text-sm text-ink-300">
+          This wipes the user's skill state so you can re-test the
+          matching / prereq pass from a clean slate:
+        </p>
+        <ul className="text-xs font-mono text-ink-400 space-y-0.5 list-disc pl-5">
+          <li>All <code>UserSkill</code> rows (their unlocked skills)</li>
+          <li>All <code>PendingSkillUnlock</code> rows (the unlock inbox)</li>
+          <li>The PHANTOM calisthenics-progress % on the dashboard</li>
+        </ul>
+        <p className="text-xs font-mono text-ink-300">
+          The user will re-earn skills on their next workout commit
+          (or by hitting <code>/check-eligible</code> manually). No
+          XP, gold, or item losses — this only touches skill state.
+        </p>
+        <p className="text-xs font-mono text-rose-300">
+          Type <span className="text-neon-cyan font-bold">{target.username}</span> to confirm.
+        </p>
+        <label className="block">
+          <input
+            type="text"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            className="mt-1 w-full rounded border border-ink-500/40 bg-bg-900 px-2 py-1.5 text-sm font-mono"
+            placeholder={target.username}
+            spellCheck={false}
+            autoComplete="off"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <NeonButton variant="cyan" onClick={onCancel}>
+            Cancel
+          </NeonButton>
+          <NeonButton
+            variant="magenta"
+            onClick={() => onConfirm(target.id)}
+            disabled={!matches || isPending}
+            loading={isPending}
+            loadingText={`Resetting ${target.username}…`}
+          >
+            Reset skills
           </NeonButton>
         </div>
       </div>
