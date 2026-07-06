@@ -269,7 +269,12 @@ export function ActivitiesPage() {
             )}
             {logMode === 'live' ? (
               <LiveWorkoutLogger
-                key={`live-${selectedTemplateId ?? 'none'}`}
+                // Re-key on the loaded template's id (not just the
+                // selectedTemplateId) so the component remounts once
+                // the query resolves. Without this, the first mount
+                // sees templatePrefill=null and the exercises list
+                // never updates when the data arrives.
+                key={selectedTemplateQ.data ? `live-data-${selectedTemplateQ.data.id}` : `live-pending-${selectedTemplateId ?? 'none'}`}
                 user={user}
                 units={units}
                 templatePrefill={
@@ -292,7 +297,7 @@ export function ActivitiesPage() {
               />
             ) : (
               <WorkoutLogger
-                key={`bulk-${selectedTemplateId ?? 'none'}`}
+                key={selectedTemplateQ.data ? `bulk-data-${selectedTemplateQ.data.id}` : `bulk-pending-${selectedTemplateId ?? 'none'}`}
                 user={user}
                 units={units}
                 copyFrom={copyFromQ.data?.item}
