@@ -14,16 +14,18 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.3 published.** APK signed with debug
+- **Android release: v1.0.4 published.** APK signed with debug
   keystore, 9.3MB, attached to the
-  [v1.0.3 release](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.3).
-  Tracks parent-repo commits since v1.0.2 (the modal-ghosting
-  fix, pets overhaul, HeartsCard HP-bar polish, BICEP split,
-  bodyfat method picker, sex picker MALE/FEMALE-only). Sync
-  mechanism in place via `scripts/sync-android.sh` (this repo)
-  → `../fitquest-android/scripts/sync-android.sh` — future web/
-  api commits will land in the next Android CHANGELOG + release-
-  notes draft automatically.
+  [v1.0.4 release](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.4).
+  Tracks parent-repo commits since v1.0.3 (the Web Audio node
+  leak fix, RHR gauge dead-code cleanup + 2 new vitest assertions,
+  /measurements 2-col cards then flat-grid refinement,
+  MetricDetailModal expansion — log → history → override stack
+  lifted into the modal so the page is a flat grid of tiles).
+  Sync mechanism working as designed: `BUMP=1 ./scripts/sync-android.sh`
+  walked the parent log, categorized the commits, generated
+  CHANGELOG.md + RELEASE_NOTES_v1.0.4.md, then the manual gradle
+  build + `gh release create` published.
 - **Android sync:** `scripts/sync-android.sh` (in this repo) wraps
   the script at `../fitquest-android/scripts/sync-android.sh` so the
   Android wrapper doesn't go stale when web/api ships. Run from
@@ -31,13 +33,16 @@
   ```
   ./scripts/sync-android.sh          # refresh CHANGELOG + release notes for current version
   BUMP=1 ./scripts/sync-android.sh   # auto-bump patch (X.Y.Z → X.Y.(Z+1)) + refresh notes
-  NEXT_VERSION=1.0.4 ./scripts/sync-android.sh
+  NEXT_VERSION=1.0.5 ./scripts/sync-android.sh
   ```
   The script categorises the parent repo's recent commits by
   conventional-commit prefix (feat / fix / polish / etc), updates
   `CHANGELOG.md` and writes a `RELEASE_NOTES_vX.Y.Z.md` draft
   ready for `gh release create`. It does NOT run gradle, sign, or
-  publish — those stay manual.
+  publish — those stay manual. (Bug fix during v1.0.4 build:
+  replaced awk-based version-bump with shell parameter expansion
+  — awk treated "." as a field separator and produced "1 0 4"
+  with spaces.)
 
 
 ## Active (in progress)
