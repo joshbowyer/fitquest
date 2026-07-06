@@ -58,11 +58,17 @@ type ModalProps = {
 };
 
 function BarcodeScannerModal({ onClose, onScanned }: ModalProps) {
+  // The plugin's @CapacitorPlugin(name = "CapacitorBarcodeScanner")
+  // registers under that name (not "BarcodeScanner" or
+  // "BarcodeScannerPlugin"). Easy to get wrong — verify against
+  // node_modules/@capacitor/barcode-scanner/android/src/main/
+  // java/.../OSBarcodePlugin.kt if Capacitor.isPluginAvailable()
+  // ever returns false unexpectedly.
   const isAndroidNative =
     typeof window !== 'undefined' &&
     Capacitor.isNativePlatform() &&
     Capacitor.getPlatform() === 'android' &&
-    Capacitor.isPluginAvailable('BarcodeScanner');
+    Capacitor.isPluginAvailable('CapacitorBarcodeScanner');
 
   return (
     <Modal
