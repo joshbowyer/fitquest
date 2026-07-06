@@ -18,7 +18,11 @@ type AdminUser = {
   level: number;
   xp: number;
   gold: number;
-  soulstones: number;
+  /// Soulstone count. Newer /admin/users returns a number (via
+  /// Prisma's _count.soulstones aggregate); older builds returned
+  /// the raw Soulstone[] relation array. The render code accepts
+  /// both shapes — pick whichever is in the response.
+  soulstones: number | Array<{ id: string; [k: string]: unknown }>;
   createdAt: string;
   _count: { sessions: number; workouts: number };
 };
@@ -369,7 +373,7 @@ export function AdminPage() {
                         {u.gold}
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums text-violet-300">
-                        {u.soulstones}
+                        {typeof u.soulstones === 'number' ? u.soulstones : Array.isArray(u.soulstones) ? u.soulstones.length : 0}◆
                       </td>
                         <td className="py-2 px-2 text-center">
                           {u.twoFactorEnabled ? (
@@ -1130,7 +1134,7 @@ function UserCardMobile({
           <div className="flex gap-2 justify-end mt-0.5">
             <span className="text-neon-cyan">L{user.level}</span>
             <span className="text-neon-amber">{user.gold}G</span>
-            <span className="text-violet-300">{user.soulstones}◆</span>
+            <span className="text-violet-300">{Array.isArray(user.soulstones) ? user.soulstones.length : user.soulstones}◆</span>
           </div>
         </div>
       </div>
