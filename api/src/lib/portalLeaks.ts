@@ -27,7 +27,18 @@ import { tierForShield } from './penance.js';
 // ============================================================
 
 export const LEAK_COOLDOWN_MS = 24 * 60 * 60 * 1000;       // 24h between leaks
-export const LEAK_TTL_MS = 48 * 60 * 60 * 1000;            // 48h to resolve before EXPIRED
+export const LEAK_TTL_MS = 48 * 60 * 60 * 1000;            // 48h soft hint — leaks no longer auto-expire
+// Max active leaks a user can have at once. Stacking already works
+// (existing active leaks don't block new spawns), but without a
+// cap the dashboard's leak card and the leak-queue UI become
+// unreadable past ~5. 3 fits the 3-column dashboard grid + the
+// "/portal-leak" page's side-by-side layout without overlap.
+// Spawn gate: no new leak when active count >= MAX; resumes when
+// active count drops to MAX - 1. The MAX - 1 hysteresis avoids a
+// thrash loop where killing one leak immediately spawns its
+// replacement mid-fight.
+export const MAX_ACTIVE_LEAKS = 3;
+export const LEAK_RESUME_AT = MAX_ACTIVE_LEAKS - 1;
 export const OVERWHELM_CAP_MULT = 1.5;                     // leak feeds up to 150% of maxHp
 export const LEAK_BASE_HP_MIN = 80;
 export const LEAK_BASE_HP_MAX = 160;
@@ -292,17 +303,28 @@ export async function maybeSpawnLeak(
   if (Math.random() > probability) return { spawned: false };
 
   // Cooldown: no spawn within 24h of the last resolved leak.
-  // Existing active leaks do NOT block new spawns — they stack.
+  // Existing active leaks do NOT short-circuit — they stack, up
+  // to MAX_ACTIVE_LEAKS. When the cap is hit, no new spawns until
+  // the user resolves enough leaks to drop below LEAK_RESUME_AT.
+  // Hysteresis at MAX - 1 prevents thrash (kill one, spawn one
+  // mid-fight, etc.).
   const cooldownCutoff = new Date(Date.now() - LEAK_COOLDOWN_MS);
   const recent = await prisma.portalLeak.findFirst({
     where: {
       userId,
-      status: { in: ['DEFEATED', 'OVERWHELMED', 'EXPIRED'] },
+      status: { in: ['DEFEATED', 'OVERWHELMED'] },
       resolvedAt: { gte: cooldownCutoff },
     },
     orderBy: { resolvedAt: 'desc' },
   });
   if (recent) return { spawned: false };
+
+  // Cap: count currently-active leaks. Skip spawn when at cap.
+  // Resumes when count drops to LEAK_RESUME_AT (currently 2).
+  const activeCount = await prisma.portalLeak.count({
+    where: { userId, status: 'ACTIVE' },
+  });
+  if (activeCount >= MAX_ACTIVE_LEAKS) return { spawned: false };
 
 // Spawn!
   const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
@@ -347,11 +369,15 @@ export async function maybeSpawnBreachLeak(
   userId: string,
   prisma: PrismaClient = defaultPrisma,
 ): Promise<{ spawned: boolean; leakId?: string }> {
-  // No spawn if an active leak exists (any source).
-  const active = await prisma.portalLeak.findFirst({
+  // Stacking applies to breach leaks too — only skip spawn when the
+  // user is already at MAX_ACTIVE_LEAKS. Resumes when count drops
+  // to LEAK_RESUME_AT. The old "block on any active" behaviour
+  // made breach clears feel unrewarded (defeating the Maw
+  // sometimes produced no leak because the user had a leftover).
+  const activeCount = await prisma.portalLeak.count({
     where: { userId, status: 'ACTIVE' },
   });
-  if (active) return { spawned: false, leakId: active.id };
+  if (activeCount >= MAX_ACTIVE_LEAKS) return { spawned: false };
 
   const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
   // Breach leaks are slightly tougher (taller HP range) so the
@@ -624,39 +650,32 @@ export async function getLeakForUser(
 
 export async function tickLeakGrowth(
   prisma: PrismaClient = defaultPrisma,
-): Promise<{ ticked: number; expired: number }> {
-  const now = Date.now();
-  const ttlCutoff = new Date(now - LEAK_TTL_MS);
+): Promise<{ ticked: number }> {
+  // Daily growth tick. Previously leaks aged out at 48h via an
+  // EXPIRED branch here; that's gone now — leaks stack instead
+  // of expiring (user feedback: leaks are the user's punishment
+  // for slipping, expiring them softens that). The +8 HP/day
+  // escalation already makes neglected leaks worse than fresh
+  // ones, which provides a soft self-balancing mechanism. The
+  // LEAK_TTL_MS constant is kept as a hint for future UI copy
+  // ("leaks grow stronger the longer you ignore them") but no
+  // longer drives any logic.
   const activeLeaks = await prisma.portalLeak.findMany({
-    where: { status: 'ACTIVE', spawnedAt: { lt: ttlCutoff } },
+    where: { status: 'ACTIVE' },
   });
 
   let ticked = 0;
-  let expired = 0;
 
   for (const leak of activeLeaks) {
-    if (leak.spawnedAt < ttlCutoff) {
-      // Past TTL — expire (no penalty, just goes to cooldown).
-      await prisma.portalLeak.update({
-        where: { id: leak.id },
-        data: {
-          status: 'EXPIRED',
-          resolvedAt: new Date(),
-          resolvedReason: 'the leak dissipated on its own',
-        },
-      });
-      expired++;
-    } else {
-      // Daily growth: +8 HP, capped at overwhelm threshold.
-      const overwhelmCap = Math.round(leak.maxHp * OVERWHELM_CAP_MULT);
-      const newHp = Math.min(overwhelmCap, leak.hp + LEAK_DAILY_GROWTH);
-      await prisma.portalLeak.update({
-        where: { id: leak.id },
-        data: { hp: newHp },
-      });
-      ticked++;
-    }
+    // Daily growth: +8 HP, capped at overwhelm threshold.
+    const overwhelmCap = Math.round(leak.maxHp * OVERWHELM_CAP_MULT);
+    const newHp = Math.min(overwhelmCap, leak.hp + LEAK_DAILY_GROWTH);
+    await prisma.portalLeak.update({
+      where: { id: leak.id },
+      data: { hp: newHp },
+    });
+    ticked++;
   }
 
-  return { ticked, expired };
+  return { ticked };
 }

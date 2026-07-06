@@ -43,6 +43,36 @@ try {
   // SSR or storage disabled — default to unmuted.
 }
 
+/**
+ * Schedule disconnect for every node we create. Web Audio nodes
+ * that have been stop()-ed still hold references through their
+ * `connections` graph (o → lp → g → destination is a chain of
+ * strong refs) and won't be GC'd until something disconnects
+ * them. The first oscillator in a chain is the natural anchor
+ * for an onended callback — when it stops, every node upstream
+ * is also done.
+ *
+ * Previously every primitive (playPad, playPluck, playLaser,
+ * playNoiseHit, playKick, playFile) created ~2-4 nodes and
+ * never disconnected. Over a session of 100 sounds the context
+ * accumulated 300-500 retained nodes — each holding freq/type
+ * state and connections. The retained graph explains the
+ * "desktop app takes so much memory" symptom: each layer of
+ * retained nodes forced GC pressure that the browser couldn't
+ * resolve mid-session. Disconnecting on onended fixes it.
+ */
+function scheduleDisconnect(
+  trigger: AudioScheduledSourceNode,
+  nodes: AudioNode[],
+): void {
+  trigger.onended = () => {
+    for (const n of nodes) {
+      try { n.disconnect(); } catch { /* already disconnected */ }
+    }
+    trigger.onended = null;
+  };
+}
+
 function ensureCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!ctx) {
@@ -187,6 +217,10 @@ function playPad(
   o2.start(start);
   o1.stop(start + durationSec + 0.1);
   o2.stop(start + durationSec + 0.1);
+  // Disconnect the whole chain (both oscillators + lowpass + gain)
+  // when the first oscillator ends — anchors the cleanup so we
+  // don't leak the biquad + gain nodes across sounds.
+  scheduleDisconnect(o1, [o1, o2, lp, g]);
 }
 
 /**
@@ -224,6 +258,7 @@ function playPluck(
   envPluck(g, start, durationSec, gain);
   o.start(start);
   o.stop(stop + 0.02);
+  scheduleDisconnect(o, [o, lp, g]);
 }
 
 /**
@@ -257,6 +292,7 @@ function playLaser(
   envPluck(g, start, durationSec, gain);
   o.start(start);
   o.stop(stop + 0.02);
+  scheduleDisconnect(o, [o, bp, g]);
 }
 
 /**
@@ -293,6 +329,7 @@ function playNoiseHit(
   envPluck(g, start, durationSec, gain);
   n.start(start);
   n.stop(stop);
+  scheduleDisconnect(n, [n, f, g]);
 }
 
 /**
@@ -315,6 +352,7 @@ function playKick(): void {
   g.gain.exponentialRampToValueAtTime(0.0001, stop);
   o.start(start);
   o.stop(stop + 0.02);
+  scheduleDisconnect(o, [o, g]);
 }
 
 // =============================================================
@@ -409,6 +447,11 @@ async function playFile(event: SoundEvent): Promise<boolean> {
     env.gain.value = 0.3;
     node.connect(env).connect(c.destination);
     node.start();
+    // Same leak fix as the synth voices — disconnect the chain
+    // (buffer source + gain) when the source ends. Without this,
+    // a session of file-backed sounds (workoutComplete, levelUp,
+    // etc.) accumulates one retained gain node per sound.
+    scheduleDisconnect(node, [node, env]);
     return true;
   } catch {
     return false;

@@ -593,7 +593,7 @@ export function ProfilePage() {
                     value={sexDraft ?? ''}
                     onChange={(e) => setSexDraft((e.target.value || null) as 'MALE' | 'FEMALE' | null)}
                   >
-                    <option value="">— prefer not to say —</option>
+                    <option value="">—</option>
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
                   </select>

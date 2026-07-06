@@ -296,16 +296,19 @@ async function main() {
   }, corrMs);
 
   // Portal-leak daily tick — grows active leaks by +8 HP/day so an
-  // un-engaged leak escalates, and marks leaks past the 48h TTL as
-  // EXPIRED. Runs every hour (cheap; just a SELECT + UPDATE per active
-  // leak) so a leak born mid-day sees its +8 growth tick before the
-  // user logs again. Runs at minute-past-the-hour.
+  // un-engaged leak escalates. Leaks no longer expire (see
+  // portalLeaks.ts MAX_ACTIVE_LEAKS comment for the user-feedback
+  // rationale — leaks are the user's punishment for slipping, and
+  // expiring them softened that). Runs every hour (cheap; just a
+  // SELECT + UPDATE per active leak) so a leak born mid-day sees
+  // its +8 growth tick before the user logs again. Runs at
+  // minute-past-the-hour.
   const leakTick = () => {
     setTimeout(async () => {
       try {
         const { tickLeakGrowth } = await import('./lib/portalLeaks.js');
         const r = await tickLeakGrowth();
-        if (r.ticked > 0 || r.expired > 0) {
+        if (r.ticked > 0) {
           app.log.info(r, 'portal leak hourly tick');
         }
       } catch (err: any) {
