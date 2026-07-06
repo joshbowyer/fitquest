@@ -190,21 +190,12 @@ with edit + delete inline.)
   (Halloween pumpkins, Christmas lights, etc.), UI themes
   (color palettes for the neon glow). All cosmetic unless
   we want to design a real prestige system around them.
-- **HeartsCard → HP bar swap.** The hero-bar header in
-  Layout.tsx was switched to a green HP bar in `2a136f` so
-  pets (which read the same User.hearts value) and the user
-  would see one consistent bar. The dashboard's HeartsCard
-  was left with red ♥ glyphs (rose filled, dark gray empty),
-  which now reads as a different visual element instead of
-  the same HP. Swap the glyphs for a lime-green HP bar
-  matching the hero bar (same `bg-neon-lime` fill, ink track,
-  `animate-heart-warn` pulse at ≤3). Both Casual and Hardcore
-  modes — Casual shows a permanently-full bar + the
-  "switch to Hardcore" hint; Hardcore shows the live 0-10
-  bar + the urgency message. Keeps the multiplier and the
-  regen explainer text below. Pending unlock cards (skill
-  tree, etc.) keep the red ♥ glyphs — that's a different
-  visual (unlock badges), not an HP indicator.
+- (was: HeartsCard → HP bar swap — shipped in eb73bd5. The
+  dashboard HeartsCard now mirrors the hero bar (bg-neon-lime
+  fill, ink track, animate-heart-warn pulse at ≤3). Both
+  Casual and Hardcore modes. Pending unlock cards (skill
+  tree) still use red ♥ glyphs — different visual, kept
+  intentional.)
 - (was: Calendar view — shipped in `cd16301` + `2309089` +
   `26d95a7`. `/calendar` is a month grid + per-day recap that
   shows workouts, weigh-ins, pain, habits, dailies, and the
