@@ -352,16 +352,56 @@ app.post('/unlock', async (req, reply) => {
   // user only needs to see it once. The sibling rows stay in the
   // DB and are auto-DISMISSED when the user unlocks the skill
   // (see /unlock handler above).
+  //
+  // Belt-and-suspenders prereq re-check: a pending row could have
+  // been created by an older matching pass BEFORE the current
+  // explicit per-skill prereqs were seeded (PHANTOM got explicit
+  // prereqs first, then JUGGERNAUT/SCOUT/BERSERKER/TRACER/ORACLE
+  // were converted to the explicit mode in a follow-up pass). The
+  // matching pass at /check-eligible time correctly checks the
+  // CURRENT prereqs, so new pending rows are always met. But old
+  // rows that predate a prereq update are stale — they'd pop up in
+  // the inbox and the /skills/unlock handler would reject them
+  // with 400 "Requires: X". Re-check the prereqs here too so the
+  // inbox only ever surfaces skills that the user CAN unlock right
+  // now, and auto-dismiss any stale rows.
   app.get('/pending-unlocks', async (req) => {
     const me = await requireUser(req);
     const rows = await prisma.pendingSkillUnlock.findMany({
       where: { userId: me.id, status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
-      include: { skill: { select: { name: true, branch: true, tier: true, blurb: true, test: true } } },
+      include: { skill: { select: { id: true, name: true, branch: true, tier: true, blurb: true, test: true, prerequisites: true } } },
     });
+    // Build the unlocked-NAMES set so we can re-check prereqs
+    // against the user's CURRENT unlocked set. The matching pass
+    // already does this when CREATING a row; we re-do it here so
+    // rows created before a prereq update don't keep surfacing.
+    const unlockedRows = await prisma.userSkill.findMany({
+      where: { userId: me.id },
+      select: { skillId: true },
+    });
+    const allSkills = await prisma.skill.findMany({
+      where: { className: me.class ?? undefined },
+      select: { id: true, name: true },
+    });
+    const idToName = new Map(allSkills.map((s) => [s.id, s.name]));
+    const unlockedNames = new Set(
+      unlockedRows.map((r) => idToName.get(r.skillId)).filter((n): n is string => Boolean(n)),
+    );
     const seen = new Set<string>();
-    const items = [];
+    const items: Array<Record<string, unknown>> = [];
+    const staleIds: string[] = [];
     for (const r of rows) {
+      const unmetPrereqs = (r.skill.prerequisites ?? []).filter(
+        (n: string) => !unlockedNames.has(n),
+      );
+      if (unmetPrereqs.length > 0) {
+        // Stale row: the skill's prereqs have changed since this
+        // pending row was created. Mark it for dismissal so it
+        // doesn't show up on the next page load.
+        staleIds.push(r.id);
+        continue;
+      }
       if (seen.has(r.skillId)) continue;
       seen.add(r.skillId);
       items.push({
@@ -384,6 +424,19 @@ app.post('/unlock', async (req, reply) => {
         },
         createdAt: r.createdAt,
       });
+    }
+    // Fire-and-forget auto-dismissal of stale rows. Don't block
+    // the inbox response on this — the user doesn't care that
+    // the cleanup happened, only that their inbox is accurate.
+    if (staleIds.length > 0) {
+      prisma.pendingSkillUnlock
+        .updateMany({
+          where: { id: { in: staleIds } },
+          data: { status: 'DISMISSED', resolvedAt: new Date() },
+        })
+        .catch((e) => {
+          req.log.warn({ err: e, staleIds }, 'failed to auto-dismiss stale pending unlocks');
+        });
     }
     return { items };
   });

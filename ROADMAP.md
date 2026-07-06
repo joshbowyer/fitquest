@@ -55,6 +55,38 @@ are the changelog of what got shipped.
 ### P0 — quick wins (1-2 days each)
 
 - **Dark/light theme toggle** (currently dark-only).
+- **Notification feed / inbox.** Right now unlocks, achievement
+  pops, penance events, level-ups, daily digest, etc. all fire
+  as ephemeral modals + the sound bus. The user can miss things
+  if they dismiss a modal quickly or if they're away from the
+  page. Add a persistent notification center (a sidebar
+  panel or /notifications route) that:
+    - Aggregates all recent events (one row per event, with
+      timestamp + icon + 1-line summary)
+    - Lets the user mark notifications as read / dismiss
+    - Unread count badge in the layout's top bar
+    - Filters by category (skills / penance / shop / system)
+  Storage: a `Notification` table (userId, kind, payload, readAt,
+  createdAt). The seed already creates notifications for level-ups
+  in the morning report sweep, and `/skills/pending-unlocks`
+  creates rows for matches — both could now feed the same inbox
+  API. Unread-count query: `SELECT COUNT(*) FROM "Notification"
+  WHERE "userId" = $1 AND "readAt" IS NULL`.
+- **Skill tree: horizontal layout for mobile** (deferred — pick
+  up after mobile polish). Current branch layout is vertical:
+  each branch is a column of stacked nodes. On phone widths the
+  stack runs off-screen and the user has to scroll-vertically
+  within each branch separately, which makes the chain hard to
+  read end-to-end. Redesign: each branch becomes a column,
+  branches flow LEFT-to-RIGHT across the page, and the user
+  scrolls horizontally to see different branches. Within a
+  branch, nodes flow top-to-bottom (same as today). On desktop
+  this is the same width as today (7 branches × N nodes each).
+  On mobile, the page becomes a horizontal strip the user pans
+  across. Implementation: switch the parent `flex flex-col` to
+  `flex flex-row overflow-x-auto`; each `BranchColumn` already
+  works as a column. Add touch gestures (swipe left/right) and
+  a row of "you are at branch X / 7" indicator dots at the top.
 
 ### Recently shipped P0s
 
@@ -528,6 +560,24 @@ with edit + delete inline.)
 
 ### 2026-07-06 session (large)
 
+- ✅ **Pending-unlock inbox re-checks prereqs on read.** The
+  `/skills/pending-unlocks` endpoint just returned PENDING rows
+  without re-validating them against the user's CURRENT unlocked
+  set. If a row was created by an older matching pass before the
+  class's prereqs were updated (e.g. PHANTOM was the first class
+  to ship explicit per-skill prereqs; the other 5 classes came
+  later), the row would still pop up in the inbox even though
+  the current prereqs aren't met. The matching pass correctly
+  checks prereqs at CREATION time (`findEligibleSkillUnlocks`),
+  but stale rows could persist after a prereq update. Fix: the
+  GET endpoint now re-checks `skill.prerequisites` against the
+  user's current unlocked names; rows that don't pass are
+  auto-dismissed (status='DISMISSED') so the inbox only ever
+  surfaces skills the user can unlock right now. The
+  /skills/unlock handler still does its own prereq check (returns
+  400 "Requires: X" if unmet), so the inbox-side guard is a
+  belt-and-suspenders against stale rows rather than the only
+  check.
 - ✅ **Barcode scanner (OpenFoodFacts lookup) on the food tracker.**
   Three scan paths dispatched at runtime: native
   @capacitor/barcode-scanner on Android (ML Kit under the
