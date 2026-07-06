@@ -177,12 +177,13 @@ with edit + delete inline.)
   Toggle button + drag-handle glyph + Done/reset buttons mirror
   the desktop pattern. Order syncs across devices via the
   shared localStorage key.)
-- **Galaxy map on mobile is too small + mis-aligned.** Map
-  should be full-width on mobile, and the "Class:" / "Portal:"
-  text labels should drop below the map instead of sitting to
-  its right (the right-side stack doesn't fit at narrow widths).
-  In progress: padding tightened + flex-1 on mobile + legend
-  wraps cleanly below. Test on a phone and confirm.
+- (was: Galaxy map on mobile — shipped in `7d21db2`. Was
+  showing too small + mis-aligned because of the redundant
+  below-SVG legend block taking ~30px of vertical space + the
+  right-side label stack not fitting at narrow widths. Fixed by
+  dropping the bottom legend (each class is already labelled on
+  its portal disc inside the SVG) + tightening wrapper padding
+  + flex-1 on mobile so the SVG claims the available space.)
 - (was: Remove the "⚙ Settings" button from the top of
   /dashboard — shipped in `0cdbc8c`. /dashboard's PageHeader
   action now only shows the Calendar quick-link; Settings lives
