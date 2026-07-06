@@ -14,6 +14,16 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
+- **Android release: v1.0.3 published.** APK signed with debug
+  keystore, 9.3MB, attached to the
+  [v1.0.3 release](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.3).
+  Tracks parent-repo commits since v1.0.2 (the modal-ghosting
+  fix, pets overhaul, HeartsCard HP-bar polish, BICEP split,
+  bodyfat method picker, sex picker MALE/FEMALE-only). Sync
+  mechanism in place via `scripts/sync-android.sh` (this repo)
+  → `../fitquest-android/scripts/sync-android.sh` — future web/
+  api commits will land in the next Android CHANGELOG + release-
+  notes draft automatically.
 - **Android sync:** `scripts/sync-android.sh` (in this repo) wraps
   the script at `../fitquest-android/scripts/sync-android.sh` so the
   Android wrapper doesn't go stale when web/api ships. Run from
@@ -27,27 +37,7 @@
   conventional-commit prefix (feat / fix / polish / etc), updates
   `CHANGELOG.md` and writes a `RELEASE_NOTES_vX.Y.Z.md` draft
   ready for `gh release create`. It does NOT run gradle, sign, or
-  publish — those stay manual. **v1.0.3 hasn't been published yet**
-  even though `app/build.gradle` claims it (the parent repo had no
-  shipped changes since v1.0.2 when the bump commit landed). Run the
-  sync script + the gradle build when ready to ship.
-- **Android release: v1.0.3 is staged but not yet published.**
-  Once v1.0.3 changes ship here, build the APK with:
-  ```
-  cd /home/josh-claw-code/FitnessStats/web && npx vite build
-  cd /home/josh-claw-code/FitnessStats/web && npx cap sync android
-  cd /home/josh-claw-code/fitquest-android && ./gradlew assembleRelease
-  ```
-  Output: `app/build/outputs/apk/release/app-release-unsigned.apk`.
-  The APK is **unsigned** — no release keystore in
-  `app/build.gradle`. For Play Store distribution we'd need to
-  add a `signingConfigs { release { ... } }` block + a keystore.
-  For internal / sideload distribution the unsigned APK works
-  as-is. Publish via:
-  ```
-  gh release create v1.0.3 RELEASE_NOTES_v1.0.3.md \
-    app/build/outputs/apk/release/app-release.apk
-  ```
+  publish — those stay manual.
 
 
 ## Active (in progress)
@@ -541,9 +531,14 @@ with edit + delete inline.)
   by conventional-commit prefix, writes CHANGELOG.md +
   RELEASE_NOTES_vX.Y.Z.md. Does NOT run gradle / sign / publish —
   those stay manual per the user's "don't build yet" guardrail.
-  v1.0.3 already has a CHANGELOG + release-notes draft ready; once
-  the user wants to ship, the path is documented in the new
-  "Operations → Android sync" block above.
+  v1.0.3 shipped to
+  [GitHub releases](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.3).
+- ✅ Sex picker: MALE/FEMALE only. Dropped the OTHER/non-binary
+  option from /profile — body-fat formulas (Jackson-Pollock,
+  Navy tape) only have validated forms for those two sexes. The
+  api's Sex enum still accepts OTHER (legacy rows + backend
+  compat); users with OTHER fall through to the male formula at
+  the picker.
 
 - ✅ Server-UTC bug: app was rolling non-UTC users over to
   tomorrow. The api container runs in UTC; 17 places across
