@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -182,6 +183,57 @@ export function InventoryPage() {
                   </button>
                 );
               })}
+            </div>
+          </Panel>
+
+          {/* Soulstones — display only. Use the link below to spend one
+              in /profile (Class change confirmation). We intentionally
+              don't allow spending from here because the modal needs the
+              pendingClass state, which only lives on /profile. */}
+          <Panel
+            title="SOULSTONES"
+            variant="amber"
+            action={
+              <span className="text-[10px] font-mono text-ink-300 tracking-widest">
+                {user.soulstones ?? 0} active
+              </span>
+            }
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 flex items-center justify-center text-3xl border border-neon-amber/40 bg-neon-amber/5 shrink-0"
+                aria-hidden
+              >
+                💎
+              </div>
+              <div className="flex-1 text-[10px] font-mono">
+                <div className="text-ink-100">
+                  <span className="neon-text-amber font-bold">{user.soulstones ?? 0}</span>{' '}
+                  <span className="text-ink-300">
+                    {(user.soulstones ?? 0) === 1 ? 'soulstone' : 'soulstones'} in inventory
+                  </span>
+                </div>
+                <div className="text-ink-400 mt-1">
+                  Soulstones bypass the once-per-year class lock. Bypass via{' '}
+                  <Link
+                    to="/profile"
+                    className="neon-text-amber hover:underline"
+                    onClick={() => {
+                      // Scroll the profile page to the Class panel so
+                      // the user lands right on the class-change UI.
+                      // (The Profile page reads location.hash to jump.)
+                      window.location.hash = 'class';
+                    }}
+                  >
+                    Profile → Class
+                  </Link>
+                  .
+                </div>
+                <div className="text-ink-500 mt-0.5 text-[9px]">
+                  Each stone is one consumable class change. They expire 7 days
+                  after dropping from a world-boss kill.
+                </div>
+              </div>
             </div>
           </Panel>
 

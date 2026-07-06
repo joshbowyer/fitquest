@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Modal } from '@/components/Modal';
 import { BodyfatMethodPicker } from '@/components/BodyfatMethodPicker';
 import { AvatarCustomizer } from '@/components/AvatarCustomizer';
@@ -117,8 +118,20 @@ function storageUnitForKey(key: string): string {
 export function ProfilePage() {
   const { user, refresh } = useAuth();
   const qc = useQueryClient();
+  const location = useLocation();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const inImperial = system === 'IMPERIAL';
+
+  // Scroll to the #class panel when arriving from a deep link (e.g.
+  // /inventory's "Profile → Class" link sets location.hash = 'class').
+  // Without this the link would just navigate but the user would have
+  // to scroll to find the class-change UI.
+  useEffect(() => {
+    if (location.hash === 'class') {
+      const el = document.getElementById('class');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash]);
 
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [classChoice, setClassChoice] = useState<ClassName | null>(null);
@@ -300,6 +313,12 @@ export function ProfilePage() {
       return { recomputed: false, changeCount: 0 };
     },
     onSuccess: async (res) => {
+      // Belt-and-suspenders: clear the pending-class state in
+      // onSuccess too (the click handler already does this
+      // synchronously, but if a re-render batches it oddly the
+      // modal could stick). Without this, "click change to SCOUT
+      // then click away" was the workaround.
+      setPendingClass(null);
       await refresh();
       qc.invalidateQueries({ queryKey: ['genetic-max'] });
       qc.invalidateQueries({ queryKey: ['measurements'] });
@@ -647,7 +666,7 @@ export function ProfilePage() {
         <AvatarCustomizer user={user} />
 
         {/* CLASS */}
-        <Panel variant="cyan" title="Class">
+        <Panel variant="cyan" title="Class" id="class">
           <div className="text-[10px] font-mono text-ink-300 mb-3">
             Your class determines which skill tree you can unlock and which stats get the most XP from training.
             Classes are gated by your <span className="neon-text-cyan">archetype</span> — lean into what you are, not what you are not.
@@ -753,7 +772,15 @@ export function ProfilePage() {
               const isCurrentClass = user.class === c;
               const isPendingClass = pendingClass === c;
               const eligible = isClassEligible(c, previewArchetype);
-              const disabled = !eligible || (user.classLock?.locked ?? false);
+              // Locked = disabled UNLESS the user has a soulstone to
+              // spend (canUseSoulstone). The old logic disabled the
+              // button even when the user had soulstones — the cached
+              // user.classLock just hadn't refreshed yet, so the
+              // click did nothing. Now we honor canUseSoulstone.
+              const disabled = !eligible || (
+                (user.classLock?.locked ?? false) &&
+                !user.classLock?.canUseSoulstone
+              );
               return (
                 <button
                   key={c}
@@ -944,14 +971,13 @@ export function ProfilePage() {
                   setClassChoice(null);
                   saveM.run({ targetClass: target });
                 }}
-                className={`flex-1 ${user.classLock?.locked && user.classLock.canUseSoulstone ? 'btn-neon-magenta' : 'btn-neon-magenta'}`}
+                className="flex-1 btn-neon-magenta"
               >
                 {user.class
                   ? user.classLock?.locked && user.classLock.canUseSoulstone
-                    ? '💎 Use Soulstone · Switch to '
-                    : 'Switch to '
-                  : 'Pick '}
-                {CLASS_META[pendingClass].label}
+                    ? '💎 Use Soulstone to switch class'
+                    : 'Switch to ' + CLASS_META[pendingClass].label
+                  : 'Pick ' + CLASS_META[pendingClass].label}
               </button>
             </div>
           </Modal>
