@@ -139,7 +139,7 @@ export function GalaxyMapOverlay({
           is visible without scrolling. On mobile, scales to width; on
           desktop, scales to height (taller than wide). */}
       <div
-        className="w-full h-full flex items-center justify-center p-12 md:p-16"
+        className="w-full h-full flex flex-col items-center justify-center gap-3 p-2 md:p-16 md:gap-0"
         onClick={(e) => e.stopPropagation()}
       >
         <ConstellationMap

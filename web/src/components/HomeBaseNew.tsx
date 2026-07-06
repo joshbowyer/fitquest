@@ -116,7 +116,7 @@ export function HomeBasePage() {
           </NeonButton>
         }
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Tier + shield summary */}
           <div className="md:col-span-2">
             {homeQ.data ? (
