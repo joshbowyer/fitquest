@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -573,13 +573,24 @@ function BranchColumn({
   className: string;
   onSkillClick: (skill: Skill) => void;
 }) {
+  // Mobile horizontal-scroll: per-branch fixed width (no flex-1)
+  // + data-branch attribute so the scroll-indicator can compute
+  // the active branch by `el.offsetLeft` without an index lookup.
+  // Removing flex-1 + bumping the min-width lets the columns sit
+  // at their natural size and the parent scroll horizontally
+  // between them — the flex-1 behavior was crushing all 7
+  // branches into a single screen-width row on mobile with no
+  // overflow.
   const icon = branchIcon(branch.branchName, className);
   const calitreeFile = calitreeIconFor(branch.branchName);
   const unlockedCount = branch.skills.filter((s) => s.unlocked).length;
   const total = branch.skills.length;
   const allDone = unlockedCount === total;
   return (
-    <div className="flex flex-col gap-3 min-w-[140px] flex-1">
+    <div
+      data-branch={branch.branchName}
+      className="shrink-0 snap-center w-[160px] md:w-[180px] flex flex-col gap-3"
+    >
       {/* Branch header — centered icon + name + progress. Always
           rendered in the class color (or neon-lime if every skill
           is unlocked) regardless of whether the icon is a
@@ -665,10 +676,91 @@ function BranchColumn({
   );
 }
 
+/**
+ * Branch scroll indicator — a row of dots above the tree showing
+ * which branch is currently scrolled into view, plus a "Branch
+ * N of M" label. The active dot updates on scroll via a passive
+ * listener (no setState in the scroll handler — we use a ref + the
+ * "scroll" event to compute the index lazily and only update state
+ * when the index actually changes). On desktop where the whole
+ * tree fits, the dots render collapsed (single dot, no label)
+ * because the active index never changes.
+ */
+function BranchScrollIndicator({
+  branches,
+  scrollRef,
+}: {
+  branches: Branch[];
+  scrollRef: RefObject<HTMLDivElement | null>;
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const compute = () => {
+      const scrollLeft = el.scrollLeft;
+      const containerWidth = el.clientWidth;
+      const children = Array.from(el.querySelectorAll('[data-branch]')) as HTMLElement[];
+      if (children.length === 0) return;
+      let best = 0;
+      for (let i = 0; i < children.length; i++) {
+        const offsetLeft = children[i].offsetLeft;
+        if (offsetLeft - scrollLeft < containerWidth * 0.5) {
+          best = i;
+        } else {
+          break;
+        }
+      }
+      setActiveIdx((prev) => (prev === best ? prev : best));
+    };
+    compute();
+    el.addEventListener('scroll', compute, { passive: true });
+    window.addEventListener('resize', compute);
+    return () => {
+      el.removeEventListener('scroll', compute);
+      window.removeEventListener('resize', compute);
+    };
+  }, [scrollRef, branches.length]);
+  // If everything fits (no overflow), don't show a busy row of
+  // dots — the user can already see the whole tree. The
+  // scrollWidth vs clientWidth comparison is cheap and lets
+  // desktop look clean.
+  const needsScroll = scrollRef.current
+    ? scrollRef.current.scrollWidth > scrollRef.current.clientWidth + 4
+    : branches.length > 3;
+  if (!needsScroll) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 px-2 pt-1 pb-2 text-[10px] font-mono uppercase tracking-widest text-ink-300">
+      <span>Branch {activeIdx + 1} of {branches.length}</span>
+      <span className="text-ink-500">·</span>
+      <div className="flex items-center gap-1">
+        {branches.map((b, i) => (
+          <span
+            key={b.branchName}
+            aria-label={b.branchName}
+            className={classNames(
+              'inline-block rounded-full transition-all',
+              i === activeIdx
+                ? 'w-2.5 h-2.5 bg-neon-cyan shadow-neon-cyan'
+                : 'w-1.5 h-1.5 bg-ink-500/60',
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SkillTreePage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Skill | null>(null);
+  // Ref to the horizontal-scroll container so the dot indicator
+  // (BranchScrollIndicator below) can compute which branch is
+  // currently scrolled into view. Using a ref (not state) so the
+  // scroll handler doesn't cause the whole tree to re-render on
+  // every pixel of touch movement.
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
   // Pending-unlock queue — populated on mount from /skills/pending-unlocks
   // and consumed one modal at a time. FIFO so the user sees their
   // oldest eligibility first.
@@ -842,9 +934,26 @@ export function SkillTreePage() {
         subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · pass the test to unlock`}
       />
 
-      {/* Tree view — branches as columns, each skill a circular flow node */}
-      <div className="overflow-x-auto pb-2">
-        <div className="flex gap-4 min-w-fit px-2">
+      {/* Tree view — branches as columns, each skill a circular flow node.
+          Mobile-first: branches have a fixed min-width (no flex-1
+          shrinking) and the parent uses scroll-snap-x so the user
+          pans branch-to-branch with a clean stop. Edge-fade
+          gradients on left/right hint that more content is off-
+          screen; the dot indicator above shows the current branch
+          position. On desktop the page renders the same — all 7
+          branches fit horizontally with no scrolling required. */}
+      <BranchScrollIndicator branches={branches} scrollRef={treeScrollRef} />
+      <div
+        ref={treeScrollRef}
+        className={classNames(
+          'relative overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory',
+        )}
+      >
+        {/* Left edge fade — gradient mask hinting at "scroll right" */}
+        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-bg-900/80 to-transparent z-10" aria-hidden />
+        {/* Right edge fade — gradient mask hinting at "more to the right" */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-bg-900/80 to-transparent z-10" aria-hidden />
+        <div className="flex gap-4 px-2 py-2">
           {branches.map((b) => (
             <BranchColumn key={b.branchName} branch={b} className={treeQ.data.className} onSkillClick={setSelected} />
           ))}

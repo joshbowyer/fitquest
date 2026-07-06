@@ -374,18 +374,58 @@ export function DashboardPage() {
 
   const unlocked = (achievementsQ.data?.items || []).filter((a) => a.unlocked);
 
+  // Pull-to-refresh: tap the top of the page and drag down past
+  // the threshold to invalidate all the dashboard's queries in
+  // parallel. Mobile-friendly on Capacitor (touch events fire
+  // through the WebView); no-op on desktop (the touch listeners
+  // never fire). The threshold is generous (80px) so a casual
+  // scroll-at-the-top doesn't trigger a refresh.
+  // The scrollable element lives inside the shared <Layout> — we
+  // resolve it via selector ("main") rather than threading a ref
+  // through Layout.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      // Invalidate every query the dashboard reads so all
+      // tiles reload in parallel. We don't fire individual
+      // refetch() calls — invalidate is sufficient because the
+      // useQuery hooks re-fetch on mount + on stale.
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+      qc.invalidateQueries({ queryKey: ['prs'] });
+      qc.invalidateQueries({ queryKey: ['achievements'] });
+      qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['home-base'] });
+      qc.invalidateQueries({ queryKey: ['meals'] });
+    },
+  });
+
   return (
     <Layout>
       <PageHeader
         title="// Stat Sheet"
         subtitle={`${user.classDisplay ?? cls?.label ?? 'Unclassed'} // ${user.username}`}
-        action={
-          <div className="flex items-center gap-2">
-            <Link to="/calendar" className="btn-ghost text-[10px]">
-              ◷ Calendar
-            </Link>
-          </div>
-        }
+        action={(
+          <>
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
+              <Link to="/calendar" className="btn-ghost text-[10px]">
+                ◷ Calendar
+              </Link>
+            </div>
+          </>
+        )}
       />
 
         {/* Top hero: character + raid + hearts + home-base. All same

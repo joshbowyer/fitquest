@@ -761,4 +761,34 @@ export async function workoutRoutes(app: FastifyInstance) {
     await prisma.workout.delete({ where: { id } });
     return { ok: true };
   });
+
+  // POST /workouts/bulk-delete — delete N workouts in one round-trip.
+  // Powers the mobile-polish long-press → multi-select → "Delete
+  // N selected" flow on /workouts (mobile users would otherwise
+  // tap "Delete" on each workout one at a time, which is painful
+  // after a bulk FIT import that needs cleanup).
+  //
+  // Verifies each id belongs to the caller before deleting (a
+  // malicious client could pass another user's id otherwise). All
+  // deletes run in a single transaction — either all succeed or
+  // none. The UserSkill / pending-unlock cascades fire as part of
+  // the transaction.
+  const BulkDeleteSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(200) });
+  app.post('/bulk-delete', async (req) => {
+    const me = await requireUser(req);
+    const body = BulkDeleteSchema.parse(req.body);
+    // Ownership check — only delete rows the user owns.
+    const owned = await prisma.workout.findMany({
+      where: { id: { in: body.ids }, userId: me.id },
+      select: { id: true },
+    });
+    const ownedIds = owned.map((r) => r.id);
+    if (ownedIds.length === 0) {
+      return reply.code(404).send({ error: 'No matching workouts' });
+    }
+    const deleted = await prisma.$transaction(
+      ownedIds.map((id) => prisma.workout.delete({ where: { id } })),
+    );
+    return { ok: true, deleted: deleted.length, requested: body.ids.length };
+  });
 }

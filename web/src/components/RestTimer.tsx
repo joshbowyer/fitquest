@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { playSoundAndNotify } from '@/lib/soundBus';
+import { useDopamineTap } from '@/hooks/useDopamineTap';
 
 type Props = {
   onTick?: (secondsRemaining: number) => void;
@@ -22,6 +23,13 @@ export function RestTimer({ onTick, onComplete }: Props) {
   const intervalRef = useRef<number | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  // Haptic feedback on the rest-timer-end signal. Uses the same
+  // shared `useDopamineTap` helper as the check-in save button —
+  // `navigator.vibrate` is best-effort and no-ops on desktop
+  // Safari / iOS Safari (which doesn't expose it). Distinctive
+  // 3-pulse pattern ("success") rather than a single tap so the
+  // user feels the timer ended even with the phone in a pocket.
+  const { onSuccess: hapticOnSuccess } = useDopamineTap();
 
   // Listen for external preset events
   useEffect(() => {
@@ -48,6 +56,11 @@ setSeconds((s) => {
               // bus as the rest of the app's SFX. Honors the
               // user's mute toggle from Settings → Sound.
               playSoundAndNotify('restTimerDone');
+              // Haptic — short 3-pulse pattern, only fires on
+              // platforms that expose `navigator.vibrate`
+              // (Android Chrome, iOS Chrome via Capacitor, etc.).
+              // Best-effort: silently no-op on desktop.
+              hapticOnSuccess();
               onCompleteRef.current?.();
               return 0;
             }

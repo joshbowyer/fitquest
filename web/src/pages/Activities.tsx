@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -14,6 +14,7 @@ import { LiveWorkoutLogger } from '@/components/LiveWorkoutLogger';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { NeonButton } from '@/components/NeonButton';
 import { Link } from 'react-router-dom';
+import { useLongPress } from '@/hooks/useLongPress';
 
 function kgToLb(kg: number): number { return kg * 2.20462; }
 function weightUnitLabel(units: UnitSystem): string {
@@ -23,6 +24,18 @@ function weightUnitLabel(units: UnitSystem): string {
 export function ActivitiesPage() {
   const { user } = useAuth();
   const units: UnitSystem = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
+  const qc = useQueryClient();
+
+  // Multi-select state — drives the long-press → "Delete N
+  // selected" flow on the history list. `selected` is a Set of
+  // workout ids; `selectionMode` is the boolean that controls
+  // whether the row renders the checkbox indicator + whether the
+  // tap behavior toggles selection vs. navigates. The state is
+  // kept in the parent so the sticky "Delete N selected" bottom
+  // bar can read it without re-rendering the rows.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectionMode = selected.size > 0;
+  const exitSelection = () => setSelected(new Set());
 
   // History filters. Default to 'all' because the user routinely
   // bulk-imports a season of workouts at once (e.g. Gadgetbridge's
@@ -51,6 +64,21 @@ export function ActivitiesPage() {
   const list = useQuery({
     queryKey: ['workouts'],
     queryFn: () => api<{ items: Workout[]; total: number }>('/workouts?limit=100'),
+  });
+
+  // Bulk-delete mutation. Powers the multi-select "Delete N
+  // selected" sticky bar. POSTs to /workouts/bulk-delete (see
+  // api/src/routes/workouts.ts). Single round-trip for the whole
+  // batch; the api runs the deletes in a transaction and verifies
+  // ownership. On success, invalidate the workouts query and exit
+  // selection mode.
+  const bulkDeleteM = useMutation<{ deleted: number }, string[]>({
+    mutationFn: (ids) =>
+      api('/workouts/bulk-delete', { method: 'POST', body: { ids } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workouts'] });
+      exitSelection();
+    },
   });
 
   // Saved workout routines (templates). The quick-start card shows
@@ -363,7 +391,31 @@ export function ActivitiesPage() {
 
           <div className="space-y-2 max-h-[80vh] overflow-y-auto pr-1">
             {filteredHistory.map((w) => (
-              <ActivityCard key={w.id} workout={w} units={units} timezone={user?.timezone ?? null} userWeightKg={user?.weightKg ?? null} />
+              <ActivityCard
+                key={w.id}
+                workout={w}
+                units={units}
+                timezone={user?.timezone ?? null}
+                userWeightKg={user?.weightKg ?? null}
+                selected={selected.has(w.id)}
+                selectionMode={selectionMode}
+                onToggleSelect={() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(w.id)) next.delete(w.id);
+                    else next.add(w.id);
+                    return next;
+                  });
+                }}
+                onEnterSelection={() => {
+                  setSelected((prev) => {
+                    if (prev.has(w.id)) return prev;
+                    const next = new Set(prev);
+                    next.add(w.id);
+                    return next;
+                  });
+                }}
+              />
             ))}
             {(list.data?.items || []).length === 0 && (
               <div className="text-xs text-ink-300 font-mono text-center py-6 border border-dashed border-ink-700/30">
@@ -373,12 +425,78 @@ export function ActivitiesPage() {
           </div>
         </Panel>
       </div>
+
+      {/* Sticky multi-select action bar — only visible when at least
+          one workout is selected. Floats above the page bottom
+          edge with a frosted background so the row content stays
+          readable underneath. "Cancel" exits selection mode without
+          deleting anything; the danger-styled "Delete" button calls
+          the bulk-delete mutation. The pending state is reflected
+          on the button via `loading`. */}
+      {selectionMode && (
+        <div className="fixed bottom-4 inset-x-0 z-30 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-bg-900/95 border border-rose-500/40 shadow-2xl backdrop-blur-md rounded-md px-4 py-2 flex items-center gap-3 text-sm font-mono">
+            <span className="text-ink-100">
+              <span className="text-rose-300 font-bold">{selected.size}</span>
+              {' '}selected
+            </span>
+            <button
+              type="button"
+              onClick={exitSelection}
+              className="px-3 py-1 text-xs uppercase tracking-widest border border-ink-500/50 text-ink-200 hover:border-ink-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={bulkDeleteM.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete ${selected.size} session${selected.size === 1 ? '' : 's'}?`)) {
+                  bulkDeleteM.mutate(Array.from(selected));
+                }
+              }}
+              className="px-3 py-1 text-xs uppercase tracking-widest border border-rose-500/60 text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50"
+            >
+              {bulkDeleteM.isPending ? 'Deleting…' : `Delete ${selected.size}`}
+            </button>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
 
-function ActivityCard({ workout: w, units, timezone, userWeightKg }: { workout: any; units: UnitSystem; timezone?: string | null; userWeightKg?: number | null }) {
+function ActivityCard({
+  workout: w,
+  units,
+  timezone,
+  userWeightKg,
+  selected,
+  selectionMode,
+  onToggleSelect,
+  onEnterSelection,
+}: {
+  workout: any;
+  units: UnitSystem;
+  timezone?: string | null;
+  userWeightKg?: number | null;
+  selected: boolean;
+  selectionMode: boolean;
+  onToggleSelect: () => void;
+  onEnterSelection: () => void;
+}) {
   const navigate = useNavigate();
+  // Long-press detector — fires `onEnterSelection` after 500ms
+  // without a >10px drift. On touch devices (mobile) this is the
+  // standard multi-select gesture; on desktop it also works
+  // (mouse-hold), which is convenient for testing in the dev
+  // tools. When selectionMode is already active the row's
+  // click-tap behavior switches to `onToggleSelect` via the
+  // merged handler below.
+  const longPress = useLongPress<HTMLButtonElement>({
+    onLongPress: () => onEnterSelection(),
+    onPressStart: () => { /* no-op visual: the row gets a faint highlight via the :active rule */ },
+  });
   // Reduce of an empty array throws if no initial value is passed.
   // Pass 0 as the initial value so workouts with no exercises (e.g.
   // a CARDIO or MOBILITY log) render without crashing. Use the
@@ -399,14 +517,37 @@ function ActivityCard({ workout: w, units, timezone, userWeightKg }: { workout: 
   return (
     <button
       type="button"
-      onClick={() => navigate(`/activities/${w.id}`)}
+      // Click behavior: in selectionMode, toggle selection. Otherwise
+      // (default) navigate to the detail page. The long-press handlers
+      // sit alongside — they're passive on touch devices and don't
+      // interfere with the click path.
+      onClick={selectionMode ? onToggleSelect : () => navigate(`/activities/${w.id}`)}
+      {...longPress}
       className={classNames(
-        'w-full block border p-3 text-left transition-all hover:border-neon-cyan/60',
-        isFitImport
-          ? 'border-neon-amber/40 bg-neon-amber/5'
-          : 'border-ink-500/30 bg-bg-700/40',
+        'w-full block border p-3 text-left transition-all',
+        selected
+          ? 'border-neon-rose/80 bg-rose-500/10 ring-1 ring-neon-rose/40'
+          : isFitImport
+            ? 'border-neon-amber/40 bg-neon-amber/5 hover:border-neon-cyan/60'
+            : 'border-ink-500/30 bg-bg-700/40 hover:border-neon-cyan/60',
       )}
     >
+      {selectionMode && (
+        <div
+          aria-hidden
+          className="absolute top-2 right-2 w-4 h-4 rounded-sm border-2 flex items-center justify-center"
+          style={{
+            borderColor: selected ? '#ff3a6a' : '#3a3f4a',
+            background: selected ? '#ff3a6a' : 'transparent',
+          }}
+        >
+          {selected && (
+            <svg viewBox="0 0 16 16" className="w-3 h-3 text-bg-900" fill="currentColor" aria-hidden>
+              <path d="M13.485 1.929a1 1 0 0 0-1.414 0L5 8.999 1.929 5.929a1 1 0 0 0-1.414 1.414l3.5 3.5a1 1 0 0 0 1.414 0L13.485 3.343a1 1 0 0 0 0-1.414z" />
+            </svg>
+          )}
+        </div>
+      )}
       <div className="flex justify-between items-baseline mb-2 gap-2">
         <span className="font-display tracking-wider text-sm text-neon-cyan truncate">
           {w.name || w.type}
