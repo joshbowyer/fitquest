@@ -33,10 +33,8 @@ export async function skillRoutes(app: FastifyInstance) {
       prisma.userSkill.findMany({ where: { userId: me.id } }),
     ]);
     const unlockedIds = new Set(unlocked.map((u) => u.skillId));
-    const totalSpent = all.filter((s) => unlockedIds.has(s.id)).reduce((a, s) => a + s.cost, 0);
     return {
       className: me.class,
-      skillPoints: Math.max(0, Math.floor((me.level - 1) / 2) - totalSpent),
       items: all.map((s) => ({
         id: s.id,
         name: s.name,
@@ -47,7 +45,6 @@ export async function skillRoutes(app: FastifyInstance) {
         branch: s.branch,
         blurb: s.blurb,
         position: s.position,
-        cost: s.cost,
         prerequisites: s.prerequisites,
         test: s.test,
         // The in-game perk (effects JSON) is preserved for
@@ -155,19 +152,12 @@ app.post('/unlock', async (req, reply) => {
         });
       }
     }
-    // Skill points. Only enforced for legacy pre-v1 skills (no
-    // test defined). v1 skills have a real test — passing it IS
-    // the cost, so we don't double-charge with an SP gate. The
-    // SP economy still exists for budgeting purposes (the
-    // SkillTree page shows your available SP) but the api never
-    // blocks a test-passing unlock on it.
-    if (!skill.test) {
-      const spent = mySkills.reduce((a, s) => a + s.skill.cost, 0);
-      const available = Math.max(0, Math.floor((me.level - 1) / 2) - spent);
-      if (skill.cost > available) {
-        return reply.code(400).send({ error: 'Not enough skill points' });
-      }
-    }
+    // Skill points gate — REMOVED. The SP economy is gone; the unlock
+    // is gated entirely on the test (if defined) + the per-skill
+    // prereqs declared in the seed. If you can do the test, you
+    // can unlock the skill — no level gate, no point economy.
+    // Pre-v1 skills (no test) still get the prereq check but no
+    // SP cost.
     await prisma.userSkill.create({ data: { userId: me.id, skillId: skill.id } });
     // If this unlock came from a PendingSkillUnlock row, mark
     // it UNLOCKED + set resolvedAt. The matching pass won't see

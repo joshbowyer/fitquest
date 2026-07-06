@@ -5,8 +5,12 @@
  *  - wrong class → 400
  *  - not found → 404
  *  - prereq missing → 400
- *  - SP cost exceeded → 400
  *  - happy path → 200
+ *
+ * Note: the SP economy is gone (commit that removed it). The api
+ * no longer gates unlocks on a points cost — only the test
+ * (if defined) and the per-skill prereqs declared in the seed.
+ * Pre-v1 skills (no test) get the prereq check only.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 

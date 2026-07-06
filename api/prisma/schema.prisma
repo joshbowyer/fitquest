@@ -762,7 +762,11 @@ model Skill {
   /// against this threshold. See api/src/lib/skillTest.ts for
   /// the metric-to-validator mapping.
   test           Json?
-  cost           Int                  @default(1)
+  /// Legacy SP cost. Default 0 since the SP economy is gone (the
+  /// unlock is gated on the test passing + the per-skill prereqs).
+  /// Column kept so historical rows don't need a migration; the
+  /// api doesn't read or write it.
+  cost           Int                  @default(0)
   prerequisites  String[]
   position       Int
   /// Branch within the class (e.g. JUGGERNAUT's "Squat", PHANTOM's

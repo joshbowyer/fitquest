@@ -64,6 +64,23 @@
   T2 was correctly offered. Loose matching (multiple
   skills per exercise) is documented in RECIPES.md §14 as
   a separate fix pass.)
+- ✅ SP economy removed; PHANTOM skill tree rewritten with linear
+  per-skill prereqs + missing skills added. The `1 SP per 2 levels`
+  budget gate was confusing — it double-charged users who had
+  already passed a skill's test. Dropped entirely: the api no
+  longer reads/writes the cost field (kept the column for backward
+  compat with default 0), no SP gate in the unlock route, no SP
+  display in the SkillTree page header or skill node, no "costs X SP"
+  copy in the unlock modal. PHANTOM's per-skill `prereqs: string[]`
+  field lets the seed declare explicit linear chains (or weaving
+  merge points for skills that should require multiple
+  predecessors like the 5 Ring Muscle-Ups merge from Ring Rows +
+  Ring Dips). Other classes keep the old tier-based heuristic until
+  the same fix pass runs there. New skills added for PHANTOM:
+  Legs branch (NEW — Squat to Chair → Bulgarian → Pistol → Dragon
+  Pistol + 3 intermediates), Back Lever, One-Arm Pull-Up. Linear
+  topology keeps the tree readable top-to-bottom. Same-fix-for-
+  others is on the backlog.
 - (was: set-as-primary button click "does nothing" — was the
   cache-update path not re-rendering. Rewrote in `1b527c9`
   to bypass useMutation: direct `api<>()` call writes the
@@ -211,6 +228,17 @@ with edit + delete inline.)
 
 ### Measurements
 
+- **Skill tree: same explicit-prereqs treatment for the other
+  classes.** PHANTOM was just rebuilt with linear per-skill
+  prereqs + missing skills added (Legs branch, back lever,
+  one-arm pull-up). JUGGERNAUT / SCOUT / BERSERKER / TRACER /
+  ORACLE still use the old auto-T1-all-tier heuristic — fine
+  but inconsistent with PHANTOM. Apply the same explicit-prereqs
+  cleanup so every class reads as a clean linear DAG. Also use
+  the opportunity to backfill missing skills per the calitree.app
+  domain reference (each class has ~50 skills, but several are
+  shared between classes — careful with seeding so we don't
+  duplicate).
 - **Genetic-max consistency between /profile, /measurements,
   and /dashboard.** All three pages need to surface the same
   value for the same metric, but three independent code paths

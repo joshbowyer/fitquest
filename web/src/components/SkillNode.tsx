@@ -21,8 +21,7 @@ const TIER_GLOW: Record<string, string> = {
   TIER_3: 'shadow-neon-amber/40',
 };
 
-export function SkillNode({ skill, onUnlock, affordable, unlockable, unlocking }: Props) {
-  const cost = skill.cost;
+export function SkillNode({ skill, onUnlock, unlockable, unlocking }: Props) {
   const baseClasses = 'w-full text-left p-3 border-2 transition-all cursor-pointer';
   const unlocked = skill.unlocked;
   // Render the Skill.effects JSON as a short, comma-joined line so
@@ -54,7 +53,7 @@ export function SkillNode({ skill, onUnlock, affordable, unlockable, unlocking }
         }`}>
           {skill.tier.replace('_', ' ')}
         </span>
-        <span className="text-[10px] font-mono text-ink-200">SP {cost}</span>
+        <span className="text-[10px] font-mono text-ink-200">{skill.tier.replace('_', ' ')}</span>
       </div>
       <div className={`font-display text-sm tracking-wider ${unlocked ? 'text-neon-lime' : 'text-ink-50'}`}>
         {skill.name}

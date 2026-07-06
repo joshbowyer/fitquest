@@ -95,7 +95,6 @@ type Skill = {
   blurb: string | null;
   description: string;
   position: number;
-  cost: number;
   prerequisites: string[];
   test: SkillTest | null;
   effects: unknown;
@@ -104,7 +103,6 @@ type Skill = {
 
 type TreeResponse = {
   className: string;
-  skillPoints: number;
   items: Skill[];
 };
 
@@ -258,7 +256,7 @@ function UnlockModal({
    */
   unlockedNames: Set<string>;
   /** Server-side error from the unlock attempt (prereq missing,
-   *  not enough SP, test not met, etc.). Surfaced inline so the
+   *  prereq missing, test not met, etc.). Surfaced inline so the
    *  user knows why the modal didn't close + their input was
    *  rejected. Null when no error. */
   unlockError: string | null;
@@ -308,14 +306,15 @@ function UnlockModal({
     );
   }
 
-  // Pre-v1 skill (no test) — legacy unlock with SP cost. These
-  // don't have prerequisites in the v1 sense.
+  // Pre-v1 skill (no test) — legacy unlock with no cost. The
+  // SP economy is gone, so a legacy skill with no test is just
+  // a one-click unlock (provided the prereqs are met).
   if (!test) {
     return (
       <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg">
         <p className="text-sm text-ink-200 mb-4">
           This is a legacy skill (pre-SkillTree v1) without a defined
-          test. The unlock costs {skill.cost} SP.
+          test. Confirm to unlock.
         </p>
         <div className="flex justify-end gap-2 pt-2">
           <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
@@ -324,7 +323,7 @@ function UnlockModal({
             loading={isPending}
             onClick={() => onUnlock({})}
           >
-            Unlock for {skill.cost} SP
+            Unlock
           </NeonButton>
         </div>
       </Modal>
@@ -764,7 +763,7 @@ export function SkillTreePage() {
       }
     },
     onError: (e: Error) => {
-      // Real network / 400 (prereq missing, not enough SP, etc.).
+      // Real network / 400 (prereq missing, test not met, etc.).
       // Previously this was console.error only — the modal closed
       // and the user assumed the request hung. Surface the
       // message inline.
@@ -824,13 +823,7 @@ export function SkillTreePage() {
     <Layout>
       <PageHeader
         title="// Skill Tree"
-        subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · ${treeQ.data.skillPoints} SP available`}
-        action={
-          <div className="font-mono text-sm flex items-baseline gap-3">
-            <span className="text-ink-300 text-xs uppercase tracking-widest">SP</span>
-            <span className="text-neon-cyan text-2xl">{treeQ.data.skillPoints}</span>
-          </div>
-        }
+        subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · pass the test to unlock`}
       />
 
       {/* Tree view — branches as columns, each skill a circular flow node */}
