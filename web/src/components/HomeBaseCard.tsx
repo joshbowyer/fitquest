@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useValueChange, emitNotification } from '@/lib/notifyBus';
+import { useState } from 'react';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from './Layout';
 import { Panel } from './Panel';
@@ -278,31 +279,135 @@ export function PenanceTemplatesPanel() {
         method: 'PATCH',
         body: { enabled: body.enabled },
       }),
-    onSuccess: () => {
-      // Trigger a refetch on the parent query so the home-base
-      // detail re-renders with fresh defaults.
-    },
   }, 400);
 
+  // Split into the two semantic buckets the user cares about
+  // ("what hurts me" vs "what heals me"). The raw `items` may
+  // be in any order; we sort by shieldDelta so the most-impactful
+  // entry in each bucket sits at the top of the expanded list.
   const items = q.data?.items ?? [];
+  const damage = items
+    .filter((t) => t.shieldDelta < 0)
+    .sort((a, b) => a.shieldDelta - b.shieldDelta);
+  const repair = items
+    .filter((t) => t.shieldDelta > 0)
+    .sort((a, b) => b.shieldDelta - a.shieldDelta);
+
   return (
     <Panel title="Penance templates" variant="violet">
-      <div className="space-y-1">
-        {items.map((t) => (
-          <PenanceToggleRow
-            key={t.key}
-            row={t}
-            onToggle={(enabled) => toggleM.run({ key: t.key, enabled })}
-            pending={toggleM.isPending}
-          />
-        ))}
-      </div>
+      <PenanceSubBlock
+        label="Shield damage"
+        accent="rose"
+        items={damage}
+        onToggle={(key, enabled) => toggleM.run({ key, enabled })}
+        pending={toggleM.isPending}
+        startOpen={false}
+      />
+      <div className="h-3" />
+      <PenanceSubBlock
+        label="Shield repair"
+        accent="emerald"
+        items={repair}
+        onToggle={(key, enabled) => toggleM.run({ key, enabled })}
+        pending={toggleM.isPending}
+        startOpen={false}
+      />
     </Panel>
   );
 }
 
-function PenanceToggleRow({
+/**
+ * One collapsed-by-default sub-block. Shows a compact header
+ * (label + count of currently-active items) when closed; the
+ * full list when open. The per-row "active now" badge is the
+ * primary signal of state — the original checkbox-toggle read
+ * as a "click to enable" affordance, which it isn't (these are
+ * server-tracked flags, not just local preferences).
+ */
+function PenanceSubBlock({
+  label,
+  accent,
+  items,
+  onToggle,
+  pending,
+  startOpen,
+}: {
+  label: string;
+  accent: 'rose' | 'emerald';
+  items: Array<{
+    key: string;
+    label: string;
+    flavor: string | null;
+    shieldDelta: number;
+    enabled: boolean;
+    isUserOverride: boolean;
+  }>;
+  onToggle: (key: string, enabled: boolean) => void;
+  pending: boolean;
+  startOpen: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  const activeCount = items.filter((t) => t.enabled).length;
+  const totalDelta = items.reduce((sum, t) => sum + (t.enabled ? t.shieldDelta : 0), 0);
+  return (
+    <div className="border border-ink-700/30 rounded">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-bg-800/40"
+      >
+        <span
+          className={classNames(
+            'text-[9px] font-mono inline-block w-3 transition-transform',
+            open ? 'rotate-90' : '',
+            'text-ink-400',
+          )}
+          aria-hidden
+        >
+          ▶
+        </span>
+        <span className="text-[10px] font-display tracking-widest uppercase text-ink-50">
+          {label}
+        </span>
+        <span className="text-[9px] font-mono text-ink-400">
+          {items.length} total · {activeCount} active
+        </span>
+        {totalDelta !== 0 && (
+          <span
+            className={classNames(
+              'ml-auto tabular-nums text-[10px]',
+              accent === 'rose' ? 'text-rose-300' : 'text-emerald-300',
+            )}
+          >
+            active net {totalDelta > 0 ? '+' : ''}{totalDelta}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="border-t border-ink-700/30 p-2 space-y-1">
+          {items.length === 0 && (
+            <div className="text-[10px] font-mono text-ink-500 italic">
+              No penances in this bucket.
+            </div>
+          )}
+          {items.map((t) => (
+            <PenanceRow
+              key={t.key}
+              row={t}
+              accent={accent}
+              onToggle={(enabled) => onToggle(t.key, enabled)}
+              pending={pending}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PenanceRow({
   row,
+  accent,
   onToggle,
   pending,
 }: {
@@ -314,22 +419,44 @@ function PenanceToggleRow({
     enabled: boolean;
     isUserOverride: boolean;
   };
+  accent: 'rose' | 'emerald';
   onToggle: (enabled: boolean) => void;
   pending: boolean;
 }) {
-  const isDamage = row.shieldDelta < 0;
+  // Each row is a clickable button. The whole row toggles when
+  // clicked. The "active now" pill on the right is the
+  // primary state signal — the original checkbox read as a
+  // "click here to enable" affordance and was confusing; this
+  // is clearer: enabled items are visibly highlighted.
   return (
-    <label className="flex items-start gap-2 py-1.5 px-1 text-[11px] font-mono border border-ink-700/20 hover:border-ink-500/40 rounded cursor-pointer">
-      <input
-        type="checkbox"
-        checked={row.enabled}
-        onChange={(e) => onToggle(e.target.checked)}
-        disabled={pending}
-        className="mt-0.5 shrink-0"
-      />
+    <button
+      type="button"
+      onClick={() => onToggle(!row.enabled)}
+      disabled={pending}
+      className={classNames(
+        'w-full text-left flex items-start gap-2 py-1.5 px-2 text-[11px] font-mono rounded border transition-colors',
+        row.enabled
+          ? accent === 'rose'
+            ? 'border-rose-500/40 bg-rose-500/5 text-slate-100'
+            : 'border-emerald-500/40 bg-emerald-500/5 text-slate-100'
+          : 'border-ink-700/30 text-ink-300 hover:border-ink-500/50',
+      )}
+    >
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-200">{row.label}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>{row.label}</span>
+          {row.enabled && (
+            <span
+              className={classNames(
+                'text-[9px] font-mono uppercase tracking-widest px-1 rounded border',
+                accent === 'rose'
+                  ? 'text-rose-200 border-rose-500/40'
+                  : 'text-emerald-200 border-emerald-500/40',
+              )}
+            >
+              active now
+            </span>
+          )}
           {row.isUserOverride && (
             <span className="text-[9px] font-mono uppercase tracking-widest text-violet-300 border border-violet-500/30 px-1 rounded">
               custom
@@ -338,7 +465,7 @@ function PenanceToggleRow({
           <span
             className={classNames(
               'ml-auto tabular-nums text-[10px] shrink-0',
-              isDamage ? 'text-rose-300' : 'text-emerald-300',
+              row.shieldDelta < 0 ? 'text-rose-300' : 'text-emerald-300',
             )}
           >
             {row.shieldDelta > 0 ? '+' : ''}{row.shieldDelta}
@@ -350,6 +477,6 @@ function PenanceToggleRow({
           </div>
         )}
       </div>
-    </label>
+    </button>
   );
 }

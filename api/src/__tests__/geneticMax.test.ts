@@ -40,8 +40,17 @@ describe('computeGeneticMax', () => {
       expect(computeGeneticMax('SHOULDER', baseline)).toBeCloseTo(15.24 * 8.5, 1);
     });
 
-    it('NECK uses measured neckCircCm when available', () => {
-      expect(computeGeneticMax('NECK', { ...baseline, neckCircCm: 40 })).toBeCloseTo(40, 0);
+    it('NECK uses 2.9×wrist as the ceiling — NEVER the user\'s current neck measurement', () => {
+      // Critical regression guard. NECK is a GROWTH ceiling, not a
+      // snapshot. The user\'s current neckCircCm is a Measurement
+      // they can grow into; the genetic max is the Casey Butt
+      // ceiling at that frame. Mirroring the current measurement
+      // (the old buggy behavior) means "I\'m at my genetic max
+      // today" regardless of frame size, and the user can never
+      // exceed it without a manual override. This assertion makes
+      // sure that mistake can\'t come back — passing neckCircCm=40
+      // must not change the answer.
+      expect(computeGeneticMax('NECK', { ...baseline, neckCircCm: 40 })).toBeCloseTo(15.24 * 2.9, 1);
     });
 
     it('NECK falls back to 2.9×wrist when not measured', () => {
