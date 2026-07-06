@@ -19,20 +19,48 @@ export function Modal({
   children: ReactNode;
   width?: string;
 }) {
+  // Escape-to-close, body-scroll-lock, and a defensive cleanup of
+  // any orphaned portal nodes. The cleanup runs on every close —
+  // addresses a mobile Safari "ghost mask" bug where a previously-
+  // rendered backdrop would linger for a frame after the modal was
+  // unmounted (esp. when the user closed by tapping outside, the
+  // backdrop click handler ran onClose, and the parent's setState
+  // unmounted the modal but the portal node was still in the DOM).
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Belt-and-suspenders: nuke any leftover portal nodes from
+      // a previous mount. Without this, a fast-tap on iOS Safari
+      // occasionally leaves the dark backdrop visible while the
+      // content is gone.
+      const stale = document.querySelectorAll('[data-modal-portal]');
+      stale.forEach((n) => n.remove());
+      return;
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Body scroll lock — prevents the page from scrolling behind
+    // the modal on iOS Safari. Saved/restored on close.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      // Cleanup-time nuke too — catches the close case where the
+      // portal node didn't get a chance to unmount yet.
+      const stale = document.querySelectorAll('[data-modal-portal]');
+      stale.forEach((n) => n.remove());
+    };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      data-modal-portal="true"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 p-4"
+      style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
       onClick={onClose}
     >
       <div

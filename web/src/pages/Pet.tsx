@@ -192,9 +192,21 @@ export function PetPage() {
         method: 'POST',
         body: { petId },
       }),
-    onSuccess: () => {
+    onSuccess: (res) => {
       setSetPrimaryError(null);
-      qc.invalidateQueries({ queryKey: ['pet'] });
+      // Apply the server's updated roster directly to the query
+      // cache so the UI re-orders instantly (primary pet jumps to
+      // the leftmost slot) without waiting for a refetch roundtrip.
+      // If the server didn't return the updated pets, fall back to
+      // a refetch.
+      if (res?.pets && Array.isArray(res.pets)) {
+        qc.setQueryData(['pet'], (prev: PetRoster | undefined) => ({
+          pets: res.pets,
+          primaryPetId: res.primaryPetId,
+        }));
+      } else {
+        qc.invalidateQueries({ queryKey: ['pet'] });
+      }
     },
     onError: (e: Error) => {
       // Surface the failure inline so the user can tell the
@@ -581,13 +593,14 @@ export function PetPage() {
                     disabled={setPrimaryM.isPending}
                     onClick={() => setPrimaryM.mutate(pet.id)}
                   >
-                    {setPrimaryM.isPending ? '…' : 'Set as primary'}
+                    {setPrimaryM.isPending ? 'Setting…' : 'Set as primary'}
                   </NeonButton>
                 </div>
               )}
               {pet.isPrimary && (
-                <div className="text-xs font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/30 rounded p-2 bg-neon-amber/5">
-                  ★ {pet.name} is your primary companion.
+                <div className="flex items-center justify-between gap-2 text-xs font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/40 rounded p-2 bg-neon-amber/5">
+                  <span>★ {pet.name} is your primary companion</span>
+                  <span className="text-ink-500 normal-case tracking-normal text-[10px]">this pet is primary</span>
                 </div>
               )}
               {setPrimaryError && (

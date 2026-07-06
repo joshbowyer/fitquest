@@ -126,17 +126,18 @@ export async function petRoutes(app: FastifyInstance) {
   // users with no isPrimary set still get a sensible default.
   app.get('/', async (req, reply) => {
     const me = await requireUser(req);
+    // Primary pet first (so it's always leftmost in the roster), then
+    // by createdAt asc within each tier.
     const pets = await prisma.petInstance.findMany({
       where: { userId: me.id },
       include: { breed: true },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
     });
     const serialized = await Promise.all(pets.map((p: any) => serializePet(p.id)));
-    const primary =
-      serialized.find((p) => p.isPrimary) ??
-      serialized.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ??
-      serialized[0] ??
-      null;
+    // If none of the rows has isPrimary=true (e.g. user just
+    // adopted, hasn't set a primary yet), fall back to the first
+    // row of the sorted list — which is the oldest by createdAt.
+    const primary = serialized.find((p) => p.isPrimary) ?? serialized[0] ?? null;
     return {
       pets: serialized,
       primaryPetId: primary?.id ?? null,
