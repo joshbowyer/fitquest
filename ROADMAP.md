@@ -14,25 +14,67 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
+- **Android release: v1.0.3 is the latest signed-off build.** Tag
+  lives at `joshbowyer/fitquest-android@v1.0.3`. Build it with:
+  ```
+  cd /home/josh-claw-code/FitnessStats/web && npx vite build
+  cd /home/josh-claw-code/FitnessStats/web && npx cap sync android
+  cd /home/josh-claw-code/fitquest-android && ./gradlew assembleRelease
+  ```
+  Output: `app/build/outputs/apk/release/app-release-unsigned.apk`.
+  The APK is **unsigned** — no release keystore in
+  `app/build.gradle`. For Play Store distribution we'd need to
+  add a `signingConfigs { release { ... } }` block + a keystore.
+  For internal / sideload distribution the unsigned APK works
+  as-is.
 
 
 ## Active (in progress)
 
-- **Forecast page (`/forecast`).** Mostly built (weather + 3-day
-  daily + air quality + geocoding + readiness score). What's
-  still open:
-  - **"Feels like" temperature** — Open-Meteo doesn't expose
-    apparent/feels-like directly. Either pull from a second
-    source (accuweather / weather.gov) or compute it from
-    wind chill / heat index formulas (NOAA standard).
-  - **3-day forecast on mobile is too squished** — three side-
-    by-side day cards don't fit narrow viewports. Change to
-    a vertical stack (today on top, tomorrow below, day-after
-    below) so each card gets full width.
-  - **Recommended-muscle block doesn't belong here.** Move it
-    off `/forecast` onto `/status`, sitting side-by-side with
-    the recovery block (so they share a row on desktop). Put
-    the combined block *above* the 3D avatar, not below it.
+### Pet feature (German Shepherd v1)
+
+- Pet schema, 3 breed sprites (gs/akita/axolotl), /pet roster
+  with multi-pet support (up to 6), /shop with food purchases,
+  workout XP removed (food is primary; combat XP is secondary
+  gated to Lv15+ deployed), and combat hooks in breach/quest/raid.
+- v15/v17/v18 goggled armored + injured variants shipped to
+  `web/public/sprites/pets/`. All three animals have Pit Viper
+  goggles (intact on armed, broken on injured). Axolotl
+  injured (v18) has a sad frown, not angry.
+- (was: prereq enforcement on skill tree — both matching
+  pass and unlock endpoint gate on `isSnowCode`-style
+  prereq filter. "Push-Ups" matching "Pike Push-Ups" reported
+  by the user was a misperception; one T1 Pull was unlocked,
+  T2 was correctly offered. Loose matching (multiple
+  skills per exercise) is documented in RECIPES.md §14 as
+  a separate fix pass.)
+- (was: set-as-primary button click "does nothing" — was the
+  cache-update path not re-rendering. Rewrote in `1b527c9`
+  to bypass useMutation: direct `api<>()` call writes the
+  response into the query cache via `setQueryData`, with
+  an `invalidateQueries` as belt-and-suspenders. Active-pet
+  selection now defaults to a non-primary pet so the button
+  is visible on first load.)
+- (was: modal ghosting on mobile — `d723cef` adds a defensive
+  portal-node cleanup, explicit body scroll lock, and inline
+  backdrop-filter style. Affects every Modal use site.)
+
+### Forecast page (`/forecast`)
+
+- Mostly built. Nothing outstanding — all known forecast
+  issues are resolved:
+  - (was: 3-day forecast on mobile too squished — shipped in
+    `95dfa2b`, vertical stack on narrow viewports)
+  - (was: recommended-muscle block on /forecast — moved to
+    /status side-by-side with recovery in `95dfa2b`)
+  - (was: forecast "Heavy snow" snow-code bug in Atlanta
+    summer — fixed in `01725b7`; WMO codes 80-82 were matching
+    the snow range 71-86. Now uses `isSnowCode()` helper)
+  - (was: "feels like" temperature — already shown in the
+    current weather card as `feels {apparentTemperature}°` using
+    Open-Meteo's `apparent_temperature` field, which it DOES
+    expose in its current API. The roadmap item was based on a
+    misremembered limitation.)
 
 ## Backlog (from user notes, in priority order)
 
@@ -83,24 +125,33 @@ Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
 button + per-user 'Wipe items' buttons. 5 unit tests cover the
 scopes + the equip-state-wiped-with-row assertion.)
 
+(was: admin reset-skills endpoint — shipped in `7a8a194`. POST
+`/admin/users/:id/reset-skills` wipes both UserSkill and
+PendingSkillUnlock rows in one transaction. Use case: an
+admin can reset a user's skill state to debug prereq /
+matching issues, then the user re-runs /check-eligible (or the
+next workout commit) to re-trigger the matching pass from a
+clean slate.)
+
 ### Nutrition & Food
 
-- **Unify the /today nutrition modal with /nutrition's food
-  entry modal.** Today's modal doesn't show recent foods or the
-  saved-foods quick-log; /nutrition's does. They should share
-  one component, parameterized by context (today-as-snack vs
-  /nutrition-as-meal).
-- **Auto-link substances to food entries.** If the food name
-  contains "coffee", "kombucha", "matcha", "espresso", etc.,
-  auto-tick the matching caffeine substance log row. Same for
-  alcohol/wine/beer and nicotine (low-hanging fruit; ship
-  caffeine first, then the others).
-- **Saved-foods row + logged-meal item use the same yellow
-  capsule chrome.** Right now saved-foods rows have a yellow
-  pill around the "Log" + "more options" buttons, but logged
-  items in the meal blocks (breakfast / lunch / dinner /
-  snacks) are bare gray text. Same yellow capsule for both,
-  with edit + delete inline.
+(was: unify /today + /nutrition food entry modals — shipped in
+`46f647e`. Both modals now share the recent-foods strip and the
+saved-foods quick-log. /today treats food entries as snacks,
+/nutrition as meals — the modal's submit handler reads from
+context.)
+
+(was: auto-link substances to food entries — shipped in `53be4e4`
+on the api side. If the food name contains "coffee", "kombucha",
+"matcha", "espresso", etc., the matching caffeine substance log
+row is auto-ticked. Server-side keyword match runs on
+FoodItem.create. UI checkbox can still be toggled manually. Same
+mechanism available for alcohol/wine/beer and nicotine; the
+shipped v1 only does caffeine.)
+
+(was: saved-foods row + logged-meal item yellow capsule chrome
+— shipped in `46f647e`. Both use the same yellow capsule now,
+with edit + delete inline.)
 
 ### Mobile & UX
 
@@ -114,11 +165,11 @@ scopes + the equip-state-wiped-with-row assertion.)
 - **Remove the "⚙ Settings" button from the top of /dashboard.**
   Settings already lives in the sidebar — the dashboard
   duplicate is dead weight.
-- **Wire up web notifications (laptop / desktop browser).** Use
+- (was: wire up web notifications — shipped in `6cbe0c2`. Use
   the Notification API on homebase shield drops, breach
-  defeat, boss kill, streak-break, etc. The Web Push API can
-  also deliver notifications when the tab is in the background.
-  Has to be opt-in (request permission on first trigger).
+  defeat, boss kill, streak-break, etc. Has to be opt-in
+  — request permission on first trigger. The page calls
+  `Notification.requestPermission()` lazily.)
 
 ### Gamification & Economy
 
@@ -128,15 +179,20 @@ scopes + the equip-state-wiped-with-row assertion.)
   (Halloween pumpkins, Christmas lights, etc.), UI themes
   (color palettes for the neon glow). All cosmetic unless
   we want to design a real prestige system around them.
-- **Change heart color to red.** Both in the hero bar and on
-  the HeartsCard. Hearts that have been lost should render as
-  dark gray (currently they render as a faint magenta — the
-  color is right for "you're in trouble" but the user wants
-  explicit red for full / dark gray for empty slots).
-- **Calendar view.** Pick a date and see what workouts /
-  weigh-ins / pain / habits / etc. happened that day, with
-  the morning popup / recovery score surfaced. Could land
-  on `/today?date=YYYY-MM-DD` or a dedicated `/calendar`.
+- (was: change heart color to red — shipped in `fa2c47c` for
+  HeartsCard (full hearts = red, lost = dark gray). The hero
+  bar header (Layout.tsx) was switched to a green HP bar in
+  `2a136f` per the user's "consistent bars not hearts" call
+  for pets. So hearts are now red only on HeartsCard / pending
+  unlock cards, and the hero bar shows a green HP bar sourced
+  from User.hearts. Documented under "Mobile & UX → Web
+  notifications" elsewhere.)
+- (was: Calendar view — shipped in `cd16301` + `2309089` +
+  `26d95a7`. `/calendar` is a month grid + per-day recap that
+  shows workouts, weigh-ins, pain, habits, dailies, and the
+  morning popup / recovery score for the chosen day. Day cells
+  have color-coded X/Y boxes, future dates render as empty
+  gray. Strikethrough-strikethrough on done items.)
 
 ### Measurements
 
@@ -144,22 +200,14 @@ scopes + the equip-state-wiped-with-row assertion.)
   and /dashboard.** All three pages need to surface the same
   value for the same metric, but three independent code paths
   each had a divergence bug:
-  - **/profile `previewMax()` function** (web/src/pages/Profile.tsx
-    :62-89) had drifted from the canonical formula in
-    `api/src/lib/geneticMax.ts`. Three formulas were wrong:
-    - **NECK** returned the user's *current* `neckCircCm`
-      (a mirror of the latest measurement) instead of the
-      ceiling from wrist/height. Neck can grow (traps), so
-      the genetic max must be a ceiling, not a snapshot.
-      **FIXED in `f68b653`** — now matches the api formula
-      exactly.
-    - **WAIST** had a formula (h × 0.161 or w × 1.9) but the
-      api dropped waist from genetic maxes entirely (it's a
-      "lean minimum", not a "growth ceiling"). **FIXED in
-      `f68b653`**.
-    - **BENCH_1RM** used w × 1.0 as a bodyweight proxy; the
-      api uses `weightKg × 1.5` as a proper 1.5× bw strength
-      ceiling. **FIXED in `f68b653`**.
+  - (was: /profile `previewMax()` function drift from
+    canonical formula in api/src/lib/geneticMax.ts. Three
+    formulas were wrong — NECK returned the user's current
+    `neckCircCm` instead of the ceiling from wrist/height;
+    WAIST had a formula but the api dropped waist from genetic
+    maxes entirely; BENCH_1RM used w × 1.0 as a bodyweight
+    proxy. **FIXED in `f68b653`** — /profile now matches the
+    api formula exactly.)
   - **/measurements and /dashboard** both read from the same
     `geneticMax` table, so a manual override set via the
     "set max from latest measurement" button on /measurements
@@ -168,6 +216,14 @@ scopes + the equip-state-wiped-with-row assertion.)
     gets shadowed by a stored manual override equal to their
     current measurement, so the dashboard displays "your
     current measurement = your genetic max" — misleading.
+    (was: /measurements + /dashboard already share the
+    geneticMax table, so the propagation half works. The
+    shadowing bug remains: when a manual override is set,
+    dashboard shows current measurement = genetic max with
+    no indication that an override is in effect. Fix: show
+    both numbers side-by-side, or surface a "manual override"
+    badge on the dashboard gauge so the user knows the formula
+    isn't being used.)
     Fix: surface the formula-computed value alongside the
     stored value (e.g. "Genetic Max: 50 (manual, formula says
     45)"), and add a "reset to formula" affordance next to

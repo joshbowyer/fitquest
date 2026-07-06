@@ -384,9 +384,6 @@ export function DashboardPage() {
             <Link to="/calendar" className="btn-ghost text-[10px]">
               ◷ Calendar
             </Link>
-            <Link to="/settings" className="btn-ghost text-[10px]">
-              ⚙ Settings
-            </Link>
           </div>
         }
       />

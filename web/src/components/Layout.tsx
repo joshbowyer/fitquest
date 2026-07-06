@@ -344,6 +344,8 @@ export function Layout({ children }: Props) {
           user={user}
           onClose={() => setMenuOpen(false)}
           onLogout={handleLogout}
+          onReorder={reorder}
+          onReset={reset}
         />
       )}
 
@@ -362,24 +364,42 @@ export function Layout({ children }: Props) {
  * covers the entire viewport, and lists every nav item in a 3-col
  * grid. Tapping a route closes the overlay (handled by the NavLink
  * onClick via the parent).
+ *
+ * Reorder mode: a "Reorder" toggle button in the top bar lets the
+ * user drag-to-reorder items. Same `useNavOrder` hook + drag-and-
+ * drop primitives as the desktop sidebar. Items get a drag handle
+ * glyph + a 1px gap between them so the drop target is obvious.
  */
 function MobileMenuOverlay({
   items,
   user,
   onClose,
   onLogout,
+  onReorder,
+  onReset,
 }: {
-  items: Array<{ to: string; label: string; icon: string }>;
+  items: Array<{ to: string; label: string; icon: string; mobile?: boolean; requiresAdmin?: boolean }>;
   user: User | null;
   onClose: () => void;
   onLogout: () => void;
+  onReorder: (from: number, to: number) => void;
+  onReset: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const dragIndex = useRef<number | null>(null);
+
   // Escape closes the overlay. Listener cleans up on unmount.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Auto-exit edit mode on close. Otherwise a re-open would land
+  // in edit mode unexpectedly.
+  useEffect(() => () => setEditing(false), []);
 
   return (
     <div
@@ -410,27 +430,99 @@ function MobileMenuOverlay({
       )}
 
       {/* Item grid. Same active-state styling as the sidebar so users
-          get visual continuity between mobile and desktop. */}
+          get visual continuity between mobile and desktop. In edit
+          mode, items become draggable with a 1px gap between them and
+          a 4px gap on the side to show drop targets. Drag handle ⠿
+          appears on the top-right of each cell. */}
       <nav className="p-3">
-        <div className="grid grid-cols-3 gap-2">
-          {items.map((item) => (
-            <NavLink
+        <div
+          className={classNames(
+            'grid grid-cols-3 gap-2',
+            editing && 'gap-y-1',
+          )}
+        >
+          {items.map((item, idx) => (
+            <div
               key={item.to}
-              to={item.to}
-              onClick={onClose}
-              className={({ isActive }) =>
-                classNames(
-                  'flex flex-col items-center gap-2 py-4 border transition-colors',
-                  isActive
-                    ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
-                    : 'border-ink-700/50 text-ink-200 hover:border-ink-300 hover:bg-bg-700/40',
-                )
-              }
+              className="relative"
+              draggable={editing}
+              onDragStart={(e) => {
+                if (!editing) return;
+                dragIndex.current = idx;
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', item.to); } catch { /* ignore */ }
+              }}
+              onDragOver={(e) => {
+                if (!editing) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                if (!editing) return;
+                e.preventDefault();
+                const from = dragIndex.current;
+                if (from === null || from === idx) return;
+                onReorder(from, idx);
+                dragIndex.current = null;
+              }}
             >
-              <span className="text-2xl">{item.icon}</span>
-              <span className="font-display tracking-widest text-[10px] uppercase">{item.label}</span>
-            </NavLink>
+              <NavLink
+                to={item.to}
+                onClick={editing ? (e) => e.preventDefault() : onClose}
+                className={({ isActive }) =>
+                  classNames(
+                    'flex flex-col items-center gap-2 py-4 border transition-colors',
+                    editing
+                      ? 'cursor-grab active:cursor-grabbing border-neon-amber/60 bg-neon-amber/5'
+                      : isActive
+                      ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-ink-700/50 text-ink-200 hover:border-ink-300 hover:bg-bg-700/40',
+                  )
+                }
+              >
+                <span className="text-2xl">{item.icon}</span>
+                <span className="font-display tracking-widest text-[10px] uppercase">{item.label}</span>
+                {editing && (
+                  <span className="absolute top-1 right-1 text-xs text-neon-amber leading-none select-none" aria-hidden>
+                    ⠿
+                  </span>
+                )}
+              </NavLink>
+            </div>
           ))}
+        </div>
+
+        {/* Edit / Done toggle. Same wording as the desktop sidebar so
+            users see one consistent affordance. */}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="flex-1 px-2 py-1.5 text-[10px] font-display tracking-widest uppercase border border-neon-lime text-neon-lime bg-neon-lime/10 hover:bg-neon-lime/20"
+              >
+                ✓ Done
+              </button>
+              <button
+                type="button"
+                onClick={() => onReset()}
+                className="px-2 py-1.5 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-neon-magenta hover:text-neon-magenta"
+                title="Reset to default order"
+              >
+                reset
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="w-full px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-ink-400 border border-ink-500/30 hover:border-neon-cyan hover:text-neon-cyan transition-all"
+              title="Drag-to-reorder (persists across devices)"
+            >
+              ⠿ Reorder
+            </button>
+          )}
         </div>
 
         {user && (
