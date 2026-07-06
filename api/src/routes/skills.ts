@@ -155,12 +155,13 @@ app.post('/unlock', async (req, reply) => {
         });
       }
     }
-    // Skill points (legacy / pre-v1). Skipped entirely for
-    // pending-unlock-driven requests — the user already paid
-    // the "cost" by doing the workout, we don't want to gate
-    // the activity→skill auto-unlock on the SP economy (which
-    // only kicks in at level 2+).
-    if (!body.pendingUnlockId) {
+    // Skill points. Only enforced for legacy pre-v1 skills (no
+    // test defined). v1 skills have a real test — passing it IS
+    // the cost, so we don't double-charge with an SP gate. The
+    // SP economy still exists for budgeting purposes (the
+    // SkillTree page shows your available SP) but the api never
+    // blocks a test-passing unlock on it.
+    if (!skill.test) {
       const spent = mySkills.reduce((a, s) => a + s.skill.cost, 0);
       const available = Math.max(0, Math.floor((me.level - 1) / 2) - spent);
       if (skill.cost > available) {
