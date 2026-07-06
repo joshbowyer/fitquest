@@ -447,11 +447,8 @@ export function AdminPage() {
                               size="sm"
                               variant="amber"
                               onClick={() => setResetSkillsTarget(u)}
-                              disabled={
-                                (resetSkillsM.isPending && resetSkillsM.variables?.id === u.id) ||
-                                u.id === user?.id
-                              }
-                              title={u.id === user?.id ? "Can't reset your own skill tree" : 'Wipes UserSkill + PendingSkillUnlock rows'}
+                              disabled={resetSkillsM.isPending && resetSkillsM.variables?.id === u.id}
+                              title="Wipes UserSkill + PendingSkillUnlock rows"
                             >
                               {resetSkillsM.isPending && resetSkillsM.variables?.id === u.id
                                 ? '…'
@@ -1193,8 +1190,8 @@ function UserCardMobile({
           size="sm"
           variant="amber"
           onClick={onResetSkills}
-          disabled={isResettingSkills || isSelf}
-          title={isSelf ? "Can't reset your own skill tree" : 'Wipes UserSkill + PendingSkillUnlock rows'}
+          disabled={isResettingSkills}
+          title="Wipes UserSkill + PendingSkillUnlock rows"
         >
           {isResettingSkills ? '…' : 'Reset skills'}
         </NeonButton>
