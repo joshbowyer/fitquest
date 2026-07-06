@@ -373,15 +373,14 @@ with edit + delete inline.)
 
 ### Portal Leaks
 
-- **Leaks should not expire.** Stacking already works (no
-  short-circuit on new spawn) but `tickLeakGrowth` still marks
-  leaks past the 48h TTL as `EXPIRED`. User wants leaks to
-  persist until killed — they're punishment for the user's
-  slippage, and expiring them softens that. Drops the daily
-  tick's "expire" branch; growth-tick (HP +8/day) stays. The
-  8 HP/day escalation already makes neglected leaks worse
-  than fresh ones, so there's still a soft self-balancing
-  mechanism.
+- (was: Leaks should not expire — shipped in 7ca7b3d. Also added
+  MAX_ACTIVE_LEAKS = 3 cap with LEAK_RESUME_AT = 2 hysteresis:
+  new spawns gated when active count >= 3, resume when count
+  drops to 2. tickLeakGrowth no longer writes the EXPIRED
+  branch; LEAK_TTL_MS kept as a hint for UI copy. Breach leaks
+  also respect the cap now (previously blocked on ANY active
+  leak, which made Breach clears feel unrewarded). 8/8 stacking
+  tests pass.)
 
 ## Stretch / Future
 
@@ -525,11 +524,27 @@ with edit + delete inline.)
   v1.0.3 shipped to
   [GitHub releases](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.3).
 - ✅ Sex picker: MALE/FEMALE only. Dropped the OTHER/non-binary
-  option from /profile — body-fat formulas (Jackson-Pollock,
-  Navy tape) only have validated forms for those two sexes. The
-  api's Sex enum still accepts OTHER (legacy rows + backend
-  compat); users with OTHER fall through to the male formula at
-  the picker.
+  option AND the empty-value "prefer not to say" option from
+  /profile — body-fat formulas (Jackson-Pollock, Navy tape)
+  only have validated forms for those two sexes, and the empty
+  default would silently fall through to the male formula
+  without telling the user. The api's Sex enum still accepts
+  OTHER (legacy rows + backend compat); users with OTHER fall
+  through to the male formula at the picker.
+- ✅ Web Audio node leak (root cause of desktop memory bloat).
+  Every sound primitive in `web/src/lib/soundBus.ts` (playPad,
+  playPluck, playLaser, playNoiseHit, playKick, playFile)
+  created oscillator/buffer-source + biquad-filter + gain nodes
+  and called `o.stop()` at the note's end but never
+  `disconnect()`. Web Audio nodes retain references through their
+  connection graph until something disconnects them — a session
+  of ~100 sounds accumulated 300-500 retained nodes, forcing GC
+  pressure the browser couldn't resolve mid-session. Fix: a
+  `scheduleDisconnect(triggerNode, allNodes)` helper wires
+  `onended` to disconnect the whole chain. The first oscillator
+  in a voice is the natural anchor — when it stops, every
+  upstream node is also done. playFile (the MP3 path) gets the
+  same treatment.
 
 - ✅ Server-UTC bug: app was rolling non-UTC users over to
   tomorrow. The api container runs in UTC; 17 places across
