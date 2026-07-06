@@ -63,6 +63,11 @@ const LlmConfigSchema = z.object({
 
 // GET /admin/users - list all users (no password hashes, no 2FA secrets)
 async function listUsers() {
+  // `soulstones: true` returns the relation array of Soulstone
+  // objects, which the web's {user.soulstones}◆ render chokes on
+  // (React errors with "objects are not valid as a React child").
+  // Select a count instead via Prisma's _count aggregate so the
+  // shape stays consistent with /me (which returns a number).
   return prisma.user.findMany({
     select: {
       id: true,
@@ -74,12 +79,17 @@ async function listUsers() {
       level: true,
       xp: true,
       gold: true,
-      soulstones: true,
+      _count: { select: { sessions: true, workouts: true, soulstones: true } },
       createdAt: true,
-      _count: { select: { sessions: true, workouts: true } },
     },
     orderBy: { createdAt: 'asc' },
-  });
+  }).then((rows) =>
+    rows.map((u) => ({
+      ...u,
+      // Flatten to the count shape the Admin page expects.
+      soulstones: u._count.soulstones,
+    })),
+  );
 }
 
 // Presets per provider. Used by the web form to auto-fill baseUrl + a

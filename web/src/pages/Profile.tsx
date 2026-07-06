@@ -918,7 +918,11 @@ export function ProfilePage() {
                   </span>{' '}
                   to{' '}
                   <span className={`neon-text-${CLASS_META[pendingClass].color}`}>
-                    {CLASS_META[pendingClass].label}
+                    {getClassDisplayName(pendingClass, 1)}
+                  </span>
+                  {' '}
+                  <span className="text-ink-400">
+                    ({CLASS_META[pendingClass].label} class)
                   </span>
                   .
                 </p>
@@ -975,9 +979,9 @@ export function ProfilePage() {
               >
                 {user.class
                   ? user.classLock?.locked && user.classLock.canUseSoulstone
-                    ? '💎 Use Soulstone to switch class'
-                    : 'Switch to ' + CLASS_META[pendingClass].label
-                  : 'Pick ' + CLASS_META[pendingClass].label}
+                    ? '💎 Use Soulstone to switch to ' + getClassDisplayName(pendingClass, 1)
+                    : 'Switch to ' + getClassDisplayName(pendingClass, 1)
+                  : 'Pick ' + getClassDisplayName(pendingClass, 1)}
               </button>
             </div>
           </Modal>
