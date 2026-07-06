@@ -591,28 +591,6 @@ export function ConstellationMap({
           )}
         </g>
       </svg>
-
-      {/* Below-SVG legend */}
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[9px] font-mono tracking-widest text-ink-300">
-        {HEXAGON_SLOTS.map((slot) => {
-          const color = WORLD_COLOR_HEX[slot.color];
-          const world = worldByClass.get(slot.id);
-          return (
-            <span key={slot.id} className="flex items-center gap-1.5" title={world?.name ?? `${slot.id} (no world yet)`}>
-              <span className="inline-block w-2 h-2 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-              <span style={{ color: world ? color : '#787888' }}>
-                {slot.id}
-              </span>
-            </span>
-          );
-        })}
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-fuchsia-400 via-yellow-300 to-cyan-400" />
-          <span>NEXUS</span>
-          <span className="text-ink-400">·</span>
-          <span className="text-ink-300">HUB</span>
-        </span>
-      </div>
     </div>
   );
 }
