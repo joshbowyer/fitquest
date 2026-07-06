@@ -37,7 +37,18 @@ vi.mock('../lib/prisma', () => ({
       findUnique: vi.fn(async ({ where }: any) =>
         userSkills.find((us) => us.userId === where.userId_skillId.userId && us.skillId === where.userId_skillId.skillId) ?? null,
       ),
-      findMany: vi.fn(async ({ where }: any) => userSkills.filter((us) => us.userId === where.userId)),
+      findMany: vi.fn(async ({ where, include }: any) => {
+        const rows = userSkills.filter((us) => us.userId === where.userId);
+        if (include?.skill) {
+          // Attach the joined skill row so routes that read
+          // `r.skill.name` etc. don't blow up.
+          return rows.map((us) => {
+            const s = skills.find((s) => s.id === us.skillId);
+            return { ...us, skill: s ?? { name: '(missing)', id: us.skillId, branch: null, tier: 'TIER_1' } };
+          });
+        }
+        return rows;
+      }),
       create: vi.fn(async ({ data }: any) => {
         const row = { id: `us-${userSkills.length + 1}`, ...data };
         userSkills.push(row);
@@ -183,6 +194,88 @@ describe('POST /skills/unlock', () => {
       method: 'POST',
       url: '/unlock',
       payload: { skillId: 's1', result: { duration_sec: 700 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('BERSERKER weaving prereq: 100 KB Long Cycle requires both swing volume + snatches', async () => {
+    // Kettlebell T3 has TWO T2 prereqs (swing volume + snatches)
+    // — a weaving merge point. The route reports the FIRST
+    // missing prereq and 400s; unlock only succeeds once all
+    // listed prereqs are present. This test exercises the
+    // missing-prereq error path.
+    setupUser({ id: 'u1', class: 'BERSERKER', level: 5, weightKg: 80 });
+    setupSkill({
+      id: 's1',
+      className: 'BERSERKER',
+      tier: 'TIER_3',
+      name: '100 KB Long Cycle < 5:00',
+      cost: 1,
+      prerequisites: ['200 KB Swings < 20:00', '100 KB Snatches < 10:00'],
+      test: {
+        metric: 'duration',
+        description: '100 KB long cycle at 24kg in under 5 minutes',
+        safety: 'Build up to long cycle gradually',
+        threshold: { duration_sec: 300 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 250 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/Requires: 200 KB Swings < 20:00/);
+  });
+
+  it('BERSERKER weaving prereq: unlock succeeds once all listed prereqs are present', async () => {
+    // Counterpart to the previous test. Seed the listed prereqs
+    // into the mock's userSkill table so the route sees them as
+    // unlocked; the same T3 unlock should then succeed.
+    setupUser({ id: 'u1', class: 'BERSERKER', level: 5, weightKg: 80 });
+    setupSkill({
+      id: 'pre1',
+      className: 'BERSERKER',
+      tier: 'TIER_2',
+      name: '200 KB Swings < 20:00',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 'pre2',
+      className: 'BERSERKER',
+      tier: 'TIER_2',
+      name: '100 KB Snatches < 10:00',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 's1',
+      className: 'BERSERKER',
+      tier: 'TIER_3',
+      name: '100 KB Long Cycle < 5:00',
+      cost: 1,
+      prerequisites: ['200 KB Swings < 20:00', '100 KB Snatches < 10:00'],
+      test: {
+        metric: 'duration',
+        description: '100 KB long cycle at 24kg in under 5 minutes',
+        safety: 'Build up to long cycle gradually',
+        threshold: { duration_sec: 300 },
+      },
+    });
+    // Mark both prereqs as unlocked.
+    const prismaMod = await import('../lib/prisma.js') as any;
+    prismaMod.__addUser({ id: 'u1', class: 'BERSERKER', level: 5, weightKg: 80 });
+    await prismaMod.prisma.userSkill.create({ data: { userId: 'u1', skillId: 'pre1' } });
+    await prismaMod.prisma.userSkill.create({ data: { userId: 'u1', skillId: 'pre2' } });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 350 } },
       user: { id: 'u1' },
     });
     expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 200, body: expect.objectContaining({ ok: true }) });
