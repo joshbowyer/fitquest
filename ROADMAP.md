@@ -256,7 +256,7 @@ with edit + delete inline.)
   it's surfaced in the dashboard's body-comp radials and
   recomputed automatically.
 - (was: Split /measurements into category cards (2 per row) —
-  shipped in <next-commit>. The 260px sidebar is gone; the 8
+  shipped in `ff107df`. The 260px sidebar is gone; the 8
   metric categories now render as a 2-col grid of collapsible
   cards (md:grid-cols-2), each with a header showing category
   label + metric count + chevron. The category containing the
@@ -271,7 +271,7 @@ with edit + delete inline.)
   instead of 45 in the api. The 1 remaining loose end — the
   basic Gauge's `lessIsBetter` prop was declared but never
   wired into the "X% OVER" warning gate — is now wired in
-  <next-commit>. In practice every "less is better" metric
+  `ff107df`. In practice every "less is better" metric
   routes through IdealGauge today, so this is dead-code
   cleanup rather than a user-facing fix, but the doc comment
   in Gauge.tsx now matches reality. Two new vitest assertions
@@ -331,7 +331,7 @@ with edit + delete inline.)
 
 ### Habits
 
-- (was: Habit tile visual state — shipped in <next-commit>.
+- (was: Habit tile visual state — shipped in `ff107df`.
   /habits page tile now renders unchecked as neutral gray
   (border-ink-500/30, no accent tint, no glow on the icon
   box, no glow on the title text). When checked (todayCount
