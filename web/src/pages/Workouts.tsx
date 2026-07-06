@@ -60,7 +60,7 @@ type DraftSet = {
   skipReason?: SkipReason | null;
 };
 
-type DraftExercise = { name: string; sets: DraftSet[] };
+type DraftExercise = { name: string; sets: DraftSet[]; type?: 'STRENGTH' | 'CARDIO' | 'BODYWEIGHT' | 'OTHER' };
 
 function emptyExercise(): DraftExercise {
   return { name: '', sets: [{ reps: 0, weight: 0, duration: 0, rpe: 0, skipped: false, skipReason: null }] };
@@ -68,7 +68,7 @@ function emptyExercise(): DraftExercise {
 
 // Convert a stored workout into DraftExercise[] for the form.
 function workoutToDraft(
-  w: { exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number | null; duration: number | null; rpe: number | null }> }> },
+  w: { exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number | null; duration: number | null; rpe: number | null; skipped?: boolean; skipReason?: 'INJURY' | 'ILLNESS' | 'FATIGUE' | 'EQUIPMENT' | 'SCHEDULE' | 'OTHER' | null }> }> },
   units: UnitSystem,
 ): DraftExercise[] {
   return w.exercises.map((ex) => ({
