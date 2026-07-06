@@ -20,6 +20,12 @@ describe('computeGeneticMax', () => {
   describe('Casey Butt upper body', () => {
     it('BICEP from wrist is 2.7×wrist (≈41cm for 6" wrist)', () => {
       expect(computeGeneticMax('BICEP', baseline)).toBeCloseTo(15.24 * 2.7, 1);
+      // BICEP_FLEXED uses the same Casey Butt formula as the legacy
+      // BICEP enum (which is now an alias kept for backward compat).
+      expect(computeGeneticMax('BICEP_FLEXED', baseline)).toBeCloseTo(15.24 * 2.7, 1);
+      // BICEP_RELAXED applies a 0.92 reduction to the flexed formula
+      // (~1.5-2cm smaller for the same arm, no pump).
+      expect(computeGeneticMax('BICEP_RELAXED', baseline)).toBeCloseTo(15.24 * 2.7 * 0.92, 1);
     });
 
     it('FOREARM from wrist is 2.3×wrist', () => {
@@ -58,6 +64,10 @@ describe('computeGeneticMax', () => {
     it('BICEP falls back to 0.228×height when no wrist', () => {
       const { wristCm: _, ...noWrist } = baseline;
       expect(computeGeneticMax('BICEP', noWrist)).toBeCloseTo(180 * 0.228, 1);
+      // BICEP_FLEXED height-fallback matches BICEP (legacy alias).
+      expect(computeGeneticMax('BICEP_FLEXED', noWrist)).toBeCloseTo(180 * 0.228, 1);
+      // BICEP_RELAXED height-fallback is 0.92× the flexed one.
+      expect(computeGeneticMax('BICEP_RELAXED', noWrist)).toBeCloseTo(180 * 0.228 * 0.92, 1);
     });
 
     it('QUAD falls back to 0.352×height when no ankle', () => {

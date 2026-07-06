@@ -40,8 +40,19 @@ enum HeartLossTrigger {
 }
 
 enum MetricType {
-  // Hypertrophy (circumferences in cm)
+  // Hypertrophy (circumferences in cm).
+  // BICEP was a single combined metric until 20260706; it split
+  // into BICEP_FLEXED (peak contraction, "show off" measurement,
+  // the canonical Casey Butt formula target) and BICEP_RELAXED
+  // (arm hanging at side, ~1.5-2cm smaller, useful for tracking
+  // arm size without pump effects). Existing BICEP rows were
+  // migrated to BICEP_FLEXED by the migration — convention is to
+  // measure flexed unless stated otherwise. BICEP itself remains
+  // in the enum as a legacy alias (Postgres can't drop enum
+  // values without recreating the type) but no client emits it.
   BICEP
+  BICEP_FLEXED
+  BICEP_RELAXED
   CHEST
   // SHOULDER is the shoulder-to-shoulder BREADTH (not circumference)
   SHOULDER

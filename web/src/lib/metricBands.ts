@@ -135,6 +135,17 @@ export const METRIC_MONOTONIC_BANDS: Partial<Record<MetricType, MonotonicBands>>
     healthyMin: 120,  // 2:00 — top of healthy
     subtitle: 'elite ≥4:00 · healthy ≥2:00',
   },
+  L_SIT_HOLD: {
+    // L-Sit is the hardest of the calisthenics holds — full-body
+    // compression + hip flexor + core demand at once. Elite
+    // recreational 60s, healthy 30s (most untrained people can't
+    // crack 10s). Lower than PLANK/DEAD_HANG by design.
+    min: 0,
+    max: 180,
+    eliteMin: 60,    // 1:00
+    healthyMin: 30,  // 0:30
+    subtitle: 'elite ≥1:00 · healthy ≥0:30',
+  },
   DEAD_HANG: {
     // Same shape as PLANK_HOLD. Elite hang time is broadly similar
     // to elite plank time — both are full-body isometric holds. 3

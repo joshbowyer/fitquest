@@ -40,14 +40,19 @@ const CIRCUMFERENCE_GROUP: Array<{
   label: string;
   yAxis: 'left' | 'right';
 }> = [
-  { metric: 'WAIST',   color: '#ff5cff', label: 'Waist',   yAxis: 'left'  },
-  { metric: 'CHEST',   color: '#14d6e8', label: 'Chest',   yAxis: 'right' },
-  { metric: 'NECK',    color: '#9bff5c', label: 'Neck',    yAxis: 'right' },
-  { metric: 'SHOULDER',color: '#ffc34d', label: 'Shoulder',yAxis: 'right' },
-  { metric: 'BICEP',   color: '#ff8c00', label: 'Bicep',   yAxis: 'right' },
-  { metric: 'FOREARM', color: '#8b9eff', label: 'Forearm', yAxis: 'right' },
-  { metric: 'QUAD',    color: '#ff2bd6', label: 'Quad',    yAxis: 'right' },
-  { metric: 'CALF',    color: '#daa520', label: 'Calf',    yAxis: 'right' },
+  { metric: 'WAIST',          color: '#ff5cff', label: 'Waist',       yAxis: 'left'  },
+  { metric: 'CHEST',          color: '#14d6e8', label: 'Chest',       yAxis: 'right' },
+  { metric: 'NECK',           color: '#9bff5c', label: 'Neck',        yAxis: 'right' },
+  { metric: 'SHOULDER',       color: '#ffc34d', label: 'Shoulder',    yAxis: 'right' },
+  // Bicep split into flexed + relaxed after 2026-07-06. Both
+  // share the right Y axis but get distinct colors so the user
+  // can see them diverge (relaxed rises slower; flexed has pump
+  // spikes).
+  { metric: 'BICEP_FLEXED',   color: '#ff8c00', label: 'Bicep (F)',   yAxis: 'right' },
+  { metric: 'BICEP_RELAXED',  color: '#ffa64d', label: 'Bicep (R)',   yAxis: 'right' },
+  { metric: 'FOREARM',        color: '#8b9eff', label: 'Forearm',     yAxis: 'right' },
+  { metric: 'QUAD',           color: '#ff2bd6', label: 'Quad',        yAxis: 'right' },
+  { metric: 'CALF',           color: '#daa520', label: 'Calf',        yAxis: 'right' },
 ];
 
 /**

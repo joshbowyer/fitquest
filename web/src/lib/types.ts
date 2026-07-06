@@ -7,7 +7,13 @@ export type ClassName =
   | 'ORACLE';
 
 export type MetricType =
-  | 'BICEP' | 'CHEST' | 'SHOULDER' | 'QUAD' | 'CALF' | 'FOREARM' | 'NECK' | 'WAIST'
+  // Hypertrophy (circumferences in cm). BICEP is a legacy alias for
+  // BICEP_FLEXED — new client code should pick relaxed vs flexed
+  // explicitly. BICEP is kept in the enum so historical server rows
+  // don't break the type-checker; the api-side migration renamed
+  // existing BICEP rows to BICEP_FLEXED.
+  | 'BICEP' | 'BICEP_FLEXED' | 'BICEP_RELAXED'
+  | 'CHEST' | 'SHOULDER' | 'QUAD' | 'CALF' | 'FOREARM' | 'NECK' | 'WAIST'
   | 'BENCH_1RM' | 'SQUAT_1RM' | 'DEADLIFT_1RM' | 'OHP_1RM' | 'PULLUP_1RM'
   | 'BODY_FAT_PCT' | 'LEAN_MASS' | 'FFMI' | 'WEIGHT'
   | 'VO2_MAX' | 'RESTING_HR' | 'HRV' | 'FIVE_K_TIME' | 'ONE_MILE_TIME'
@@ -34,7 +40,9 @@ export type MetricMeta = {
 };
 
 export const METRICS: Record<MetricType, MetricMeta> = {
-  BICEP: { type: 'BICEP', category: 'HYPERTROPHY', label: 'Bicep Circumference', shortLabel: 'Bicep', unit: 'cm', defaultMin: 30, description: 'Flexed bicep circumference.' },
+  BICEP: { type: 'BICEP', category: 'HYPERTROPHY', label: 'Bicep Circumference (legacy)', shortLabel: 'Bicep', unit: 'cm', defaultMin: 30, description: 'Deprecated alias — use BICEP_FLEXED or BICEP_RELAXED. Migrated to BICEP_FLEXED on 2026-07-06.' },
+  BICEP_FLEXED: { type: 'BICEP_FLEXED', category: 'HYPERTROPHY', label: 'Bicep Circumference (Flexed)', shortLabel: 'Bicep F', unit: 'cm', defaultMin: 30, description: 'Bicep at peak contraction. Casey Butt midpoint ~2.7× wrist for a 6in frame.' },
+  BICEP_RELAXED: { type: 'BICEP_RELAXED', category: 'HYPERTROPHY', label: 'Bicep Circumference (Relaxed)', shortLabel: 'Bicep R', unit: 'cm', defaultMin: 28, description: 'Bicep with arm hanging at side, no pump. ~1.5-2cm smaller than flexed for the same arm.' },
   CHEST: { type: 'CHEST', category: 'HYPERTROPHY', label: 'Chest Circumference', shortLabel: 'Chest', unit: 'cm', defaultMin: 90, description: 'Chest circumference at nipple line.' },
   SHOULDER: { type: 'SHOULDER', category: 'HYPERTROPHY', label: 'Shoulder Circumference', shortLabel: 'Shoulder', unit: 'cm', defaultMin: 89, description: 'Deltoid circumference around the bulge. Realistic adult-male floor ~35in (89cm).' },
   QUAD: { type: 'QUAD', category: 'HYPERTROPHY', label: 'Quad Circumference', shortLabel: 'Quad', unit: 'cm', defaultMin: 50, description: 'Quad circumference 15cm above patella.' },
@@ -79,7 +87,7 @@ export const METRICS: Record<MetricType, MetricMeta> = {
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
-  HYPERTROPHY: ['BICEP', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
+  HYPERTROPHY: ['BICEP_FLEXED', 'BICEP_RELAXED', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
   STRENGTH: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'OHP_1RM', 'PULLUP_1RM', 'POWERLIFT_TOTAL'],
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST', 'SHOULDER_WAIST_RATIO'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],

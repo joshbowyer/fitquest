@@ -13,6 +13,7 @@ import {
   getTodayHabitStatus,
 } from '../lib/streaks.js';
 import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
+import { MeasurementSource } from '../lib/prisma.js';
 
 // Metrics that are derived from other data — not user-enterable.
 // LEAN_MASS = weight × (1 - bf%); FFMI = lean mass / height² (with
@@ -28,6 +29,13 @@ const CreateSchema = z.object({
   unit: z.string().max(16).optional(),
   notes: z.string().max(500).optional(),
   recordedAt: z.string().datetime().optional(),
+  /// Method used to record a body-fat or weight reading. Optional
+  /// for backward compat (legacy clients always omit it). When set,
+  /// the morning report's body-comp insight weighs by source
+  /// confidence — DEXA/BOD_POD get full weight, calipers/BIA get
+  /// partial, VISUAL/MANUAL get low confidence. See
+  /// api/src/lib/measurementSource.ts for the confidence map.
+  source: z.nativeEnum(MeasurementSource).optional(),
 });
 
 const UpdateSchema = CreateSchema.partial().extend({ id: z.string() });
@@ -93,6 +101,10 @@ export async function measurementRoutes(app: FastifyInstance) {
         unit: body.unit ?? METRICS[body.metric].unit,
         notes: body.notes,
         recordedAt: body.recordedAt ? new Date(body.recordedAt) : new Date(),
+        // Default to UNKNOWN if the client didn't specify — preserves
+        // the existing row shape and the morning-report's confidence
+        // logic treats UNKNOWN as low.
+        source: body.source ?? MeasurementSource.UNKNOWN,
       },
     });
     // Fire a checkin_* penance based on the metric's cadence bucket.

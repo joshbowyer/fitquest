@@ -14,8 +14,25 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.3 is the latest signed-off build.** Tag
-  lives at `joshbowyer/fitquest-android@v1.0.3`. Build it with:
+- **Android sync:** `scripts/sync-android.sh` (in this repo) wraps
+  the script at `../fitquest-android/scripts/sync-android.sh` so the
+  Android wrapper doesn't go stale when web/api ships. Run from
+  this repo after merging web/api changes:
+  ```
+  ./scripts/sync-android.sh          # refresh CHANGELOG + release notes for current version
+  BUMP=1 ./scripts/sync-android.sh   # auto-bump patch (X.Y.Z → X.Y.(Z+1)) + refresh notes
+  NEXT_VERSION=1.0.4 ./scripts/sync-android.sh
+  ```
+  The script categorises the parent repo's recent commits by
+  conventional-commit prefix (feat / fix / polish / etc), updates
+  `CHANGELOG.md` and writes a `RELEASE_NOTES_vX.Y.Z.md` draft
+  ready for `gh release create`. It does NOT run gradle, sign, or
+  publish — those stay manual. **v1.0.3 hasn't been published yet**
+  even though `app/build.gradle` claims it (the parent repo had no
+  shipped changes since v1.0.2 when the bump commit landed). Run the
+  sync script + the gradle build when ready to ship.
+- **Android release: v1.0.3 is staged but not yet published.**
+  Once v1.0.3 changes ship here, build the APK with:
   ```
   cd /home/josh-claw-code/FitnessStats/web && npx vite build
   cd /home/josh-claw-code/FitnessStats/web && npx cap sync android
@@ -26,7 +43,11 @@
   `app/build.gradle`. For Play Store distribution we'd need to
   add a `signingConfigs { release { ... } }` block + a keystore.
   For internal / sideload distribution the unsigned APK works
-  as-is.
+  as-is. Publish via:
+  ```
+  gh release create v1.0.3 RELEASE_NOTES_v1.0.3.md \
+    app/build/outputs/apk/release/app-release.apk
+  ```
 
 
 ## Active (in progress)
@@ -179,14 +200,21 @@ with edit + delete inline.)
   (Halloween pumpkins, Christmas lights, etc.), UI themes
   (color palettes for the neon glow). All cosmetic unless
   we want to design a real prestige system around them.
-- (was: change heart color to red — shipped in `fa2c47c` for
-  HeartsCard (full hearts = red, lost = dark gray). The hero
-  bar header (Layout.tsx) was switched to a green HP bar in
-  `2a136f` per the user's "consistent bars not hearts" call
-  for pets. So hearts are now red only on HeartsCard / pending
-  unlock cards, and the hero bar shows a green HP bar sourced
-  from User.hearts. Documented under "Mobile & UX → Web
-  notifications" elsewhere.)
+- **HeartsCard → HP bar swap.** The hero-bar header in
+  Layout.tsx was switched to a green HP bar in `2a136f` so
+  pets (which read the same User.hearts value) and the user
+  would see one consistent bar. The dashboard's HeartsCard
+  was left with red ♥ glyphs (rose filled, dark gray empty),
+  which now reads as a different visual element instead of
+  the same HP. Swap the glyphs for a lime-green HP bar
+  matching the hero bar (same `bg-neon-lime` fill, ink track,
+  `animate-heart-warn` pulse at ≤3). Both Casual and Hardcore
+  modes — Casual shows a permanently-full bar + the
+  "switch to Hardcore" hint; Hardcore shows the live 0-10
+  bar + the urgency message. Keeps the multiplier and the
+  regen explainer text below. Pending unlock cards (skill
+  tree, etc.) keep the red ♥ glyphs — that's a different
+  visual (unlock badges), not an HP indicator.
 - (was: Calendar view — shipped in `cd16301` + `2309089` +
   `26d95a7`. `/calendar` is a month grid + per-day recap that
   shows workouts, weigh-ins, pain, habits, dailies, and the
@@ -454,6 +482,68 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+- ✅ Modal.tsx: portal-nuke on every parent re-render. The useEffect
+  had `onClose` in its dep array; Dashboard.tsx (and other callers)
+  passed inline `() => setX(null)` closures that recreated on every
+  parent render. The effect's cleanup removed all `[data-modal-portal]`
+  nodes — so any open modal disappeared on the next re-render. The
+  most visible victim was the dashboard's radial gauges: click
+  set state, the next query tick re-rendered, the modal vanished
+  mid-open. Fixed by capturing the latest onClose via ref, dropping
+  it from the dep array, and only nuking orphaned portals on the
+  open → closed transition (deferred one frame so React's own
+  unmount has first crack). Fixes every Modal call site in the
+  app (24 usages) at once.
+- ✅ HeartsCard → lime-green HP bar (replaces red ♥ glyphs).
+  Mirrors the hero-bar HP pill in Layout.tsx (bg-neon-lime fill, ink
+  track, `animate-heart-warn` pulse at ≤3). Both Casual and Hardcore
+  modes — Casual shows a permanently-full bar + "switch to Hardcore"
+  hint; Hardcore shows live 0-10 + urgency message. Multiplier and
+  regen explainer kept below the bar. ROADMAP entry above under
+  Gamification & Economy.
+- ✅ L-Sit radial visual diff. Was falling through to the plain
+  Gauge (no zones, no warn/elite coloring) because it was in
+  `monotonicMetricKeys` but missing from `METRIC_MONOTONIC_BANDS`.
+  Added bands entry (elite ≥1:00, healthy ≥0:30, max 3:00) — now
+  renders with the same lime/cyan/amber zone backgrounds as plank
+  and dead-hang.
+- ✅ BICEP → BICEP_FLEXED + BICEP_RELAXED split. New enum values
+  added via migration `20260706000000_bicep_split_flexed_relaxed`;
+  existing Measurement + GeneticMax rows migrated to BICEP_FLEXED
+  (convention is to measure flexed). Casey Butt formula gives
+  ~16.2cm ceiling for a 6" wrist; relaxed uses the same formula
+  × 0.92 (~14.9cm) since relaxed is ~1.5-2cm smaller for the same
+  arm. bicep_40 / bicep_45 achievements now point at BICEP_FLEXED
+  (relaxed would let users game the thresholds). Both new metrics
+  surfaced in /measurements (separate sidebar entries), /profile
+  preview maxes (two rows), /bodycomp (two chart series), and the
+  dashboard's HYPERTROPHY gauges (8 gauges → wraps to 2 rows on
+  lg). BICEP retained as a legacy alias in the enum (Postgres
+  can't drop enum values without recreating the type).
+- ✅ Body-fat method picker. New `BodyfatMethodPicker` modal with
+  4 methods (DEXA / BIA / Calipers 3-site Jackson-Pollock / Navy
+  tape) — JP3 + Navy are sex-aware (men vs women sites / hip
+  requirement). Computes %BF client-side via
+  `web/src/lib/bodyfat.ts` + `api/src/lib/bodyfat.ts` (formulas
+  mirrored so the api could recompute later if needed). Submits
+  to `POST /measurements` with the chosen `source` field
+  (CALIPERS / BIA / DEXA / NAVY_TAPE) so the morning report's
+  confidence weighting applies. 14 vitest tests on the formulas
+  pass. Schema's existing `Measurement.source` column (which the
+  api's CreateSchema wasn't accepting before) is now wired up.
+  Hooked into MetricDetailModal (BODY_FAT_PCT row) and Profile
+  (button next to the simple bodyfat input).
+- ✅ Android sync mechanism. `scripts/sync-android.sh` (parent
+  repo) wraps `../fitquest-android/scripts/sync-android.sh` so the
+  Android wrapper stays in sync with web/api changes. Walks the
+  parent repo's git log since the last Android bump, categorises
+  by conventional-commit prefix, writes CHANGELOG.md +
+  RELEASE_NOTES_vX.Y.Z.md. Does NOT run gradle / sign / publish —
+  those stay manual per the user's "don't build yet" guardrail.
+  v1.0.3 already has a CHANGELOG + release-notes draft ready; once
+  the user wants to ship, the path is documented in the new
+  "Operations → Android sync" block above.
 
 - ✅ Server-UTC bug: app was rolling non-UTC users over to
   tomorrow. The api container runs in UTC; 17 places across

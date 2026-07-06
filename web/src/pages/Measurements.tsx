@@ -38,7 +38,11 @@ export function MeasurementsPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const inImperial = system === 'IMPERIAL';
-  const [selected, setSelected] = useState<MetricType>('BICEP');
+  // Default selection: BICEP_FLEXED (the canonical "show off"
+// measurement). The sidebar lists both BICEP_FLEXED and
+// BICEP_RELAXED as separate items — the legacy BICEP enum value
+// was migrated to BICEP_FLEXED at the data level on 2026-07-06.
+const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
   const [draftValue, setDraftValue] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [maxDraft, setMaxDraft] = useState('');

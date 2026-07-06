@@ -35,12 +35,22 @@ export function computeGeneticMax(metric: MetricType, inputs: Inputs): number | 
     // optimal training) for a small-frame male (6" wrist, 5'11"). Height
     // fallbacks are calibrated to give the same answer for that frame so
     // results are consistent regardless of which inputs are present.
-    case 'BICEP': {
+    case 'BICEP':
+    case 'BICEP_FLEXED': {
       // Casey Butt range: 15.5-16.5" (2.6-2.75x wrist), midpoint ~2.7x.
       // 6" wrist -> 16.2" ceiling. (User initially estimated 18" but
       // Grok + Casey Butt flag that as too high for a 6" wrist frame.)
       if (wristCm) return round1(wristCm * 2.7);
       if (heightCm) return round1(heightCm * 0.228);
+      return null;
+    }
+    case 'BICEP_RELAXED': {
+      // Relaxed bicep is ~1.5-2cm smaller than flexed for the same
+      // arm. Apply the 0.92 reduction ratio to the flexed formula
+      // so a 6" wrist -> ~14.9" relaxed ceiling (vs 16.2" flexed).
+      // Same fallback chain; height-based ceiling scales the same.
+      if (wristCm) return round1(wristCm * 2.7 * 0.92);
+      if (heightCm) return round1(heightCm * 0.228 * 0.92);
       return null;
     }
     case 'FOREARM': {

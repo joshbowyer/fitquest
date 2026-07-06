@@ -38,17 +38,44 @@ const seconds = (v: number) => {
 const num = (v: number) => v.toFixed(1);
 
 export const METRICS: Record<MetricType, MetricMeta> = {
-  // Hypertrophy
+  // Hypertrophy.
+  // BICEP is a deprecated alias kept in the enum for backward
+  // compatibility — new client code should emit BICEP_FLEXED or
+  // BICEP_RELAXED explicitly. The api will accept BICEP on POST
+  // but the dashboard and GeneticMax already migrated everything
+  // to BICEP_FLEXED.
   BICEP: {
     type: 'BICEP',
     category: 'HYPERTROPHY',
-    label: 'Bicep Circumference',
+    label: 'Bicep Circumference (legacy)',
     shortLabel: 'Bicep',
     unit: 'cm',
     inverted: false,
     defaultMin: 30,
     format: cm,
-    description: 'Flexed bicep circumference. Key hypertrophy stat.',
+    description: 'Deprecated alias for BICEP_FLEXED. New logs should pick relaxed vs flexed explicitly.',
+  },
+  BICEP_FLEXED: {
+    type: 'BICEP_FLEXED',
+    category: 'HYPERTROPHY',
+    label: 'Bicep Circumference (Flexed)',
+    shortLabel: 'Bicep F',
+    unit: 'cm',
+    inverted: false,
+    defaultMin: 30,
+    format: cm,
+    description: 'Bicep circumference at peak contraction (flexed). Casey Butt midpoint ~2.7× wrist for a 6" frame.',
+  },
+  BICEP_RELAXED: {
+    type: 'BICEP_RELAXED',
+    category: 'HYPERTROPHY',
+    label: 'Bicep Circumference (Relaxed)',
+    shortLabel: 'Bicep R',
+    unit: 'cm',
+    inverted: false,
+    defaultMin: 28,
+    format: cm,
+    description: 'Bicep circumference with arm hanging at side, no contraction. Tracks arm size without pump effects.',
   },
   CHEST: {
     type: 'CHEST',
@@ -494,7 +521,7 @@ STEPS: {
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
-  HYPERTROPHY: ['BICEP', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
+  HYPERTROPHY: ['BICEP_FLEXED', 'BICEP_RELAXED', 'CHEST', 'SHOULDER', 'QUAD', 'CALF', 'FOREARM', 'NECK'],
   STRENGTH: ['BENCH_1RM', 'SQUAT_1RM', 'DEADLIFT_1RM', 'OHP_1RM', 'PULLUP_1RM', 'POWERLIFT_TOTAL'],
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],

@@ -8,6 +8,7 @@ import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } fr
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { NeonButton } from './NeonButton';
+import { BodyfatMethodPicker } from './BodyfatMethodPicker';
 
 // Metrics that are derived from other data — not user-enterable.
 // LEAN_MASS / FFMI live in the API schema's DERIVED_METRICS guard.
@@ -33,7 +34,9 @@ const PLACEHOLDERS: Partial<Record<MetricType, string>> = {
   WEIGHT: 'e.g. 134.0',
   BODY_FAT_PCT: 'e.g. 14.5',
   WAIST: 'e.g. 81',
-  BICEP: 'e.g. 38.0',
+  BICEP: 'e.g. 38.0 (legacy)',
+  BICEP_FLEXED: 'e.g. 38.0',
+  BICEP_RELAXED: 'e.g. 36.0',
   CHEST: 'e.g. 102',
   SHOULDER: 'e.g. 122',
   QUAD: 'e.g. 58',
@@ -108,7 +111,9 @@ const METRIC_HELP: Record<string, { about: string; tips: string[] }> = {
       'Garmin / Apple Watch / chest strap give reasonable estimates; lab testing is the gold standard.',
     ],
   },
-  BICEP: { about: 'Genetic ceiling based on Casey Butt wrist-derived formulas.', tips: [] },
+  BICEP: { about: 'Deprecated alias — use BICEP_FLEXED or BICEP_RELAXED explicitly.', tips: [] },
+  BICEP_FLEXED: { about: 'Bicep circumference at peak contraction (flexed). Genetic ceiling ~2.7× wrist per Casey Butt (16.2" for a 6" frame).', tips: ['Measure at the largest point of the bicep with arm flexed and elbow pinned.', 'Same time of day as other measurements — pump / hydration swings the reading.'] },
+  BICEP_RELAXED: { about: 'Bicep circumference with arm hanging at side, no contraction. Tracks arm size without pump effects — typically 1.5-2cm smaller than flexed for the same arm.', tips: ['Use RELAXED if you want to see real arm growth without pump noise.', 'Genetic ceiling ~0.92× the flexed formula (2.7 × 0.92 × wrist).'] },
   CHEST: { about: 'Genetic ceiling based on wrist + height.', tips: [] },
   SHOULDER: { about: 'Shoulder width (biacromial breadth, distance between the two shoulders) — bone structure + muscle.', tips: [] },
   QUAD: { about: 'Genetic ceiling ~2.85× ankle (Casey Butt).', tips: [] },
@@ -170,6 +175,11 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
   const [draftValue, setDraftValue] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
   const [logError, setLogError] = useState<string | null>(null);
+  // BODY_FAT_PCT logs route through BodyfatMethodPicker so the user
+  // can pick the actual method (DEXA / BIA / calipers / Navy) — the
+  // source then flows to the api and the morning report weights it
+  // by confidence. Other metrics use the inline form below.
+  const [showBodyfatPicker, setShowBodyfatPicker] = useState(false);
 
   const isLoggable = metric != null && !DERIVED_METRICS.includes(metric);
 
@@ -226,6 +236,7 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
       setDraftValue('');
       setDraftNotes('');
       setLogError(null);
+      setShowBodyfatPicker(false);
     }
   }, [open, metric]);
 
@@ -328,8 +339,11 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
 
         {/* Inline log — only for metrics the user can actually enter.
             DERIVED_METRICS (LEAN_MASS / FFMI / V-TAPER) are computed
-            from other data and rejected by the server. */}
-        {isLoggable && (
+            from other data and rejected by the server. BODY_FAT_PCT
+            routes through the method picker instead of a single
+            number input — the source tag then flows through to the
+            morning report's confidence weighting. */}
+        {isLoggable && metric !== 'BODY_FAT_PCT' && (
           <div className="border-t border-ink-500/30 pt-3">
             <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
               Log new {meta.shortLabel}
@@ -374,6 +388,53 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
             <div className="text-[9px] font-mono text-ink-500 mt-1.5">
               Stored in metric units ({meta.unit}); displayed in your preferred system.
             </div>
+          </div>
+        )}
+
+        {/* BODY_FAT_PCT-specific block: the picker handles input,
+            computation, AND submits the source so the morning report
+            can weight by confidence. The Mutation below wraps the
+            picker callback so the rest of the modal can keep its
+            invalidation behaviour identical to other metrics. */}
+        {isLoggable && metric === 'BODY_FAT_PCT' && (
+          <div className="border-t border-ink-500/30 pt-3">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+              Log new body fat
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowBodyfatPicker(true)}
+              className="w-full border border-neon-cyan/40 bg-neon-cyan/10 px-3 py-2 text-left transition-all hover:bg-neon-cyan/20"
+            >
+              <div className="font-display tracking-widest text-xs uppercase text-neon-cyan">
+                ⚡ Log via method (DEXA / BIA / Calipers / Navy)
+              </div>
+              <div className="text-[10px] font-mono text-ink-300 mt-1">
+                Pick the method you actually used — body-fat % is computed and stored with the
+                right confidence tag so the morning report knows how much to weight it.
+              </div>
+            </button>
+            <BodyfatMethodPicker
+              open={showBodyfatPicker}
+              onClose={() => setShowBodyfatPicker(false)}
+              onSubmit={async ({ bfPct, source }) => {
+                await api('/measurements', {
+                  method: 'POST',
+                  body: {
+                    metric: 'BODY_FAT_PCT',
+                    value: bfPct,
+                    notes: undefined,
+                    source,
+                  },
+                });
+                qc.invalidateQueries({ queryKey: ['measurements'] });
+                qc.invalidateQueries({ queryKey: ['metric-history', metric] });
+                qc.invalidateQueries({ queryKey: ['weigh-in'] });
+                qc.invalidateQueries({ queryKey: ['achievements'] });
+                qc.invalidateQueries({ queryKey: ['frame'] });
+                qc.invalidateQueries({ queryKey: ['status'] });
+              }}
+            />
           </div>
         )}
 

@@ -68,8 +68,13 @@ export const ACHIEVEMENT_DEFS: Array<{
   // ============================================================
   // Hypertrophy
   // ============================================================
-  { key: 'bicep_40',     name: 'Sleeves Are Optional', description: 'Bicep circumference ≥ 40 cm. Tailors hate you.', category: 'HYPERTROPHY', icon: 'arm', criteria: { kind: 'measurement', metric: 'BICEP', gte: 40 }, points: 50 },
-  { key: 'bicep_45',     name: 'Sleeves Don\u2019t Fit', description: 'Bicep circumference ≥ 45 cm. The tailor has filed a complaint.', category: 'HYPERTROPHY', icon: 'arm', criteria: { kind: 'measurement', metric: 'BICEP', gte: 45 }, points: 150, witty: true },
+  // Bicep circumference achievements — measured flexed. The Casey
+  // Butt 2.7× wrist formula gives 41cm for a 6" frame, so 40cm
+  // is "well-trained" and 45cm is "natural-ceiling territory".
+  // Relaxed bicep doesn't get achievements (it's ~2cm lower for
+  // the same arm and would let users game the thresholds).
+  { key: 'bicep_40',     name: 'Sleeves Are Optional', description: 'Flexed bicep circumference ≥ 40 cm. Tailors hate you.', category: 'HYPERTROPHY', icon: 'arm', criteria: { kind: 'measurement', metric: 'BICEP_FLEXED', gte: 40 }, points: 50 },
+  { key: 'bicep_45',     name: 'Sleeves Don\u2019t Fit', description: 'Flexed bicep circumference ≥ 45 cm. The tailor has filed a complaint.', category: 'HYPERTROPHY', icon: 'arm', criteria: { kind: 'measurement', metric: 'BICEP_FLEXED', gte: 45 }, points: 150, witty: true },
   { key: 'shoulder_140', name: 'Doorways Are Suggestions', description: 'Shoulder width ≥ 140 cm. Architects weep.', category: 'HYPERTROPHY', icon: 'body', criteria: { kind: 'measurement', metric: 'SHOULDER', gte: 140 }, points: 100, witty: true },
   { key: 'chest_120',    name: 'Frame Of Reference', description: 'Chest circumference ≥ 120 cm. Cross-country from above now.', category: 'HYPERTROPHY', icon: 'body', criteria: { kind: 'measurement', metric: 'CHEST', gte: 120 }, points: 75, witty: true },
   { key: 'quad_65',      name: 'Quads Of Doom',     description: 'Quad circumference ≥ 65 cm. Pants are a negotiation.', category: 'HYPERTROPHY', icon: 'arm', criteria: { kind: 'measurement', metric: 'QUAD', gte: 65 }, points: 75, witty: true },

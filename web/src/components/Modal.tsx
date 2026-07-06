@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { classNames } from '@/lib/format';
 
@@ -19,40 +19,56 @@ export function Modal({
   children: ReactNode;
   width?: string;
 }) {
-  // Escape-to-close, body-scroll-lock, and a defensive cleanup of
-  // any orphaned portal nodes. The cleanup runs on every close —
-  // addresses a mobile Safari "ghost mask" bug where a previously-
-  // rendered backdrop would linger for a frame after the modal was
-  // unmounted (esp. when the user closed by tapping outside, the
-  // backdrop click handler ran onClose, and the parent's setState
-  // unmounted the modal but the portal node was still in the DOM).
+  // Capture the latest onClose via ref so the effect can stay
+  // scoped to `open` only. Without this, every parent re-render
+  // that recreates the onClose handler (e.g. inline
+  // `() => setDetailMetric(null)` in Dashboard.tsx) would re-run
+  // this effect — and its cleanup nukes the portal node. Result:
+  // any open modal disappeared on the next parent re-render
+  // (radial gauges on the dashboard were the most visible victim
+  // — clicking set state, the next query tick re-rendered, the
+  // modal vanished mid-open).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Body scroll lock + Escape-to-close. Only runs when `open`
+  // flips; the keydown closure reads the latest onClose through
+  // the ref so we never need it in the dep array.
   useEffect(() => {
-    if (!open) {
-      // Belt-and-suspenders: nuke any leftover portal nodes from
-      // a previous mount. Without this, a fast-tap on iOS Safari
-      // occasionally leaves the dark backdrop visible while the
-      // content is gone.
-      const stale = document.querySelectorAll('[data-modal-portal]');
-      stale.forEach((n) => n.remove());
-      return;
-    }
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
-    // Body scroll lock — prevents the page from scrolling behind
-    // the modal on iOS Safari. Saved/restored on close.
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
-      // Cleanup-time nuke too — catches the close case where the
-      // portal node didn't get a chance to unmount yet.
-      const stale = document.querySelectorAll('[data-modal-portal]');
-      stale.forEach((n) => n.remove());
     };
-  }, [open, onClose]);
+  }, [open]);
+
+  // Orphaned-portal cleanup. Only runs on the open → closed
+  // transition (not on every parent re-render like the previous
+  // version did). Belt-and-suspenders for the mobile-Safari
+  // "ghost mask" bug where a tap-outside fast-path occasionally
+  // left the dark backdrop visible while the content was gone.
+  // Deferred one frame so React's own unmount has a chance to
+  // remove the node first; we only nuke what's actually orphaned.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (wasOpen.current && !open) {
+      const t = window.setTimeout(() => {
+        document
+          .querySelectorAll('[data-modal-portal]')
+          .forEach((n) => n.remove());
+      }, 0);
+      wasOpen.current = false;
+      return () => window.clearTimeout(t);
+    }
+    wasOpen.current = open;
+    return;
+  }, [open]);
 
   if (!open) return null;
 

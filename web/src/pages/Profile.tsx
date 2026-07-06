@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Modal } from '@/components/Modal';
+import { BodyfatMethodPicker } from '@/components/BodyfatMethodPicker';
 import { AvatarCustomizer } from '@/components/AvatarCustomizer';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -72,7 +73,9 @@ function previewMax(
   const h = heightCm;
   const weight = weightKg;
   switch (metric) {
-    case 'BICEP':      return w ? w * 2.7 : (h ? h * 0.228 : null);
+    case 'BICEP':
+    case 'BICEP_FLEXED': return w ? w * 2.7 : (h ? h * 0.228 : null);
+    case 'BICEP_RELAXED': return w ? w * 2.7 * 0.92 : (h ? h * 0.228 * 0.92 : null);
     case 'FOREARM':    return w ? w * 2.3 : (h ? h * 0.195 : null);
     case 'CHEST':      return w ? w * 7.5 : (h ? h * 0.634 : null);
     case 'SHOULDER':   return w ? w * 8.5 : (h ? h * 0.718 : null);
@@ -86,7 +89,11 @@ function previewMax(
 }
 
 const PREVIEW_METRICS = [
-  { key: 'BICEP', label: 'Bicep', unit: 'cm' },
+  // Bicep split into flexed + relaxed after 2026-07-06. Flexed is
+  // the canonical "show off" measurement (matches Casey Butt
+  // formula); relaxed is for tracking arm size without pump.
+  { key: 'BICEP_FLEXED', label: 'Bicep (Flexed)', unit: 'cm' },
+  { key: 'BICEP_RELAXED', label: 'Bicep (Relaxed)', unit: 'cm' },
   { key: 'FOREARM', label: 'Forearm', unit: 'cm' },
   { key: 'CHEST', label: 'Chest', unit: 'cm' },
   { key: 'SHOULDER', label: 'Shoulders', unit: 'cm' },
@@ -116,13 +123,25 @@ export function ProfilePage() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [classChoice, setClassChoice] = useState<ClassName | null>(null);
   const [birthDate, setBirthDate] = useState<string | null>(null);
-  const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | 'OTHER' | null>(null);
+  // Sex picker is now MALE or FEMALE only — body-fat formulas
+  // (Jackson-Pollock, Navy tape) branch on this and only have
+  // validated forms for those two. The api still accepts OTHER
+  // (legacy enum value, never offered in the UI) for backward
+  // compat with any existing row — those users get the male
+  // formula at the picker.
+  const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | null>(null);
   const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
   const [timezoneDraft, setTimezoneDraft] = useState<string>('');
   const [latitudeDraft, setLatitudeDraft] = useState<string>('');
   const [longitudeDraft, setLongitudeDraft] = useState<string>('');
   const [locationSearchDraft, setLocationSearchDraft] = useState<string>('');
   const [locationSearchResults, setLocationSearchResults] = useState<GeocodeResult[]>([]);
+  // Bodyfat picker is the recommended way to log a body-fat reading
+  // on Profile — picks the method (DEXA / BIA / calipers / Navy),
+  // computes %BF, and writes a Measurement row tagged with the
+  // source. After a successful picker submit we also refresh auth
+  // state so the dashboard's bodyFatPct reflects the latest value.
+  const [showBodyfatPicker, setShowBodyfatPicker] = useState(false);
   const [saveResult, setSaveResult] = useState<{ kind: 'idle' | 'saved' | 'recomputed' | 'error'; message: string }>({
     kind: 'idle',
     message: '',
@@ -521,6 +540,13 @@ export function ProfilePage() {
                       value={draft.bodyFatPct ?? ''}
                       onChange={(e) => setDraftField('bodyFatPct', e.target.value)}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowBodyfatPicker(true)}
+                      className="text-[10px] font-mono mt-1 text-neon-cyan/80 hover:text-neon-cyan underline"
+                    >
+                      or log via method (DEXA / BIA / Calipers / Navy) →
+                    </button>
                   </div>
                 </div>
               </div>
@@ -565,12 +591,11 @@ export function ProfilePage() {
                   <select
                     className="input-neon"
                     value={sexDraft ?? ''}
-                    onChange={(e) => setSexDraft((e.target.value || null) as 'MALE' | 'FEMALE' | 'OTHER' | null)}
+                    onChange={(e) => setSexDraft((e.target.value || null) as 'MALE' | 'FEMALE' | null)}
                   >
                     <option value="">— prefer not to say —</option>
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
-                    <option value="OTHER">Other / non-binary</option>
                   </select>
                 </div>
                 <div>
@@ -1174,6 +1199,29 @@ export function ProfilePage() {
           </div>
         </Panel>
       </div>
+
+      <BodyfatMethodPicker
+        open={showBodyfatPicker}
+        onClose={() => setShowBodyfatPicker(false)}
+        initialSex={sexDraft ?? user.sex ?? null}
+        onSubmit={async ({ bfPct, source }) => {
+          // Write the Measurement row with the chosen source so the
+          // morning report's confidence weighting applies. Then sync
+          // the User.bodyFatPct so the dashboard's snapshot reflects
+          // the latest reading without waiting for a /me refetch.
+          await api('/measurements', {
+            method: 'POST',
+            body: { metric: 'BODY_FAT_PCT', value: bfPct, source },
+          });
+          await api('/users/me', {
+            method: 'PATCH',
+            body: { bodyFatPct: bfPct },
+          });
+          qc.invalidateQueries({ queryKey: ['measurements'] });
+          qc.invalidateQueries({ queryKey: ['metric-history', 'BODY_FAT_PCT'] });
+          await refresh();
+        }}
+      />
     </Layout>
   );
 }
