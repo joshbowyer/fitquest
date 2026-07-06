@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Modal } from './Modal';
-import { METRICS, type MetricType } from '@/lib/types';
-import { formatRelative, formatMetricWithUnit } from '@/lib/format';
-import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
+import { METRICS, type GeneticMax, type MetricType } from '@/lib/types';
+import { formatDate, formatRelative, formatMetricWithUnit } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { NeonButton } from './NeonButton';
@@ -172,8 +172,21 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
     enabled: !!metric,
   });
 
+  // Genetic-max table for the current metric. The /genetic-max
+  // endpoint returns ALL of the user's maxes (small set, ~10
+  // rows); filtering client-side is fine. Same queryKey as
+  // /measurements' page so an override here invalidates the
+  // dashboard gauges + /measurements page alike.
+  const maxQ = useQuery({
+    queryKey: ['genetic-max'],
+    queryFn: () => api<{ items: GeneticMax[] }>('/genetic-max'),
+    enabled: !!metric,
+  });
+  const currentMax = (maxQ.data?.items ?? []).find((g) => g.metric === metric);
+
   const [draftValue, setDraftValue] = useState('');
   const [draftNotes, setDraftNotes] = useState('');
+  const [maxDraft, setMaxDraft] = useState('');
   const [logError, setLogError] = useState<string | null>(null);
   // BODY_FAT_PCT logs route through BodyfatMethodPicker so the user
   // can pick the actual method (DEXA / BIA / calipers / Navy) — the
@@ -214,6 +227,51 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
     onError: (err: Error) => setLogError(err.message ?? 'Could not save.'),
   }, 800);
 
+  // Genetic-max overrides. Lifted from the old /measurements page
+  // so the modal owns the full "log + history + override" stack
+  // and the page can be a flat grid of metric tiles (no per-metric
+  // detail panel). Set-from-current shortcuts (+10/20/50%) buffer
+  // the latest measurement so the user can set a sensible ceiling
+  // without doing the math themselves.
+  const setMaxM = useDelayedMutation({
+    mutationFn: (value: number) =>
+      api('/genetic-max', {
+        method: 'PUT',
+        body: { items: [{ metric: metric!, value, source: 'MANUAL' }] },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+    },
+  }, 800);
+
+  const setMaxFromLatestM = useDelayedMutation({
+    mutationFn: (bufferPct: number) => {
+      const items = q.data?.items ?? [];
+      const sorted = items.slice().sort(
+        (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime(),
+      );
+      const latest = sorted[sorted.length - 1];
+      if (!latest) throw new Error('No measurements to base max on');
+      const buffered = latest.value * (1 + bufferPct / 100);
+      return api('/genetic-max', {
+        method: 'PUT',
+        body: {
+          items: [{ metric: metric!, value: Number(buffered.toFixed(2)), source: 'MANUAL' }],
+        },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+    },
+  }, 800);
+
+  const delMaxM = useDelayedMutation({
+    mutationFn: () => api(`/genetic-max/${metric}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['genetic-max'] }),
+  }, 800);
+
   // Build a simple sparkline series from oldest → newest.
   const series = useMemo(() => {
     const items = (q.data?.items ?? []).slice().sort(
@@ -235,6 +293,7 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
     if (!open) {
       setDraftValue('');
       setDraftNotes('');
+      setMaxDraft('');
       setLogError(null);
       setShowBodyfatPicker(false);
     }
@@ -245,9 +304,15 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
   const help = METRIC_HELP[metric];
 
   return (
-    <Modal open={open} onClose={onClose} title={meta.label}>
+    // max-w-lg gives room for the log + history + override blocks
+    // side-by-side-ish on wide modals without forcing horizontal
+    // scroll on smaller viewports. The internal scroll (Modal
+    // already does overflow-y-auto) keeps everything reachable.
+    <Modal open={open} onClose={onClose} title={meta.label} width="max-w-lg">
       <div className="space-y-4">
-        {/* Current value */}
+        {/* Top stats: latest / range / trend. Three small cards
+            in a row — gives the user a one-glance summary before
+            they start logging or scrolling history. */}
         <div className="grid grid-cols-3 gap-3">
           <div className="border border-ink-500/30 p-3">
             <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300">Latest</div>
@@ -298,54 +363,16 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
           </div>
         </div>
 
-        {/* Sparkline */}
-        {series.length > 1 && (
-          <div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-              History
-            </div>
-            <Sparkline series={series} unit={meta.unit} system={system} />
-          </div>
-        )}
-
-        {/* Recent logs */}
-        <div>
-          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
-            Recent logs
-          </div>
-          {q.isLoading ? (
-            <div className="text-[10px] font-mono text-ink-300">loading…</div>
-          ) : (q.data?.items ?? []).length === 0 ? (
-            <div className="text-[10px] font-mono text-ink-400 italic">
-              No logs yet. Visit the {meta.shortLabel} tab to log some.
-            </div>
-          ) : (
-            <div className="space-y-1 max-h-48 overflow-y-auto">
-              {(q.data?.items ?? []).slice(0, 10).map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between border-b border-ink-500/20 py-1 text-[11px] font-mono"
-                >
-                  <span className="text-ink-300">{formatRelative(m.recordedAt)}</span>
-                  <span className="text-ink-100">{formatMetricWithUnit(m.value, m.unit)}</span>
-                  {m.notes && (
-                    <span className="text-ink-500 italic truncate ml-2 max-w-[40%]">{m.notes}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Inline log — only for metrics the user can actually enter.
+        {/* ── 1. LOG (first, per user spec) ────────────────────────────
+            Inline log — only for metrics the user can actually enter.
             DERIVED_METRICS (LEAN_MASS / FFMI / V-TAPER) are computed
             from other data and rejected by the server. BODY_FAT_PCT
             routes through the method picker instead of a single
             number input — the source tag then flows through to the
             morning report's confidence weighting. */}
         {isLoggable && metric !== 'BODY_FAT_PCT' && (
-          <div className="border-t border-ink-500/30 pt-3">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
+          <div className="border border-neon-lime/40 bg-neon-lime/5 p-3">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-neon-lime mb-2">
               Log new {meta.shortLabel}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -359,7 +386,7 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
                   setLogError(null);
                 }}
                 placeholder={PLACEHOLDERS[metric!] ?? 'value'}
-                className="flex-1 min-w-[100px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-cyan focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
+                className="flex-1 min-w-[100px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-lime focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
               />
               <span className="text-[10px] font-mono text-ink-300 shrink-0">
                 {displayUnit(meta.unit, system)}
@@ -369,10 +396,11 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
                 value={draftNotes}
                 onChange={(e) => setDraftNotes(e.target.value)}
                 placeholder="notes (optional)"
-                className="flex-1 min-w-[140px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-cyan focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
+                className="flex-1 min-w-[140px] bg-bg-700/60 border border-ink-500/40 focus:border-neon-lime focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
               />
               <NeonButton
                 size="sm"
+                variant="lime"
                 loading={logM.isPending}
                 onClick={() => logM.run()}
                 disabled={!draftValue.trim()}
@@ -437,6 +465,150 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
             />
           </div>
         )}
+
+        {/* ── 2. HISTORY ─────────────────────────────────────────────── */}
+        {series.length > 1 && (
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+              History
+            </div>
+            <Sparkline series={series} unit={meta.unit} system={system} />
+          </div>
+        )}
+
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-1">
+            All logs
+          </div>
+          {q.isLoading ? (
+            <div className="text-[10px] font-mono text-ink-300">loading…</div>
+          ) : (q.data?.items ?? []).length === 0 ? (
+            <div className="text-[10px] font-mono text-ink-400 italic">
+              No logs yet — log a value above.
+            </div>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {(q.data?.items ?? []).slice(0, 10).map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between border-b border-ink-500/20 py-1 text-[11px] font-mono"
+                >
+                  <span className="text-ink-300">{formatRelative(m.recordedAt)}</span>
+                  <span className="text-ink-100">{formatMetricWithUnit(m.value, m.unit)}</span>
+                  {m.notes && (
+                    <span className="text-ink-500 italic truncate ml-2 max-w-[40%]">{m.notes}</span>
+                  )}
+                </div>
+              ))}
+              {(q.data?.items ?? []).length > 10 && (
+                <div className="text-[9px] font-mono text-ink-500 italic text-center pt-1">
+                  +{(q.data?.items ?? []).length - 10} older — visit /measurements for full history
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── 3. OVERRIDE GENETIC MAX ──────────────────────────────────
+            Manual override of the formula-derived genetic max. Lifted
+            from the old /measurements page so the modal owns the
+            full stack. "Quick set from current" shortcuts (+10/20/50%)
+            buffer the latest measurement so the user can set a
+            sensible ceiling without doing the math themselves. The
+            Clear button only appears when an override is currently
+            in effect. Same call site as /measurements used to use,
+            with the same queryKey (['genetic-max']) so a single
+            invalidateUpdates both the dashboard gauges and the
+            modal. */}
+        <div className="border border-neon-amber/40 bg-neon-amber/5 p-3">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-neon-amber mb-2">
+            Override Genetic Max
+          </div>
+          {currentMax && (
+            <div className="flex items-center justify-between text-[11px] font-mono mb-3 pb-2 border-b border-neon-amber/20">
+              <span className="text-ink-300">Current:</span>
+              <span className="text-neon-amber font-display text-base">
+                {displayValue(currentMax.value, meta.unit, system)}
+              </span>
+              <span className="text-[9px] text-ink-500 uppercase tracking-widest">
+                {currentMax.source}
+              </span>
+            </div>
+          )}
+          {series.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-mono text-ink-400 mb-1">
+                Quick set from latest + buffer:
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[10, 20, 50].map((pct) => {
+                  const sorted = (q.data?.items ?? []).slice().sort(
+                    (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime(),
+                  );
+                  const latest = sorted[sorted.length - 1];
+                  if (!latest) return null;
+                  const buffered = latest.value * (1 + pct / 100);
+                  return (
+                    <button
+                      key={pct}
+                      onClick={() => setMaxFromLatestM.run(pct)}
+                      disabled={setMaxFromLatestM.isPending}
+                      className="btn-ghost"
+                    >
+                      {setMaxFromLatestM.isPending ? '…' : `${displayValue(buffered, meta.unit, system)} (+${pct}%)`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[120px]">
+              <label className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80 block mb-1">
+                Manual max ({displayUnit(meta.unit, system)})
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                step={stepForUnit(meta.unit, system)}
+                value={maxDraft}
+                onChange={(e) => setMaxDraft(e.target.value)}
+                placeholder={currentMax ? displayValue(currentMax.value, meta.unit, system) : 'auto'}
+                className="w-full bg-bg-700/60 border border-ink-500/40 focus:border-neon-amber focus:outline-none px-2 py-1.5 text-sm font-mono text-ink-100 placeholder:text-ink-500 placeholder:italic"
+              />
+            </div>
+            <NeonButton
+              size="sm"
+              variant="amber"
+              onClick={() => {
+                if (!maxDraft) return;
+                const n = Number(maxDraft);
+                if (!Number.isFinite(n)) return;
+                const stored = convertForStorage(n, displayUnit(meta.unit, system), system);
+                setMaxM.run(stored.value);
+                setMaxDraft('');
+              }}
+              loading={setMaxM.isPending}
+              disabled={!maxDraft}
+              icon="⚡"
+              loadingText="…"
+            >
+              Set
+            </NeonButton>
+            {currentMax?.source === 'MANUAL' && (
+              <button
+                onClick={() => delMaxM.run()}
+                disabled={delMaxM.isPending}
+                className="btn-ghost"
+              >
+                {delMaxM.isPending ? '…' : 'Clear'}
+              </button>
+            )}
+          </div>
+          <div className="text-[9px] font-mono text-ink-500 mt-1.5">
+            A manual override takes priority over the formula-derived value (shown on the dashboard).
+          </div>
+        </div>
 
         {/* About */}
         {help && (

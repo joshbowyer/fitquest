@@ -1,486 +1,160 @@
-import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
-import { Panel } from '@/components/Panel';
-import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
-import { METRICS, METRICS_BY_CATEGORY, type GeneticMax, type Measurement, type MetricType } from '@/lib/types';
-import { formatDate, formatRelative } from '@/lib/format';
-import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
+import { METRICS, METRICS_BY_CATEGORY, type Measurement, type MetricType } from '@/lib/types';
+import { displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames } from '@/lib/format';
-import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { MetricDetailModal } from '@/components/MetricDetailModal';
 
 // Metrics that are derived from other data and shouldn't be
 // user-enterable. LEAN_MASS = weight × (1 - bf%). FFMI is computed
-// from LBM and height in the Status panel. We hide these from
-// the manual entry picker so users don't enter conflicting values.
+// from LBM and height in the Status panel. SHOULDER_WAIST_RATIO
+// is auto-computed from SHOULDER + WAIST. We hide these from the
+// tile grid so users don't try to log conflicting values.
 const DERIVED_METRICS: MetricType[] = ['LEAN_MASS', 'FFMI', 'SHOULDER_WAIST_RATIO'];
 
 const CATS = Object.keys(METRICS_BY_CATEGORY) as Array<keyof typeof METRICS_BY_CATEGORY>;
 
-function stepForUnit(unit: string, system: UnitSystem): number {
-  if (unit === 's' || unit === 'ms') return 1;
-  if (unit === 'h') return 0.25;
-  if (unit === 'kg' || unit === 'lb') return system === 'IMPERIAL' ? 1 : 0.1;
-  if (unit === 'cm' || unit === 'in') return system === 'IMPERIAL' ? 0.25 : 0.1;
-  if (unit === 'ml' || unit === 'fl oz') return system === 'IMPERIAL' ? 1 : 10;
-  if (unit === 'g') return 1;
-  if (unit === 'kcal') return 10;
-  if (unit === '/10') return 1;
-  if (unit === 'bpm') return 1;
-  if (unit === '%') return 0.1;
-  return 0.1;
-}
+// Per-category accent. Matches the /dashboard stat-sheet colour
+// scheme so the two surfaces feel like one navigation system.
+// Used for the category label + the metric tile borders.
+const CAT_ACCENT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'> = {
+  HYPERTROPHY: 'magenta',
+  STRENGTH: 'cyan',
+  BODY_COMP: 'lime',
+  CARDIO: 'amber',
+  CALISTHENICS: 'violet',
+  SLEEP: 'cyan',
+  NUTRITION: 'lime',
+  WELLNESS: 'amber',
+};
 
+/**
+ * /measurements — flat grid of metric tiles grouped by category.
+ *
+ * Click a tile → MetricDetailModal opens with the full log +
+ * history + override stack (everything the old detail panel
+ * used to inline-render). No detail panel below the grid — the
+ * modal is the only path for log / history / override actions.
+ *
+ * The previous version had a 260px sidebar (collapsed categories
+ * stacked vertically) + a separate detail panel. The sidebar
+ * was awkward on desktop (one category expanded, the rest
+ * collapsed but still occupying full height) and the collapsed
+ * state wasn't discoverable enough. The flat-grid layout reads
+ * cleaner across viewports: every tile is always visible, no
+ * "is this collapsed or empty?" ambiguity.
+ */
 export function MeasurementsPage() {
-  const qc = useQueryClient();
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
-  const inImperial = system === 'IMPERIAL';
-  // Default selection: BICEP_FLEXED (the canonical "show off"
-// measurement). The sidebar lists both BICEP_FLEXED and
-// BICEP_RELAXED as separate items — the legacy BICEP enum value
-// was migrated to BICEP_FLEXED at the data level on 2026-07-06.
-const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
-  const [draftValue, setDraftValue] = useState('');
-  const [draftNotes, setDraftNotes] = useState('');
-  const [maxDraft, setMaxDraft] = useState('');
 
+  // Which metric is currently open in the modal. null = closed.
+  const [openMetric, setOpenMetric] = useState<MetricType | null>(null);
+
+  // Pull the user's recent measurements so each tile can show
+  // its latest value (one-glance summary across all metrics).
+  // Single query for all metrics — smaller set than the modal's
+  // per-metric 200-row history, polled at the default staleTime.
   const allQ = useQuery({
     queryKey: ['measurements', 'all'],
     queryFn: () => api<{ items: Measurement[] }>('/measurements?limit=200'),
   });
-  const maxesQ = useQuery({
-    queryKey: ['genetic-max'],
-    queryFn: () => api<{ items: GeneticMax[] }>('/genetic-max'),
-  });
 
-  const createM = useDelayedMutation({
-    mutationFn: () => {
-      const inputValue = Number(draftValue);
-      const stored = convertForStorage(inputValue, displayUnit(METRICS[selected].unit, system), system);
-      return api('/measurements', {
-        method: 'POST',
-        body: {
-          metric: selected,
-          value: stored.value,
-          notes: draftNotes || undefined,
-        },
-      });
-    },
-    onSuccess: () => {
-      setDraftValue('');
-      setDraftNotes('');
-      qc.invalidateQueries({ queryKey: ['measurements'] });
-      qc.invalidateQueries({ queryKey: ['genetic-max'] });
-      qc.invalidateQueries({ queryKey: ['achievements'] });
-    },
-  }, 1000);
-
-  const setMaxM = useDelayedMutation({
-    mutationFn: (value: number) =>
-      api('/genetic-max', {
-        method: 'PUT',
-        body: { items: [{ metric: selected, value, source: 'MANUAL' }] },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['genetic-max'] });
-      qc.invalidateQueries({ queryKey: ['measurements'] });
-    },
-  }, 1000);
-
-  const setMaxFromLatestM = useDelayedMutation({
-    mutationFn: (bufferPct: number) => {
-      if (filtered.length === 0) throw new Error('No measurements to base max on');
-      const latestVal = filtered[filtered.length - 1]!.value;
-      const buffered = latestVal * (1 + bufferPct / 100);
-      return api('/genetic-max', {
-        method: 'PUT',
-        body: { items: [{ metric: selected, value: Number(buffered.toFixed(2)), source: 'MANUAL' }] },
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['genetic-max'] });
-      qc.invalidateQueries({ queryKey: ['measurements'] });
-    },
-  }, 800);
-
-  const delMaxM = useDelayedMutation({
-    mutationFn: () => api(`/genetic-max/${selected}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['genetic-max'] }),
-  }, 800);
-
-  const all = allQ.data?.items || [];
-  const filtered = all
-    .filter((m) => m.metric === selected)
-    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime());
-  const meta = METRICS[selected];
-  const currentMax = (maxesQ.data?.items || []).find((g) => g.metric === selected);
-  const displayUnitLabel = displayUnit(meta.unit, system);
-
-  // Chart data in display units
-  const chartData = filtered.map((m) => {
-    const disp = convertForDisplay(m.value, meta.unit, system);
-    return { date: new Date(m.recordedAt).getTime(), value: disp.value, _orig: m.value };
-  });
-  const values = chartData.map((d) => d.value);
-  const yMin = values.length ? Math.floor(Math.min(...values) - 1) : undefined;
-  const yMax = values.length ? Math.ceil(Math.max(...values) + 1) : undefined;
-  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
-
-  // Per-category accent for the collapsible card. Matches the
-  // stat-sheet's category color scheme on /dashboard so the two
-  // surfaces feel like one navigation system.
-  const CAT_ACCENT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'> = {
-    HYPERTROPHY: 'magenta',
-    STRENGTH: 'cyan',
-    BODY_COMP: 'lime',
-    CARDIO: 'amber',
-    CALISTHENICS: 'violet',
-    SLEEP: 'cyan',
-    NUTRITION: 'lime',
-    WELLNESS: 'amber',
-  };
-
-  // Which category the currently-selected metric lives in. Used
-  // to auto-expand that card on first render so the user always
-  // sees their selection.
-  const selectedCategory = useMemo(() => {
-    for (const cat of CATS) {
-      if (METRICS_BY_CATEGORY[cat].includes(selected)) return cat;
-    }
-    return null;
-  }, [selected]);
-
-  // Track open/closed per category. Default: only the category
-  // containing the selected metric is open. Others stay collapsed
-  // so the page doesn't sprawl — there are 8 categories × ~6 metrics
-  // each = ~50 buttons if everything's open.
-  const [openCats, setOpenCats] = useState<Set<string>>(
-    () => new Set(selectedCategory ? [selectedCategory] : []),
-  );
-
-  function toggleCat(cat: string) {
-    setOpenCats((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
+  // Group measurements by metric, keeping only the most-recent
+  // one per metric for the tile display.
+  const latestByMetric = new Map<MetricType, Measurement>();
+  for (const m of allQ.data?.items ?? []) {
+    if (!latestByMetric.has(m.metric)) latestByMetric.set(m.metric, m);
   }
 
   return (
     <Layout>
       <PageHeader
         title="// Measurements"
-        subtitle={`Log metrics. Adjust genetic maxes (overrides formulas). Showing in ${displayUnitLabel}.`}
+        subtitle="Pick a metric to log, view history, or override its genetic max."
       />
 
-      {/* Category cards. 2-col on lg+, single col on smaller.
-          Each card is collapsible — header shows category label +
-          metric count + chevron, body lists the metrics in that
-          category. Replaces the old 260px sidebar so users on
-          narrow viewports don't have to scroll a tall sidebar to
-          find the metric they want. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+      {/* Category sections. 2-col on md+, single col on smaller.
+          Each section has a header + a wrapping grid of metric
+          tiles. Tiles are always visible — no collapsing — so the
+          desktop "expanded vs collapsed at full height" weirdness
+          from the previous version can't recur. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {CATS.map((cat) => {
           const metrics = METRICS_BY_CATEGORY[cat].filter(
             (m) => !DERIVED_METRICS.includes(m),
           );
-          const isOpen = openCats.has(cat);
           const accent = CAT_ACCENT[cat] ?? 'cyan';
           return (
-            <div
-              key={cat}
-              className={classNames(
-                'border bg-bg-800/40 transition-all',
-                isOpen ? `border-neon-${accent}/50` : 'border-ink-500/30',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => toggleCat(cat)}
-                className="w-full flex items-center justify-between px-3 py-2 hover:bg-bg-700/40 transition-colors"
-                aria-expanded={isOpen}
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={classNames(
-                      'text-[10px] font-display tracking-widest uppercase',
-                      isOpen ? `neon-text-${accent}` : 'text-ink-300',
-                    )}
-                  >
-                    {cat.replace('_', ' ')}
-                  </span>
-                  <span className="text-[9px] font-mono text-ink-500">
-                    {metrics.length} metric{metrics.length === 1 ? '' : 's'}
-                  </span>
-                </div>
+            <div key={cat} className="border border-ink-500/30 bg-bg-800/40 p-3">
+              <div className="flex items-baseline justify-between mb-2">
                 <span
                   className={classNames(
-                    'text-xs font-mono transition-transform',
-                    isOpen ? `neon-text-${accent}` : 'text-ink-400',
-                    isOpen ? 'rotate-90' : 'rotate-0',
+                    'text-[10px] font-display tracking-widest uppercase',
+                    `neon-text-${accent}`,
                   )}
-                  aria-hidden
                 >
-                  ▸
+                  {cat.replace('_', ' ')}
                 </span>
-              </button>
-              {isOpen && (
-                <div className="border-t border-ink-500/20 p-1.5 space-y-0.5">
-                  {metrics.map((m) => (
+                <span className="text-[9px] font-mono text-ink-500">
+                  {metrics.length} metric{metrics.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {metrics.map((m) => {
+                  const meta = METRICS[m];
+                  const latest = latestByMetric.get(m);
+                  const unitLabel = displayUnit(meta.unit, system);
+                  return (
                     <button
                       key={m}
-                      onClick={() => setSelected(m)}
+                      type="button"
+                      onClick={() => setOpenMetric(m)}
                       className={classNames(
-                        'w-full text-left px-2 py-1.5 text-xs font-mono border transition-all',
-                        selected === m
-                          ? `border-neon-${accent}/80 bg-neon-${accent}/10 neon-text-${accent}`
-                          : 'border-transparent text-ink-200 hover:bg-bg-700',
+                        'group text-left p-2 border bg-bg-700/40 transition-all',
+                        `border-ink-500/40 hover:border-neon-${accent}/60 hover:bg-neon-${accent}/10`,
                       )}
                     >
-                      {METRICS[m].shortLabel}
-                      <span className="text-ink-400 text-[10px] ml-1">
-                        ({displayUnit(METRICS[m].unit, system)})
-                      </span>
+                      <div className={classNames(
+                        'font-display tracking-wider text-[11px] uppercase truncate',
+                        `group-hover:neon-text-${accent}`,
+                      )}>
+                        {meta.shortLabel}
+                      </div>
+                      <div className="text-[10px] font-mono text-ink-500 mt-0.5">
+                        {latest ? (
+                          <>
+                            <span className={`neon-text-${accent}`}>
+                              {displayValue(latest.value, meta.unit, system)}
+                            </span>
+                            {' '}
+                            <span className="text-ink-400">{unitLabel}</span>
+                          </>
+                        ) : (
+                          <span className="italic text-ink-500">— {unitLabel}</span>
+                        )}
+                      </div>
                     </button>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           );
         })}
       </div>
 
-      <div className="space-y-4">
-          {/* Detail panel */}
-          <Panel variant="cyan" title={meta.label}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div className="md:col-span-2 text-xs font-mono text-ink-300">
-                {meta.description}
-              </div>
-              <div className="border border-neon-cyan/30 p-2 bg-neon-cyan/5">
-                <div className="text-[10px] uppercase font-mono text-neon-cyan tracking-widest">Genetic Max</div>
-                <div className="font-display text-2xl neon-text-cyan">
-                  {currentMax ? displayValue(currentMax.value, meta.unit, system) : '—'}
-                </div>
-                <div className="text-[10px] text-ink-400 font-mono mt-1">
-                  source: {currentMax?.source ?? 'none'}
-                </div>
-              </div>
-            </div>
-
-            <div className="h-48 -mx-2">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer>
-                  <LineChart data={chartData}>
-                    <XAxis
-                      dataKey="date"
-                      type="number"
-                      domain={['dataMin', 'dataMax']}
-                      tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-                      stroke="#3a3a55"
-                    />
-                    <YAxis
-                      tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-                      stroke="#3a3a55"
-                      domain={[yMin ?? 'auto', yMax ?? 'auto']}
-                    />
-                    {avg != null && (
-                      <ReferenceLine y={avg} stroke="#00f0ff" strokeOpacity="0.3" strokeDasharray="3 3" />
-                    )}
-                    <Tooltip
-                      contentStyle={{ background: '#0a0a14', border: '1px solid rgba(0,240,255,0.3)', fontFamily: 'JetBrains Mono', fontSize: 12 }}
-                      labelStyle={{ color: '#00f0ff' }}
-                      labelFormatter={(d) => new Date(d as number).toLocaleString()}
-                      formatter={(v: number) => [`${v.toFixed(2)} ${displayUnitLabel}`, meta.shortLabel]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#00f0ff"
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: '#00f0ff' }}
-                      activeDot={{ r: 5, fill: '#00f0ff' }}
-                      style={{ filter: 'drop-shadow(0 0 4px #00f0ff)' }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-xs text-ink-300 font-mono">
-                  No history yet — log a value below.
-                </div>
-              )}
-            </div>
-          </Panel>
-
-          {/* Log new */}
-          <Panel variant="lime" title="Log Measurement">
-            <div className="grid grid-cols-[140px_1fr_auto] gap-3 items-end">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 block mb-1">
-                  Value ({displayUnitLabel})
-                </label>
-                <input
-                  className="input-neon"
-                  type="number"
-                  step={stepForUnit(meta.unit, system)}
-                  value={draftValue}
-                  onChange={(e) => setDraftValue(e.target.value)}
-                  placeholder={
-                    meta.unit === 's' ? '60'
-                    : meta.unit === 'h' ? '7.5'
-                    : displayUnitLabel === 'in' ? '14.5'
-                    : displayUnitLabel === 'lb' ? '160'
-                    : '38.5'
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-widest text-neon-lime/80 block mb-1">
-                  Notes
-                </label>
-                <input
-                  className="input-neon"
-                  value={draftNotes}
-                  onChange={(e) => setDraftNotes(e.target.value)}
-                  placeholder="optional"
-                />
-              </div>
-              <NeonButton
-                variant="lime"
-                onClick={() => createM.run()}
-                loading={createM.isPending}
-                disabled={!draftValue}
-                icon="⚡"
-                loadingText="Logging…"
-              >
-                Log
-              </NeonButton>
-            </div>
-          </Panel>
-
-          {/* Set max */}
-          <Panel variant="amber" title="Override Genetic Max">
-            <div className="space-y-3">
-              {filtered.length > 0 && (
-                <div className="border border-neon-amber/30 p-3 bg-neon-amber/5">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-neon-amber mb-1">
-                    Quick set from current
-                  </div>
-                  <div className="text-xs text-ink-300 font-mono mb-2">
-                    Latest {meta.shortLabel} value:{' '}
-                    <span className="neon-text-cyan">
-                      {displayValue(filtered[filtered.length - 1]!.value, meta.unit, system)}
-                    </span>
-                    . Set max to current + a buffer:
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {[10, 20, 50].map((pct) => {
-                      const latest = filtered[filtered.length - 1]!.value;
-                      const buffered = latest * (1 + pct / 100);
-                      return (
-                        <button
-                          key={pct}
-                          onClick={() => setMaxFromLatestM.run(pct)}
-                          disabled={setMaxFromLatestM.isPending}
-                          className="btn-ghost"
-                        >
-                          {setMaxFromLatestM.isPending ? '…' : `${displayValue(buffered, meta.unit, system)} (+${pct}%)`}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-[140px_1fr_auto_auto] gap-3 items-end">
-                <div>
-                  <label className="text-[10px] font-mono uppercase tracking-widest text-neon-amber/80 block mb-1">
-                    New max ({displayUnitLabel})
-                  </label>
-                  <input
-                    className="input-neon"
-                    type="number"
-                    step={stepForUnit(meta.unit, system)}
-                    value={maxDraft}
-                    onChange={(e) => setMaxDraft(e.target.value)}
-                    placeholder={currentMax ? displayValue(currentMax.value, meta.unit, system) : 'auto'}
-                  />
-                </div>
-                <div className="text-[10px] text-ink-300 font-mono self-center">
-                  Set a manual max that takes priority over the formula-derived value.
-                </div>
-                <NeonButton
-                  variant="amber"
-                  onClick={() => {
-                    if (!maxDraft) return;
-                    const n = Number(maxDraft);
-                    if (!Number.isFinite(n)) return;
-                    const stored = convertForStorage(n, displayUnitLabel, system);
-                    setMaxM.run(stored.value);
-                    setMaxDraft('');
-                  }}
-                  loading={setMaxM.isPending}
-                  disabled={!maxDraft}
-                  icon="⚡"
-                  loadingText="Setting…"
-                >
-                  Set Max
-                </NeonButton>
-                {currentMax?.source === 'MANUAL' && (
-                  <button
-                    onClick={() => delMaxM.run()}
-                    disabled={delMaxM.isPending}
-                    className="btn-ghost"
-                  >
-                    {delMaxM.isPending ? '…' : 'Clear'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </Panel>
-
-          {/* History list */}
-          <Panel title="History">
-            <div className="max-h-96 overflow-y-auto">
-              <table className="w-full text-xs font-mono">
-                <thead>
-                  <tr className="text-ink-300 text-[10px] uppercase tracking-widest">
-                    <th className="text-left py-1">When</th>
-                    <th className="text-right py-1">Value</th>
-                    <th className="text-left py-1 pl-4">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered
-                    .slice()
-                    .reverse()
-                    .map((m) => (
-                      <tr key={m.id} className="border-b border-ink-500/20">
-                        <td className="py-1">
-                          {formatDate(m.recordedAt)}{' '}
-                          <span className="text-ink-400 text-[10px]">
-                            ({formatRelative(m.recordedAt)})
-                          </span>
-                        </td>
-                        <td className="text-right neon-text-cyan">
-                          {displayValue(m.value, meta.unit, system)}
-                        </td>
-                        <td className="pl-4 text-ink-300">{m.notes || '—'}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-              {filtered.length === 0 && (
-                <div className="text-xs text-ink-300 font-mono text-center py-4">No data.</div>
-              )}
-            </div>
-          </Panel>
-        </div>
+      {/* The modal owns the entire log + history + override stack.
+          No inline detail panel on this page — clicking a tile is
+          the only path. Mirrors the dashboard's radial-click
+          behaviour, so the two surfaces feel consistent. */}
+      <MetricDetailModal
+        open={openMetric != null}
+        metric={openMetric}
+        onClose={() => setOpenMetric(null)}
+      />
     </Layout>
   );
 }
