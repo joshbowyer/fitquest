@@ -98,9 +98,15 @@ export function Gauge({
     const clamped = hasValue && !noMax ? (value as number) > max : false;
     // `clampedExtreme` = value > 2× max (gates the "X% OVER" warning
     //   to genuinely out-of-range values, e.g. typos like typing
-    //   "5000" instead of "50" for RHR). Also suppressed entirely
-    //   when `lessIsBetter` is true.
-    const clampedExtreme = hasValue && !noMax && (value as number) > max * 2;
+    //   "5000" instead of "50" for RHR). For "less is better"
+    //   metrics (1mi/5K times, etc) the prop is the explicit opt-
+    //   in to suppress the warning entirely — exceeding the dial's
+    //   max there is a personal best, not a problem to flag. In
+    //   practice all "less is better" metrics route through
+    //   IdealGauge instead of this component, but the prop is
+    //   wired for any future "less is better" metric that lands
+    //   here.
+    const clampedExtreme = !lessIsBetter && hasValue && !noMax && (value as number) > max * 2;
     const angle = START_ANGLE + pct * SWEEP;
     const tickPositions = Array.from({ length: 11 }, (_, i) => START_ANGLE + (i / 10) * SWEEP);
     return { pct, clamped, clampedExtreme, angle, tickPositions, hasValue, noMax };

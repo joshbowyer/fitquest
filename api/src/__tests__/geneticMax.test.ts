@@ -167,6 +167,31 @@ describe('computeGeneticMax', () => {
       expect(young - old).toBeCloseTo(12, 0);
     });
   });
+
+  describe('RESTING_HR (unhealthy threshold, not best-achievable floor)', () => {
+    it('returns 70 — the far-band upper bound, not the elite floor', () => {
+      // Old formula returned 45 (the "best achievable" floor) which
+      // made the basic Gauge read "11% OVER" for a typical user
+      // with a logged RHR of 50. The IdealGauge (which RHR now
+      // routes through on the dashboard) handles the elite / healthy
+      // / warn / fan-out semantics directly — this genetic-max is
+      // just the "max acceptable" anchor used by GeneticMax tables
+      // and dashboard fallback.
+      expect(computeGeneticMax('RESTING_HR', baseline)).toBe(70);
+    });
+
+    it('does not depend on age or sex (RHR threshold is universal)', () => {
+      const male = computeGeneticMax('RESTING_HR', { ...baseline, sex: 'MALE' });
+      const female = computeGeneticMax('RESTING_HR', { ...baseline, sex: 'FEMALE' });
+      const old = computeGeneticMax('RESTING_HR', {
+        ...baseline,
+        birthDate: new Date(new Date().getFullYear() - 70, 0, 1),
+      });
+      expect(male).toBe(70);
+      expect(female).toBe(70);
+      expect(old).toBe(70);
+    });
+  });
 });
 
 describe('computeAllGeneticMaxes', () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from 'recharts';
 import { api } from '@/lib/api';
@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { METRICS, METRICS_BY_CATEGORY, type GeneticMax, type Measurement, type MetricType } from '@/lib/types';
 import { formatDate, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, displayValue, type UnitSystem } from '@/lib/units';
+import { classNames } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 
 // Metrics that are derived from other data and shouldn't be
@@ -129,6 +130,47 @@ const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
   const yMax = values.length ? Math.ceil(Math.max(...values) + 1) : undefined;
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 
+  // Per-category accent for the collapsible card. Matches the
+  // stat-sheet's category color scheme on /dashboard so the two
+  // surfaces feel like one navigation system.
+  const CAT_ACCENT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet'> = {
+    HYPERTROPHY: 'magenta',
+    STRENGTH: 'cyan',
+    BODY_COMP: 'lime',
+    CARDIO: 'amber',
+    CALISTHENICS: 'violet',
+    SLEEP: 'cyan',
+    NUTRITION: 'lime',
+    WELLNESS: 'amber',
+  };
+
+  // Which category the currently-selected metric lives in. Used
+  // to auto-expand that card on first render so the user always
+  // sees their selection.
+  const selectedCategory = useMemo(() => {
+    for (const cat of CATS) {
+      if (METRICS_BY_CATEGORY[cat].includes(selected)) return cat;
+    }
+    return null;
+  }, [selected]);
+
+  // Track open/closed per category. Default: only the category
+  // containing the selected metric is open. Others stay collapsed
+  // so the page doesn't sprawl — there are 8 categories × ~6 metrics
+  // each = ~50 buttons if everything's open.
+  const [openCats, setOpenCats] = useState<Set<string>>(
+    () => new Set(selectedCategory ? [selectedCategory] : []),
+  );
+
+  function toggleCat(cat: string) {
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
+
   return (
     <Layout>
       <PageHeader
@@ -136,27 +178,69 @@ const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
         subtitle={`Log metrics. Adjust genetic maxes (overrides formulas). Showing in ${displayUnitLabel}.`}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-        {/* Sidebar: metric picker */}
-        <Panel variant="cyan" title="Metrics">
-          <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-            {CATS.map((cat) => (
-              <div key={cat}>
-                <div className="text-[10px] font-display tracking-widest text-ink-300 uppercase mb-1">
-                  {cat.replace('_', ' ')}
+      {/* Category cards. 2-col on lg+, single col on smaller.
+          Each card is collapsible — header shows category label +
+          metric count + chevron, body lists the metrics in that
+          category. Replaces the old 260px sidebar so users on
+          narrow viewports don't have to scroll a tall sidebar to
+          find the metric they want. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        {CATS.map((cat) => {
+          const metrics = METRICS_BY_CATEGORY[cat].filter(
+            (m) => !DERIVED_METRICS.includes(m),
+          );
+          const isOpen = openCats.has(cat);
+          const accent = CAT_ACCENT[cat] ?? 'cyan';
+          return (
+            <div
+              key={cat}
+              className={classNames(
+                'border bg-bg-800/40 transition-all',
+                isOpen ? `border-neon-${accent}/50` : 'border-ink-500/30',
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => toggleCat(cat)}
+                className="w-full flex items-center justify-between px-3 py-2 hover:bg-bg-700/40 transition-colors"
+                aria-expanded={isOpen}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={classNames(
+                      'text-[10px] font-display tracking-widest uppercase',
+                      isOpen ? `neon-text-${accent}` : 'text-ink-300',
+                    )}
+                  >
+                    {cat.replace('_', ' ')}
+                  </span>
+                  <span className="text-[9px] font-mono text-ink-500">
+                    {metrics.length} metric{metrics.length === 1 ? '' : 's'}
+                  </span>
                 </div>
-                <div className="space-y-0.5">
-                  {METRICS_BY_CATEGORY[cat]
-                    .filter((m) => !DERIVED_METRICS.includes(m))
-                    .map((m) => (
+                <span
+                  className={classNames(
+                    'text-xs font-mono transition-transform',
+                    isOpen ? `neon-text-${accent}` : 'text-ink-400',
+                    isOpen ? 'rotate-90' : 'rotate-0',
+                  )}
+                  aria-hidden
+                >
+                  ▸
+                </span>
+              </button>
+              {isOpen && (
+                <div className="border-t border-ink-500/20 p-1.5 space-y-0.5">
+                  {metrics.map((m) => (
                     <button
                       key={m}
                       onClick={() => setSelected(m)}
-                      className={`w-full text-left px-2 py-1.5 text-xs font-mono border transition-all ${
+                      className={classNames(
+                        'w-full text-left px-2 py-1.5 text-xs font-mono border transition-all',
                         selected === m
-                          ? 'border-neon-cyan/80 bg-neon-cyan/10 text-neon-cyan'
-                          : 'border-transparent text-ink-200 hover:bg-bg-700'
-                      }`}
+                          ? `border-neon-${accent}/80 bg-neon-${accent}/10 neon-text-${accent}`
+                          : 'border-transparent text-ink-200 hover:bg-bg-700',
+                      )}
                     >
                       {METRICS[m].shortLabel}
                       <span className="text-ink-400 text-[10px] ml-1">
@@ -165,12 +249,13 @@ const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
                     </button>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-        <div className="space-y-4">
+      <div className="space-y-4">
           {/* Detail panel */}
           <Panel variant="cyan" title={meta.label}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -396,7 +481,6 @@ const [selected, setSelected] = useState<MetricType>('BICEP_FLEXED');
             </div>
           </Panel>
         </div>
-      </div>
     </Layout>
   );
 }

@@ -255,42 +255,29 @@ with edit + delete inline.)
   includes it as a manual entry. Drop it from the sidebar —
   it's surfaced in the dashboard's body-comp radials and
   recomputed automatically.
-- **Split /measurements into category cards (2 per row).**
-  Currently the sidebar is a single column of category groups
-  stacked vertically — a long scroll on tall viewports. Render
-  it as a 2-column grid of category cards (HYPERTROPHY +
-  STRENGTH in row 1, BODY_COMP + CARDIO in row 2, etc),
-  each card collapsible with a header label + count of
-  metrics inside. Mirrors the morning/evening/weekly check-in
-  block layout for visual consistency.
-- **Resting HR radial is broken + wrong range.** The RHR
-  gauge currently uses `meta.defaultMin (50)` as min and
-  `defaultMin × 1.5 (75)` as max — so the dial range is 50..75,
-  and a logged RHR of 50 (typical healthy user) reads as the
-  *start* of the dial but with the max = genetic max for
-  RHR = 45 (the genetic-max formula returns the *best
-  achievable* floor, not the upper bound). Result: a logged
-  50 reads as "11% over" because 50 > 45. Three fixes
-  (separate but related):
-  1. **Switch RHR to an IdealGauge (ideal-in-the-middle).**
-     Bands: `40-50 elite`, `50-60 healthy`, `60-70 warn`,
-     `70+ far`. Add to `idealMetricKeys` in Dashboard.tsx
-     and add the band config to `metricBands.ts`.
-  2. **Fix the generic `Gauge` component's "X% OVER"
-     warning.** Currently any value above the dial max shows
-     "! X% OVER" in magenta. For "more is better" metrics
-     this is correct, but for "less is better" metrics
-     (RHR, 1mi/5K, etc) exceeding the max means the user
-     *out-performed* the dial — celebrate, don't warn. Gate
-     the warning behind a `lessIsBetter` prop or only show
-     it when the value is more than ~2× the max (genuine
-     data-entry error).
-  3. **Fix the RHR genetic-max formula.** Currently returns
-     45 (the "best achievable" floor). It should return the
-     *unhealthy threshold* (70-75), which is what the gauge
-     max should be. Adjust `computeGeneticMax('RESTING_HR', ...)`
-     in `api/src/lib/geneticMax.ts` to return 70 (or an
-     age-adjusted equivalent).
+- (was: Split /measurements into category cards (2 per row) —
+  shipped in <next-commit>. The 260px sidebar is gone; the 8
+  metric categories now render as a 2-col grid of collapsible
+  cards (md:grid-cols-2), each with a header showing category
+  label + metric count + chevron. The category containing the
+  currently-selected metric auto-expands on mount; the other 7
+  stay collapsed by default so the page doesn't sprawl. Each
+  card's accent matches the /dashboard stat-sheet colour for
+  the same category (magenta hypertrophy, cyan strength,
+  lime body-comp, amber cardio, violet calisthenics).
+  Selecting a metric updates the detail panel below.)
+- (was: Resting HR radial — shipped in two parts: IdealGauge
+  routing + bands already in place; genetic-max returned 70
+  instead of 45 in the api. The 1 remaining loose end — the
+  basic Gauge's `lessIsBetter` prop was declared but never
+  wired into the "X% OVER" warning gate — is now wired in
+  <next-commit>. In practice every "less is better" metric
+  routes through IdealGauge today, so this is dead-code
+  cleanup rather than a user-facing fix, but the doc comment
+  in Gauge.tsx now matches reality. Two new vitest assertions
+  pin the RHR genetic-max to 70 (universal — no age/sex
+  adjustment, since the unhealthy threshold doesn't shift
+  meaningfully).)
 - **L-Sit radial is visually different from other calisthenics
   gauges.** User reports L-Sit renders distinctly from
   plank / push-up / pull-up / dead-hang. Most likely cause:
@@ -344,13 +331,17 @@ with edit + delete inline.)
 
 ### Habits
 
-- **Habit tile visual state.** Default = neutral gray box.
-  Once checked = full green tint (whole tile), with the
-  check button itself also green. Negative habits similarly:
-  default gray, once crossed-off → red tint. Right now the
-  positive / negative split colors the unchecked state which
-  is wrong (it implies the user has done the habit before
-  they've actually done it today).
+- (was: Habit tile visual state — shipped in <next-commit>.
+  /habits page tile now renders unchecked as neutral gray
+  (border-ink-500/30, no accent tint, no glow on the icon
+  box, no glow on the title text). When checked (todayCount
+  > 0), the whole tile lights up in the accent color: border
+  + background tint + glow on the icon and title. Same lime /
+  magenta split for POSITIVE / NEGATIVE — but only AFTER the
+  habit has actually been logged today. The HabitsWidget on
+  /dashboard was already correct (its unchecked state was
+  always neutral ink-500); only the /habits page needed the
+  fix.)
 
 ### Homebase / Penance
 
@@ -531,6 +522,27 @@ with edit + delete inline.)
   without telling the user. The api's Sex enum still accepts
   OTHER (legacy rows + backend compat); users with OTHER fall
   through to the male formula at the picker.
+- ✅ RHR gauge: IdealGauge routing + genetic-max=70 (was 45).
+  The previous "11% OVER" false-positive for a logged RHR of
+  50 was caused by the basic Gauge reading 50 against a max of
+  45 (the best-achievable floor). Fixed by: (a) routing RHR
+  through IdealGauge with bands 40-50 elite / 50-60 healthy /
+  60-70 warn / 70+ far; (b) changing `computeGeneticMax
+  ('RESTING_HR', ...)` to return 70 (the unhealthy threshold).
+  Pinned with two new vitest assertions in geneticMax.test.ts.
+- ✅ /measurements: 2-col collapsible category cards. The 260px
+  sidebar is gone; 8 categories render as a 2-col grid of
+  cards, each with a header (label + metric count + chevron)
+  and a body listing the metrics. Category containing the
+  selected metric auto-expands; others stay collapsed. Accent
+  matches the /dashboard stat-sheet colour for the same
+  category.
+- ✅ Habit tile visual state. /habits page tile now renders
+  unchecked as neutral gray; when checked (todayCount > 0)
+  the whole tile lights up in the accent color. Lime for
+  POSITIVE habits, magenta for NEGATIVE. Same logic for the
+  tile, icon box, and title text. HabitsWidget on /dashboard
+  was already correct (no change needed there).
 - ✅ Web Audio node leak (root cause of desktop memory bloat).
   Every sound primitive in `web/src/lib/soundBus.ts` (playPad,
   playPluck, playLaser, playNoiseHit, playKick, playFile)

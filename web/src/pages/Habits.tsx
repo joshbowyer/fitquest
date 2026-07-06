@@ -183,30 +183,49 @@ function HabitCard({
   const isPos = habit.direction === 'POSITIVE';
   const accent = isPos ? '#9bff5c' : '#f55cc4';
   const sign = isPos ? '+' : '−';
+  // Visual state:
+  //   - Unchecked (todayCount === 0): neutral gray tile, accent
+  //     only appears on the icon and the Check button. The previous
+  //     behaviour tinted the whole tile with the accent, which read
+  //     as "this habit is done" before the user had actually done it.
+  //   - Checked (todayCount > 0): full accent tint — border, bg, and
+  //     title text all in the accent color. The whole tile lights up
+  //     so the user sees their progress at a glance.
+  const isChecked = habit.todayCount > 0;
   return (
     <div
-      className="border p-3 transition-all"
-      style={{
-        borderColor: `${accent}40`,
-        background: `${accent}08`,
-      }}
+      className={classNames(
+        'border p-3 transition-all',
+        isChecked
+          ? 'shadow-md'
+          : 'border-ink-500/30 hover:border-ink-300/50',
+      )}
+      style={isChecked
+        ? { borderColor: `${accent}80`, background: `${accent}15`, boxShadow: `0 0 8px ${accent}30` }
+        : undefined}
     >
       <div className="flex items-start gap-3">
         <div
-          className="shrink-0 w-12 h-12 grid place-items-center font-display text-2xl border"
-          style={{
+          className={classNames(
+            'shrink-0 w-12 h-12 grid place-items-center font-display text-2xl border',
+            !isChecked && 'border-ink-500/30 text-ink-400',
+          )}
+          style={isChecked ? {
             color: accent,
             borderColor: `${accent}66`,
             background: `${accent}10`,
             textShadow: `0 0 6px ${accent}`,
-          }}
+          } : undefined}
         >
           {habit.icon ?? (isPos ? '✦' : '✕')}
         </div>
         <div className="flex-1 min-w-0">
           <div
-            className="font-display tracking-wider text-sm truncate"
-            style={{ color: accent, textShadow: `0 0 4px ${accent}` }}
+            className={classNames(
+              'font-display tracking-wider text-sm truncate',
+              isChecked ? '' : 'text-ink-100',
+            )}
+            style={isChecked ? { color: accent, textShadow: `0 0 4px ${accent}` } : undefined}
           >
             {habit.name}
           </div>
