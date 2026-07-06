@@ -54,33 +54,50 @@ are the changelog of what got shipped.
 
 ### P0 — quick wins (1-2 days each)
 
-- **FitQuestBridge: drop the 60-min freshness window.** The bridge
-  does `find -mmin -60` and skips any FIT file older than an hour
-  as a "safety net" for the persisted known-paths set. Real bug:
-  Gadgetbridge losing watch sync → re-sync writes a burst of FIT
-  files with old `mtime` → bridge sees them as "1+ hour old" and
-  silently drops them. Fix: drop the `-mmin -60` filter; rely on
-  the persisted set + `(userId, performedAt)` unique constraint
-  for dedup. Touch point: `joshbowyer/fitquest-bridge` Kotlin
-  watcher's `find` call. No web/api change.
-- **Remove v-taper (`SHOULDER_WAIST_RATIO`) from /measurements
-  sidebar.** It's already in `NEVER_SURFACED` (filtered out of
-  check-ins + dashboard) because it's auto-computed from
-  shoulders ÷ waist — but the /measurements page renders
-  `METRICS_BY_CATEGORY` directly and still includes it as a
-  manual entry. Drop it from the sidebar; it surfaces in the
-  dashboard's body-comp radials and recomputes automatically.
-- **Re-examine neck circumference genetic-max logic.** Current code
-  uses the user's current neck measurement as their genetic max
-  — wrong because neck can definitely grow with trap development.
-  Either (a) treat neck like other measurements and let it track
-  freely, or (b) default to a wrist-derived ceiling.
-- **Restructure the penance templates panel** (Homebase). Drop
-  the non-interactive checkboxes (replace with "active now" badge),
-  split into "Shield damage" + "Shield repair" sub-blocks, and
-  start both collapsed. Currently the panel is the longest single
-  block on `/homebase` and drowns the actual shield status.
 - **Dark/light theme toggle** (currently dark-only).
+
+### Recently shipped P0s
+
+- ✅ **FitQuestBridge: drop the 60-min freshness window.**
+  Removed the `find -mmin -60` filter from the Kotlin
+  watcher's FIT file enumeration. The persisted known-paths
+  dedup set is the source of truth (persists across restarts
+  + periodic-prune pass bounds it). Backstop: api's
+  `(userId, performedAt)` UNIQUE constraint on Workout
+  rejects duplicate uploads. Touched
+  `fitquest-bridge` `FitFileObserver.kt`; web/api unchanged.
+- ✅ **Re-examine neck circumference genetic-max logic.** The
+  production code already uses the wrist×2.9 / height×0.245
+  Casey Butt ceiling (correct — a genetic max is a ceiling,
+  not a mirror of the current measurement). The bug was
+  elsewhere: the unit test `geneticMax.test.ts` was asserting
+  the old buggy behavior ('NECK uses measured neckCircCm when
+  available' — `expect(...).toBeCloseTo(40, 0)` against
+  a passed `neckCircCm: 40`). The test was failing on
+  every run, masking the bug it was meant to prevent. Rewrote
+  the assertion to lock in the ceiling behavior + a comment
+  explaining why a future 'just use the measurement'
+  optimization would silently break the Profile's 'grow into
+  the ceiling' UX. All 31 geneticMax tests now pass.
+- ✅ **Restructure the penance templates panel** (Homebase).
+  `HomeBaseCard.tsx` `PenanceTemplatesPanel`: split into two
+  collapsed-by-default sub-blocks — 'Shield damage' (negative
+  shieldDelta) + 'Shield repair' (positive). Each block
+  has a compact header (label + total + active count + active
+  net delta) and expands on click. Per-row checkbox-toggle
+  dropped (the old checkbox read as a 'click to enable'
+  affordance — it was a server-tracked flag, not a local
+  pref). Replaced with click-anywhere-on-the-row toggle +
+  a clear 'active now' pill on enabled rows. The whole panel
+  is now collapsed by default so it doesn't drown the
+  actual shield status.
+- (was: v-taper `SHOULDER_WAIST_RATIO` from /measurements
+  sidebar — already shipped. The /measurements page filters
+  out DERIVED_METRICS (LEAN_MASS, FFMI, SHOULDER_WAIST_RATIO)
+  from the sidebar tile grid; MetricDetailModal blocks logging
+  derived metrics; the dashboard body-comp radials auto-derive
+  v-taper from SHOULDER × WAIST as a gauge (read-only output).
+  No code change needed — roadmap entry was stale.)
 
 ### P1 — feature work (1-2 weeks each)
 
