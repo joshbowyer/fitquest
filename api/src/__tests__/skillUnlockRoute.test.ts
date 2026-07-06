@@ -281,6 +281,100 @@ describe('POST /skills/unlock', () => {
     expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 200, body: expect.objectContaining({ ok: true }) });
   });
 
+  it('TRACER linear prereq: 200m < 25s requires BOTH 100m < 14s AND 200m < 30s (weaving)', async () => {
+    // TRACER Sprint T3 weaving — single test that needs both T2
+    // path prereqs (faster 100m + 200m). Mirrors the BERSERKER
+    // weaving test so each class's prereq mode has a guard.
+    setupUser({ id: 'u1', class: 'TRACER', level: 5, weightKg: 70 });
+    setupSkill({
+      id: 'pre1',
+      className: 'TRACER',
+      tier: 'TIER_2',
+      name: '100m < 14s',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 'pre2',
+      className: 'TRACER',
+      tier: 'TIER_2',
+      name: '200m < 30s',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 's1',
+      className: 'TRACER',
+      tier: 'TIER_3',
+      name: '200m < 25s',
+      cost: 1,
+      prerequisites: ['100m < 14s', '200m < 30s'],
+      test: {
+        metric: 'duration',
+        description: '200m in under 25 seconds',
+        safety: 'Same as T3',
+        threshold: { duration_sec: 25 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 24 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(400);
+    // The route reports the first missing prereq only.
+    expect(res.json().error).toMatch(/Requires: 100m < 14s/);
+  });
+
+  it('ORACLE linear prereq: 30min Ignatian Meditation requires BOTH 10min + 20min (weaving)', async () => {
+    // ORACLE Ignatian Meditation T3 weaving — the user has done
+    // both shorter sits before the long one unlocks.
+    setupUser({ id: 'u1', class: 'ORACLE', level: 5, weightKg: 70 });
+    setupSkill({
+      id: 'pre1',
+      className: 'ORACLE',
+      tier: 'TIER_2',
+      name: '10min Ignatian Meditation',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 'pre2',
+      className: 'ORACLE',
+      tier: 'TIER_2',
+      name: '20min Ignatian Meditation',
+      cost: 1,
+      prerequisites: [],
+      test: null,
+    });
+    setupSkill({
+      id: 's1',
+      className: 'ORACLE',
+      tier: 'TIER_3',
+      name: '30min Ignatian Meditation',
+      cost: 1,
+      prerequisites: ['10min Ignatian Meditation', '20min Ignatian Meditation'],
+      test: {
+        metric: 'duration',
+        description: '30min seated Ignatian meditation',
+        safety: 'Same as T1',
+        threshold: { duration_sec: 1800 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 1900 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/Requires: 10min Ignatian Meditation/);
+  });
+
   it('400 when test result doesn\'t meet threshold', async () => {
     setupUser({ id: 'u1', class: 'PHANTOM', level: 5, weightKg: 100 });
     setupSkill({

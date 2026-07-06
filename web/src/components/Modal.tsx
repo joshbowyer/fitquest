@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { classNames } from '@/lib/format';
 
@@ -31,6 +31,18 @@ export function Modal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // Per-modal unique id, used as the data-modal-portal attribute.
+  // The previous implementation used a shared `[data-modal-portal]`
+  // selector for orphan-cleanup, which could nuke a *new* modal's
+  // portal if it opened in the same frame as this one closed
+  // (visible on Android as a "ghost" backdrop that captures
+  // clicks until the user long-presses some text — long-press
+  // triggered a focus / repaint that finally cleared the stale
+  // node). With a unique id, the cleanup only ever matches THIS
+  // modal's portal.
+  const portalId = useId();
+  const portalSelector = `[data-modal-portal="${portalId}"]`;
+
   // Body scroll lock + Escape-to-close. Only runs when `open`
   // flips; the keydown closure reads the latest onClose through
   // the ref so we never need it in the dep array.
@@ -49,18 +61,17 @@ export function Modal({
   }, [open]);
 
   // Orphaned-portal cleanup. Only runs on the open → closed
-  // transition (not on every parent re-render like the previous
-  // version did). Belt-and-suspenders for the mobile-Safari
+  // transition. Belt-and-suspenders for the mobile-Safari
   // "ghost mask" bug where a tap-outside fast-path occasionally
   // left the dark backdrop visible while the content was gone.
-  // Deferred one frame so React's own unmount has a chance to
-  // remove the node first; we only nuke what's actually orphaned.
+  // Targeted at THIS modal's portal via the unique id so we
+  // never nuke a sibling modal that opened in the same frame.
   const wasOpen = useRef(open);
   useEffect(() => {
     if (wasOpen.current && !open) {
       const t = window.setTimeout(() => {
         document
-          .querySelectorAll('[data-modal-portal]')
+          .querySelectorAll(portalSelector)
           .forEach((n) => n.remove());
       }, 0);
       wasOpen.current = false;
@@ -68,13 +79,13 @@ export function Modal({
     }
     wasOpen.current = open;
     return;
-  }, [open]);
+  }, [open, portalSelector]);
 
   if (!open) return null;
 
   return createPortal(
     <div
-      data-modal-portal="true"
+      data-modal-portal={portalId}
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 p-4"
       style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
       onClick={onClose}
