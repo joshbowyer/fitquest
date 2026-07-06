@@ -245,6 +245,68 @@ export async function userRoutes(app: FastifyInstance) {
     return { ok: true, soulstoneConsumed, soulstones: newSoulstoneCount };
   });
 
+  // Spend a Soulstone to remove the class lock WITHOUT changing the
+  // class. The user clicks "Use 1 Soulstone to change class" on the
+  // /profile banner; this endpoint consumes one Soulstone and resets
+  // classChangedAt to null so the lock status flips back to
+  // unlocked. The user then picks their new class via the regular
+  // class-pick modal (no second Soulstone charge).
+  //
+  // Separating this from PATCH /me keeps the "click a class tile to
+  // switch to it" flow untouched — that flow still consumes one
+  // Soulstone in PATCH /me when a Soulstone is needed.
+  app.post('/me/unlock-class', async (req, reply) => {
+    const me = await requireUser(req);
+
+    // Only useful while a lock is actually active. Without a class
+    // picked there's nothing to unlock; with a pick but no
+    // classChangedAt, the lock is already off.
+    if (!me.class || !me.classChangedAt) {
+      return reply.code(400).send({
+        error: 'Class is not locked.',
+        code: 'CLASS_NOT_LOCKED',
+      });
+    }
+
+    const activeSoulstoneCount = await prisma.soulstone.count({
+      where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+    });
+    if (activeSoulstoneCount <= 0) {
+      return reply.code(400).send({
+        error: 'No Soulstones available.',
+        code: 'NO_SOULSTONE',
+      });
+    }
+
+    // FIFO: burn the oldest active stone (closest to TTL, so the
+    // user keeps the freshest one in inventory).
+    const oldest = await prisma.soulstone.findFirst({
+      where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+      orderBy: { droppedAt: 'asc' },
+    });
+    if (oldest) {
+      await prisma.soulstone.update({
+        where: { id: oldest.id },
+        data: { consumed: true, consumedAt: new Date() },
+      });
+    }
+
+    // Reset the lock. getClassLockStatus treats null classChangedAt
+    // as "not locked", so the user can pick freely now. The next
+    // class pick will stamp a fresh classChangedAt and start a new
+    // year-long cooldown.
+    await prisma.user.update({
+      where: { id: me.id },
+      data: { classChangedAt: null },
+    });
+
+    const newSoulstoneCount = await prisma.soulstone.count({
+      where: { userId: me.id, consumed: false, expiresAt: { gt: new Date() } },
+    });
+
+    return { ok: true, soulstones: newSoulstoneCount };
+  });
+
   app.get('/me/stats', async (req) => {
     const me = await requireUser(req);
     const soulstoneCount = await prisma.soulstone.count({

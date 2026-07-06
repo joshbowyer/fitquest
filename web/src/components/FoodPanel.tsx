@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { DeleteButton } from '@/components/DeleteButton';
+import { BarcodeScannerButton } from '@/components/BarcodeScanner';
 import { classNames } from '@/lib/format';
 import {
   type FoodMatch,
@@ -90,6 +91,34 @@ export function FoodPanel() {
       api('/foods/ask-ai-multi', { method: 'POST', body: { description } }),
     onSuccess: (r) => setAskResults(r),
   }, 1500);
+
+  // ---- Barcode (OpenFoodFacts direct lookup) ----
+  // The scanner component dispatches to the native ML Kit plugin
+  // on Android, or to @zxing/browser + webcam on desktop. We
+  // accept the bare barcode string (EAN-13/8, UPC-A, ITF, etc.)
+  // and call GET /foods/barcode/:code — same endpoint the
+  // Ask-AI / search fallbacks use, just direct from the barcode.
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+  const barcodeM = useDelayedMutation<{ item: FoodMatch }, string>({
+    mutationFn: async (code) =>
+      api(`/foods/barcode/${encodeURIComponent(code)}`),
+    onSuccess: (r) => {
+      setBarcodeError(null);
+      // Same UX path as a search hit — drop the result straight
+      // into the "edit + log" modal so the user can tune serving
+      // size before it lands in /meals.
+      setLogFood(r.item);
+    },
+    onError: (e: any) => {
+      // 404 = barcode wasn't in OFF's database (common for
+      // regional brands). Anything else is a real failure.
+      setBarcodeError(
+        e?.status === 404
+          ? `Barcode not found in OpenFoodFacts. Try Search, Ask AI, or Manual instead.`
+          : e?.message ?? 'Barcode lookup failed',
+      );
+    },
+  }, 600);
 
   // ---- Log modal ----
   const [logFood, setLogFood] = useState<FoodMatch | null>(null);
@@ -178,6 +207,12 @@ export function FoodPanel() {
             <span className="sm:hidden">Recent</span>
             <span className="hidden sm:inline">Recent foods</span>
           </NeonButton>
+          <BarcodeScannerButton
+            onScanned={(code) => {
+              setBarcodeError(null);
+              barcodeM.run(code);
+            }}
+          />
           <NeonButton
             size="sm"
             variant="violet"
@@ -201,10 +236,16 @@ export function FoodPanel() {
       }
     >
       <div className="text-[10px] font-mono text-ink-300 mb-3">
-        Search OFF + USDA, or hit <b>Ask AI</b> to describe what you ate
-        (e.g. "Annie's mac and cheese", "6 large strawberries"). Barcode
-        scanner support is on hold for the native app.
+        Search OFF + USDA, hit <b>Ask AI</b> to describe what you ate
+        (e.g. "Annie's mac and cheese", "6 large strawberries"), or{' '}
+        <b>Scan</b> a product barcode — native ML Kit on Android, webcam
+        + ZXing on desktop, with a manual code-entry fallback.
       </div>
+      {barcodeError && (
+        <div className="mb-3 text-[10px] font-mono px-2 py-1 border border-neon-red/40 bg-neon-red/5 text-neon-red">
+          {barcodeError}
+        </div>
+      )}
 
       {/* Search input */}
       <div className="flex gap-2 mb-3">

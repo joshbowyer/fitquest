@@ -124,7 +124,7 @@ const CLASS_EVOLUTION: Record<string, [string, string, string]> = {
   JUGGERNAUT: ['Bruiser', 'Strongman', 'Juggernaut'],
   PHANTOM:    ['Striker', 'Acrobat', 'Phantom'],
   SCOUT:      ['Hiker', 'Trailblazer', 'Scout'],
-  BERSERKER:  ['Brawler', 'Marazer', 'Berserker'],
+  BERSERKER:  ['Brawler', 'Marauder', 'Berserker'],
   TRACER:     ['Dash', 'Blur', 'Tracer'],
   ORACLE:     ['Initiate', 'Acolyte', 'Oracle'],
 };

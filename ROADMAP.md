@@ -47,6 +47,36 @@
 
 ## Active (in progress)
 
+### FitQuestBridge: drop the 60-min freshness window
+
+- The bridge currently does `find -mmin -60` to skip any FIT
+  file older than an hour as a "safety net" for the persisted
+  known-paths set. In practice this is a real bug:
+  Gadgetbridge loses its sync with the watch for a while (range,
+  Bluetooth drop, watch crash), catches up by writing a burst
+  of FIT files all with `mtime` set to the actual recording
+  time, and the bridge sees those files as "1+ hour old" and
+  skips them. So a multi-hour workout gap silently disappears
+  from FitQuest.
+- The persisted known-paths set is the actual source of truth
+  for "have we already uploaded this file?" — it persists
+  across restarts, so a restart after a long offline doesn't
+  re-upload historical data on its own. The 60-min window was
+  added as a belt-and-suspenders for the "persisted set gets
+  out of sync" case, but it's catching real files instead.
+- Fix: drop the `-mmin -60` filter from the bridge's
+  `find` invocation. Just `find <dir> -type f -name '*.fit'`
+  filtered by the persisted set (skip if path is in
+  `knownUploaded`, otherwise queue for upload). The persisted
+  set's periodic-prune intersection (`doc/maintenance`) keeps
+  the set bounded without needing an age threshold.
+- The dedup `(userId, performedAt)` unique constraint added in
+  the earlier workout-dedup migration is the final backstop:
+  even if a stale persisted-set path gets re-uploaded, the
+  server rejects the duplicate workout.
+- Touch points: `joshbowyer/fitquest-bridge` (Kotlin)
+  — the watcher service's `find` call. No web/api change.
+
 ### Pet feature (German Shepherd v1)
 
 - Pet schema, 3 breed sprites (gs/akita/axolotl), /pet roster
@@ -468,18 +498,39 @@ with edit + delete inline.)
   for future MP3 swaps — drop files in `web/public/sounds/`
   and add the path to `SOUND_FILES` in
   `web/src/lib/soundBus.ts`.
-- ~~Nutrition tracker enhancements — barcode lookup,
-  restaurant menu scan~~ — superseded by the Ask-AI multi-
-  entry flow (`/foods/ask-ai-multi`) which estimates macros
-  from a free-text description. Barcode / menu-scan were nice-
-  to-haves but the AI path covers most of the use case with
-  zero extra infrastructure. Revisit if a specific user
-  request comes in.
 - ~~Email verification + password reset.~~ No email integration
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
 
+- ✅ Barcode scanner (OpenFoodFacts lookup) on the food tracker.
+  Three scan paths dispatched at runtime: native
+  @capacitor/barcode-scanner on Android (ML Kit under the
+  hood, custom reticle overlay), @zxing/browser + webcam on
+  desktop, and a manual numeric-entry fallback for headless
+  machines. New `BarcodeScanner` component in
+  `web/src/components/BarcodeScanner.tsx`; call site is the
+  food panel's "Scan" button (sibling to "Ask AI" / "Manual"
+  / "Recent foods"). On a successful scan, the decoded
+  EAN/UPC strips non-digits and POSTs to the existing
+  `GET /foods/barcode/:code` endpoint (`api/src/routes/
+  foods.ts:271` was already there — no api change). On
+  lookup success the result drops straight into the
+  "edit + log" modal so the user can tune the serving size
+  before it lands in /meals. 404 from OFF (regional
+  brands not in their DB) shows a red banner and the
+  user falls through to Search / Ask AI / Manual. The
+  "Barcode scanner support is on hold" line in the food
+  panel helper copy is gone.
+  Android-side setup lives in `fitquest-android/`:
+  - `app/src/main/AndroidManifest.xml` — `CAMERA`
+    permission + `android.hardware.camera` feature flag
+    (optional, so installs without a camera still succeed).
+  - `capacitor.settings.gradle` — `:capacitor-barcode-
+    scanner` module include.
+  Run `npx cap sync android` from `web/` to refresh
+  `app/capacitor.build.gradle` against the new plugin, then
+  rebuild the APK via the normal gradle path.
 - ✅ Modal.tsx: portal-nuke on every parent re-render. The useEffect
   had `onClose` in its dep array; Dashboard.tsx (and other callers)
   passed inline `() => setX(null)` closures that recreated on every

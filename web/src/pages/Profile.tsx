@@ -11,7 +11,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION } from '@/lib/types';
+import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION, getClassDisplayName } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, roundForUnits, type UnitSystem } from '@/lib/units';
 import {
@@ -161,6 +161,17 @@ export function ProfilePage() {
   });
   const [pendingClass, setPendingClass] = useState<ClassName | null>(null);
 
+  // The "Use 1 Soulstone to change class" button on the lock banner
+  // opens its OWN modal. The intent there is "I want to spend a
+  // Soulstone to remove the lock, then I'll pick a class normally"
+  // — distinctly different from clicking a class tile, which bundles
+  // the Soulstone spend + class change into one confirmation. We
+  // keep these two flows separate so the lock banner button doesn't
+  // silently prefill a class (which was the old behavior).
+  const [pendingSoulstoneUnlock, setPendingSoulstoneUnlock] = useState(false);
+  const [soulstoneUnlockError, setSoulstoneUnlockError] = useState<string | null>(null);
+  const [soulstoneUnlockBusy, setSoulstoneUnlockBusy] = useState(false);
+
   // Split frame inputs by volatility. Static = bone structure (rarely
   // changes, drives Casey Butt genetic maxes + scales the Tron
   // identity disk). Dynamic = body comp (changes with training,
@@ -219,14 +230,21 @@ export function ProfilePage() {
   const previewForearm = numFromDraft('forearmLengthCm');
   const previewNeck = numFromDraft('neckCircCm');
   const previewWeight = numFromDraft('weightKg');
+  const previewBodyFat = numFromDraft('bodyFatPct');
 
   const previewFrame = useMemo(
     () => getFrameSize(previewWrist, previewAnkle),
     [previewWrist, previewAnkle],
   );
+  // Use the draft values for BOTH weight and body fat so the archetype
+  // preview reacts to the user typing in either field. Using the saved
+  // user.bodyFatPct here (the previous behaviour) makes editing BF in
+  // the form a no-op until the user hits save — so a 160lb person at
+  // 10% vs 20% BF both render STRIKER / FORGE identically until save,
+  // even though their lean mass differs by ~9kg.
   const previewArchetype = useMemo(
-    () => getFrameArchetype(previewHeight, previewWeight, user?.bodyFatPct ?? null),
-    [previewHeight, previewWeight, user?.bodyFatPct],
+    () => getFrameArchetype(previewHeight, previewWeight, previewBodyFat),
+    [previewHeight, previewWeight, previewBodyFat],
   );
 
   // Detect what changed from the saved user object
@@ -673,8 +691,12 @@ export function ProfilePage() {
           </div>
 
           {/* Current class evolution. If picked, show the 3-stage
-              progression with the current stage highlighted. */}
-          {user.class && (
+              progression with the current stage highlighted. Guarded
+              against missing CLASS_EVOLUTION entries (which can
+              happen when a new class is added to the api seed but
+              not yet mirrored in web/lib/types.ts — used to blank
+              the whole Profile page). */}
+          {user.class && CLASS_EVOLUTION[user.class] && (
             <div className="mb-3 border border-neon-cyan/30 bg-neon-cyan/5 p-3">
               <div className="text-[10px] font-mono uppercase tracking-widest text-ink-300 mb-2">
                 Your evolution
@@ -751,12 +773,14 @@ export function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => {
-                      // Open the confirmation modal with a flag that
-                      // we're spending a soulstone.
-                      const firstEligible = CLASS_OPTIONS.find(
-                        (c) => c !== user.class && isClassEligible(c, previewArchetype),
-                      );
-                      if (firstEligible) setPendingClass(firstEligible);
+                      // Open the dedicated "spend a Soulstone to
+                      // remove the lock" modal. The previous
+                      // version prefilled the first eligible
+                      // class into the class-change modal, which
+                      // felt like the button was silently picking
+                      // a class for the user.
+                      setSoulstoneUnlockError(null);
+                      setPendingSoulstoneUnlock(true);
                     }}
                     className="text-[10px] font-mono px-2 py-1 border border-neon-magenta/60 text-neon-magenta bg-neon-magenta/5 hover:bg-neon-magenta/10"
                   >
@@ -982,6 +1006,125 @@ export function ProfilePage() {
                     ? '💎 Use Soulstone to switch to ' + getClassDisplayName(pendingClass, 1)
                     : 'Switch to ' + getClassDisplayName(pendingClass, 1)
                   : 'Pick ' + getClassDisplayName(pendingClass, 1)}
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {/* Dedicated confirmation for the "Use 1 Soulstone to change
+            class" banner button. Distinct from the class-change modal
+            above: this one just consumes a Soulstone and clears the
+            lock — the user then picks a class normally. If they go
+            straight to clicking a class tile instead, PATCH /me will
+            accept the change because the lock is now off.
+
+            Failsafe: if the api container is running pre-change code
+            (no /users/me/unlock-class route → 404), we fall back to
+            the regular class-change flow so the user isn't stuck.
+            The banner button used to silently prefill a class, which
+            is the bug this whole thing fixes; the failsafe is opt-in
+            (a "Try via class tile" link) so it doesn't repeat that. */}
+        {pendingSoulstoneUnlock && (
+          <Modal
+            open={true}
+            onClose={() => {
+              if (soulstoneUnlockBusy) return;
+              setPendingSoulstoneUnlock(false);
+              setSoulstoneUnlockError(null);
+            }}
+            title="💎 Use 1 Soulstone to change class?"
+          >
+            <div className="text-xs font-mono text-ink-200 space-y-3">
+              <p>
+                Spend 1 Soulstone to lift the class lock on{' '}
+                <span className={`neon-text-${CLASS_META[user.class!].color}`}>
+                  {CLASS_META[user.class!].label}
+                </span>
+                ?
+              </p>
+              <div className="border border-neon-magenta/40 bg-neon-magenta/5 p-3">
+                <p className="neon-text-magenta mb-1">After confirm:</p>
+                <ul className="text-ink-300 text-[10px] space-y-1 list-disc list-inside">
+                  <li>The class lock is removed.</li>
+                  <li>You can pick a new class on this page normally.</li>
+                  <li>The new class will lock on (or after) your next birthday, just like a fresh pick.</li>
+                  <li>Your Soulstone balance drops by 1.</li>
+                </ul>
+              </div>
+              <p className="text-ink-300 text-[10px]">
+                Soulstones only drop from raid victories. Make sure you want to spend one — the action is immediate.
+              </p>
+              {soulstoneUnlockError && (
+                <div className="border border-red-500/60 bg-red-500/10 p-3 space-y-2">
+                  <p className="text-red-300 text-[11px] font-bold">
+                    ⚠ Could not spend Soulstone: {soulstoneUnlockError}
+                  </p>
+                  {soulstoneUnlockError.toLowerCase().includes('not found') ||
+                  soulstoneUnlockError.toLowerCase().includes('route') ? (
+                    <p className="text-[10px] text-ink-200">
+                      The api container is missing <code className="text-red-300">POST /users/me/unlock-class</code>.
+                      Rebuild + redeploy the api image, or use the fallback below.
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Failsafe: api hasn't been redeployed with the
+                      // new route. Open the regular class-change
+                      // modal pre-filled with the first eligible
+                      // class so the user can spend their Soulstone
+                      // via PATCH /me (which DOES exist in the old
+                      // code) instead of being stuck.
+                      const firstEligible = CLASS_OPTIONS.find(
+                        (c) => c !== user.class && isClassEligible(c, previewArchetype),
+                      );
+                      setPendingSoulstoneUnlock(false);
+                      setSoulstoneUnlockError(null);
+                      if (firstEligible) setPendingClass(firstEligible);
+                    }}
+                    className="text-[10px] font-mono px-2 py-1 border border-neon-magenta/60 text-neon-magenta bg-neon-magenta/5 hover:bg-neon-magenta/10"
+                  >
+                    Try via class tile (uses 1 Soulstone to switch)
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingSoulstoneUnlock(false);
+                  setSoulstoneUnlockError(null);
+                }}
+                disabled={soulstoneUnlockBusy}
+                className="btn-ghost flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setSoulstoneUnlockBusy(true);
+                  setSoulstoneUnlockError(null);
+                  try {
+                    await api('/users/me/unlock-class', { method: 'POST' });
+                    setPendingSoulstoneUnlock(false);
+                    await refresh();
+                  } catch (e: any) {
+                    console.error('soulstone unlock-class failed', e);
+                    const msg =
+                      e?.message ||
+                      (e instanceof Error ? e.message : 'Failed to spend Soulstone') ||
+                      'Unknown error';
+                    setSoulstoneUnlockError(msg);
+                  } finally {
+                    setSoulstoneUnlockBusy(false);
+                  }
+                }}
+                disabled={soulstoneUnlockBusy}
+                className="flex-1 btn-neon-magenta"
+              >
+                {soulstoneUnlockBusy ? '…' : '💎 Use 1 Soulstone'}
               </button>
             </div>
           </Modal>

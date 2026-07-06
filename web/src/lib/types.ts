@@ -170,6 +170,11 @@ export const CLASS_EVOLUTION: Record<string, {
     stages: ['Brawler', 'Marauder', 'Berserker'],
     thresholds: [10, 25],
   },
+  TRACER: {
+    line: 'TRACER',
+    stages: ['Dash', 'Blur', 'Tracer'],
+    thresholds: [10, 25],
+  },
   ORACLE: {
     line: 'ORACLE',
     stages: ['Initiate', 'Acolyte', 'Oracle'],

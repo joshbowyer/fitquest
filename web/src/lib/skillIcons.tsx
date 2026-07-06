@@ -39,71 +39,129 @@ const icon = (children: ReactElement | ReactElement[]): ReactElement => (
 );
 
 // ---- JUGGERNAUT (heavy + barbell) ----
+//
+// All JUGGERNAUT icons are hand-coded barbell SVG (NOT borrowed from
+// calitree.app — the calitree calisthenics PNGs like bench-dips /
+// cossack-squat / pike-press are wrong for barbell movements). Each
+// icon shows the lifter + bar in a position that's unambiguous at
+// small (28-32px) render sizes, the same way SkillTree renders the
+// branch header icons.
 
 const Squat = icon(
   <>
-    {/* Barbell: long bar with weight plates at each end */}
-    <line x1="4" y1="14" x2="20" y2="14" />
-    <rect x="2" y="11" width="3" height="6" rx="0.5" />
-    <rect x="19" y="11" width="3" height="6" rx="0.5" />
-    {/* Squatter's shoulders — slight V under the bar */}
-    <path d="M8 14 L10 18 L14 18 L16 14" />
-    {/* Lower body squat */}
-    <path d="M10 18 L9 21" />
-    <path d="M14 18 L15 21" />
-  </>
+    {/* Squatter: head circle + shoulders + hips + bent legs */}
+    {/* Head */}
+    <circle cx="12" cy="5" r="2" />
+    {/* Shoulders */}
+    <line x1="9" y1="8" x2="15" y2="8" />
+    {/* Torso (slightly leaning forward) */}
+    <line x1="12" y1="8" x2="11" y2="13" />
+    {/* Hips */}
+    <line x1="11" y1="13" x2="14" y2="14" />
+    {/* Thighs (down to knees) */}
+    <line x1="14" y1="14" x2="15" y2="17" />
+    <line x1="11" y1="13" x2="9" y2="17" />
+    {/* Lower legs (feet planted) */}
+    <line x1="15" y1="17" x2="15" y2="21" />
+    <line x1="9" y1="17" x2="9" y2="21" />
+    {/* Barbell on the shoulders (across the trap) */}
+    <line x1="6" y1="9" x2="18" y2="9" />
+    <rect x="4" y="7" width="2.5" height="4" rx="0.4" />
+    <rect x="17.5" y="7" width="2.5" height="4" rx="0.4" />
+  </>,
 );
 
 const Press = icon(
   <>
+    {/* Bench Press — lifter lying on bench, bar held at lockout */}
     {/* Bench */}
-    <rect x="3" y="14" width="18" height="3" rx="0.5" />
+    <rect x="2" y="14" width="20" height="3" rx="0.5" />
     {/* Bench legs */}
-    <line x1="5" y1="17" x2="5" y2="20" />
-    <line x1="19" y1="17" x2="19" y2="20" />
-    {/* Bar + plates above */}
-    <line x1="4" y1="9" x2="20" y2="9" />
-    <rect x="2" y="6" width="3" height="6" rx="0.5" />
-    <rect x="19" y="6" width="3" height="6" rx="0.5" />
-  </>
+    <line x1="4" y1="17" x2="4" y2="21" />
+    <line x1="20" y1="17" x2="20" y2="21" />
+    {/* Lifter's body — short line on top of the bench */}
+    <line x1="9" y1="14" x2="15" y2="14" />
+    {/* Lifter's head (small circle at one end) */}
+    <circle cx="8.5" cy="12.5" r="1.5" />
+    {/* Arms holding the bar at lockout (above the bench) */}
+    <line x1="9" y1="13" x2="9" y2="9" />
+    <line x1="15" y1="13" x2="15" y2="9" />
+    {/* Barbell at lockout position */}
+    <line x1="6" y1="9" x2="18" y2="9" />
+    {/* Weight plates */}
+    <rect x="4" y="7" width="3" height="4" rx="0.4" />
+    <rect x="17" y="7" width="3" height="4" rx="0.4" />
+  </>,
 );
 
 const Deadlift = icon(
   <>
-    {/* Bar with plates, low to ground */}
-    <line x1="4" y1="18" x2="20" y2="18" />
-    <rect x="2" y="15" width="3" height="6" rx="0.5" />
-    <rect x="19" y="15" width="3" height="6" rx="0.5" />
-    {/* Up-arrow showing the lift direction */}
-    <path d="M12 14 L12 7 M9 10 L12 7 L15 10" />
-  </>
+    {/* Deadlift — lifter hinged at the hips, gripping bar on floor */}
+    {/* Floor */}
+    <line x1="3" y1="22" x2="21" y2="22" />
+    {/* Barbell on the floor (low) */}
+    <line x1="5" y1="20" x2="19" y2="20" />
+    <rect x="3" y="17" width="3" height="6" rx="0.4" />
+    <rect x="18" y="17" width="3" height="6" rx="0.4" />
+    {/* Lifter hinged at hips — diagonal torso, bent legs, arms down to bar */}
+    {/* Head (low, looking forward) */}
+    <circle cx="9" cy="12" r="2" />
+    {/* Back (angled) */}
+    <line x1="9" y1="14" x2="14" y2="17" />
+    {/* Hip hinge */}
+    <line x1="14" y1="17" x2="15" y2="20" />
+    {/* Front (bent) leg */}
+    <line x1="15" y1="20" x2="15" y2="22" />
+    {/* Rear leg */}
+    <line x1="14" y1="17" x2="11" y2="22" />
+    {/* Arms reaching down to the bar */}
+    <line x1="9" y1="13" x2="6" y2="20" />
+    <line x1="9" y1="13" x2="9" y2="20" />
+  </>,
 );
 
 const OverheadPress = icon(
   <>
-    {/* Arms pushing bar up — V shape */}
-    <path d="M8 16 L12 8 L16 16" />
-    {/* Bar with plates at top */}
-    <line x1="4" y1="6" x2="20" y2="6" />
-    <rect x="2" y="3" width="3" height="6" rx="0.5" />
-    <rect x="19" y="3" width="3" height="6" rx="0.5" />
+    {/* Overhead Press — standing lifter, bar locked out overhead */}
+    {/* Floor */}
+    <line x1="5" y1="22" x2="19" y2="22" />
+    {/* Lifter's legs (vertical, standing) */}
+    <line x1="11" y1="22" x2="11" y2="16" />
+    <line x1="13" y1="22" x2="13" y2="16" />
+    {/* Torso */}
+    <line x1="12" y1="16" x2="12" y2="10" />
     {/* Head */}
-    <circle cx="12" cy="18" r="2" />
-  </>
+    <circle cx="12" cy="9" r="2" />
+    {/* Arms extending straight up to the bar */}
+    <line x1="11" y1="10" x2="9" y2="4" />
+    <line x1="13" y1="10" x2="15" y2="4" />
+    {/* Barbell overhead */}
+    <line x1="6" y1="4" x2="18" y2="4" />
+    {/* Plates */}
+    <rect x="4" y="2" width="3" height="4" rx="0.4" />
+    <rect x="17" y="2" width="3" height="4" rx="0.4" />
+  </>,
 );
 
 const Strongman = icon(
   <>
-    {/* Yoke: vertical pole + horizontal crossbar */}
-    <line x1="12" y1="3" x2="12" y2="15" />
+    {/* Strongman yoke — upright post + crossbar + hanging weights + carrier below */}
+    {/* Upright central post */}
+    <line x1="12" y1="2" x2="12" y2="14" />
+    {/* Crossbar */}
     <line x1="4" y1="6" x2="20" y2="6" />
-    {/* Weights hanging on each end of the crossbar */}
-    <rect x="3" y="7" width="3" height="5" rx="0.5" />
-    <rect x="18" y="7" width="3" height="5" rx="0.5" />
-    {/* Carrier's body */}
-    <circle cx="12" cy="19" r="2.25" />
-    <line x1="12" y1="15" x2="12" y2="16.75" />
-  </>
+    {/* Weights hanging from each end */}
+    <rect x="3" y="7" width="3" height="5" rx="0.4" />
+    <rect x="18" y="7" width="3" height="5" rx="0.4" />
+    {/* Carrier's head */}
+    <circle cx="12" cy="17" r="2" />
+    {/* Carrier's shoulders + torso (under the crossbar) */}
+    <line x1="9" y1="19" x2="15" y2="19" />
+    <line x1="12" y1="19" x2="12" y2="22" />
+    {/* Carrier's legs */}
+    <line x1="11" y1="22" x2="10" y2="22" />
+    <line x1="13" y1="22" x2="14" y2="22" />
+  </>,
 );
 
 const Sled = icon(
@@ -480,17 +538,6 @@ const Kettlebell = icon(
   </>
 );
 
-const HeroWODs = icon(
-  <>
-    {/* Medal — circle with star inside */}
-    <circle cx="12" cy="9" r="5" />
-    {/* Star (5-point) inside the circle */}
-    <path d="M12 6 L13 8 L15 8 L13.5 9.5 L14 12 L12 10.5 L10 12 L10.5 9.5 L9 8 L11 8 Z" />
-    {/* Ribbon below */}
-    <path d="M9 14 L7 22 L12 19 L17 22 L15 14" />
-  </>
-);
-
 const Boxing = icon(
   <>
     {/* Boxing glove outline — mitten shape */}
@@ -499,7 +546,34 @@ const Boxing = icon(
     <path d="M18 9 Q21 9 21 12 Q21 14 18 14" />
     {/* Wrist line */}
     <line x1="9" y1="14" x2="16" y2="14" />
-  </>
+  </>,
+);
+
+// Sandbag — strongman-style bag with a gathered top + handle.
+const Sandbag = icon(
+  <>
+    {/* Bag body — rounded rectangle (the cylinder of a filled sandbag) */}
+    <rect x="4" y="9" width="16" height="12" rx="2.5" />
+    {/* Horizontal seam / panel line across the middle */}
+    <line x1="4" y1="14" x2="20" y2="14" />
+    {/* Gathered top — a small bunched handle arc on top of the bag */}
+    <path d="M8 9 Q8 5 12 5 Q16 5 16 9" />
+    {/* Tiny pinch at the centre of the gathered top (the knot/seal) */}
+    <line x1="12" y1="5.5" x2="12" y2="3.5" />
+  </>,
+);
+
+// Medicine Ball — heavy slam ball with seam lines (leather medicine-ball silhouette).
+const MedicineBall = icon(
+  <>
+    {/* Round ball body */}
+    <circle cx="12" cy="12" r="8" />
+    {/* Curved horizontal seam — like the equator on a leather med ball */}
+    <path d="M4.5 11 Q12 8.5 19.5 11" />
+    <path d="M4.5 13 Q12 15.5 19.5 13" />
+    {/* Vertical seam down the centre */}
+    <line x1="12" y1="4" x2="12" y2="20" />
+  </>,
 );
 
 const Capacity = icon(
@@ -629,19 +703,21 @@ const Balance = icon(
   </>
 );
 
-const Mindfulness = icon(
+const IgnatianMeditation = icon(
   <>
-    {/* Meditation figure — head + crossed legs (V shape) */}
-    <circle cx="12" cy="6" r="2" />
-    {/* Arms resting on knees */}
-    <path d="M10 8 L7 13" />
-    <path d="M14 8 L17 13" />
-    {/* Crossed legs — wide V */}
-    <path d="M12 10 L4 19" />
-    <path d="M12 10 L20 19" />
-    {/* Base */}
-    <line x1="3" y1="20" x2="21" y2="20" />
-  </>
+    {/* Cross + halo — distinctly Catholic contemplative icon. */}
+    {/* Cross stem */}
+    <line x1="12" y1="4" x2="12" y2="20" />
+    {/* Cross arm */}
+    <line x1="7" y1="9" x2="17" y2="9" />
+    {/* Halo / aura around the head of the cross */}
+    <circle cx="12" cy="4" r="3.5" />
+    {/* Base line — the ground the cross stands on */}
+    <line x1="4" y1="20" x2="20" y2="20" />
+    {/* Two small rays outward at the base — the colloquy */}
+    <path d="M9 18 L7 20" />
+    <path d="M15 18 L17 20" />
+  </>,
 );
 
 const Yoga = icon(
@@ -693,13 +769,12 @@ const Pilates = icon(
 // rasterized to PNG by the upstream; we re-color and re-frame
 // rather than 1:1 copy.
 const CALITREE_ICON_FILES: Record<string, string> = {
-  // JUGGERNAUT — heavy barbell / strongman (no perfect calitree
-  // match; using the closest bodyweight movement for each)
-  'Squat':          'bodyweight-squat',
-  'Press':          'bench-dips',        // bench + bar vibe
-  'Deadlift':       'cossack-squat',     // wide-stance heavy lift
-  'Overhead Press': 'pike-press',        // overhead pressing motion
-  'Strongman':     'bulgarian-dips',    // heavy weighted hold
+  // JUGGERNAUT — heavy barbell / strongman. Calitree.app has no good
+  // matches (it's a calisthenics-only tree, so the closest PNGs are
+  // always wrong — bench-dips for Press, cossack-squat for Deadlift,
+  // pike-press for OHP, bulgarian-dips for Strongman). JUGGERNAUT
+  // branches now fall through to the hand-coded barbell SVGs below.
+
   // 'Sled' — no calitree equivalent, falls back to hand-coded SVG
 
   // PHANTOM — calisthenics, direct mapping
@@ -730,7 +805,7 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Mobility':       'pancake-stretch',
   'Breath':         'hollow-hold',
   'Balance':        'side-plank',
-  // 'Mindfulness' — no calitree equivalent.
+  // 'Ignatian Meditation' (was 'Mindfulness' — renamed) — no calitree equivalent.
   'Yoga':           'bridge-hold',
   'Pilates':        'l-sit',
 };
@@ -813,8 +888,14 @@ export function skillCalitreeIconFor(skillName: string | null): string | null {
 }
 
 export const BRANCH_ICONS: Record<string, ReactElement> = {
-  // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
-  'Sled': Sled,
+  // JUGGERNAUT — barbell movements (calitree.app has no good
+  // calisthenics-PNG equivalents; we hand-code them).
+  'Squat':          Squat,
+  'Press':          Press,
+  'Deadlift':       Deadlift,
+  'Overhead Press': OverheadPress,
+  'Strongman':      Strongman,
+  'Sled':           Sled,
   // PHANTOM
   // All 7 branches have calitree matches. (Calitree's planche icon
   // is technically a front-lever figure rather than a true planche,
@@ -823,15 +904,18 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   'Run': Run,
   'Ruck': Ruck,
   'Triathlon': Triathlon,
-  // BERSERKER — only Hero WODs + Capacity have calitree matches
+  // BERSERKER — only Capacity has a calitree match (was Hero WODs
+  // before the merge). Hand-coded icons for the other branches.
   'Kettlebell': Kettlebell,
   'Boxing': Boxing,
   'Mace / Indian Club': Mace,
+  'Sandbag': Sandbag,
+  'Medicine Ball': MedicineBall,
   // TRACER — only Plyo + Parkour + Agility have matches
   'Sprint': Sprint,
   'Throws': Throws,
   // ORACLE — only Mobility + Breath + Balance + Yoga + Pilates have matches
-  'Mindfulness': Mindfulness,
+  'Ignatian Meditation': IgnatianMeditation,
 };
 
 // Per-skill icons — override the branch icon for specific skills

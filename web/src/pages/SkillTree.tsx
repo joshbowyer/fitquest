@@ -126,9 +126,9 @@ const BRANCH_ORDER_BY_CLASS: Record<string, string[]> = {
   JUGGERNAUT: ['Squat', 'Press', 'Deadlift', 'Overhead Press', 'Strongman', 'Sled'],
   PHANTOM: ['Push', 'Pull', 'Holds', 'Rings', 'Handstand', 'Planche'],
   SCOUT: ['Run', 'Ruck', 'Triathlon'],
-  BERSERKER: ['Sled', 'Kettlebell', 'Hero WODs', 'Boxing', 'Capacity', 'Mace / Indian Club'],
+  BERSERKER: ['Sled', 'Kettlebell', 'Boxing', 'Capacity', 'Mace / Indian Club', 'Sandbag', 'Medicine Ball'],
   TRACER: ['Sprint', 'Plyo', 'Parkour', 'Agility', 'Throws'],
-  ORACLE: ['Mobility', 'Breath', 'Balance', 'Mindfulness', 'Yoga', 'Pilates'],
+  ORACLE: ['Mobility', 'Breath', 'Balance', 'Ignatian Meditation', 'Yoga', 'Pilates'],
 };
 
 function buildBranches(items: Skill[], className: string): Branch[] {
@@ -580,37 +580,46 @@ function BranchColumn({
   const allDone = unlockedCount === total;
   return (
     <div className="flex flex-col gap-3 min-w-[140px] flex-1">
-      {/* Branch header — centered icon + name + progress */}
+      {/* Branch header — centered icon + name + progress. Always
+          rendered in the class color (or neon-lime if every skill
+          is unlocked) regardless of whether the icon is a
+          calitree PNG or a hand-coded SVG — without this, the
+          hand-coded SVG branches render in default text color
+          (white) while the calitree PNG branches get tinted to
+          the class hue, so a class like TRACER ends up with
+          "3 yellow, 2 white" headers. */}
       <div className="flex flex-col items-center gap-1 pb-2 border-b border-ink-700/30">
-        {calitreeFile ? (
-          // Same mask-image approach as the per-skill nodes. The
-          // column header icon picks up the user's class color
-          // (lime for PHANTOM, magenta for BERSERKER, etc.) so each
-          // class's tree has a distinct header palette.
-          <i
-            aria-hidden
-            className={classNames(
-              'block w-8 h-8 select-none',
-              allDone
-                ? 'text-neon-lime'
-                : classColorForClass(className),
-            )}
-            style={{
-              WebkitMaskImage: `url(/icons/calitree/${calitreeFile}.png)`,
-              maskImage: `url(/icons/calitree/${calitreeFile}.png)`,
-              WebkitMaskSize: 'contain',
-              maskSize: 'contain',
-              WebkitMaskRepeat: 'no-repeat',
-              maskRepeat: 'no-repeat',
-              backgroundColor: 'currentColor',
-              filter: allDone
-                ? 'drop-shadow(0 0 4px #56e88e)'
-                : 'drop-shadow(0 0 3px currentColor)',
-            }}
-          />
-        ) : (
-          <div className="text-3xl leading-none">{icon}</div>
-        )}
+        <div
+          className={classNames(
+            'text-3xl leading-none',
+            allDone ? 'text-neon-lime' : classColorForClass(className),
+            'transition-colors duration-200',
+          )}
+        >
+          {calitreeFile ? (
+            // Masked PNG — picks up the parent's currentColor via
+            // background-color: currentColor. The mask silouhette
+            // becomes the class-tinted icon shape.
+            <i
+              aria-hidden
+              className="block w-8 h-8 select-none"
+              style={{
+                WebkitMaskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+                maskImage: `url(/icons/calitree/${calitreeFile}.png)`,
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                backgroundColor: 'currentColor',
+                filter: allDone
+                  ? 'drop-shadow(0 0 4px #56e88e)'
+                  : 'drop-shadow(0 0 3px currentColor)',
+              }}
+            />
+          ) : (
+            <span className="block">{icon}</span>
+          )}
+        </div>
         <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
           {branch.branchName}
         </div>

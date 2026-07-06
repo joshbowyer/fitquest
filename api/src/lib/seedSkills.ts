@@ -5,7 +5,9 @@
  *   JUGGERNAUT  — 6 branches = 39 skills   (tier-based prereqs)
  *   PHANTOM     — 7 branches = 50 skills   (explicit per-skill prereqs)
  *   SCOUT       — 3 branches = 20 skills   (tier-based prereqs)
- *   BERSERKER   — 7 branches = 34 skills   (tier-based prereqs)
+ *   BERSERKER   — 7 branches = ~45 skills  (tier-based prereqs)
+ *                                (Capacity absorbed Hero WODs; +2 KB
+ *                                farmer's carries; +Sandbag; +MB)
  *   TRACER      — 5 branches = 27 skills   (tier-based prereqs)
  *   ORACLE      — 6 branches = 34 skills   (tier-based prereqs)
  *
@@ -351,7 +353,34 @@ const SCOUT_SKILLS: Spec[] = [
   { name: 'Full Ironman (any time)', branch: 'Triathlon', tier: 'TIER_3', blurb: 'Ironman — the god-tier of multi-sport endurance.', description: '+20% IM XP', test: { description: 'Full Ironman (3.8km swim + 180km bike + 42km run) in any time. Just finishing is the achievement.', safety: 'Long build (months). Carb-load. Hydrate + fuel heavily. Coach + crew strongly recommended.', metric: 'reps', threshold: { reps: 1 } } },
 ];
 
-// ---- 4. BERSERKER (volume + HIIT + combat) — 34 skills ----
+// ---- 4. BERSERKER (volume + HIIT + combat) — 7 branches, ~45 skills ----
+//
+// Restructure notes:
+//   - Capacity + Hero WODs merged into one Capacity branch. Both
+//     were AMRAP/benchmark territory (Cindy, Murph variants, 30/60-
+//     min mixed AMRAPs) — slightly different angles on the same
+//     work, so they collapse cleanly. Murphs demoted from T3 to T2;
+//     finishing a Murph is a serious benchmark but 40-min-vest
+//     isn't a god-tier feat. New T3 rows are 60-90 min mixed AMRAPs.
+//   - The freed-up "Hero WODs" branch slot becomes a new Medicine
+//     Ball branch (strongman-style heavy MB: 10-20kg throws,
+//     slams, clean+jerk).
+//   - Kettlebell gained two Farmer's Carry skills (T1 + T2) —
+//     grip + gait under load, separate from KB swings / snatch /
+//     long cycle.
+//   - Sandbag branch added — bear-hug hold/walk, clean to shoulder,
+//     sandbag load (lifting the bag onto a platform).
+//
+// Final branch layout (still 7):
+//   A. Sled / Prowler          6
+//   B. Kettlebell              7 (was 5; +2 farmer's carries)
+//   C. Capacity (merged)       8 (was 11 across C+E; Murphs demoted)
+//   D. Boxing                  5 (unchanged)
+//   E. Mace / Indian Club      7 (unchanged)
+//   F. Sandbag                 6 (NEW)
+//   G. Medicine Ball           6 (NEW, replaces Hero WODs slot)
+//
+// Total: ~45 skills, 7 branches.
 const BERSERKER_SKILLS: Spec[] = [
   // A. Sled / Prowler
   { name: 'Sled Push 25m', branch: 'Sled', tier: 'TIER_1', blurb: 'Light horizontal push — sled basics.', description: '+5% sled XP', test: { description: 'Push a sled 25m at 25% bodyweight. Bend at the waist, drive through the legs.', safety: 'Flat surface. Don\'t lock knees at the top.', metric: 'reps', threshold: { reps: 25, weight_kg_mult_of_bw: 0.25 } } },
@@ -361,19 +390,24 @@ const BERSERKER_SKILLS: Spec[] = [
   { name: 'Sled 1mi @ 75%BW < 8:00', branch: 'Sled', tier: 'TIER_3', blurb: 'Three-quarter bodyweight mile.', description: '+12% sled XP', test: { description: 'Push 1 mile at 0.75× bodyweight in under 8 minutes.', safety: 'Flat surface. Practice lower loads first.', metric: 'duration', threshold: { duration_sec: 480 } } },
   { name: 'Sled 1mi @ 100%BW < 8:00', branch: 'Sled', tier: 'TIER_3', blurb: 'Bodyweight mile — strongman-class feat.', description: '+15% sled XP', test: { description: 'Push 1 mile at bodyweight in under 8 minutes.', safety: 'Flat surface. Practice lower loads first. Spotter / coach nearby.', metric: 'duration', threshold: { duration_sec: 480 } } },
 
-  // B. Kettlebell
+  // B. Kettlebell + Farmer's Carry
   { name: '100 KB Swings @ 24kg', branch: 'Kettlebell', tier: 'TIER_1', blurb: 'Russian-style KB swings — grip + hip power.', description: '+5% KB XP', test: { description: '100 single-arm KB swings at 24kg, alternating arms. Hardstyle swing to chest level.', safety: 'Use a hip hinge, not a squat. Don\'t round the back.', metric: 'reps', threshold: { reps: 100 } } },
+  { name: 'Farmer Carry 50m @ 24kg/hand', branch: 'Kettlebell', tier: 'TIER_1', blurb: 'Farmer\'s carry — grip + gait under load.', description: '+5% KB XP', test: { description: 'Carry a kettlebell (or dumbbell) in each hand for 50m at 24kg/hand. No setting down.', safety: 'Use proper grip. Stand tall, don\'t lean. Stop if grip fails.', metric: 'reps', threshold: { reps: 50 } } },
   { name: '200 KB Swings < 20:00', branch: 'Kettlebell', tier: 'TIER_2', blurb: 'KB swing volume — pure conditioning.', description: '+5% KB XP', test: { description: '200 KB swings in under 20 minutes. Use a hip hinge, controlled pace.', safety: 'Same as T1. Don\'t go to failure — pace yourself.', metric: 'duration', threshold: { duration_sec: 1200 } } },
+  { name: 'Farmer Carry 100m @ 32kg/hand < 2:00', branch: 'Kettlebell', tier: 'TIER_2', blurb: 'Loaded carry under time pressure.', description: '+8% KB XP', test: { description: 'Carry 32kg in each hand for 100m in under 2:00. No setting down.', safety: 'Strong T1 baseline first. Stand tall. Spotter if loaded heavy.', metric: 'duration', threshold: { duration_sec: 120 } } },
   { name: '100 KB Snatches < 10:00', branch: 'Kettlebell', tier: 'TIER_2', blurb: 'KB snatch — ballistic overhead work.', description: '+8% KB XP', test: { description: '100 KB snatches at 24kg in under 10 minutes, alternating arms.', safety: 'Use a hip drive. Don\'t press out — it\'s a flip catch. Don\'t go to failure.', metric: 'duration', threshold: { duration_sec: 600 } } },
   { name: '100 KB Long Cycle < 5:00', branch: 'Kettlebell', tier: 'TIER_3', blurb: 'Long cycle — clean + snatch + jerk + clean.', description: '+10% KB XP', test: { description: '100 KB long cycle at 24kg in under 5 minutes.', safety: 'Build up to long cycle gradually. Don\'t go to failure.', metric: 'duration', threshold: { duration_sec: 300 } } },
   { name: '30+ LCC @ 24kg', branch: 'Kettlebell', tier: 'TIER_3', blurb: 'Long cycle god-tier — 30+ reps in 5 minutes at 24kg.', description: '+15% KB XP', test: { description: '30+ KB long cycle reps at 24kg in 5 minutes.', safety: 'Strong LC base first. Don\'t go to failure.', metric: 'rounds', threshold: { rounds: 30 } } },
 
-  // C. Hero WODs
-  { name: 'Cindy 15+ Rounds', branch: 'Hero WODs', tier: 'TIER_1', blurb: 'Classic AMRAP — 5 pull-ups + 10 push-ups + 15 air squats.', description: '+5% WOD XP', test: { description: 'Cindy (5 PU + 10 PU + 15 squats, 20min AMRAP) for 15+ rounds.', safety: 'Scale pull-ups and push-ups to bands/knees if needed.', metric: 'rounds', threshold: { rounds: 15 } } },
-  { name: 'Murph Unpartitioned < 60:00', branch: 'Hero WODs', tier: 'TIER_2', blurb: 'Murph — the Hero WOD benchmark.', description: '+10% WOD XP', test: { description: 'Murph (1mi run + 100 PU + 200 PU + 1mi run) in under 60 minutes, unpartitioned.', safety: 'Scale as needed. Hydrate. Run/walk splits allowed.', metric: 'duration', threshold: { duration_sec: 3600 } } },
-  { name: 'Murph Partitioned < 45:00', branch: 'Hero WODs', tier: 'TIER_3', blurb: 'Murph partitioned — reps are split into manageable sets.', description: '+10% WOD XP', test: { description: 'Murph partitioned (sets of 5, 10, 15 PU + squats) in under 45 minutes.', safety: 'Same as unpartitioned. Stay hydrated.', metric: 'duration', threshold: { duration_sec: 2700 } } },
-  { name: 'Murph w/ 20lb Vest < 50:00', branch: 'Hero WODs', tier: 'TIER_3', blurb: 'Murph with a vest — added load.', description: '+12% WOD XP', test: { description: 'Murph with 20lb vest, partitioned, in under 50 minutes.', safety: 'Master weighted vest PU first. Stay hydrated.', metric: 'duration', threshold: { duration_sec: 3000 } } },
-  { name: 'Murph w/ 20lb Vest, Partitioned < 40:00', branch: 'Hero WODs', tier: 'TIER_3', blurb: 'Murph god-tier — vest + partitioned, sub-40.', description: '+15% WOD XP', test: { description: 'Murph with 20lb vest, partitioned, in under 40 minutes.', safety: 'Strong base of all 4 movements at 20lb vest. Hydrate heavily.', metric: 'duration', threshold: { duration_sec: 2400 } } },
+  // C. Capacity (was: Capacity + Hero WODs, merged. Murphs demoted to T2.)
+  { name: '10min Cindy ≥ 12 Rounds', branch: 'Capacity', tier: 'TIER_1', blurb: 'Capacity baseline — bodyweight AMRAP.', description: '+5% capacity XP', test: { description: '10min Cindy (5 PU + 10 PU + 15 squats) for 12+ rounds.', safety: 'Scale PU/PU if needed.', metric: 'rounds', threshold: { rounds: 12 } } },
+  { name: 'Cindy 15+ Rounds (20min AMRAP)', branch: 'Capacity', tier: 'TIER_1', blurb: 'Classic Hero WOD Cindy — 20min AMRAP at 15+ rounds.', description: '+5% capacity XP', test: { description: '20min Cindy (5 PU + 10 PU + 15 squats) for 15+ rounds.', safety: 'Scale pull-ups / push-ups to bands or knees if needed.', metric: 'rounds', threshold: { rounds: 15 } } },
+  { name: '20min Cindy ≥ 18 Rounds', branch: 'Capacity', tier: 'TIER_2', blurb: '20min Cindy — strong capacity.', description: '+8% capacity XP', test: { description: '20min Cindy for 18+ rounds.', safety: 'Hydrate. Don\'t go to failure on PU.', metric: 'rounds', threshold: { rounds: 18 } } },
+  { name: 'Murph Unpartitioned < 60:00', branch: 'Capacity', tier: 'TIER_2', blurb: 'Murph as a mid-tier capacity test — finishing is the win.', description: '+8% capacity XP', test: { description: 'Murph (1mi + 100 PU + 200 PU + 1mi) in under 60:00, unpartitioned.', safety: 'Hydrate + fuel. Run/walk splits allowed. Build up over weeks.', metric: 'duration', threshold: { duration_sec: 3600 } } },
+  { name: 'Murph Partitioned < 45:00', branch: 'Capacity', tier: 'TIER_2', blurb: 'Murph with set breaks (5/10/15) — demoted from T3.', description: '+8% capacity XP', test: { description: 'Murph partitioned (sets of 5/10/15 PU + squats) in under 45:00.', safety: 'Same as T2. Stay hydrated.', metric: 'duration', threshold: { duration_sec: 2700 } } },
+  { name: '30min Mixed AMRAP ≥ 15 Rounds', branch: 'Capacity', tier: 'TIER_2', blurb: '30min mixed AMRAP — sustained output.', description: '+8% capacity XP', test: { description: '30min AMRAP of mixed movements (e.g. KB swings, push-ups, air squats) for 15+ rounds.', safety: 'Hydrate + fuel. Don\'t go to failure.', metric: 'rounds', threshold: { rounds: 15 } } },
+  { name: '60min Mixed AMRAP ≥ 20 Rounds', branch: 'Capacity', tier: 'TIER_3', blurb: '60min mixed AMRAP — extreme capacity.', description: '+12% capacity XP', test: { description: '60min AMRAP of mixed movements for 20+ rounds.', safety: 'Hydrate + fuel heavily. Coach / spotter recommended.', metric: 'rounds', threshold: { rounds: 20 } } },
+  { name: '90min Mixed AMRAP ≥ 25 Rounds', branch: 'Capacity', tier: 'TIER_3', blurb: '90min mixed AMRAP — capacity god-tier.', description: '+15% capacity XP', test: { description: '90min AMRAP of mixed movements for 25+ rounds.', safety: 'Hydrate + fuel heavily. Coach / spotter recommended. Pre-plan nutrition.', metric: 'rounds', threshold: { rounds: 25 } } },
 
   // D. Boxing
   { name: '100 Jabs in 3min', branch: 'Boxing', tier: 'TIER_1', blurb: 'Boxing basics — jab volume.', description: '+5% boxing XP', test: { description: '100 jabs on a heavy bag in 3 minutes.', safety: 'Use proper hand wrapping. Don\'t over-extend the elbow.', metric: 'reps', threshold: { reps: 100 } } },
@@ -382,15 +416,7 @@ const BERSERKER_SKILLS: Spec[] = [
   { name: '5min Heavy Bag @ Full Speed', branch: 'Boxing', tier: 'TIER_3', blurb: 'Full-speed 5min — sustained power.', description: '+8% boxing XP', test: { description: '5 minutes of heavy bag at full speed. Sustained combinations.', safety: 'Use wrapping + gloves. Don\'t go to failure.', metric: 'duration', threshold: { duration_sec: 300 } } },
   { name: '3×3min Heavy Bag Rounds', branch: 'Boxing', tier: 'TIER_3', blurb: 'Boxing god-tier — three rounds of sustained power.', description: '+12% boxing XP', test: { description: '3 rounds of 3min heavy bag, with 30s rest between rounds.', safety: 'Strong base first. Wrap hands, use gloves. Coach / sparring partner recommended.', metric: 'duration', threshold: { duration_sec: 540 } } },
 
-  // E. Capacity
-  { name: '10min Cindy ≥ 12 Rounds', branch: 'Capacity', tier: 'TIER_1', blurb: 'Capacity baseline — bodyweight AMRAP.', description: '+5% capacity XP', test: { description: '10min Cindy (5 PU + 10 PU + 15 squats) for 12+ rounds.', safety: 'Scale PU/PU if needed.', metric: 'rounds', threshold: { rounds: 12 } } },
-  { name: '10min Cindy ≥ 15 Rounds', branch: 'Capacity', tier: 'TIER_2', blurb: 'Mid-level capacity.', description: '+5% capacity XP', test: { description: '10min Cindy for 15+ rounds.', safety: 'Same as T1.', metric: 'rounds', threshold: { rounds: 15 } } },
-  { name: '20min Cindy ≥ 18 Rounds', branch: 'Capacity', tier: 'TIER_2', blurb: '20min Cindy — strong capacity.', description: '+8% capacity XP', test: { description: '20min Cindy for 18+ rounds.', safety: 'Hydrate. Don\'t go to failure on PU.', metric: 'rounds', threshold: { rounds: 18 } } },
-  { name: '30min Mixed AMRAP ≥ 15 Rounds', branch: 'Capacity', tier: 'TIER_3', blurb: '30min mixed AMRAP — sustained output.', description: '+10% capacity XP', test: { description: '30min AMRAP of mixed movements (e.g. KB swings, push-ups, air squats) for 15+ rounds.', safety: 'Hydrate + fuel. Don\'t go to failure.', metric: 'rounds', threshold: { rounds: 15 } } },
-  { name: '60min Mixed AMRAP ≥ 20 Rounds', branch: 'Capacity', tier: 'TIER_3', blurb: '60min mixed AMRAP — extreme capacity.', description: '+12% capacity XP', test: { description: '60min AMRAP of mixed movements for 20+ rounds.', safety: 'Hydrate + fuel heavily. Coach / spotter recommended.', metric: 'rounds', threshold: { rounds: 20 } } },
-  { name: 'Murph Unpartitioned (Capacity)', branch: 'Capacity', tier: 'TIER_3', blurb: 'Murph as capacity test — the OG benchmark.', description: '+15% capacity XP', test: { description: 'Full Murph (1mi + 100 PU + 200 PU + 1mi), unpartitioned, in any time. Just finishing is the win.', safety: 'Long build. Hydrate + fuel heavily. Coach + crew recommended.', metric: 'reps', threshold: { reps: 1 } } },
-
-  // F. Mace / Indian Club (NEW)
+  // E. Mace / Indian Club (was F — re-lettered after Capacity absorbed Hero WODs)
   { name: '10 Figure-8s @ 7kg', branch: 'Mace / Indian Club', tier: 'TIER_1', blurb: 'Mace basics — figure-8 swings. Grip + shoulder + rotational core.', description: '+5% mace XP', test: { description: '10 figure-8 swings at 7kg (each side, alternating). Smooth horizontal circles at chest level.', safety: 'Use proper grip. Don\'t lock the elbow. Warm up shoulders first.', metric: 'reps', threshold: { reps: 10 } } },
   { name: '10 Mills @ 7kg', branch: 'Mace / Indian Club', tier: 'TIER_1', blurb: 'Vertical circles — shoulder mobility + grip.', description: '+5% mace XP', test: { description: '10 mills (vertical circles, alternating forward/back) at 7kg. Each side.', safety: 'Same as figure-8. Don\'t lock the elbow.', metric: 'reps', threshold: { reps: 10 } } },
   { name: '5 Fig-8 + 5 Mills @ 7kg < 3:00', branch: 'Mace / Indian Club', tier: 'TIER_2', blurb: 'Mace combination — both planes in one session.', description: '+5% mace XP', test: { description: '5 figure-8 + 5 mills at 7kg in under 3 minutes (each side).', safety: 'Same as T1/T2. Stay loose in the grip.', metric: 'duration', threshold: { duration_sec: 180 } } },
@@ -398,6 +424,22 @@ const BERSERKER_SKILLS: Spec[] = [
   { name: '10 Mace 360s @ 14kg < 5:00', branch: 'Mace / Indian Club', tier: 'TIER_3', blurb: 'Heavy mace at 14kg — full shoulder + grip work.', description: '+10% mace XP', test: { description: '10 mace 360s (full horizontal rotations around the body) at 14kg in under 5 minutes. Each side.', safety: 'Build up to heavy mace gradually. Use chalk. Stop if elbow pain.', metric: 'duration', threshold: { duration_sec: 300 } } },
   { name: '50 Alt Fig-8/Mill @ 14kg < 10:00', branch: 'Mace / Indian Club', tier: 'TIER_3', blurb: 'Mace AMRAP — sustained mace work capacity.', description: '+12% mace XP', test: { description: '50 alternating figure-8 / mill at 14kg in under 10 minutes.', safety: 'Build up to heavy mace first. Use chalk + a flat surface.', metric: 'duration', threshold: { duration_sec: 600 } } },
   { name: 'Gravedigger @ 18kg < 5:00', branch: 'Mace / Indian Club', tier: 'TIER_3', blurb: 'Mace god-tier — the iconic gravedigger combo.', description: '+15% mace XP', test: { description: 'Gravedigger (squat down → 360° circle as you stand → press overhead → repeat) at 18kg in under 5 minutes. Each side.', safety: 'Strong mace base first. Use a controlled mace. Coach / spotter recommended. Stop if elbow/shoulder pain.', metric: 'duration', threshold: { duration_sec: 300 } } },
+
+  // F. Sandbag (NEW)
+  { name: 'Bear Hug Hold 30s @ 25kg', branch: 'Sandbag', tier: 'TIER_1', blurb: 'Sandbag bear-hug static hold — grip + core under load.', description: '+5% sandbag XP', test: { description: 'Hold a 25kg sandbag in a bear-hug position against your chest for 30 seconds.', safety: 'Stand tall. Don\'t round the lower back. Use a floor-bag, not a cylindrical one.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Sandbag Clean to Shoulder × 10 @ 30kg', branch: 'Sandbag', tier: 'TIER_1', blurb: 'Clean the bag from floor to shoulder — the foundational strongman pattern.', description: '+5% sandbag XP', test: { description: '10 sandbag cleans from floor to shoulder at 30kg, alternating sides.', safety: 'Use a hip drive. Bag shifts in-hand — expect it. Use a flat surface.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Bear Hug Walk 25m @ 50kg', branch: 'Sandbag', tier: 'TIER_2', blurb: 'Walking bear-hug carry — grip + gait + core.', description: '+8% sandbag XP', test: { description: 'Bear-hug carry a 50kg sandbag for 25m without setting it down.', safety: 'Use a flat surface. Stand tall — don\'t lean. Spotter for transitions.', metric: 'reps', threshold: { reps: 25 } } },
+  { name: 'Sandbag Clean + Squat × 10 @ 50kg', branch: 'Sandbag', tier: 'TIER_2', blurb: 'Clean + front squat — combine the carry pattern with leg strength.', description: '+8% sandbag XP', test: { description: '10 sandbag cleans to shoulder followed by a front squat at 50kg. Alternating sides.', safety: 'Master T1 clean + light front squat first. Use a controlled bag.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Sandbag Load 80kg to 48" Platform < 30s', branch: 'Sandbag', tier: 'TIER_3', blurb: 'Strongman classic — lift the bag onto a platform fast.', description: '+12% sandbag XP', test: { description: 'Lift an 80kg sandbag onto a 48" platform in under 30 seconds, any number of attempts. Use any carry style.', safety: 'Use a stable platform. Warm up the spine. Spotter for transitions. Stop if back pain.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Sandbag-to-Shoulder 30 reps @ 70kg < 8:00', branch: 'Sandbag', tier: 'TIER_3', blurb: 'Sandbag god-tier — heavy sandbag volume in time.', description: '+15% sandbag XP', test: { description: '30 sandbag cleans to shoulder at 70kg in under 8:00, any carry style.', safety: 'Strong T2 base first. Coach / spotter recommended. Pre-plan grip rotation.', metric: 'duration', threshold: { duration_sec: 480 } } },
+
+  // G. Medicine Ball (NEW — replaces the old Hero WODs slot)
+  { name: '10kg MB Chest Pass ≥ 6m', branch: 'Medicine Ball', tier: 'TIER_1', blurb: 'Heavy MB chest pass — power transfer through the core.', description: '+5% MB XP', test: { description: '10kg medicine ball chest pass ≥ 6 meters (to a wall or partner).', safety: 'Use a wall or partner catcher. Don\'t throw at people. Stand sideways, rotate.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: '10kg MB Slam × 30', branch: 'Medicine Ball', tier: 'TIER_1', blurb: 'Heavy MB slam — full-body ballistic.', description: '+5% MB XP', test: { description: '30 overhead slams with a 10kg medicine ball.', safety: 'Use a slam ball, not a hard-shell ball. Warm up shoulders. Don\'t lock the elbows.', metric: 'reps', threshold: { reps: 30 } } },
+  { name: '15kg MB Overhead Throw ≥ 7m', branch: 'Medicine Ball', tier: 'TIER_2', blurb: 'Heavy MB overhead throw — full kinetic chain.', description: '+8% MB XP', test: { description: '15kg medicine ball overhead throw ≥ 7 meters.', safety: 'Use a safe landing area. Don\'t throw at people. Warm up shoulders first.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: '15kg MB Rotational Throw ≥ 9m', branch: 'Medicine Ball', tier: 'TIER_2', blurb: 'Heavy MB rotational throw — core power transfer.', description: '+8% MB XP', test: { description: '15kg medicine ball rotational (sideways) throw ≥ 9 meters.', safety: 'Use a safe landing area. Master 10kg chest pass first. Coach / spotter nearby.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: '20kg MB Rotational Throw ≥ 11m', branch: 'Medicine Ball', tier: 'TIER_3', blurb: 'Heavy MB rotational god-tier — 20kg thrown sideways 11m.', description: '+12% MB XP', test: { description: '20kg medicine ball rotational (sideways) throw ≥ 11 meters.', safety: 'Strong 15kg baseline first. Coach / spotter recommended. Safe landing area.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: '20kg MB Clean + Jerk × 20', branch: 'Medicine Ball', tier: 'TIER_3', blurb: 'MB god-tier — heavy slam ball clean + jerk volume.', description: '+15% MB XP', test: { description: '20 medicine ball clean + jerks at 20kg (floor to shoulder, then overhead). Continuous sets allowed.', safety: 'Strong T1/T2 MB baseline first. Coach / spotter nearby. Use a slam ball, not a hard shell.', metric: 'reps', threshold: { reps: 20 } } },
 ];
 
 // ---- 5. TRACER (speed + plyo + parkour) — 27 skills ----
@@ -460,19 +502,28 @@ const ORACLE_SKILLS: Spec[] = [
   { name: 'Wim Hof Round 1', branch: 'Breath', tier: 'TIER_3', blurb: 'Wim Hof method — breath god-tier.', description: '+15% breath XP', test: { description: 'Wim Hof round 1: 3 cycles of 30 breaths + retention ≥ 2 minutes.', safety: 'Practice shorter rounds first. Don\'t do in water. Coach recommended.', metric: 'duration', threshold: { duration_sec: 120 } } },
 
   // C. Balance
-  { name: 'SL Stand 30s Initiate', branch: 'Balance', tier: 'TIER_1', blurb: 'Single-leg stand — the balance baseline.', description: '+5% balance XP', test: { description: '30s single-leg stand on each leg (no shoes preferred).', safety: 'Stand near a wall or chair for safety. Don\'t lock the standing knee.', metric: 'duration', threshold: { duration_sec: 30 } } },
-  { name: 'SL Stand 60s', branch: 'Balance', tier: 'TIER_2', blurb: 'Single-leg stand milestone.', description: '+5% balance XP', test: { description: '60s single-leg stand on each leg.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 60 } } },
-  { name: 'SL Stand 60s Eyes Closed', branch: 'Balance', tier: 'TIER_2', blurb: 'Single-leg stand with eyes closed — proprioception.', description: '+8% balance XP', test: { description: '60s single-leg stand with eyes closed, on each leg.', safety: 'Have a wall or spotter nearby. Don\'t fall.', metric: 'duration', threshold: { duration_sec: 60 } } },
+  { name: 'Single-Leg Stand 30s Initiate', branch: 'Balance', tier: 'TIER_1', blurb: 'Single-leg stand — the balance baseline.', description: '+5% balance XP', test: { description: '30s single-leg stand on each leg (no shoes preferred).', safety: 'Stand near a wall or chair for safety. Don\'t lock the standing knee.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Single-Leg Stand 60s', branch: 'Balance', tier: 'TIER_2', blurb: 'Single-leg stand milestone.', description: '+5% balance XP', test: { description: '60s single-leg stand on each leg.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 60 } } },
+  { name: 'Single-Leg Stand 60s Eyes Closed', branch: 'Balance', tier: 'TIER_2', blurb: 'Single-leg stand with eyes closed — proprioception.', description: '+8% balance XP', test: { description: '60s single-leg stand with eyes closed, on each leg.', safety: 'Have a wall or spotter nearby. Don\'t fall.', metric: 'duration', threshold: { duration_sec: 60 } } },
   { name: 'Tree Pose 60s Eyes Closed (Each Side)', branch: 'Balance', tier: 'TIER_3', blurb: 'Tree pose with closed eyes — balance + calm.', description: '+8% balance XP', test: { description: '60s tree pose with eyes closed, each side.', safety: 'Same as T3.', metric: 'duration', threshold: { duration_sec: 60 } } },
   { name: '30s Free Handstand (Wall)', branch: 'Balance', tier: 'TIER_3', blurb: 'Wall handstand balance — 30s free balance attempt.', description: '+10% balance XP', test: { description: '30s free handstand (back to wall, light touch for safety).', safety: 'Practice chest-to-wall first. Spotter nearby.', metric: 'duration', threshold: { duration_sec: 30 } } },
   { name: '60s Free Handstand (Wall)', branch: 'Balance', tier: 'TIER_3', blurb: '60s wall handstand — strong balance.', description: '+12% balance XP', test: { description: '60s free handstand (back to wall, light touch).', safety: 'Master 30s first. Spotter nearby.', metric: 'duration', threshold: { duration_sec: 60 } } },
 
   // D. Mindfulness
-  { name: '5min Meditation Initiate', branch: 'Mindfulness', tier: 'TIER_1', blurb: 'Seated meditation — the stillness baseline.', description: '+5% mindfulness XP', test: { description: '5min seated meditation (eyes open → closed).', safety: 'Sit comfortably. Don\'t force.', metric: 'duration', threshold: { duration_sec: 300 } } },
-  { name: '10min Meditation', branch: 'Mindfulness', tier: 'TIER_2', blurb: '10 minutes of stillness.', description: '+5% mindfulness XP', test: { description: '10min seated meditation.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 600 } } },
-  { name: '20min Meditation', branch: 'Mindfulness', tier: 'TIER_2', blurb: '20 minutes — a real sit.', description: '+8% mindfulness XP', test: { description: '20min seated meditation.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 1200 } } },
-  { name: '30min Meditation', branch: 'Mindfulness', tier: 'TIER_3', blurb: '30 minutes — strong stillness.', description: '+10% mindfulness XP', test: { description: '30min seated meditation.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 1800 } } },
-  { name: '60min Meditation (HRV)', branch: 'Mindfulness', tier: 'TIER_3', blurb: '60min meditation — the mindfulness god-tier.', description: '+15% mindfulness XP', test: { description: '60min seated meditation (HRV measured before/after to track the parasympathetic response).', safety: 'Same as T1. Coach / experienced practitioner recommended.', metric: 'duration', threshold: { duration_sec: 3600 } } },
+  // D. Ignatian Meditation (was 'Mindfulness' — renamed to a
+  //    specifically Catholic tradition. Ignatian meditation is the
+  //    Jesuit practice of imaginative contemplation on a passage
+  //    of scripture: read the scene, place yourself in it,
+  //    converse with Christ / a saint in it, take a "colloquy".
+  //    Distinct from new-age "meditation" while still being a
+  //    stillness + breathing + attention practice. The app
+  //    already uses Ignatian themes elsewhere (Examen on
+  //    /spiritual), so this keeps the same spiritual register.)
+  { name: '5min Ignatian Meditation Initiate', branch: 'Ignatian Meditation', tier: 'TIER_1', blurb: '5 minutes of imaginative contemplation on a short Gospel scene.', description: '+5% meditation XP', test: { description: '5min seated Ignatian meditation: read a short Gospel scene (e.g. a single miracle), place yourself in it, have a brief conversation with Christ in the scene. Eyes can be open or closed.', safety: 'Sit comfortably. Don\'t force visualization. Skip if racing thoughts make it miserable — try again tomorrow.', metric: 'duration', threshold: { duration_sec: 300 } } },
+  { name: '10min Ignatian Meditation', branch: 'Ignatian Meditation', tier: 'TIER_2', blurb: '10 minutes — comfortable in the silence.', description: '+5% meditation XP', test: { description: '10min seated Ignatian meditation on a single scene.', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 600 } } },
+  { name: '20min Ignatian Meditation', branch: 'Ignatian Meditation', tier: 'TIER_2', blurb: '20 minutes — a real sit.', description: '+8% meditation XP', test: { description: '20min seated Ignatian meditation, working through one scene slowly (movement by movement).', safety: 'Same as T1.', metric: 'duration', threshold: { duration_sec: 1200 } } },
+  { name: '30min Ignatian Meditation', branch: 'Ignatian Meditation', tier: 'TIER_3', blurb: '30 minutes — sustained stillness.', description: '+10% meditation XP', test: { description: '30min seated Ignatian meditation, with a 4th movement (the colloquy / conversation with Christ) clearly held throughout.', safety: 'Same as T1. Pick a scene you\'ve used before — familiar material makes the longer sit easier.', metric: 'duration', threshold: { duration_sec: 1800 } } },
+  { name: '60min Ignatian Meditation (HRV)', branch: 'Ignatian Meditation', tier: 'TIER_3', blurb: '60min Ignatian meditation — the stillness god-tier.', description: '+15% meditation XP', test: { description: '60min seated Ignatian meditation. HRV measured before/after to track the parasympathetic response (sustained HRV rise is the long-sit signature).', safety: 'Same as T1. Long sit is its own practice — work up over weeks, not in one jump.', metric: 'duration', threshold: { duration_sec: 3600 } } },
 
   // E. Yoga Flows
   { name: '5 Sun Salutations Initiate', branch: 'Yoga', tier: 'TIER_1', blurb: 'Sun salutation — the classic vinyasa flow.', description: '+5% yoga XP', test: { description: '5 sun salutations (A or B, your choice).', safety: 'Warm up first. Don\'t push into injuries.', metric: 'reps', threshold: { reps: 5 } } },
@@ -574,5 +625,24 @@ export async function seedSkills(): Promise<{ upserted: number }> {
       upserted++;
     }
   }
-  return { upserted };
+  // Sweep orphaned Skill rows. When a skill is renamed or its
+  // branch moves to a different slot (e.g. the Berserker Hero
+  // WODs branch being merged into Capacity), the old row stays
+  // in the DB unless we explicitly drop it. Without this sweep,
+  // a rename would leave a duplicate (old name still in the tree,
+  // new name added) and a branch drop would leave a ghost
+  // branch in the UI. We only delete names that don't exist in
+  // ANY of the 6 class specs — so a skill moved from BERSERKER
+  // to PHANTOM wouldn't be dropped. UserSkill / progress rows
+  // cascade via FK ON DELETE CASCADE.
+  const validNames = new Set<string>();
+  for (const skills of Object.values(SKILLS_BY_CLASS)) {
+    for (const s of skills) validNames.add(s.name);
+  }
+  const existing = await prisma.skill.findMany({ select: { name: true } });
+  const toDelete = existing.filter((row) => !validNames.has(row.name)).map((row) => row.name);
+  if (toDelete.length > 0) {
+    await prisma.skill.deleteMany({ where: { name: { in: toDelete } } });
+  }
+  return { upserted, deleted: toDelete.length };
 }
