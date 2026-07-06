@@ -256,16 +256,18 @@ with edit + delete inline.)
   it's surfaced in the dashboard's body-comp radials and
   recomputed automatically.
 - (was: Split /measurements into category cards (2 per row) —
-  shipped in `ff107df`. The 260px sidebar is gone; the 8
-  metric categories now render as a 2-col grid of collapsible
-  cards (md:grid-cols-2), each with a header showing category
-  label + metric count + chevron. The category containing the
-  currently-selected metric auto-expands on mount; the other 7
-  stay collapsed by default so the page doesn't sprawl. Each
-  card's accent matches the /dashboard stat-sheet colour for
-  the same category (magenta hypertrophy, cyan strength,
-  lime body-comp, amber cardio, violet calisthenics).
-  Selecting a metric updates the detail panel below.)
+  shipped in `ff107df`, refined in `b6316e7`. First version had
+  2-col collapsible cards — desktop layout was awkward (one
+  card expanded but the next sat at full height collapsed,
+  with no visual cue that it was collapsed vs empty).
+  Replaced with a flat grid of metric tiles grouped by category,
+  each tile showing the latest value + unit. Tiles are always
+  visible — no collapsing, no ambiguity. Click a tile →
+  MetricDetailModal opens with the full stack: top stats → log
+  form (moved up from after history per user feedback) →
+  history (sparkline + all logs) → Override Genetic Max
+  (lifted from the old inline panel) → About. Page shrunk
+  from 483 → 159 lines.)
 - (was: Resting HR radial — shipped in two parts: IdealGauge
   routing + bands already in place; genetic-max returned 70
   instead of 45 in the api. The 1 remaining loose end — the
