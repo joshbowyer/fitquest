@@ -107,11 +107,17 @@ export function PetPage() {
   const roster = rosterQ.data;
   const pets = roster?.pets ?? [];
 
-  // Which pet is the user looking at? Defaults to the server's
-  // primary (oldest); user can click another pet in the roster to
-  // switch the active view.
+  // Which pet is the user looking at? Defaults to a NON-primary
+  // pet if one exists (so the Set-as-primary button is visible on
+  // first load), falling back to the primary, then the first pet
+  // in the roster. User can click any card to override.
   const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
-  const activePetId = selectedPetId ?? roster?.primaryPetId ?? null;
+  const activePetId = useMemo(() => {
+    if (selectedPetId) return selectedPetId;
+    const nonPrimary = pets.find((p) => !p.isPrimary);
+    if (nonPrimary) return nonPrimary.id;
+    return roster?.primaryPetId ?? pets[0]?.id ?? null;
+  }, [selectedPetId, pets, roster?.primaryPetId]);
   const pet = useMemo(() => pets.find((p) => p.id === activePetId) ?? null, [pets, activePetId]);
 
   const itemsQ = useQuery({
@@ -184,22 +190,28 @@ export function PetPage() {
 
   // Set as primary companion (changes which pet the /shop page
   // renders in the "Your companion" panel, and is what the
-  // dashboard's pet card pulls from).
+  // dashboard's pet card pulls from). Bypasses useMutation so the
+  // // request is always visible — a quick "Set as primary" click
+  // // fires a fetch, the result lands in local state, the roster
+  // // re-renders. No reliance on react-query's cache to update.
+  const [setPrimaryBusy, setSetPrimaryBusy] = useState(false);
   const [setPrimaryError, setSetPrimaryError] = useState<string | null>(null);
-  const setPrimaryM = useMutation({
-    mutationFn: (petId: string) =>
-      api<{ ok: boolean; primaryPetId: string; pets: Pet[] }>('/pet/set-primary', {
-        method: 'POST',
-        body: { petId },
-      }),
-    onSuccess: (res) => {
-      setSetPrimaryError(null);
-      // Apply the server's updated roster directly to the query
-      // cache so the UI re-orders instantly (primary pet jumps to
-      // the leftmost slot) without waiting for a refetch roundtrip.
-      // If the server didn't return the updated pets, fall back to
-      // a refetch.
-      if (res?.pets && Array.isArray(res.pets)) {
+  const [setPrimaryFlash, setSetPrimaryFlash] = useState<string | null>(null);
+  async function setPrimary(petId: string) {
+    if (!petId) return;
+    setSetPrimaryBusy(true);
+    setSetPrimaryError(null);
+    setSetPrimaryFlash(null);
+    try {
+      const res = await api<{ ok: boolean; primaryPetId: string; pets: Pet[] }>(
+        '/pet/set-primary',
+        { method: 'POST', body: { petId } },
+      );
+      // Apply the server's returned roster directly to the query
+      // cache so the UI re-orders instantly. If the response
+      // doesn't have a valid pets array, invalidate and let the
+      // refetch bring fresh data.
+      if (res && Array.isArray(res.pets) && res.pets.length > 0) {
         qc.setQueryData(['pet'], (prev: PetRoster | undefined) => ({
           pets: res.pets,
           primaryPetId: res.primaryPetId,
@@ -207,18 +219,19 @@ export function PetPage() {
       } else {
         qc.invalidateQueries({ queryKey: ['pet'] });
       }
-    },
-    onError: (e: Error) => {
-      // Surface the failure inline so the user can tell the
-      // click registered. Without this the click "does nothing"
-      // and the badge below doesn't appear.
-      if (e instanceof ApiError) {
-        setSetPrimaryError(e.message);
-      } else {
-        setSetPrimaryError('Network error — try again');
-      }
-    },
-  });
+      // Always invalidate too — belt and suspenders. The cache
+      // write above is an optimization, not a substitute.
+      qc.invalidateQueries({ queryKey: ['pet'] });
+      setSetPrimaryFlash('✓ Saved');
+      window.setTimeout(() => setSetPrimaryFlash(null), 1500);
+    } catch (e) {
+      setSetPrimaryError(
+        e instanceof ApiError ? e.message : 'Network error — try again',
+      );
+    } finally {
+      setSetPrimaryBusy(false);
+    }
+  }
 
   const vetM = useMutation({
     mutationFn: (petId: string) =>
@@ -590,10 +603,11 @@ export function PetPage() {
                   </div>
                   <NeonButton
                     variant="amber"
-                    disabled={setPrimaryM.isPending}
-                    onClick={() => setPrimaryM.mutate(pet.id)}
+                    loading={setPrimaryBusy}
+                    loadingText="Saving…"
+                    onClick={() => setPrimary(pet.id)}
                   >
-                    {setPrimaryM.isPending ? 'Setting…' : 'Set as primary'}
+                    Set as primary
                   </NeonButton>
                 </div>
               )}
@@ -601,6 +615,11 @@ export function PetPage() {
                 <div className="flex items-center justify-between gap-2 text-xs font-mono uppercase tracking-widest text-neon-amber border border-neon-amber/40 rounded p-2 bg-neon-amber/5">
                   <span>★ {pet.name} is your primary companion</span>
                   <span className="text-ink-500 normal-case tracking-normal text-[10px]">this pet is primary</span>
+                </div>
+              )}
+              {setPrimaryFlash && (
+                <div className="text-xs text-neon-lime border border-neon-lime/30 rounded p-2 bg-neon-lime/5">
+                  {setPrimaryFlash}
                 </div>
               )}
               {setPrimaryError && (
