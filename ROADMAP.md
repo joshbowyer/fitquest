@@ -102,14 +102,15 @@ are the changelog of what got shipped.
 ### P1 — feature work (1-2 weeks each)
 
 - **Skill tree: same explicit-prereqs treatment for the other
-  5 classes.** PHANTOM was rebuilt with linear per-skill
-  `prereqs: string[]` chains (Legs branch added, back lever +
-  one-arm pull-up filled in). JUGGERNAUT / SCOUT / BERSERKER /
+  3 classes.** PHANTOM was rebuilt with linear per-skill
+  `prereqs: string[]` chains. SCOUT (3 branches × 20 skills)
+  and BERSERKER (7 branches × 45 skills) now ship the same
+  explicit treatment — linear chains per branch with 2-3
+  weaving merge points at the heavier weights. JUGGERNAUT /
   TRACER / ORACLE still use the old auto-T1-all-tier heuristic.
   Apply the same fix pass — backfill missing skills per the
-  calitree.app domain reference (~50 per class, some shared
-  between classes — be careful not to dupe). Cleanest scope: one
-  class per session.
+  calitree.app domain reference (~50 per class, several shared
+  between classes). Cleanest scope: one class per session.
 - **Genetic-max shadowing: surface the formula value alongside
   manual overrides.** /profile `previewMax()` drift from the
   canonical api formula was already fixed (commit `f68b653`).
