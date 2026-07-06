@@ -190,6 +190,216 @@ const Handstand = icon(
   </>
 );
 
+// Back lever — face-down horizontal hold. Bar at top of viewbox,
+// body horizontal below, shoulders externally rotated (arms out to
+// the sides, palms back). Different from front lever which has the
+// figure face-up with arms pulling down toward the bar.
+const BackLever = icon(
+  <>
+    {/* Bar across the top */}
+    <line x1="4" y1="3" x2="20" y2="3" />
+    {/* Arms hanging straight down from bar (palms back) */}
+    <line x1="6" y1="3" x2="6" y2="9" />
+    <line x1="18" y1="3" x2="18" y2="9" />
+    {/* Body horizontal — torso + legs as a straight line */}
+    <line x1="6" y1="9" x2="20" y2="9" />
+    {/* Legs split slightly for character */}
+    <line x1="20" y1="9" x2="22" y2="13" />
+    {/* Head below the bar, face-down */}
+    <circle cx="3" cy="11" r="1.5" />
+  </>
+);
+
+// One-arm pull-up — figure hanging from the bar with ONE arm
+// extended (the pulling arm grips the bar, the other arm hangs at
+// the side). The asymmetric silhouette is the key visual cue.
+const OneArmPullUp = icon(
+  <>
+    {/* Bar across the top */}
+    <line x1="4" y1="4" x2="20" y2="4" />
+    {/* Head */}
+    <circle cx="9" cy="9" r="2" />
+    {/* Pulling arm — straight up to the bar */}
+    <line x1="9" y1="11" x2="13" y2="4" />
+    {/* Other arm — hangs straight down at the side */}
+    <line x1="9" y1="11" x2="9" y2="20" />
+    {/* Body — torso + legs */}
+    <line x1="9" y1="11" x2="9" y2="20" />
+  </>
+);
+
+// Muscle-up — figure with hands at the bar, body in the lockout
+// transition (above-the-bar dip lockout). Torso above bar, arms
+// bent at the elbows, head above the bar — the visual cue that
+// distinguishes it from a regular pull-up.
+const KippingMuscleUp = icon(
+  <>
+    {/* Bar across the top */}
+    <line x1="4" y1="4" x2="20" y2="4" />
+    {/* Hands gripping the bar */}
+    <line x1="6" y1="4" x2="6" y2="7" />
+    <line x1="18" y1="4" x2="18" y2="7" />
+    {/* Arms bent at the elbows (lockout position) */}
+    <line x1="6" y1="7" x2="9" y2="9" />
+    <line x1="18" y1="7" x2="15" y2="9" />
+    {/* Torso above the bar (lockout) */}
+    <line x1="9" y1="9" x2="12" y2="7" />
+    <line x1="15" y1="9" x2="12" y2="7" />
+    {/* Head above the bar */}
+    <circle cx="12" cy="4" r="1.5" />
+  </>
+);
+
+// High pull-up to waist — explosive pull where the bar reaches the
+// navel (waist height), not the chin. Bar near the top of the
+// viewbox (the height), full hip extension (vertical body below),
+// bar ABOVE the head — the visual cue that distinguishes it from
+// a regular pull-up.
+const HighPullUp = icon(
+  <>
+    {/* Bar — high, near top */}
+    <line x1="6" y1="3" x2="18" y2="3" />
+    {/* Hands gripping the bar */}
+    <line x1="8" y1="3" x2="8" y2="6" />
+    <line x1="16" y1="3" x2="16" y2="6" />
+    {/* Arms straight up (lats + hip drive, not bent at lockout) */}
+    <line x1="8" y1="6" x2="12" y2="9" />
+    <line x1="16" y1="6" x2="12" y2="9" />
+    {/* Body — torso + legs (extended, full hip drive) */}
+    <line x1="12" y1="9" x2="12" y2="22" />
+    {/* Head below the bar (between arms) */}
+    <circle cx="12" cy="11" r="1.75" />
+  </>
+);
+
+// ---- PHANTOM Legs (NEW — 7th branch) ----
+//
+// All icons are 24x24 stroke style. Each shows a simplified human
+// silhouette performing the movement. The viewBox is centered on
+// the figure so it renders cleanly inside the SkillTree's circle
+// node.
+const SquatToChair = icon(
+  <>
+    {/* Head */}
+    <circle cx="12" cy="5" r="2" />
+    {/* Torso */}
+    <line x1="12" y1="7" x2="12" y2="14" />
+    {/* Thighs (horizontal in deep squat) */}
+    <line x1="12" y1="14" x2="8" y2="17" />
+    <line x1="12" y1="14" x2="16" y2="17" />
+    {/* Lower legs (vertical, knees bent at 90°) */}
+    <line x1="8" y1="17" x2="8" y2="21" />
+    <line x1="16" y1="17" x2="16" y2="21" />
+    {/* Chair / box under butt */}
+    <rect x="6" y="20" width="12" height="2" rx="0.5" />
+    {/* Arms forward for balance */}
+    <line x1="12" y1="9" x2="9" y2="11" />
+    <line x1="12" y1="9" x2="15" y2="11" />
+  </>
+);
+
+// Bulgarian split squat — figure with one foot forward on the
+// ground, the rear foot elevated on a bench behind. The bench
+// behind + elevated rear foot is the visual cue.
+const BulgarianSplitSquat = icon(
+  <>
+    {/* Head */}
+    <circle cx="12" cy="4" r="1.75" />
+    {/* Torso — slight forward lean */}
+    <line x1="12" y1="6" x2="11" y2="13" />
+    {/* Front leg — bent at knee, foot down */}
+    <path d="M11 13 L9 17 L9 21" />
+    {/* Rear leg — bent, foot up on bench */}
+    <path d="M12 13 L15 13 L16 11" />
+    {/* Bench behind — horizontal line */}
+    <line x1="13" y1="11" x2="20" y2="11" />
+    {/* Bench legs */}
+    <line x1="14" y1="11" x2="14" y2="14" />
+    <line x1="19" y1="11" x2="19" y2="14" />
+    {/* Arms forward for balance */}
+    <line x1="12" y1="8" x2="9" y2="10" />
+    <line x1="12" y1="8" x2="15" y2="10" />
+  </>
+);
+
+// Pistol squat — single-leg squat with one leg straight out in
+// front. The straight horizontal leg is the key visual cue.
+const PistolSquat = icon(
+  <>
+    {/* Head */}
+    <circle cx="12" cy="4" r="1.75" />
+    {/* Torso */}
+    <line x1="12" y1="6" x2="12" y2="14" />
+    {/* Standing leg — bent at knee */}
+    <path d="M12 14 L10 18 L10 21" />
+    {/* Straight leg — pointing forward (horizontal) */}
+    <line x1="12" y1="14" x2="21" y2="14" />
+    {/* Arms forward for balance */}
+    <line x1="12" y1="8" x2="16" y2="10" />
+    <line x1="12" y1="8" x2="17" y2="11" />
+  </>
+);
+
+// Shrimp squat — single-leg squat with the rear knee on the ground
+// (no straight leg out front — knee contact is the visual cue).
+const ShrimpSquat = icon(
+  <>
+    {/* Head */}
+    <circle cx="12" cy="4" r="1.75" />
+    {/* Torso — slight forward lean */}
+    <line x1="12" y1="6" x2="11" y2="14" />
+    {/* Front leg — bent at knee, foot down */}
+    <path d="M11 14 L9 17 L9 21" />
+    {/* Rear leg — bent, knee ON the ground (no foot lift) */}
+    <path d="M11 14 L15 18 L15 21" />
+    {/* Ground */}
+    <line x1="3" y1="21" x2="21" y2="21" />
+    {/* Arms forward */}
+    <line x1="12" y1="8" x2="9" y2="10" />
+    <line x1="12" y1="8" x2="15" y2="10" />
+  </>
+);
+
+// Dragon pistol squat — pistol with the rear leg straight and
+// elevated (no knee touch). Same as PistolSquat but the rear leg
+// is RAISED OFF the ground, not pointing forward at floor level.
+const DragonPistolSquat = icon(
+  <>
+    {/* Head */}
+    <circle cx="12" cy="4" r="1.75" />
+    {/* Torso */}
+    <line x1="12" y1="6" x2="12" y2="14" />
+    {/* Standing leg — bent at knee */}
+    <path d="M12 14 L10 18 L10 21" />
+    {/* Straight leg — pointing forward but elevated (no ground touch) */}
+    <line x1="12" y1="14" x2="22" y2="11" />
+    {/* Ground (elevated rear foot hovers above this) */}
+    <line x1="3" y1="21" x2="9" y2="21" />
+    {/* Arms forward */}
+    <line x1="12" y1="8" x2="16" y2="10" />
+    <line x1="12" y1="8" x2="17" y2="11" />
+  </>
+);
+
+// Combined shrimp+pistol — both forms chained. We show the figure
+// mid-transition (one leg bent under, one straight forward) with
+// a small "→" arrow hint of the chain.
+const ShrimpToPistol = icon(
+  <>
+    {/* Head */}
+    <circle cx="11" cy="4" r="1.5" />
+    {/* Torso */}
+    <line x1="11" y1="6" x2="11" y2="14" />
+    {/* Front leg bent under (shrimp-like) */}
+    <path d="M11 14 L9 17 L9 21" />
+    {/* Rear leg straight forward (pistol-like) */}
+    <line x1="11" y1="14" x2="20" y2="14" />
+    {/* Chain arrow showing the progression */}
+    <path d="M3 11 L7 11 M5 9 L7 11 L5 13" />
+    <path d="M3 14 L7 14 M5 12 L7 14 L5 16" />
+  </>
+);
+
 // ---- SCOUT (endurance) ----
 
 const Run = icon(
@@ -499,6 +709,7 @@ const CALITREE_ICON_FILES: Record<string, string> = {
   'Rings':          'ring-dips',
   'Handstand':      'wall-handstand',
   'Planche':        'tuck-planche',
+  'Legs':           'bodyweight-squat',   // closest calitree PNG to legs
 
   // SCOUT — running/rucking/triathlon have no direct calisthenics
   // analogs in calitree; all three fall back to hand-coded.
@@ -533,7 +744,7 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,
   // PHANTOM
-  // All 6 branches have calitree matches. (Calitree's planche icon
+  // All 7 branches have calitree matches. (Calitree's planche icon
   // is technically a front-lever figure rather than a true planche,
   // but the silhouette shape is close enough for now.)
   // SCOUT — no calitree matches for any of the 3 branches
@@ -549,6 +760,29 @@ export const BRANCH_ICONS: Record<string, ReactElement> = {
   'Throws': Throws,
   // ORACLE — only Mobility + Breath + Balance + Yoga + Pilates have matches
   'Mindfulness': Mindfulness,
+};
+
+// Per-skill icons — override the branch icon for specific skills
+// whose silhouette is more recognizable than the branch label.
+// Skill name → icon element. Most skills fall back to the branch
+// icon via the page; this map holds the exceptions.
+export const SKILL_ICONS: Record<string, ReactElement> = {
+  // PHANTOM.Pull — special moves get their own icon instead of
+  // the generic pull-ups.png.
+  '3 Muscle-Ups':                 KippingMuscleUp,
+  'High Pull-Up to Waist':       HighPullUp,
+  'One-Arm Pull-Up (each)':      OneArmPullUp,
+  // PHANTOM.Holds — back lever was missing from the original seed.
+  '5s Back Lever':               BackLever,
+  // PHANTOM.Legs (NEW 7th branch) — every skill gets a dedicated
+  // icon since the bodyweight-squat.png PNG only roughly matches.
+  'Squat to Chair':              SquatToChair,
+  'Bulgarian Split Squat':       BulgarianSplitSquat,
+  'Assisted Pistol Squat':       PistolSquat,  // pistol is the canonical shape
+  'Shrimp Squat':                ShrimpSquat,
+  'Free Pistol Squat':           PistolSquat,
+  'Dragon Pistol Squat':         DragonPistolSquat,
+  'Shrimp → Pistol Progression': ShrimpToPistol,
 };
 
 export const BRANCH_ICONS_BY_CLASS: Record<string, Record<string, ReactElement>> = {

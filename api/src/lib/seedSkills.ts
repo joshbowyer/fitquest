@@ -163,8 +163,13 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'Horizontal pressing god-tier — 1-arm PU with bodyweight added.', description: '+20% push-up 1RM tracking',
     test: { description: '5 weighted one-arm push-ups on each side, with 50% bodyweight added.', safety: 'Strong unweighted 1-arm PU + 25% weighted first. Use a spotter for safety.', metric: 'weighted:reps:each', threshold: { reps: 5, weight_kg_mult_of_bw: 0.5, sides: 'each' } } },
 
-  // B. Pull (vertical pulling) — linear chain. ONE-ARM PULL-UP
-  // added (was missing from calitree reference — user flagged it).
+  // B. Pull (vertical pulling) — linear chain ending at the peak.
+  // Order: Dead Hang → 1 strict PU → 5 PUs → 10 PUs → Weighted PU →
+  // Muscle-Up → Pull-up to Waist (explosive) → One-Arm PU.
+  // One-arm is the hardest — the previous version had it before
+  // Muscle-Up which inverted the real-world difficulty (one-arm PU
+  // is universally harder than either a weighted PU or a muscle-up
+  // for almost all climbers).
   { name: 'Dead Hang 30s Initiate', branch: 'Pull', tier: 'TIER_1', prereqs: [],
     blurb: 'Just hanging — grip + shoulder stability.', description: '+5% pull-up XP',
     test: { description: '30s dead hang from a pull-up bar. Active shoulders (don\'t shrug).', safety: 'Don\'t kip. Use a bar you can reach comfortably.', metric: 'duration', threshold: { duration_sec: 30 } } },
@@ -177,18 +182,18 @@ const PHANTOM_SKILLS: Spec[] = [
   { name: '10 Pull-Ups in a Row', branch: 'Pull', tier: 'TIER_2', prereqs: ['5 Strict Pull-Ups'],
     blurb: 'Bodyweight pulling volume — solid intermediate.', description: '+10% pull-up XP',
     test: { description: '10 strict pull-ups in a row. No kip, full ROM.', safety: 'Don\'t kip. Don\'t shrug.', metric: 'reps', threshold: { reps: 10 } } },
-  { name: 'One-Arm Pull-Up (each)', branch: 'Pull', tier: 'TIER_3', prereqs: ['10 Pull-Ups in a Row'],
-    blurb: 'One-arm bodyweight pull-up — vertical pulling god-tier.', description: '+15% pull-up XP',
-    test: { description: '1 one-arm pull-up on each side at bodyweight. Full ROM, no kip. The off-arm can hold a towel on the bar for grip reference but must not pull.', safety: 'Strong 10 BW pull-ups first. Use a spotter. Stop if elbow pain.', metric: 'reps', threshold: { reps: 1, sides: 'each' } } },
   { name: 'Weighted Pull-Up 25% BW', branch: 'Pull', tier: 'TIER_3', prereqs: ['10 Pull-Ups in a Row'],
-    blurb: 'First weighted pull-up — strong pulling.', description: '+15% pull-up XP',
+    blurb: 'First weighted pull-up — strong bilateral pulling.', description: '+15% pull-up XP',
     test: { description: '5 weighted pull-ups at 25% bodyweight added (vest or belt). Strict form.', safety: 'Master 10 BW pull-ups first. Use a belt/vest, not dumbbell between legs.', metric: 'weighted:reps:each', threshold: { reps: 5, weight_kg_mult_of_bw: 0.25, sides: 'each' } } },
-  { name: 'High Pull-Up to Waist', branch: 'Pull', tier: 'TIER_3', prereqs: ['Weighted Pull-Up 25% BW'],
+  { name: '3 Muscle-Ups', branch: 'Pull', tier: 'TIER_3', prereqs: ['Weighted Pull-Up 25% BW'],
+    blurb: 'Muscle-up — bilateral pulling + a smooth transition over the bar into a dip lockout.', description: '+15% pull-up XP',
+    test: { description: '3 muscle-ups in a row. False grip. Strong explosive pull + smooth transition over the bar.', safety: 'Master weighted BW pull-ups first. Use a band for assistance if needed. Spotter nearby.', metric: 'reps', threshold: { reps: 3 } } },
+  { name: 'High Pull-Up to Waist', branch: 'Pull', tier: 'TIER_3', prereqs: ['3 Muscle-Ups'],
     blurb: 'Explosive pulling — bar to waist, not chest.', description: '+12% pull-up XP',
-    test: { description: '5 high pull-ups to waist at bodyweight. Bar comes to the navel/waist, full explosive hip drive.', safety: 'Master weighted BW pull-ups first. Don\'t shrug — keep lats engaged.', metric: 'reps', threshold: { reps: 5, weight_kg_mult_of_bw: 1.0 } } },
-  { name: '3 Muscle-Ups', branch: 'Pull', tier: 'TIER_3', prereqs: ['High Pull-Up to Waist', 'One-Arm Pull-Up (each)'],
-    blurb: 'Pulling god-tier — the muscle-up is the peak of bodyweight pulling.', description: '+20% pull-up XP',
-    test: { description: '3 muscle-ups in a row. False grip. Strong explosive pull + smooth transition over the bar.', safety: 'Master weighted BW pull-ups + 1-arm PU first. Use a band for assistance if needed. Spotter nearby.', metric: 'reps', threshold: { reps: 3 } } },
+    test: { description: '5 high pull-ups to waist at bodyweight. Bar comes to the navel/waist, full explosive hip drive.', safety: 'Master muscle-ups first. Don\'t shrug — keep lats engaged.', metric: 'reps', threshold: { reps: 5, weight_kg_mult_of_bw: 1.0 } } },
+  { name: 'One-Arm Pull-Up (each)', branch: 'Pull', tier: 'TIER_3', prereqs: ['High Pull-Up to Waist'],
+    blurb: 'One-arm bodyweight pull-up — vertical pulling god-tier.', description: '+20% pull-up XP',
+    test: { description: '1 one-arm pull-up on each side at bodyweight. Full ROM, no kip. The off-arm can hold a towel on the bar for grip reference but must not pull.', safety: 'Strong explosive pull-ups (waist height) first. Use a spotter. Stop if elbow pain.', metric: 'reps', threshold: { reps: 1, sides: 'each' } } },
 
   // C. Holds (static) — linear chain. BACK LEVER added (user flagged
   // it missing). Front lever keeps its old threshold (5s god-tier

@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
-import { branchIcon, calitreeIconFor } from '@/lib/skillIcons';
+import { branchIcon, calitreeIconFor, SKILL_ICONS } from '@/lib/skillIcons';
 import { CLASS_META } from '@/lib/types';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 import { playSoundAndNotify } from '@/lib/soundBus';
@@ -434,7 +434,12 @@ function SkillNode({
   isUnlocked: boolean;
   isGodTier: boolean;
 }) {
-  const icon = branchIcon(skill.branch, className);
+  // Per-skill icons override the branch icon for specific skills
+  // whose silhouette is more recognizable than the branch label
+  // (e.g. '3 Muscle-Ups' gets its own muscle-up icon instead of
+  // the generic 'Pull' pull-ups.png). Fall through to branchIcon
+  // when the skill name isn't in the SKILL_ICONS map.
+  const icon = SKILL_ICONS[skill.name] ?? branchIcon(skill.branch, className);
   // Calitree.app-style icon for branches that have a direct
   // calisthenics analog. null → fall through to the hand-coded
   // SVG above (covers heavy barbell / sled / boxing / mace / etc.
