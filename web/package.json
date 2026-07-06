@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
+    "@capacitor/barcode-scanner": "^3.0.2",
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
     "@capacitor/local-notifications": "^6.1.3",
