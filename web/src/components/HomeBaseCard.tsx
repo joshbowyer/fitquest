@@ -391,7 +391,7 @@ function PenanceSubBlock({
             </div>
           )}
           {items.map((t) => (
-            <PenanceRow
+            <PenanceTemplateRow
               key={t.key}
               row={t}
               accent={accent}
@@ -405,7 +405,7 @@ function PenanceSubBlock({
   );
 }
 
-function PenanceRow({
+function PenanceTemplateRow({
   row,
   accent,
   onToggle,
