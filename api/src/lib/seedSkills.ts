@@ -325,32 +325,49 @@ const PHANTOM_SKILLS: Spec[] = [
 ];
 
 // ---- 3. SCOUT (endurance) — 20 skills ----
+//
+// Run + Ruck + Triathlon share a "distance & time" theme; the
+// class is about covering ground (faster, further, with weight
+// on your back, or three sports in a row). All three branches
+// are linear: each subsequent test is a step up in either
+// distance, weight, or strictness. No merging.
+//
+// Explicit per-skill prereqs (mirrors PHANTOM's linear-DAG
+// style) — each skill's prereqs point at the skill directly
+// below it in the same branch. T1 entries declare `prereqs: []`
+// so the seed loop's "any skill has prereqs" detection picks
+// this class up for explicit mode.
 const SCOUT_SKILLS: Spec[] = [
-  // A. Run
-  { name: '1 Mile < 10:00', branch: 'Run', tier: 'TIER_1', blurb: 'Bodyweight running baseline.', description: '+5% run XP', test: { description: '1 mile (1.6km) in under 10 minutes. Steady pace, conversational breathing.', safety: 'Build up to 1 mile gradually. Stay hydrated.', metric: 'duration', threshold: { duration_sec: 600 } } },
-  { name: '5K < 35:00', branch: 'Run', tier: 'TIER_1', blurb: 'First 5K milestone.', description: '+5% 5K XP', test: { description: '5K in under 35 minutes. Steady pace.', safety: 'Build up to 5K over weeks. Hydrate. Stop if chest pain.', metric: 'duration', threshold: { duration_sec: 2100 } } },
-  { name: '5K < 25:00', branch: 'Run', tier: 'TIER_2', blurb: '5K sub-25 — first real running milestone.', description: '+5% 5K XP', test: { description: '5K in under 25 minutes. Steady pace, negative split optional.', safety: 'Build a base of 5K < 35 first. Hydrate.', metric: 'duration', threshold: { duration_sec: 1500 } } },
-  { name: '10K < 55:00', branch: 'Run', tier: 'TIER_2', blurb: '10K milestone — first hour-long run.', description: '+5% 10K XP', test: { description: '10K in under 55 minutes.', safety: 'Build up to 10K over weeks. Hydrate + electrolytes.', metric: 'duration', threshold: { duration_sec: 3300 } } },
-  { name: '10K < 45:00', branch: 'Run', tier: 'TIER_3', blurb: '10K sub-45.', description: '+8% 10K XP', test: { description: '10K in under 45 minutes.', safety: 'Build up to 10K < 55 first.', metric: 'duration', threshold: { duration_sec: 2700 } } },
-  { name: 'Half Marathon < 2:00:00', branch: 'Run', tier: 'TIER_3', blurb: 'Half marathon sub-2 — intermediate-end.', description: '+10% HM XP', test: { description: 'Half marathon in under 2:00:00.', safety: 'Build base of 25+mpw first. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 7200 } } },
-  { name: 'Marathon < 4:30:00', branch: 'Run', tier: 'TIER_3', blurb: 'First marathon under 4:30.', description: '+12% M XP', test: { description: 'Marathon in under 4:30:00.', safety: 'Long build (12+ weeks). Carb-load. Hydrate + fuel heavily. Practice pacing.', metric: 'duration', threshold: { duration_sec: 16200 } } },
-  { name: 'Marathon < 3:30:00', branch: 'Run', tier: 'TIER_3', blurb: 'Marathon sub-3:30.', description: '+15% M XP', test: { description: 'Marathon in under 3:30:00.', safety: 'Long build (16+ weeks). Carb-load. Hydrate + fuel heavily.', metric: 'duration', threshold: { duration_sec: 12600 } } },
-  { name: 'Marathon < 3:00:00', branch: 'Run', tier: 'TIER_3', blurb: 'Marathon sub-3 — competitive amateur territory.', description: '+20% M XP', test: { description: 'Marathon in under 3:00:00.', safety: 'Long build (20+ weeks). Carb-load. Hydrate + fuel heavily. Pacing is critical. Coach recommended.', metric: 'duration', threshold: { duration_sec: 10800 } } },
+  // A. Run — linear: distance ramps 1M → 5K → 10K → HM → M, then
+  // M gets tighter (4:30 → 3:30 → 3:00).
+  { name: '1 Mile < 10:00', branch: 'Run', tier: 'TIER_1', prereqs: [], blurb: 'Bodyweight running baseline.', description: '+5% run XP', test: { description: '1 mile (1.6km) in under 10 minutes. Steady pace, conversational breathing.', safety: 'Build up to 1 mile gradually. Stay hydrated.', metric: 'duration', threshold: { duration_sec: 600 } } },
+  { name: '5K < 35:00', branch: 'Run', tier: 'TIER_1', prereqs: ['1 Mile < 10:00'], blurb: 'First 5K milestone.', description: '+5% 5K XP', test: { description: '5K in under 35 minutes. Steady pace.', safety: 'Build up to 5K over weeks. Hydrate. Stop if chest pain.', metric: 'duration', threshold: { duration_sec: 2100 } } },
+  { name: '5K < 25:00', branch: 'Run', tier: 'TIER_2', prereqs: ['5K < 35:00'], blurb: '5K sub-25 — first real running milestone.', description: '+5% 5K XP', test: { description: '5K in under 25 minutes. Steady pace, negative split optional.', safety: 'Build a base of 5K < 35 first. Hydrate.', metric: 'duration', threshold: { duration_sec: 1500 } } },
+  { name: '10K < 55:00', branch: 'Run', tier: 'TIER_2', prereqs: ['5K < 25:00'], blurb: '10K milestone — first hour-long run.', description: '+5% 10K XP', test: { description: '10K in under 55 minutes.', safety: 'Build up to 10K over weeks. Hydrate + electrolytes.', metric: 'duration', threshold: { duration_sec: 3300 } } },
+  { name: '10K < 45:00', branch: 'Run', tier: 'TIER_3', prereqs: ['10K < 55:00'], blurb: '10K sub-45.', description: '+8% 10K XP', test: { description: '10K in under 45 minutes.', safety: 'Build up to 10K < 55 first.', metric: 'duration', threshold: { duration_sec: 2700 } } },
+  { name: 'Half Marathon < 2:00:00', branch: 'Run', tier: 'TIER_3', prereqs: ['10K < 45:00'], blurb: 'Half marathon sub-2 — intermediate-end.', description: '+10% HM XP', test: { description: 'Half marathon in under 2:00:00.', safety: 'Build base of 25+mpw first. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 7200 } } },
+  { name: 'Marathon < 4:30:00', branch: 'Run', tier: 'TIER_3', prereqs: ['Half Marathon < 2:00:00'], blurb: 'First marathon under 4:30.', description: '+12% M XP', test: { description: 'Marathon in under 4:30:00.', safety: 'Long build (12+ weeks). Carb-load. Hydrate + fuel heavily. Practice pacing.', metric: 'duration', threshold: { duration_sec: 16200 } } },
+  { name: 'Marathon < 3:30:00', branch: 'Run', tier: 'TIER_3', prereqs: ['Marathon < 4:30:00'], blurb: 'Marathon sub-3:30.', description: '+15% M XP', test: { description: 'Marathon in under 3:30:00.', safety: 'Long build (16+ weeks). Carb-load. Hydrate + fuel heavily.', metric: 'duration', threshold: { duration_sec: 12600 } } },
+  { name: 'Marathon < 3:00:00', branch: 'Run', tier: 'TIER_3', prereqs: ['Marathon < 3:30:00'], blurb: 'Marathon sub-3 — competitive amateur territory.', description: '+20% M XP', test: { description: 'Marathon in under 3:00:00.', safety: 'Long build (20+ weeks). Carb-load. Hydrate + fuel heavily. Pacing is critical. Coach recommended.', metric: 'duration', threshold: { duration_sec: 10800 } } },
 
-  // B. Ruck
-  { name: '5K Ruck @ 8kg < 50:00', branch: 'Ruck', tier: 'TIER_1', blurb: 'Loaded walk — base of rucking.', description: '+5% ruck XP', test: { description: '5K walk with 8kg pack in under 50 minutes.', safety: 'Use a comfortable pack. Wear broken-in shoes.', metric: 'duration', threshold: { duration_sec: 3000 } } },
-  { name: '10K Ruck @ 12kg < 1:30', branch: 'Ruck', tier: 'TIER_2', blurb: 'Longer ruck with more weight.', description: '+5% ruck XP', test: { description: '10K ruck with 12kg pack in under 1:30:00.', safety: 'Build up ruck time + weight gradually.', metric: 'duration', threshold: { duration_sec: 5400 } } },
-  { name: 'Half Marathon Ruck @ 15kg < 3:00', branch: 'Ruck', tier: 'TIER_3', blurb: 'Long-distance ruck at intermediate weight.', description: '+8% ruck XP', test: { description: 'Half marathon ruck with 15kg pack in under 3:00:00.', safety: 'Build up to long rucks gradually. Hydrate heavily.', metric: 'duration', threshold: { duration_sec: 10800 } } },
-  { name: '30K Ruck @ 20kg < 4:00', branch: 'Ruck', tier: 'TIER_3', blurb: 'Long ruck at heavier weight.', description: '+10% ruck XP', test: { description: '30K ruck with 20kg pack in under 4:00:00.', safety: 'Build up to long rucks at heavy loads. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 14400 } } },
-  { name: '50K Ruck @ 20kg < 7:00', branch: 'Ruck', tier: 'TIER_3', blurb: 'Ruck god-tier — 50K at heavy weight.', description: '+15% ruck XP', test: { description: '50K ruck with 20kg pack in under 7:00:00.', safety: 'Long build. Carb-load. Hydrate + fuel. Spotter / team recommended.', metric: 'duration', threshold: { duration_sec: 25200 } } },
+  // B. Ruck — linear: distance ramps 5K → 10K → HM → 30K → 50K
+  // and weight ramps 8kg → 12kg → 15kg → 20kg → 20kg.
+  { name: '5K Ruck @ 8kg < 50:00', branch: 'Ruck', tier: 'TIER_1', prereqs: [], blurb: 'Loaded walk — base of rucking.', description: '+5% ruck XP', test: { description: '5K walk with 8kg pack in under 50 minutes.', safety: 'Use a comfortable pack. Wear broken-in shoes.', metric: 'duration', threshold: { duration_sec: 3000 } } },
+  { name: '10K Ruck @ 12kg < 1:30', branch: 'Ruck', tier: 'TIER_2', prereqs: ['5K Ruck @ 8kg < 50:00'], blurb: 'Longer ruck with more weight.', description: '+5% ruck XP', test: { description: '10K ruck with 12kg pack in under 1:30:00.', safety: 'Build up ruck time + weight gradually.', metric: 'duration', threshold: { duration_sec: 5400 } } },
+  { name: 'Half Marathon Ruck @ 15kg < 3:00', branch: 'Ruck', tier: 'TIER_3', prereqs: ['10K Ruck @ 12kg < 1:30'], blurb: 'Long-distance ruck at intermediate weight.', description: '+8% ruck XP', test: { description: 'Half marathon ruck with 15kg pack in under 3:00:00.', safety: 'Build up to long rucks gradually. Hydrate heavily.', metric: 'duration', threshold: { duration_sec: 10800 } } },
+  { name: '30K Ruck @ 20kg < 4:00', branch: 'Ruck', tier: 'TIER_3', prereqs: ['Half Marathon Ruck @ 15kg < 3:00'], blurb: 'Long ruck at heavier weight.', description: '+10% ruck XP', test: { description: '30K ruck with 20kg pack in under 4:00:00.', safety: 'Build up to long rucks at heavy loads. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 14400 } } },
+  { name: '50K Ruck @ 20kg < 7:00', branch: 'Ruck', tier: 'TIER_3', prereqs: ['30K Ruck @ 20kg < 4:00'], blurb: 'Ruck god-tier — 50K at heavy weight.', description: '+15% ruck XP', test: { description: '50K ruck with 20kg pack in under 7:00:00.', safety: 'Long build. Carb-load. Hydrate + fuel. Spotter / team recommended.', metric: 'duration', threshold: { duration_sec: 25200 } } },
 
-  // C. Triathlon
-  { name: 'Sprint Tri (any time)', branch: 'Triathlon', tier: 'TIER_1', blurb: 'First tri — short format, accessible entry.', description: '+5% tri XP', test: { description: 'Sprint triathlon (750m swim + 20km bike + 5km run) in any time.', safety: 'Train each discipline separately first. Wetsuit if water is cold.', metric: 'reps', threshold: { reps: 1 } } },
-  { name: 'Sprint Tri < 1:30:00', branch: 'Triathlon', tier: 'TIER_1', blurb: 'First sub-1:30 sprint tri.', description: '+5% tri XP', test: { description: 'Sprint triathlon in under 1:30:00.', safety: 'Practice transitions. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 5400 } } },
-  { name: 'Olympic Tri (any time)', branch: 'Triathlon', tier: 'TIER_2', blurb: 'Standard distance triathlon.', description: '+8% tri XP', test: { description: 'Olympic triathlon (1.5km swim + 40km bike + 10km run) in any time.', safety: 'Build base in each discipline. Practice transitions. Hydrate + fuel.', metric: 'reps', threshold: { reps: 1 } } },
-  { name: 'Olympic Tri < 3:00:00', branch: 'Triathlon', tier: 'TIER_3', blurb: 'Sub-3 Olympic tri — solid intermediate.', description: '+10% tri XP', test: { description: 'Olympic triathlon in under 3:00:00.', safety: 'Long build. Practice transitions. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 10800 } } },
-  { name: 'Half Ironman < 6:30:00', branch: 'Triathlon', tier: 'TIER_3', blurb: 'Half Ironman — serious multi-engine endurance.', description: '+12% half-IM XP', test: { description: 'Half Ironman (1.9km swim + 90km bike + 21km run) in under 6:30:00.', safety: 'Long build. Carb-load. Hydrate + fuel heavily. Coach recommended.', metric: 'duration', threshold: { duration_sec: 23400 } } },
-  { name: 'Full Ironman (any time)', branch: 'Triathlon', tier: 'TIER_3', blurb: 'Ironman — the god-tier of multi-sport endurance.', description: '+20% IM XP', test: { description: 'Full Ironman (3.8km swim + 180km bike + 42km run) in any time. Just finishing is the achievement.', safety: 'Long build (months). Carb-load. Hydrate + fuel heavily. Coach + crew strongly recommended.', metric: 'reps', threshold: { reps: 1 } } },
+  // C. Triathlon — linear: each test is a longer / stricter
+  // version of the prior. "Any time" entries are the
+  // completion-celebration tier; the timed entries behind them
+  // are the performance tier.
+  { name: 'Sprint Tri (any time)', branch: 'Triathlon', tier: 'TIER_1', prereqs: [], blurb: 'First tri — short format, accessible entry.', description: '+5% tri XP', test: { description: 'Sprint triathlon (750m swim + 20km bike + 5km run) in any time.', safety: 'Train each discipline separately first. Wetsuit if water is cold.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: 'Sprint Tri < 1:30:00', branch: 'Triathlon', tier: 'TIER_1', prereqs: ['Sprint Tri (any time)'], blurb: 'First sub-1:30 sprint tri.', description: '+5% tri XP', test: { description: 'Sprint triathlon in under 1:30:00.', safety: 'Practice transitions. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 5400 } } },
+  { name: 'Olympic Tri (any time)', branch: 'Triathlon', tier: 'TIER_2', prereqs: ['Sprint Tri < 1:30:00'], blurb: 'Standard distance triathlon.', description: '+8% tri XP', test: { description: 'Olympic triathlon (1.5km swim + 40km bike + 10km run) in any time.', safety: 'Build base in each discipline. Practice transitions. Hydrate + fuel.', metric: 'reps', threshold: { reps: 1 } } },
+  { name: 'Olympic Tri < 3:00:00', branch: 'Triathlon', tier: 'TIER_3', prereqs: ['Olympic Tri (any time)'], blurb: 'Sub-3 Olympic tri — solid intermediate.', description: '+10% tri XP', test: { description: 'Olympic triathlon in under 3:00:00.', safety: 'Long build. Practice transitions. Hydrate + fuel.', metric: 'duration', threshold: { duration_sec: 10800 } } },
+  { name: 'Half Ironman < 6:30:00', branch: 'Triathlon', tier: 'TIER_3', prereqs: ['Olympic Tri < 3:00:00'], blurb: 'Half Ironman — serious multi-engine endurance.', description: '+12% half-IM XP', test: { description: 'Half Ironman (1.9km swim + 90km bike + 21km run) in under 6:30:00.', safety: 'Long build. Carb-load. Hydrate + fuel heavily. Coach recommended.', metric: 'duration', threshold: { duration_sec: 23400 } } },
+  { name: 'Full Ironman (any time)', branch: 'Triathlon', tier: 'TIER_3', prereqs: ['Half Ironman < 6:30:00'], blurb: 'Ironman — the god-tier of multi-sport endurance.', description: '+20% IM XP', test: { description: 'Full Ironman (3.8km swim + 180km bike + 42km run) in any time. Just finishing is the achievement.', safety: 'Long build (months). Carb-load. Hydrate + fuel heavily. Coach + crew strongly recommended.', metric: 'reps', threshold: { reps: 1 } } },
 ];
 
 // ---- 4. BERSERKER (volume + HIIT + combat) — 7 branches, ~45 skills ----
@@ -552,23 +569,32 @@ const SKILLS_BY_CLASS: Record<string, Spec[]> = {
 export async function seedSkills(): Promise<{ upserted: number }> {
   let upserted = 0;
   // Compute prereqs two ways, per skill:
-  //   1. EXPLICIT (PHANTOM) — s.prereqs is set. Use it verbatim.
-  //      Reads as a clean linear chain (with optional weaving merge
-  //      points) in the seed array itself.
-  //   2. TIER-BASED (other classes) — fall back to the auto heuristic:
-  //      T1 has no prereqs, T2 requires all T1s in the same
-  //      class+branch, T3 requires all T2s. Less polished but
-  //      functional — slated for the ROADMAP follow-up.
+  // Two prereq modes, picked per class:
+  //   1. EXPLICIT — the class's seed array declares `prereqs: string[]`
+  //      on each skill. Reads as a clean linear chain (with optional
+  //      weaving merge points) in the seed file itself. Used by
+  //      PHANTOM (calisthenics linear DAG), SCOUT (running/ruck/
+  //      triathlon distance/time chains).
+  //   2. TIER-BASED (other classes) — fall back to the auto
+  //      heuristic: T1 has no prereqs, T2 requires all T1s in the
+  //      same class+branch, T3 requires all T2s. Less polished but
+  //      functional — slated for the ROADMAP "same fix for other
+  //      classes" follow-up.
+  //
+  // Detection: a class uses explicit mode if any of its skills has
+  // the `prereqs` field defined (truthy). T1 entries in explicit
+  // mode should declare `prereqs: []` so the detection is
+  // consistent — the seed loop reads the field verbatim.
   const prereqsByName = new Map<string, string[]>();
   for (const [className, skills] of Object.entries(SKILLS_BY_CLASS)) {
-    if (className === 'PHANTOM') {
-      // PHANTOM uses explicit per-skill prereqs.
+    const usesExplicit = skills.some((s) => s.prereqs !== undefined);
+    if (usesExplicit) {
       for (const s of skills) {
         prereqsByName.set(s.name, s.prereqs ?? []);
       }
       continue;
     }
-    // Tier-based heuristic for the other classes.
+    // Tier-based heuristic.
     const byBranch = new Map<string, typeof skills>();
     for (const s of skills) {
       if (!byBranch.has(s.branch)) byBranch.set(s.branch, []);

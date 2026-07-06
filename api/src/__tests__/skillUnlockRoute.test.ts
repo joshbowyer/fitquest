@@ -27,6 +27,11 @@ vi.mock('../lib/prisma', () => ({
     },
     user: {
       findUnique: vi.fn(async ({ where }: any) => users.find((u) => u.id === where.id) ?? null),
+      update: vi.fn(async ({ where, data }: any) => {
+        const u = users.find((u) => u.id === where.id);
+        if (u) Object.assign(u, data);
+        return u;
+      }),
     },
     userSkill: {
       findUnique: vi.fn(async ({ where }: any) =>
@@ -110,6 +115,77 @@ describe('POST /skills/unlock', () => {
     const res = await call({ method: 'POST', url: '/unlock', payload: { skillId: 's1', result: { reps: 5 } }, user: { id: 'u1' } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/Requires: Plank/);
+  });
+
+  it('SCOUT explicit prereq chain: 10K < 55:00 requires 5K < 25:00', async () => {
+    // SCOUT was the second class to ship the explicit per-skill
+    // prereq treatment (PHANTOM first, then SCOUT). Each skill
+    // declares its own prereqs in seedSkills.ts; the seed loop
+    // reads the field verbatim. This test guards the chain so a
+    // future "simplify the prereqs" refactor can't silently
+    // remove the linear dependency.
+    setupUser({ id: 'u1', class: 'SCOUT', level: 5, weightKg: 70 });
+    setupSkill({
+      id: 's1',
+      className: 'SCOUT',
+      tier: 'TIER_2',
+      name: '10K < 55:00',
+      cost: 1,
+      prerequisites: ['5K < 25:00'],
+      test: {
+        metric: 'duration',
+        description: '10K in under 55 minutes',
+        safety: 'Hydrate + electrolytes',
+        threshold: { duration_sec: 3300 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 3000 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/Requires: 5K < 25:00/);
+  });
+
+  it('SCOUT T1 with empty prereqs unlocks cleanly (regression guard)', async () => {
+    // T1 SCOUT skills declare `prereqs: []` (not omitted) so the
+    // seed loop's "any skill has prereqs" detection picks up
+    // SCOUT for explicit mode. A future "let's only define
+    // prereqs for T2+" simplification would break this. Empty
+    // array on T1 must unlock like an undefined prereqs would.
+    //
+    // Note on the test setup: the duration validator is "s >= need"
+    // (designed for hold-time tests). We pass duration_sec=700
+    // (>=600 threshold) so the test focus is the prereq logic,
+    // not the duration-validator-vs-"less-than" mismatch that's
+    // a separate pre-existing concern (the seed's "1 Mile < 10:00"
+    // uses the duration metric but the test name implies "less than
+    // 10:00" — a separate ROADMAP item to add a true "max duration"
+    // metric).
+    setupUser({ id: 'u1', class: 'SCOUT', level: 5, weightKg: 70 });
+    setupSkill({
+      id: 's1',
+      className: 'SCOUT',
+      tier: 'TIER_1',
+      name: '1 Mile < 10:00',
+      cost: 1,
+      prerequisites: [],
+      test: {
+        metric: 'duration',
+        description: '1 mile in under 10 minutes',
+        safety: 'Stay hydrated',
+        threshold: { duration_sec: 600 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { duration_sec: 700 } },
+      user: { id: 'u1' },
+    });
+    expect({ status: res.statusCode, body: res.json() }).toEqual({ status: 200, body: expect.objectContaining({ ok: true }) });
   });
 
   it('400 when test result doesn\'t meet threshold', async () => {
