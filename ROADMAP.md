@@ -14,140 +14,147 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.4 published.** APK signed with debug
-  keystore, 9.3MB, attached to the
-  [v1.0.4 release](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.4).
-  Tracks parent-repo commits since v1.0.3 (the Web Audio node
-  leak fix, RHR gauge dead-code cleanup + 2 new vitest assertions,
-  /measurements 2-col cards then flat-grid refinement,
-  MetricDetailModal expansion — log → history → override stack
-  lifted into the modal so the page is a flat grid of tiles).
-  Sync mechanism working as designed: `BUMP=1 ./scripts/sync-android.sh`
-  walked the parent log, categorized the commits, generated
-  CHANGELOG.md + RELEASE_NOTES_v1.0.4.md, then the manual gradle
-  build + `gh release create` published.
+- **Android release: v1.0.15 published.** [v1.0.15 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.15)
+  — APK signed with debug keystore, ~44.8 MB (the ML Kit + camera
+  AARs are heavy but unavoidable with the native barcode plugin).
+  12 prior versions also published (v1.0.3 → v1.0.15). The SDK
+  upgrade in v1.0.14 (minSdk 22→26, compileSdk 34→36, AGP 8.13,
+  Gradle 8.13) unblocked the native `@capacitor/barcode-scanner`
+  plugin; v1.0.15 fixed the plugin-name check so the native
+  scanner fires on Android.
+- **Docker images.** Auto-built and pushed to
+  `ghcr.io/joshbowyer/fitquest-{api,web}:{main,latest,sha-<hash>}`
+  on every push to main by `.github/workflows/build-images.yml`.
+  Latest successful run is for commit `65d7ea7` (web + api,
+  both amd64 + arm64). The android side is a separate repo
+  (`joshbowyer/fitquest-android`); the web bundle is built
+  via `npm run build` then `npx cap sync android` ships it
+  into the APK.
 - **Android sync:** `scripts/sync-android.sh` (in this repo) wraps
   the script at `../fitquest-android/scripts/sync-android.sh` so the
-  Android wrapper doesn't go stale when web/api ships. Run from
+  Android wrapper doesn't get stale when web/api ships. Run from
   this repo after merging web/api changes:
   ```
   ./scripts/sync-android.sh          # refresh CHANGELOG + release notes for current version
   BUMP=1 ./scripts/sync-android.sh   # auto-bump patch (X.Y.Z → X.Y.(Z+1)) + refresh notes
-  NEXT_VERSION=1.0.5 ./scripts/sync-android.sh
+  NEXT_VERSION=1.0.16 ./scripts/sync-android.sh
   ```
   The script categorises the parent repo's recent commits by
   conventional-commit prefix (feat / fix / polish / etc), updates
   `CHANGELOG.md` and writes a `RELEASE_NOTES_vX.Y.Z.md` draft
   ready for `gh release create`. It does NOT run gradle, sign, or
-  publish — those stay manual. (Bug fix during v1.0.4 build:
-  replaced awk-based version-bump with shell parameter expansion
-  — awk treated "." as a field separator and produced "1 0 4"
-  with spaces.)
+  publish — those stay manual.
 
+## Outstanding (prioritized)
 
-## Active (in progress)
+A single-screen view of what's left, in rough priority order.
+Each item has a one-line scope. Detailed notes + history live
+in the "Backlog" section below; the (was: ...) entries there
+are the changelog of what got shipped.
 
-### FitQuestBridge: drop the 60-min freshness window
+### P0 — quick wins (1-2 days each)
 
-- The bridge currently does `find -mmin -60` to skip any FIT
-  file older than an hour as a "safety net" for the persisted
-  known-paths set. In practice this is a real bug:
-  Gadgetbridge loses its sync with the watch for a while (range,
-  Bluetooth drop, watch crash), catches up by writing a burst
-  of FIT files all with `mtime` set to the actual recording
-  time, and the bridge sees those files as "1+ hour old" and
-  skips them. So a multi-hour workout gap silently disappears
-  from FitQuest.
-- The persisted known-paths set is the actual source of truth
-  for "have we already uploaded this file?" — it persists
-  across restarts, so a restart after a long offline doesn't
-  re-upload historical data on its own. The 60-min window was
-  added as a belt-and-suspenders for the "persisted set gets
-  out of sync" case, but it's catching real files instead.
-- Fix: drop the `-mmin -60` filter from the bridge's
-  `find` invocation. Just `find <dir> -type f -name '*.fit'`
-  filtered by the persisted set (skip if path is in
-  `knownUploaded`, otherwise queue for upload). The persisted
-  set's periodic-prune intersection (`doc/maintenance`) keeps
-  the set bounded without needing an age threshold.
-- The dedup `(userId, performedAt)` unique constraint added in
-  the earlier workout-dedup migration is the final backstop:
-  even if a stale persisted-set path gets re-uploaded, the
-  server rejects the duplicate workout.
-- Touch points: `joshbowyer/fitquest-bridge` (Kotlin)
-  — the watcher service's `find` call. No web/api change.
+- **FitQuestBridge: drop the 60-min freshness window.** The bridge
+  does `find -mmin -60` and skips any FIT file older than an hour
+  as a "safety net" for the persisted known-paths set. Real bug:
+  Gadgetbridge losing watch sync → re-sync writes a burst of FIT
+  files with old `mtime` → bridge sees them as "1+ hour old" and
+  silently drops them. Fix: drop the `-mmin -60` filter; rely on
+  the persisted set + `(userId, performedAt)` unique constraint
+  for dedup. Touch point: `joshbowyer/fitquest-bridge` Kotlin
+  watcher's `find` call. No web/api change.
+- **Remove v-taper (`SHOULDER_WAIST_RATIO`) from /measurements
+  sidebar.** It's already in `NEVER_SURFACED` (filtered out of
+  check-ins + dashboard) because it's auto-computed from
+  shoulders ÷ waist — but the /measurements page renders
+  `METRICS_BY_CATEGORY` directly and still includes it as a
+  manual entry. Drop it from the sidebar; it surfaces in the
+  dashboard's body-comp radials and recomputes automatically.
+- **Re-examine neck circumference genetic-max logic.** Current code
+  uses the user's current neck measurement as their genetic max
+  — wrong because neck can definitely grow with trap development.
+  Either (a) treat neck like other measurements and let it track
+  freely, or (b) default to a wrist-derived ceiling.
+- **Restructure the penance templates panel** (Homebase). Drop
+  the non-interactive checkboxes (replace with "active now" badge),
+  split into "Shield damage" + "Shield repair" sub-blocks, and
+  start both collapsed. Currently the panel is the longest single
+  block on `/homebase` and drowns the actual shield status.
+- **Dark/light theme toggle** (currently dark-only).
 
-### Pet feature (German Shepherd v1)
+### P1 — feature work (1-2 weeks each)
 
-- Pet schema, 3 breed sprites (gs/akita/axolotl), /pet roster
-  with multi-pet support (up to 6), /shop with food purchases,
-  workout XP removed (food is primary; combat XP is secondary
-  gated to Lv15+ deployed), and combat hooks in breach/quest/raid.
-- v15/v17/v18 goggled armored + injured variants shipped to
-  `web/public/sprites/pets/`. All three animals have Pit Viper
-  goggles (intact on armed, broken on injured). Axolotl
-  injured (v18) has a sad frown, not angry.
-- (was: prereq enforcement on skill tree — both matching
-  pass and unlock endpoint gate on `isSnowCode`-style
-  prereq filter. "Push-Ups" matching "Pike Push-Ups" reported
-  by the user was a misperception; one T1 Pull was unlocked,
-  T2 was correctly offered. Loose matching (multiple
-  skills per exercise) is documented in RECIPES.md §14 as
-  a separate fix pass.)
-- ✅ SP economy removed; PHANTOM skill tree rewritten with linear
-  per-skill prereqs + missing skills added. The `1 SP per 2 levels`
-  budget gate was confusing — it double-charged users who had
-  already passed a skill's test. Dropped entirely: the api no
-  longer reads/writes the cost field (kept the column for backward
-  compat with default 0), no SP gate in the unlock route, no SP
-  display in the SkillTree page header or skill node, no "costs X SP"
-  copy in the unlock modal. PHANTOM's per-skill `prereqs: string[]`
-  field lets the seed declare explicit linear chains (or weaving
-  merge points for skills that should require multiple
-  predecessors like the 5 Ring Muscle-Ups merge from Ring Rows +
-  Ring Dips). Other classes keep the old tier-based heuristic until
-  the same fix pass runs there. New skills added for PHANTOM:
-  Legs branch (NEW — Squat to Chair → Bulgarian → Pistol → Dragon
-  Pistol + 3 intermediates), Back Lever, One-Arm Pull-Up. Linear
-  topology keeps the tree readable top-to-bottom. Same-fix-for-
-  others is on the backlog.
-- (was: set-as-primary button click "does nothing" — was the
-  cache-update path not re-rendering. Rewrote in `1b527c9`
-  to bypass useMutation: direct `api<>()` call writes the
-  response into the query cache via `setQueryData`, with
-  an `invalidateQueries` as belt-and-suspenders. Active-pet
-  selection now defaults to a non-primary pet so the button
-  is visible on first load.)
-- (was: modal ghosting on mobile — `d723cef` adds a defensive
-  portal-node cleanup, explicit body scroll lock, and inline
-  backdrop-filter style. Affects every Modal use site.)
+- **Skill tree: same explicit-prereqs treatment for the other
+  5 classes.** PHANTOM was rebuilt with linear per-skill
+  `prereqs: string[]` chains (Legs branch added, back lever +
+  one-arm pull-up filled in). JUGGERNAUT / SCOUT / BERSERKER /
+  TRACER / ORACLE still use the old auto-T1-all-tier heuristic.
+  Apply the same fix pass — backfill missing skills per the
+  calitree.app domain reference (~50 per class, some shared
+  between classes — be careful not to dupe). Cleanest scope: one
+  class per session.
+- **Genetic-max shadowing: surface the formula value alongside
+  manual overrides.** /profile `previewMax()` drift from the
+  canonical api formula was already fixed (commit `f68b653`).
+  Remaining: when a user has a manual override equal to their
+  current measurement, the dashboard shows
+  "current = genetic max" with no indication that an override
+  shadows the formula. Fix: display both side-by-side ("Genetic
+  Max: 50 (manual, formula says 45)") + a "reset to formula"
+  affordance on the override row.
+- **Genetic-max drift prevention.** Extract the `previewMax` helper
+  from `web/src/pages/Profile.tsx` to a shared
+  `web/src/lib/geneticMax.ts` (imported by Profile, Measurements,
+  and Dashboard's preview helpers) so there's one source of
+  truth. Low-priority refactor — the formula-vs-preview drift
+  bug is fixed; this is the safety net.
+- **Medical metrics UI.** Schema has resting HR / sleep / stress
+  data but no medical-themed UI (no "history of resting HR"
+  chart, no BP log form). Existing /measurements tiles + the
+  new overlays would be a good starting point.
+- **Personal records aggregated page.** /prs/WorkoutDetail
+  shows individual PRs but no "all my PRs over time" view
+  with charts.
 
-### Forecast page (`/forecast`)
+### P2 — bigger features (2+ weeks)
 
-- Mostly built. Nothing outstanding — all known forecast
-  issues are resolved:
-  - (was: 3-day forecast on mobile too squished — shipped in
-    `95dfa2b`, vertical stack on narrow viewports)
-  - (was: recommended-muscle block on /forecast — moved to
-    /status side-by-side with recovery in `95dfa2b`)
-  - (was: forecast "Heavy snow" snow-code bug in Atlanta
-    summer — fixed in `01725b7`; WMO codes 80-82 were matching
-    the snow range 71-86. Now uses `isSnowCode()` helper)
-  - (was: "feels like" temperature — already shown in the
-    current weather card as `feels {apparentTemperature}°` using
-    Open-Meteo's `apparent_temperature` field, which it DOES
-    expose in its current API. The roadmap item was based on a
-    misremembered limitation.)
+- **Stuff to spend gold on.** Gold is currently a passive
+  counter. Themed weapons / armor sets (equippable, cosmetic,
+  with set bonuses), holiday / seasonal items, UI themes
+  (color palettes for the neon glow). All cosmetic unless we
+  design a real prestige system.
+- **Mobile polish** (small wins). Long-press multi-select on
+  history, pull-to-refresh on Dashboard, haptic feedback on
+  rest-timer completion. Mostly a Capacitor plugin pass.
+- **3D avatar polish (rendering + shape).** Scale the avatar
+  to user measurements (height / shoulder-waist v-taper /
+  arm circumference) + replace the disjointed 3D rectangles
+  with anatomical meshes (tapered cylinders for limbs, real
+  torso, head sphere) so the silhouette reads as a person.
+  `User.heightCm` + `User.shoulderCm` + `User.waistCm` are
+  already on the model.
+- **Body measurement photos with diff.** Upload a photo
+  alongside a measurement and have a side-by-side view
+  (overlay diff or fade slider) vs. the previous photo. Needs
+  a new migration for `MeasurementPhoto` rows + storage
+  (S3-compatible or local disk).
+- **AI coach / HUD with selectable personalities.** Per-user
+  LLM persona (intense priest bodybuilder / Bob Ross / drill
+  sergeant / minmaxxer zoomer / generic polite). Backend:
+  add `coachPersonality` enum to User + per-personality
+  system-prompt overrides on the admin's LLM config.
+
+### P3 — stretch
+
+- **Gadgetbridge rebuild-reminder.** When GB's FIT-export API
+  changes (rare), surface a "rebuild & install" reminder in
+  the bridge's foreground-service notification.
 
 ## Backlog (from user notes, in priority order)
 
-(was: dashboard radials + HomeBase shield — both shipped in
-commit f1f940c. New users see all four body-comp gauges
-populate from the User.* fields as a fallback when no
-Measurement row exists, and HomeBase's `firePenance` is now
-idempotent + bypasses SP for activity-driven unlocks. The
-morning popup also now shows weight in the user's units —
-imperial users see lb, not kg — shipped in 2388dd9.)
+Detailed scope + history for each outstanding item. Shipped
+items are demoted below the wave (see "Recently Fixed / Resolved"
+at the bottom for the full changelog).
 
 ### Polish
 
@@ -502,6 +509,97 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-06 session (large)
+
+- ✅ **Barcode scanner (OpenFoodFacts lookup) on the food tracker.**
+  Three scan paths dispatched at runtime: native
+  @capacitor/barcode-scanner on Android (ML Kit under the
+  hood, custom reticle overlay), @zxing/browser + webcam on
+  desktop, and a manual numeric-entry fallback for headless
+  machines. New `BarcodeScanner` component in
+  `web/src/components/BarcodeScanner.tsx`; call site is the
+  food panel's "Scan" button (sibling to "Ask AI" / "Manual"
+  / "Recent foods"). On a successful scan, the decoded
+  EAN/UPC strips non-digits and POSTs to the existing
+  `GET /foods/barcode/:code` endpoint (`api/src/routes/
+  foods.ts:271` was already there — no api change). On
+  lookup success the result drops straight into the
+  "edit + log" modal so the user can tune the serving size
+  before it lands in /meals. 404 from OFF (regional
+  brands not in their DB) shows a red banner and the
+  user falls through to Search / Ask AI / Manual. The
+  "Barcode scanner support is on hold" line in the food
+  panel helper copy is gone.
+  Android v1.0.14 wired the native plugin (SDK upgrade
+  to minSdk 26 / compileSdk 36 / AGP 8.13 / Gradle 8.13);
+  v1.0.15 fixed the plugin-name check (`CapacitorBarcodeScanner`
+  not `BarcodeScanner`).
+- ✅ **Berserker skill tree restructure.** Capacity + Hero
+  WODs merged into one Capacity branch (Cindys kept, AMRAPs
+  kept, Murphs demoted from T3 to T2 — "not T3 material").
+  Added Sandbag branch (6 skills: bear-hug hold, clean to
+  shoulder, bear-hug walk, clean+squat, sandbag load, T3
+  god-tier sandbag-to-shoulder volume). Added Medicine
+  Ball branch (6 skills, heavy 10/15/20kg throws + slams +
+  clean+jerk — replacing the Hero WODs slot). Added
+  Farmer's Carry T1+T2 to Kettlebell. "SL Stand" renamed
+  to "Single-Leg Stand" (no acronym). Oracle "Meditation"
+  branch renamed to "Ignatian Meditation" (Catholic
+  framing — imaginative contemplation + the colloquy,
+  not new-age). New cross+halo icon for the Ignatian
+  branch. Final tree: 7 branches × 45 skills.
+- ✅ **Profile: dedicated "Use 1 Soulstone to change class" modal.**
+  Previously the only path was the "Use Soulstone to switch
+  to X" button in the class-pick modal. New dedicated
+  modal opens a separate flow: confirms, POSTs to new
+  `/users/me/unlock-class` endpoint, consumes one Soulstone,
+  resets `classChangedAt` to null. The class is then
+  freely pickable via the regular class-pick modal (no
+  second Soulstone charge). Loud error reporting + a
+  fallback button that opens the class-pick modal if the
+  api endpoint 404s.
+- ✅ **TRACER no longer blanks the class-change modal.**
+  `web/src/lib/types.ts:CLASS_EVOLUTION` was missing TRACER
+  (api has had it since 2026-06; web was 5 of 6). Added
+  the entry + a defensive `user.class && CLASS_EVOLUTION[user.class]`
+  guard so future class additions don't crash the page.
+- ✅ **Branch header icons all tinted to class color.**
+  Previously branches with calitree PNGs were tinted via
+  mask+`currentColor`; hand-coded SVG branches (Sprint,
+  Throws, Run, etc.) inherited the default text color (white).
+  TRACER had 3 yellow + 2 white. Now both paths share a
+  single `classColorForClass(className)` wrapper so all
+  branches in a class use the same hue.
+- ✅ **Juggernaut icons redesigned.** Calitree.app has no
+  good barbell PNGs (it was matching `OHP` to a handstand
+  pushup, `Deadlift` to a cossack-squat, etc.). Dropped
+  the calitree mappings, redesigned Squat/Press/Deadlift/
+  OHP/Strongman as hand-coded barbell SVGs (lifeter +
+  bar + plates in the right position for each movement).
+  Also registered them in `BRANCH_ICONS` (they were never
+  registered there before — only ever rendered via calitree
+  PNGs).
+- ✅ **Somatotype reacts to body-fat changes in real time.**
+  `previewArchetype` was reading `user.bodyFatPct` (saved
+  value) but `previewWeight` (draft value), so editing BF
+  in the form had no effect on the archetype preview until
+  save. Now both come from `numFromDraft(...)`; FFMI
+  computed correctly as `weight × (1 - bf/100) / h²`.
+- ✅ **`/api` and `/web` Docker images auto-rebuilt** on every
+  push to main via `.github/workflows/build-images.yml`.
+  Latest commit shipped: `65d7ea7` (after the @zxing/
+  barcode-scanner fix). Multi-arch (amd64 + arm64),
+  published to `ghcr.io/joshbowyer/fitquest-{api,web}`.
+- ✅ **Android v1.0.13 → v1.0.15.** Class-change bug fix
+  (TRACER evolution fallback), then the Android-side
+  SDK upgrade to wire the native barcode plugin
+  (minSdk 22→26, compileSdk 34→36, AGP 8.13, Gradle 8.13,
+  +7 MB ML Kit AARs), then the plugin-name hotfix
+  (v1.0.14 → v1.0.15). 12 Android releases total now
+  published (v1.0.3 → v1.0.15).
+
+### Older shipped work
 
 - ✅ Barcode scanner (OpenFoodFacts lookup) on the food tracker.
   Three scan paths dispatched at runtime: native

@@ -196,45 +196,50 @@ export function FoodPanel() {
       variant="violet"
       title="Food tracker"
       className="border-neon-violet/30"
-      action={
-        <div className="flex items-center gap-1">
-          <NeonButton
-            size="sm"
-            variant="cyan"
-            onClick={() => setRecentOpen(true)}
-            title="Browse your recently-eaten foods (last 7 days) + saved recipes"
-          >
-            <span className="sm:hidden">Recent</span>
-            <span className="hidden sm:inline">Recent foods</span>
-          </NeonButton>
-          <BarcodeScannerButton
-            onScanned={(code) => {
-              setBarcodeError(null);
-              barcodeM.run(code);
-            }}
-          />
-          <NeonButton
-            size="sm"
-            variant="violet"
-            onClick={() => {
-              setAskOpen(true);
-              setAskResults(null);
-            }}
-            title="Free-form description → LLM extracts a search query"
-          >
-            Ask AI
-          </NeonButton>
-          <NeonButton
-            size="sm"
-            variant="amber"
-            onClick={() => setManualOpen(true)}
-            title="Can't find it? Enter the macros yourself. Always works."
-          >
-            Manual
-          </NeonButton>
-        </div>
-      }
     >
+      {/* Action row — below the title rather than inline with it.
+          The 4 buttons (Recent / Scan / Ask AI / Manual) don't fit
+          comfortably on phone widths when packed next to the panel
+          header; flex-wrap drops them onto a second line on narrow
+          viewports instead of clipping. Order roughly matches the
+          user's mental flow: pick a known item → scan → describe
+          (AI) → enter by hand. */}
+      <div className="flex flex-wrap items-center gap-1 mb-3">
+        <NeonButton
+          size="sm"
+          variant="cyan"
+          onClick={() => setRecentOpen(true)}
+          title="Browse your recently-eaten foods (last 7 days) + saved recipes"
+        >
+          <span className="sm:hidden">Recent</span>
+          <span className="hidden sm:inline">Recent foods</span>
+        </NeonButton>
+        <BarcodeScannerButton
+          onScanned={(code) => {
+            setBarcodeError(null);
+            barcodeM.run(code);
+          }}
+        />
+        <NeonButton
+          size="sm"
+          variant="violet"
+          onClick={() => {
+            setAskOpen(true);
+            setAskResults(null);
+          }}
+          title="Free-form description → LLM extracts a search query"
+        >
+          Ask AI
+        </NeonButton>
+        <NeonButton
+          size="sm"
+          variant="amber"
+          onClick={() => setManualOpen(true)}
+          title="Can't find it? Enter the macros yourself. Always works."
+        >
+          Manual
+        </NeonButton>
+      </div>
       <div className="text-[10px] font-mono text-ink-300 mb-3">
         Search OFF + USDA, hit <b>Ask AI</b> to describe what you ate
         (e.g. "Annie's mac and cheese", "6 large strawberries"), or{' '}
