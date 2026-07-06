@@ -740,6 +740,78 @@ export function calitreeIconFor(branchName: string | null): string | null {
   return CALITREE_ICON_FILES[branchName] ?? null;
 }
 
+// Per-skill overrides — used when a specific skill (e.g. "L-Sit")
+// has a calitree PNG that's more accurate than its branch's generic
+// one (plank). Wins over the branch map. Falls through to
+// calitreeIconFor() if the skill isn't listed.
+const CALITREE_ICON_FILES_BY_SKILL: Record<string, string> = {
+  // ---- PHANTOM Holds (overrides plank branch icon) ----
+  '10s L-Sit Initiate':           'l-sit',
+  '30s L-Sit':                    'l-sit',
+  '10s Straddle L':               'straddle-l-sit',
+  '30s V-Sit':                    'v-sit',
+  '5s Front Lever':               'tuck-front-lever',
+  '5s Back Lever':                'tuck-back-lever',
+
+  // ---- PHANTOM Planche (overrides planche branch icon) ----
+  '10s Pseudo-Planche Lean':      'planche-lean',
+  '5s Tuck Planche':              'tuck-planche',
+  '5s Advanced Tuck Planche':      'adv-tuck-planche',
+  '5s Straddle Planche':          'straddle-planche',
+  '5s Full Planche':              'full-planche',
+
+  // ---- PHANTOM Rings (overrides ring-dips branch icon) ----
+  'Rings Dead Hang 30s':          'passive-hang',
+  'Rings Support 5s':             'rto-support',
+  '5 Ring Rows':                  'australian-rows',
+  '5 Ring Dips':                  'ring-dips',
+  '5 Ring Muscle-Ups':            'ring-muscle-up',
+  '10s L-Sit on Rings':           'ring-l-sit',
+  '3s Iron Cross':                'kipping-muscle-up', // closest analog
+
+  // ---- PHANTOM Handstand (overrides wall-handstand branch icon) ----
+  '5 Pike Push-Ups Initiate':     'pike-press',
+  '5 Elevated Pike PU':           'pike-press',
+  '10s Free Handstand':           'freestanding-handstand',
+  '5 Wall HSPUs':                 'wall-hspu',
+  '30s Free Handstand':           'freestanding-handstand',
+  '5 Free HSPUs':                 'kipping-muscle-up',
+  '1 Strict Free HSPU 5s':         'kipping-muscle-up',
+
+  // ---- PHANTOM Pull (overrides pull-ups branch icon) ----
+  'Dead Hang 30s Initiate':       'passive-hang',
+  '1 Strict Pull-Up':             'pull-ups',
+  '5 Strict Pull-Ups':            'chin-ups',
+  '10 Pull-Ups in a Row':         'wide-pull-ups',
+  'Weighted Pull-Up 25% BW':      'weighted-pull-ups',
+  '3 Muscle-Ups':                 'kipping-muscle-up',
+  'High Pull-Up to Waist':        'kipping-muscle-up', // closest analog
+  'One-Arm Pull-Up (each)':       'one-arm-chin-up',
+
+  // ---- PHANTOM Push (overrides incline-push-ups branch icon) ----
+  'Incline Push-Up Initiate':     'incline-push-ups',
+  'Standard Push-Up 20':          'decline-push-ups',  // closest: declined for difficulty
+  'Archer Push-Up':               'archer-push-ups',
+  'One-Arm Push-Up (knee)':       'one-arm-push-up',
+  'One-Arm Push-Up (no knee)':    'one-arm-push-up',
+  'Weighted 1-Arm PU 25% BW':    'one-arm-push-up',
+  'Weighted 1-Arm PU 50% BW':    'one-arm-push-up',
+
+  // ---- PHANTOM Legs (NEW — calitree has most of these) ----
+  'Squat to Chair':               'bodyweight-squat',
+  'Bulgarian Split Squat':        'bulgarian-split-squat',
+  'Assisted Pistol Squat':        'assisted-pistol',
+  'Shrimp Squat':                 'beginner-shrimp',
+  'Free Pistol Squat':            'pistol-squat',
+  'Dragon Pistol Squat':          'dragon-squat',
+  'Shrimp → Pistol Progression':   'sissy-squat',
+};
+
+export function skillCalitreeIconFor(skillName: string | null): string | null {
+  if (!skillName) return null;
+  return CALITREE_ICON_FILES_BY_SKILL[skillName] ?? null;
+}
+
 export const BRANCH_ICONS: Record<string, ReactElement> = {
   // JUGGERNAUT — branches without calitree matches use hand-coded SVGs
   'Sled': Sled,

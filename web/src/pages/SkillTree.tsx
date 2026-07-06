@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { Modal } from '@/components/Modal';
 import { classNames } from '@/lib/format';
 import { NeonButton } from '@/components/NeonButton';
-import { branchIcon, calitreeIconFor, SKILL_ICONS } from '@/lib/skillIcons';
+import { branchIcon, calitreeIconFor, skillCalitreeIconFor, SKILL_ICONS } from '@/lib/skillIcons';
 import { CLASS_META } from '@/lib/types';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 import { playSoundAndNotify } from '@/lib/soundBus';
@@ -441,10 +441,12 @@ function SkillNode({
   // when the skill name isn't in the SKILL_ICONS map.
   const icon = SKILL_ICONS[skill.name] ?? branchIcon(skill.branch, className);
   // Calitree.app-style icon for branches that have a direct
-  // calisthenics analog. null → fall through to the hand-coded
+  // calisthenics analog. Per-skill lookup wins over the branch
+  // lookup (so e.g. 'L-Sit' gets the l-sit.png, not the
+  // generic plank.png). null → fall through to the hand-coded
   // SVG above (covers heavy barbell / sled / boxing / mace / etc.
   // where calitree.app doesn't have a node).
-  const calitreeFile = calitreeIconFor(skill.branch);
+  const calitreeFile = skillCalitreeIconFor(skill.name) ?? calitreeIconFor(skill.branch);
   const tierShort = skill.tier.replace('TIER_', 'T');
   return (
     <button
