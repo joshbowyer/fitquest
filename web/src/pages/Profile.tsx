@@ -914,7 +914,7 @@ export function ProfilePage() {
                 <p>
                   You're switching from{' '}
                   <span className={`neon-text-${CLASS_META[user.class].color}`}>
-                    {user.classDisplay ?? CLASS_META[user.class].label}
+                    {CLASS_META[user.class].label}
                   </span>{' '}
                   to{' '}
                   <span className={`neon-text-${CLASS_META[pendingClass].color}`}>

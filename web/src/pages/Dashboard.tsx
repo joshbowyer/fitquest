@@ -417,7 +417,7 @@ export function DashboardPage() {
                       : { color: '#cbd5e1' }
                   }
                 >
-                  {user.classDisplay ?? cls?.label ?? 'Unclassed'}
+                  {cls?.label ?? 'Unclassed'}
                 </span>
                 {cls?.tagline && (
                   <span className="text-[10px] font-mono italic text-neon-lime/80">
