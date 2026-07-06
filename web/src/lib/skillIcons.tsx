@@ -761,7 +761,7 @@ const CALITREE_ICON_FILES_BY_SKILL: Record<string, string> = {
   '5s Full Planche':              'full-planche',
 
   // ---- PHANTOM Rings (overrides ring-dips branch icon) ----
-  'Rings Dead Hang 30s':          'passive-hang',
+  'Rings Dead Hang 30s':          'active-hang',
   'Rings Support 5s':             'rto-support',
   '5 Ring Rows':                  'australian-rows',
   '5 Ring Dips':                  'ring-dips',
@@ -775,11 +775,11 @@ const CALITREE_ICON_FILES_BY_SKILL: Record<string, string> = {
   '10s Free Handstand':           'freestanding-handstand',
   '5 Wall HSPUs':                 'wall-hspu',
   '30s Free Handstand':           'freestanding-handstand',
-  '5 Free HSPUs':                 'kipping-muscle-up',
-  '1 Strict Free HSPU 5s':         'kipping-muscle-up',
+  '5 Free HSPUs':                 'freestanding-hspu',
+  '1 Strict Free HSPU 5s':         'freestanding-hspu',
 
   // ---- PHANTOM Pull (overrides pull-ups branch icon) ----
-  'Dead Hang 30s Initiate':       'passive-hang',
+  'Dead Hang 30s Initiate':       'active-hang',
   '1 Strict Pull-Up':             'pull-ups',
   '5 Strict Pull-Ups':            'chin-ups',
   '10 Pull-Ups in a Row':         'wide-pull-ups',
