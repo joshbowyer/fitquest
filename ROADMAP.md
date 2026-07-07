@@ -14,22 +14,31 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.15 published.** [v1.0.15 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.15)
-  — APK signed with debug keystore, ~44.8 MB (the ML Kit + camera
-  AARs are heavy but unavoidable with the native barcode plugin).
-  12 prior versions also published (v1.0.3 → v1.0.15). The SDK
-  upgrade in v1.0.14 (minSdk 22→26, compileSdk 34→36, AGP 8.13,
-  Gradle 8.13) unblocked the native `@capacitor/barcode-scanner`
-  plugin; v1.0.15 fixed the plugin-name check so the native
-  scanner fires on Android.
+- **Android release: v1.0.25 published.** [v1.0.25 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.25)
+  — "the bug-squash release" (~30 fixes from the 2026-07-07 tsc
+  triage + logic audit; see Recently Fixed below). APK signed with
+  debug keystore, ~44.8 MB (the ML Kit + camera AARs are heavy but
+  unavoidable with the native barcode plugin). 22 prior versions
+  published (v1.0.3 → v1.0.24). The SDK upgrade in v1.0.14
+  (minSdk 22→26, compileSdk 34→36, AGP 8.13, Gradle 8.13)
+  unblocked the native `@capacitor/barcode-scanner` plugin.
 - **Docker images.** Auto-built and pushed to
-  `ghcr.io/joshbowyer/fitquest-{api,web}:{main,latest,sha-<hash>}`
-  on every push to main by `.github/workflows/build-images.yml`.
-  Latest successful run is for commit `65d7ea7` (web + api,
-  both amd64 + arm64). The android side is a separate repo
-  (`joshbowyer/fitquest-android`); the web bundle is built
-  via `npm run build` then `npx cap sync android` ships it
-  into the APK.
+  `ghcr.io/joshbowyer/fitquest-{api,web}` on every push to main
+  AND every `v*` tag by `.github/workflows/build-images.yml`.
+  Tags: `:latest`, `:main`, `:sha-<hash>`, and `:<semver>` (e.g.
+  `:1.0.25`) — ALL proper multi-arch manifest lists (amd64+arm64)
+  as of the 2026-07-07 CI fix (tag builds used to fail at the
+  manifest-merge step, and `:main`/`:latest` could be left
+  single-arch by build-job races). The WEB image build now runs
+  `tsc -b` as a HARD gate (zero type errors enforced — this is
+  what stops crash-class bugs from shipping past vite's
+  no-typecheck transpile). The api image still has `|| true` on
+  its tsc step until its remaining error backlog hits zero (see
+  P0). Latest successful runs: commit `a410a86` (main + v1.0.25
+  tag). The android side is a separate repo
+  (`joshbowyer/fitquest-android`); the web bundle is built via
+  `npx vite build` then `npx cap sync android` ships it into
+  the APK.
 - **Android sync:** `scripts/sync-android.sh` (in this repo) wraps
   the script at `../fitquest-android/scripts/sync-android.sh` so the
   Android wrapper doesn't get stale when web/api ships. Run from
@@ -54,6 +63,27 @@ are the changelog of what got shipped.
 
 ### P0 — quick wins (1-2 days each)
 
+- **API type-error backlog → 0, then flip the api Dockerfile
+  typecheck gate.** The 2026-07-07 bug hunt fixed lib/prisma.ts
+  typing (PrismaClient + all 25 enums now real types — this alone
+  surfaced 4 runtime-crash bugs) and drove api tsc errors
+  550 → 167. The remaining 167 are verified annotation noise
+  (import.ts ~42, sleepCorrelation, impossibleValues,
+  supersetRoundRobin, homeBase/skills/workouts routes, ~42 in
+  tests). Once at zero, remove the `|| true` from
+  `api/Dockerfile:48` so the api build enforces typecheck the
+  same way web now does. This is the single highest-leverage
+  hygiene item left — the web-side equivalent is what caught the
+  Dashboard-crash class of bug.
+- **Breach kills never drop their advertised Soulstones.**
+  `rewardForKill()` computes `reward.soulstones` and the UI shows
+  it, but nothing creates a Breach-sourced `Soulstone` row (the
+  old `UserBreachProgress.soulstones` counter writes were removed
+  because that column was dropped in `021082d` — they'd been
+  throwing PrismaClientValidationError on every new user's first
+  Breach touch). Fix: on claim, create TTL Soulstone rows
+  (bossName = breach boss, 24h expiry) like raid/world-boss drops
+  do, or stop advertising soulstones in the reward preview.
 - **Dark/light theme toggle** (currently dark-only).
 - **Notification feed / inbox.** Right now unlocks, achievement
   pops, penance events, level-ups, daily digest, etc. all fire
@@ -72,23 +102,19 @@ are the changelog of what got shipped.
   creates rows for matches — both could now feed the same inbox
   API. Unread-count query: `SELECT COUNT(*) FROM "Notification"
   WHERE "userId" = $1 AND "readAt" IS NULL`.
-- **Skill tree: horizontal layout for mobile** (deferred — pick
-  up after mobile polish). Current branch layout is vertical:
-  each branch is a column of stacked nodes. On phone widths the
-  stack runs off-screen and the user has to scroll-vertically
-  within each branch separately, which makes the chain hard to
-  read end-to-end. Redesign: each branch becomes a column,
-  branches flow LEFT-to-RIGHT across the page, and the user
-  scrolls horizontally to see different branches. Within a
-  branch, nodes flow top-to-bottom (same as today). On desktop
-  this is the same width as today (7 branches × N nodes each).
-  On mobile, the page becomes a horizontal strip the user pans
-  across. Implementation: switch the parent `flex flex-col` to
-  `flex flex-row overflow-x-auto`; each `BranchColumn` already
-  works as a column. Add touch gestures (swipe left/right) and
-  a row of "you are at branch X / 7" indicator dots at the top.
-
 ### Recently shipped P0s
+
+- ✅ **Skill tree: horizontal layout for mobile** — shipped in
+  `e1bab61` + `2be45e8` (calitree-style: one horizontal
+  scrollable chain per branch, branches stacked vertically),
+  connector/width tuning in `fa47907`/`bf91e44`, and the icon
+  Y-alignment root-cause fix in `59b4289` (v1.0.24): 1-line vs
+  2-line skill names made button heights differ and the
+  `items-center` chain wrapper pushed short buttons ~4px down —
+  nodes are now top-anchored with a fixed 2-line name box, and
+  the connector is pinned at the icon center measured from the
+  top. Also normalized hand-coded SVG icons to 28px matching the
+  calitree PNG masks.
 
 - ✅ **FitQuestBridge: drop the 60-min freshness window.**
   Removed the `find -mmin -60` filter from the Kotlin
@@ -133,14 +159,6 @@ are the changelog of what got shipped.
 
 ### P1 — feature work (1-2 weeks each)
 
-- **Skill tree: same explicit-prereqs treatment for the other
-  3 classes.** PHANTOM was rebuilt with linear per-skill
-  `prereqs: string[]` chains. SCOUT (3 × 20), BERSERKER
-  (7 × 45), JUGGERNAUT (6 × 39), TRACER (5 × 27), and ORACLE
-  (6 × 34) all now ship the same explicit treatment — linear
-  chains per branch with 1-3 weaving merge points at the heavier
-  weights. All 6 classes are done; the auto-T1-all-tier heuristic
-  is no longer used anywhere.
 - **Genetic-max shadowing: surface the formula value alongside
   manual overrides.** /profile `previewMax()` drift from the
   canonical api formula was already fixed (commit `f68b653`).
@@ -164,6 +182,32 @@ are the changelog of what got shipped.
   shows individual PRs but no "all my PRs over time" view
   with charts.
 
+### P1.5 — small follow-ups from the 2026-07-07 bug hunt (hours each, low urgency)
+
+- **DST micro-issues (one night/year each):**
+  `localNightStartInTz` buckets a post-spring-forward early-AM
+  sleep onset two days back (subtract the day in date-string
+  space instead of `−24h` on the instant);
+  `streaks.ts` "yesterday" checks compare exact instants across
+  the fall-back 25h day (compare `localDayKey` strings instead).
+- **`sync-android.sh` NEXT_VERSION mode doesn't bump
+  versionCode.** The comment says "explicit code bump" but only
+  `BUMP=1` increments it — a `NEXT_VERSION=x.y.z` release would
+  ship a duplicate versionCode and Android would refuse the
+  update. (`BUMP=1` is what's actually used, so latent.)
+- **/skills/unlock response reports the BASE reward** while the
+  actual grant is heart-multiplier-scaled (awardXpGold). Either
+  return `award.xp/gold` in the response or annotate the toast.
+- **`POST /bosses/:worldId/damage` trusts client-supplied
+  damage** — same class as the removed `/raids/:id/contribute`
+  side door, but blast radius is the user's own single-player
+  world boss. Derive server-side from the committing workout,
+  or cap.
+- **Web main chunk is 2.3 MB** (vite warns on every build).
+  Route-level `React.lazy` code-splitting for the heavy pages
+  (Three.js avatar, Recharts pages) would cut initial load on
+  mobile substantially.
+
 ### P2 — bigger features (2+ weeks)
 
 - **Stuff to spend gold on.** Gold is currently a passive
@@ -171,9 +215,6 @@ are the changelog of what got shipped.
   with set bonuses), holiday / seasonal items, UI themes
   (color palettes for the neon glow). All cosmetic unless we
   design a real prestige system.
-- **Mobile polish** (small wins). Long-press multi-select on
-  history, pull-to-refresh on Dashboard, haptic feedback on
-  rest-timer completion. Mostly a Capacitor plugin pass.
 - **3D avatar polish (rendering + shape).** Scale the avatar
   to user measurements (height / shoulder-waist v-taper /
   arm circumference) + replace the disjointed 3D rectangles
@@ -212,9 +253,12 @@ at the bottom for the full changelog).
 - **Personal records page** — all PRs in one view with charts
   over time. Currently /prs/WorkoutDetail shows individual PRs
   but no aggregated "all my PRs over time" view.
-- **Mobile polish** (small wins) — long-press to multi-select on
-  history, pull-to-refresh on Dashboard, haptic feedback on rest
-  timer completion.
+- (was: Mobile polish small wins — shipped in `e1bab61`:
+  long-press multi-select + bulk-delete on workout history,
+  pull-to-refresh on Dashboard, haptic feedback on rest-timer
+  completion. The Dashboard pull-to-refresh hook's missing
+  import — which white-screened the whole tab — was fixed in
+  the 2026-07-07 bug hunt.)
 - **3D avatar polish** — animations on level completion. The
   recently-worked indicator already brightens recently-trained
   parts (static, not animated) so the user can see at a glance
@@ -313,17 +357,11 @@ with edit + delete inline.)
 
 ### Measurements
 
-- **Skill tree: same explicit-prereqs treatment for the other
-  classes.** PHANTOM was just rebuilt with linear per-skill
-  prereqs + missing skills added (Legs branch, back lever,
-  one-arm pull-up). JUGGERNAUT / SCOUT / BERSERKER / TRACER /
-  ORACLE still use the old auto-T1-all-tier heuristic — fine
-  but inconsistent with PHANTOM. Apply the same explicit-prereqs
-  cleanup so every class reads as a clean linear DAG. Also use
-  the opportunity to backfill missing skills per the calitree.app
-  domain reference (each class has ~50 skills, but several are
-  shared between classes — careful with seeding so we don't
-  duplicate).
+- (was: Skill tree explicit per-skill prereqs for all 6 classes —
+  shipped across `75f62a6`/`dbcadbe`/`88425cb` (SCOUT, BERSERKER,
+  JUGGERNAUT/TRACER/ORACLE). Every class is a clean linear DAG
+  with 1-3 weaving merge points; the auto-T1-all-tier heuristic
+  is gone.)
 - **Genetic-max consistency between /profile, /measurements,
   and /dashboard.** All three pages need to surface the same
   value for the same metric, but three independent code paths
@@ -366,14 +404,11 @@ with edit + delete inline.)
     Dashboard's preview helpers) so there's only one source
     of truth. Low-priority refactor — the current drift is
     fixed, and the doc comment is the safety net.
-- **Remove v-taper (`SHOULDER_WAIST_RATIO`) from the
-  /measurements sidebar.** It's already in `NEVER_SURFACED`
-  (filtered out of check-ins + dashboard) because it's
-  auto-computed from shoulders ÷ waist. But the /measurements
-  page renders `METRICS_BY_CATEGORY` directly and still
-  includes it as a manual entry. Drop it from the sidebar —
-  it's surfaced in the dashboard's body-comp radials and
-  recomputed automatically.
+- (was: Remove v-taper from the /measurements sidebar — stale
+  entry; already shipped. The page filters DERIVED_METRICS
+  (LEAN_MASS, FFMI, SHOULDER_WAIST_RATIO) from the tile grid
+  and MetricDetailModal blocks logging derived metrics. See the
+  note under "Recently shipped P0s".)
 - (was: Split /measurements into category cards (2 per row) —
   shipped in `ff107df`, refined in `b6316e7`. First version had
   2-col collapsible cards — desktop layout was awkward (one
@@ -427,11 +462,12 @@ with edit + delete inline.)
 - (was: Body weight graph zoom (`yPad`) — shipped earlier;
   `yPad` 20 → 10 in the /insights chart so the trend line is
   more readable. Documented in Recently Fixed below.)
-- **Re-examine neck circumference genetic-max logic.** Current
-  code uses the user's current neck measurement as their
-  genetic max — wrong because neck can definitely grow with
-  trap development. Either: (a) treat neck like other
-  measurements and let it track freely, (b) default to a
+- (was: Re-examine neck circumference genetic-max logic —
+  resolved. Production code already used the wrist×2.9 /
+  height×0.245 Casey Butt ceiling; the actual bug was a stale
+  unit test asserting the old behavior. See the ✅ note under
+  "Recently shipped P0s". This entry had also been truncated
+  mid-sentence by an earlier edit.)
 - **Body measurement photos with diff.** Upload a photo
   alongside a measurement (or independently) and have a
   side-by-side view that highlights the change vs. the
@@ -456,22 +492,10 @@ with edit + delete inline.)
 
 ### Homebase / Penance
 
-- **Restructure the penance templates panel.** Three changes:
-  1. **Drop the checkboxes from the templates section.**
-     They're not interactive — they read like a "click here
-     to enable" affordance, but they're just labels. Replace
-     with a small "active now" badge on rows that are
-     currently firing.
-  2. **Split into two sub-blocks.** "Shield damage" (the
-     negative triggers — missed dailies, no recovery, etc.)
-     and "Shield repair" (the positive triggers — completed
-     dailies, logged recovery, etc.). Two semantic columns,
-     not one mixed list.
-  3. **Both sub-blocks start collapsed.** Currently the whole
-     panel is open by default — it's the longest single block
-     on `/homebase` and drowns the actual shield status at
-     the top. Collapse-by-default lets the user drill in
-     when curious.
+- (was: Restructure the penance templates panel — shipped; see
+  the ✅ note under "Recently shipped P0s": two collapsed
+  sub-blocks (Shield damage / Shield repair), checkbox
+  affordance replaced with row-toggle + "active now" pill.)
 
 ### Portal Leaks
 
@@ -557,6 +581,119 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-07 session — the bug hunt (v1.0.24 + v1.0.25)
+
+Full tsc-triage + logic audit: all 642 accumulated type errors
+triaged (92 web / 550 api), ~35 real bugs fixed across two
+rounds, 546 api tests green (was 529 passing / 9 failing).
+Commits `59b4289` → `a410a86`; releases
+[v1.0.24](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.24)
+(icon alignment) +
+[v1.0.25](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.25)
+(bug squash).
+
+- ✅ **Skill-tree icon Y alignment — root cause** (`59b4289`).
+  1-line vs 2-line skill names → variable button heights →
+  `items-center` in the stretched chain row pushed short
+  buttons ~4px down. Top-anchored nodes + fixed 2-line name box
+  + connector pinned at the icon center from the TOP. SVG icons
+  normalized to 28px matching the calitree PNG masks.
+- ✅ **CI: v\* tag image builds fixed** (`2ddd068`). Merge job
+  expected `-amd64/-arm64` suffixed semver tags the build job
+  never pushed (every tag run failed); `:main` was stuck
+  single-arch forever; `flavor: latest=auto` let both arch
+  builds race an unsuffixed `:latest`. All tags are now
+  per-arch in the build job; the merge job owns every shared
+  multi-arch tag.
+- ✅ **Round 1 — 22 mechanical bugs** (`7a24e0a`). Page crashes:
+  Dashboard (missing usePullToRefresh import — main tab
+  white-screened), Achievements (`a.s.points` reducer),
+  Nutrition add-item modal (missing react/react-dom imports +
+  createPortal without container), cardio logging (missing
+  distanceInputToKm import). API crashes: correlations feature +
+  nightly cron (8 builders closed over nonexistent `tz`),
+  workouts bulk-delete (`reply` not in handler signature), USCCB
+  readings fallback (undefined `dayUrl`). Dead features revived:
+  Weekly Examen modal (Modal never got `open`), Breach "Claim
+  victory" (useMutation RESULT passed as options — POST never
+  fired), Android 8 AM reminder (payload not wrapped in
+  `notifications: []`). Wrong values / data loss: imperial lb
+  stored as kg from the Today quick-logger (WorkoutLogger
+  mounted without user/units), `levelFromXp` factor-4 error
+  (levels needed 4× the documented XP; bar pinned at 100%),
+  `lastSundayMidnightUtc` returned Monday-of-previous-week for
+  every UTC+ zone, `localMidnightUtc` 1h off on DST transition
+  days (refinement pass + 6 regression tests), backup export
+  silently dropped the ENTIRE food diary (mealEntries +
+  referenced FoodItem catalog rows now exported; importer
+  resolves catalog rows by natural key), LEGENDARY missing from
+  the loot-tier walk (level-20+ legendary rolls dropped an
+  arbitrary item), metricInsight prior-windows were duplicates
+  of last-windows (LLM saw every metric as flat), morning
+  espresso counted toward yesterday's caffeine cap, Profile
+  geocoding errors invisible (`isError` on a hook exposing only
+  `error`), red/orange quest worlds rendered cyan, NeonButton
+  `title` + Panel `subtitle`/`id` silently dropped (11 dead
+  tooltips, invisible subtitles, broken #class deep-link).
+- ✅ **Round 1.5 — test-suite truthing.** morningReport
+  buildPenalties referenced out-of-scope `opts`/`user`
+  (ReferenceError for any hardcore user with heart-loss events);
+  stale 5-heart copy ("halved", "/5") updated for the graduated
+  10-heart system; heartMultiplier tests rewritten for the
+  curve; classLock test was passing a removed `soulstones` user
+  field (now passes the count arg + pinned `now` so the fixtures
+  aren't a 2027 time bomb).
+- ✅ **Round 2 — gameplay correctness** (`a410a86`). Hearts:
+  regen anchor is ALWAYS a boundary instant — full-hearts reads
+  used to drag it to `now`, un-anchoring the whole system (heart
+  lost Wednesday regenerated next Wednesday-at-whenever);
+  boundary counting in local-date space (DST/legacy-anchor
+  proof); Casual hearts un-froze — +1/local-day regen and
+  visual-only MISSED_WORKOUT drops per the mode.ts contract.
+  Dailies sweep: a logged Workout row completes the WORKOUT
+  built-in in BOTH the shield penance and heart-loss trigger
+  (users who trained were losing a heart + 20 shield). Workout
+  re-uploads (bridge restarts) are true no-ops — the upsert
+  deduped the row but re-paid XP/gold and re-fired raid/breach/
+  leak damage + penances on every re-POST. New `lib/award.ts`
+  `awardXpGold()`: every reward path (dailies, habits, quests,
+  world bosses, raid shares, skill unlocks) now applies the
+  Hardcore heart multiplier + recomputes level — previously only
+  workouts did either; negative deltas stay full-magnitude.
+  Routine weeks + streakDomain are tz-local (Chicago Sunday-8pm
+  workout no longer counts toward next week's goal). Raids:
+  atomic HP decrement (concurrent members' damage was lost to
+  read-modify-write), victory claimed by exactly one request
+  (double-payout race), removed the unused
+  `POST /raids/:id/contribute` side door (client-chosen damage,
+  no multiplier, racy, wrote to a dropped column); pet raid XP
+  ported to the workout victory path. Runtime crashes exposed by
+  the prisma typing fix: world-boss first-defeat rewards
+  (increment on nonexistent `User.soulstones` — now a 24h-TTL
+  Soulstone row), quest auto-completion (stale `userId_levelId`
+  unique key — now `userId_levelId_cycle` with per-world cycle),
+  `/skills/calisthenics-progress` (`test:{not:null}` on a Json
+  column — now `PrismaRuntime.AnyNull`), breach progress writes
+  to the dropped `soulstones` column (threw on every new user's
+  first Breach touch). Workout response now includes the leak
+  damage it always computed.
+- ✅ **Round 2 — security.** `POST /inventory/grant` admin-only
+  (any user could mint any item); `POST /spiritual/readings-reseed`
+  requires auth (arbitrary-date external-fetch amplifier);
+  `POST /team-workouts/cleanup` requires auth AND the 15-min
+  cleanup cron the file header always promised is actually wired
+  in index.ts now (stale sessions/invites previously lingered
+  forever).
+- ✅ **Round 2 — type-safety net.** `lib/prisma.ts` exports real
+  types for PrismaClient + all 25 enums (runtime requireCjs
+  loading preserved) — restored typechecking on every Prisma
+  query, which is what exposed the four runtime crashes above.
+  Web: 63 remaining errors → **0**, dead `components/SkillNode.tsx`
+  + test deleted, and the web Dockerfile's `tsc -b` is now a
+  HARD build gate (no more shipping ReferenceErrors past a
+  muzzled typecheck). API: 550 → 167 (rest is annotation noise —
+  see P0).
 
 ### 2026-07-06 session (large)
 
