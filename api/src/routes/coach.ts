@@ -56,10 +56,10 @@ export async function coachRoutes(app: FastifyInstance) {
     const stored = me.coachPersonality ?? null;
     const active = effectivePersonality(stored);
 
-    // Tiny context summary so the UI can show "Hearts 8/10 · 12-day
-    // streak" badges next to the chat without making a second
-    // request. Full CoachContext is only built on POST (chat), not
-    // here — keeps GET cheap for the page-render code path.
+    // The full context is gathered once and a tiny summary is
+    // derived for the page's sidebar chips. Full CoachContext is
+    // only sent on POST /coach (chat) — keeps GET cheap for the
+    // page-render code path.
     const ctx = await gatherCoachContext(me.id);
     const summary = {
       hearts: ctx.user.hearts,
@@ -76,6 +76,16 @@ export async function coachRoutes(app: FastifyInstance) {
         avgSleepHours: ctx.last7Days.avgSleepHours,
         prCount: ctx.last7Days.prCount,
       },
+      // New in v1.0.29 — chip-side summary of the richer
+      // context the coach sees. Surfaced as small text lines under
+      // the existing badges so the user can sanity-check what the
+      // coach has access to without expanding every section.
+      recentWorkoutCount: ctx.recentWorkouts.length,
+      pendingSkillsCount: ctx.pendingSkills.count,
+      caffeineToday: ctx.substances.caffeineToday,
+      yesterdayMealCalories: ctx.nutrition.yesterdayCalories,
+      latestWeightKg: ctx.measurements.latestWeight?.value ?? null,
+      latestBodyFatPct: ctx.measurements.latestBodyFat?.value ?? null,
     };
 
     return {

@@ -26,7 +26,8 @@ export type CoachPersonalityMeta = {
 
 /// Compact context the GET /coach endpoint returns so the UI can
 /// show "Hearts 8/10 · 12-day streak" badges next to the chat
-/// without a second request.
+/// without a second request. The summary is a SUB-sampled view
+/// of the full CoachContext (which goes to the LLM on POST /coach).
 export type CoachContextSummary = {
   hearts: number;
   maxHearts: number;
@@ -42,6 +43,15 @@ export type CoachContextSummary = {
     avgSleepHours: number | null;
     prCount: number;
   };
+  /// Extra chips surfaced under the main stats. Each is nullable —
+  /// null means the underlying data doesn't exist yet (no meals,
+  /// no weigh-ins, etc.) — distinct from "0" which is a real count.
+  recentWorkoutCount: number;
+  pendingSkillsCount: number;
+  caffeineToday: number;
+  yesterdayMealCalories: number | null;
+  latestWeightKg: number | null;
+  latestBodyFatPct: number | null;
 };
 
 /// GET /coach response — what the page needs to render the

@@ -175,6 +175,39 @@ export function effectivePersonality(stored: CoachPersonality | null | undefined
 // leaner cousin — only what the coach is likely to USE in a chat
 // turn.
 
+// =============================================================================
+// User context — what the coach knows about the user per request
+// =============================================================================
+//
+// Compact JSON block (~1500-2000 tokens in typical use) the LLM sees
+// before the user's message. Goal: enough to ground advice in real
+// numbers AND to let the coach answer "what was my last squat?" or
+// "how much caffeine did I have today?" without making the user paste
+// it in. We compute lazily on every chat request so the coach always
+// sees fresh data — at the cost of a handful of small DB reads per
+// message. Acceptable trade for v1 since chat is user-initiated (not
+// high-frequency).
+//
+// Pattern parallels morningReport.ts (gatherReportData) and
+// spiritualDirector.ts (gatherUserState); this is the coach's fuller
+// cousin — every LLM-facing route reads a different slice of the
+// same world, so we keep this file's context shape distinct from
+// theirs (no shared types — duplication is cheap, bad coupling is not).
+
+export type CoachRecentWorkout = {
+  id: string;
+  performedAt: string;        // ISO
+  type: string;               // WorkoutType enum value
+  duration: number | null;     // minutes
+  exerciseCount: number;
+  totalSets: number;           // completed sets across all exercises
+  topExercises: Array<{        // top 3 exercises by total volume
+    name: string;
+    setCount: number;
+    topSet: { reps: number; weight: number } | null;
+  }>;
+};
+
 export type CoachContext = {
   user: {
     username: string;
@@ -184,26 +217,112 @@ export type CoachContext = {
     mode: 'CASUAL' | 'HARDCORE';
     hearts: number;
     ordained: boolean;
+    goal: string | null;        // cut / maintain / bulk
+    heightCm: number | null;
+    weightKg: number | null;
+    bodyFatPct: number | null;
   };
   timing: {
     userToday: string;          // YYYY-MM-DD in user's tz
-    serverNowIso: string;        // full ISO for age-of-data math
-  };
-  last7Days: {
-    workoutCount: number;
-    workoutMinutes: number;
-    workoutTypes: string[];      // distinct workout.type values
-    prCount: number;             // PRs hit in last 7d
-    avgSleepHours: number | null;
+    userYesterday: string;
+    serverNowIso: string;
   };
   routine: {
     currentStreak: number;
     longestStreak: number;
     weeklyGoal: number;
-    thisWeekCount: number;
+    thisWeekCount: number;       // Mon-anchored local week
+    lastCompletedWeek: string | null;
   };
   recovery: {
     todayScore: number | null;   // 0..100, null if no recent data
+  };
+  last7Days: {
+    workoutCount: number;
+    workoutMinutes: number;
+    workoutTypes: string[];
+    prCount: number;
+    avgSleepHours: number | null;
+    sleepByDay: Array<{ day: string; hours: number | null }>; // 7 entries, oldest first
+  };
+  recentWorkouts: CoachRecentWorkout[];     // last 5, newest first
+  recentPrs: Array<{
+    exercise: string;
+    value: number;
+    type: string;                // 'ONE_RM' | 'HOLD'
+    achievedAt: string;          // ISO
+  }>;                              // last 5, newest first
+  measurements: {
+    // Latest WEIGHT + BODY_FAT_PCT entries (the two the coach is
+    // most likely to be asked about). Empty arrays if the user
+    // hasn't logged either. Trending not derived — coach can do the
+    // math from the rows itself if asked.
+    latestWeight: { value: number; recordedAt: string } | null;
+    latestBodyFat: { value: number; recordedAt: string } | null;
+    // Last 14 WEIGHT rows so the coach can spot trends ("you've
+    // been gaining about 0.3kg/week").
+    weightTrend14d: Array<{ value: number; recordedAt: string }>;
+  };
+  substances: {
+    /// Per-category counts for the relevant windows. Null = no
+    /// logs in that window (treat as "0" in copy).
+    caffeineToday: number;
+    caffeineThisWeek: number;     // last 7 days
+    alcoholThisWeek: number;
+    nicotineThisWeek: number;
+    electrolyteThisWeek: number;
+  };
+  habits: {
+    /// Last 5 habit logs (any direction) with enough info for the
+    /// coach to say "you ticked Stretch (POSITIVE) on Tuesday".
+    recent: Array<{
+      habitName: string;
+      direction: 'POSITIVE' | 'NEGATIVE';
+      delta: number;              // +1 / -1
+      goldDelta: number;
+      xpDelta: number;
+      loggedAt: string;
+    }>;
+    /// Last 7 days count per direction.
+    positiveCount7d: number;
+    negativeCount7d: number;
+  };
+  dailies: {
+    /// Yesterday's per-daily completion record so the coach can
+    /// reference "you missed your morning check-in Tuesday" without
+    /// the user pasting the dailies log.
+    yesterdayCompletion: Array<{
+      dailyKey: string;
+      completed: boolean;
+      goldDelta: number;
+      xpDelta: number;
+    }>;
+    /// Last 7 days — aggregate completion rate so the coach can
+    /// say "you hit 4 of 7 this week".
+    completionRate7d: { completed: number; planned: number };
+  };
+  nutrition: {
+    /// Today's totals so the coach can spot "you've only eaten
+    /// 800 kcal by 5pm". Null fields = no meals logged today.
+    todayCalories: number | null;
+    todayProteinG: number | null;
+    todayCarbG: number | null;
+    todayFatG: number | null;
+    todayMealCount: number;
+    /// Yesterday's same numbers for "you ate X yesterday" prompts.
+    yesterdayCalories: number | null;
+  };
+  pendingSkills: {
+    /// Matches found by the workout-matching pass but not yet
+    /// claimed. The coach can prompt "you unlocked a Squat 5×5 PR
+    /// yesterday — want to claim it?" without the user asking.
+    count: number;
+    recent: Array<{
+      skillName: string;
+      className: string;
+      tier: string;
+      matchedAt: string;
+    }>;                          // last 3
   };
 };
 
@@ -219,6 +338,10 @@ export async function gatherCoachContext(userId: string): Promise<CoachContext> 
       hearts: true,
       ordained: true,
       timezone: true,
+      goal: true,
+      heightCm: true,
+      weightKg: true,
+      bodyFatPct: true,
     },
   });
   if (!me) {
@@ -228,49 +351,331 @@ export async function gatherCoachContext(userId: string): Promise<CoachContext> 
   const tz = me.timezone ?? null;
   const now = new Date();
   const userToday = todayInTz(tz, now);
+  const userYesterday = todayInTz(
+    tz,
+    new Date(localMidnightUtc(userToday, tz ?? 'UTC').getTime() - 12 * 60 * 60 * 1000),
+  );
   const sevenAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fourteenAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-  // Parallel fetch: workouts + a sleep summary + the routine
-  // state + today's recovery. Recovery is its own module so we
-  // skip if it throws — the coach works fine with `null` recovery.
-  const [workouts, routine, recoveryScore] = await Promise.all([
-    prisma.workout.findMany({
-      where: { userId, performedAt: { gte: sevenAgo } },
-      select: { type: true, duration: true },
-    }),
+  // ── Window boundaries (local-tz) ───────────────────────────────────
+  const todayStart = localMidnightUtc(userToday, tz ?? 'UTC');
+  const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+  const yesterdayStart = localMidnightUtc(userYesterday, tz ?? 'UTC');
+  const yesterdayEnd = new Date(yesterdayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  // ── Parallel fetches (kept small + scoped to the coach's likely
+  //    questions; the full morningReport context is 10× this size) ──
+
+  // Phase 1: the cheap stuff all at once.
+  const [
+    routine,
+    substanceLast7d,
+    measurementsSleep,
+    measurementsWeight,
+    measurementsBodyFat,
+    measurementsWeight14d,
+    substanceYesterdayToday,
+    prs,
+    pendingUnlocks,
+    mealsToday,
+    mealsYesterday,
+  ] = await Promise.all([
     prisma.routine.findUnique({
       where: { userId },
-      select: { currentStreak: true, longestStreak: true, weeklyGoal: true },
+      select: {
+        currentStreak: true,
+        longestStreak: true,
+        weeklyGoal: true,
+        lastCompletedWeek: true,
+      },
     }),
-    (async () => {
-      try {
-        const { computeRecovery } = await import('./recovery.js');
-        const r = await computeRecovery(userId);
-        return r.score;
-      } catch {
-        return null;
-      }
-    })(),
+    // Substance counts — groupBy over the last 7d window. Cast
+    // category to the enum so Prisma narrows the result type.
+    prisma.substanceLog.groupBy({
+      by: ['category'],
+      where: { userId, loggedAt: { gte: sevenAgo } },
+      _count: { _all: true },
+    }),
+    // Sleep rows (last 7d) — for both avg and per-night series.
+    prisma.measurement.findMany({
+      where: { userId, metric: 'SLEEP_HOURS' as any, recordedAt: { gte: sevenAgo } },
+      select: { value: true, recordedAt: true },
+      orderBy: { recordedAt: 'asc' },
+    }),
+    // Latest weight + a 14-day trend. Latest is "the most recent row".
+    prisma.measurement.findFirst({
+      where: { userId, metric: 'WEIGHT' as any },
+      orderBy: { recordedAt: 'desc' },
+      select: { value: true, recordedAt: true },
+    }),
+    prisma.measurement.findFirst({
+      where: { userId, metric: 'BODY_FAT_PCT' as any },
+      orderBy: { recordedAt: 'desc' },
+      select: { value: true, recordedAt: true },
+    }),
+    prisma.measurement.findMany({
+      where: { userId, metric: 'WEIGHT' as any, recordedAt: { gte: fourteenAgo } },
+      select: { value: true, recordedAt: true },
+      orderBy: { recordedAt: 'asc' },
+    }),
+    // Caffeine specifically bucketed to yesterday + today (the
+    // capped-window caffeine bug we fixed in morningReport.ts is
+    // repeated here intentionally — the coach needs both views).
+    prisma.substanceLog.groupBy({
+      by: ['category'],
+      where: { userId, loggedAt: { gte: yesterdayStart, lt: todayEnd } },
+      _count: { _all: true },
+    }),
+    // Recent PRs (last 5). achievementDate ordering.
+    prisma.pr.findMany({
+      where: { userId },
+      orderBy: { achievedAt: 'desc' },
+      take: 5,
+      select: { exercise: true, value: true, type: true, achievedAt: true },
+    }),
+    // Pending skill unlocks (matched but not claimed).
+    prisma.pendingSkillUnlock.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      include: { skill: { select: { name: true, className: true, tier: true } } },
+    }),
+    prisma.mealEntry.aggregate({
+      where: { userId, loggedAt: { gte: todayStart, lt: todayEnd } },
+      _sum: {
+        servings: true,
+      },
+      _count: { _all: true },
+    }),
+    prisma.mealEntry.aggregate({
+      where: { userId, loggedAt: { gte: yesterdayStart, lt: yesterdayEnd } },
+      _sum: { servings: true },
+      _count: { _all: true },
+    }),
   ]);
 
-  // PRs in last 7d — cheap count. We don't fetch PR rows because
-  // the count is enough for "any PRs this week?" questions.
-  const prCount = await prisma.pr.count({
-    where: { userId, achievedAt: { gte: sevenAgo } },
+  // Pending skill count (separate query — the take:3 above gives us
+  // the recent list but not the total).
+  const pendingSkillCount = await prisma.pendingSkillUnlock.count({
+    where: { userId },
   });
 
-  // Sleep avg for last 7d. Measurement rows are tagged with the
-  // user's tz (see recovery.ts); we average the last 7 by day.
-  const sleepRows = await prisma.measurement.findMany({
-    where: { userId, metric: 'SLEEP_HOURS' as any, recordedAt: { gte: sevenAgo } },
-    select: { value: true },
-  });
-  const avgSleep = sleepRows.length > 0
-    ? Math.round((sleepRows.reduce((s, r) => s + r.value, 0) / sleepRows.length) * 10) / 10
-    : null;
+  // ── Compute recovery today (best-effort; module throws if data
+  //    missing — coach works fine with null) ─────────────────────
+  let recoveryScore: number | null = null;
+  try {
+    const { computeRecovery } = await import('./recovery.js');
+    const r = await computeRecovery(userId);
+    recoveryScore = r.score;
+  } catch {
+    recoveryScore = null;
+  }
 
-  // Routine this-week count — duplicate of morningReport's
-  // streakDomain but cheap enough to inline.
+  // ── Recent workouts (last 5, newest first) — this is the heaviest
+  //    query: includes exercises + sets to summarize "top exercises
+  //    by volume" per workout. Limited to 5 to keep the prompt bounded. ──
+  const recentWorkoutRows = await prisma.workout.findMany({
+    where: { userId },
+    orderBy: { performedAt: 'desc' },
+    take: 5,
+    include: {
+      exercises: {
+        select: {
+          name: true,
+          sets: {
+            where: { completed: true },
+            select: { reps: true, weight: true },
+          },
+        },
+      },
+    },
+  });
+  const recentWorkouts: CoachRecentWorkout[] = recentWorkoutRows.map((w) => {
+    const exerciseSummaries = w.exercises.map((ex) => {
+      const completedSets = ex.sets;
+      const totalSets = completedSets.length;
+      // "top set" = the set with the highest volume (reps × weight).
+      // For bodyweight exercises where weight is null, fall back to
+      // reps alone.
+      let topSet: { reps: number; weight: number } | null = null;
+      let topVolume = -1;
+      for (const s of completedSets) {
+        const w = s.weight ?? 0;
+        const v = s.reps * (w > 0 ? w : 1);
+        if (v > topVolume) {
+          topVolume = v;
+          topSet = { reps: s.reps, weight: s.weight ?? 0 };
+        }
+      }
+      return { name: ex.name, setCount: totalSets, topSet };
+    });
+    // Top 3 exercises by set count (proxy for "what was this session
+    // really about"). The coach can ask "what did I squat" and the
+    // answer is right there.
+    const topExercises = [...exerciseSummaries]
+      .sort((a, b) => b.setCount - a.setCount)
+      .slice(0, 3);
+    const totalSets = exerciseSummaries.reduce((s, e) => s + e.setCount, 0);
+    return {
+      id: w.id,
+      performedAt: w.performedAt.toISOString(),
+      type: w.type,
+      duration: w.duration,
+      exerciseCount: w.exercises.length,
+      totalSets,
+      topExercises,
+    };
+  });
+
+  // ── Last 7d counts derived from the workouts subset (not a second
+  //    workout.findMany) ───────────────────────────────────────────
+  const recent7dWorkouts = recentWorkoutRows.filter(
+    (w) => w.performedAt >= sevenAgo,
+  );
+  const last7Days = {
+    workoutCount: recent7dWorkouts.length,
+    workoutMinutes: recent7dWorkouts.reduce(
+      (s, w) => s + (w.duration ?? 0),
+      0,
+    ),
+    workoutTypes: Array.from(new Set(recent7dWorkouts.map((w) => w.type))).sort(),
+    prCount: prs.filter((p) => p.achievedAt >= sevenAgo).length,
+    avgSleepHours: measurementsSleep.length > 0
+      ? Math.round(
+          (measurementsSleep.reduce((s, r) => s + r.value, 0) / measurementsSleep.length) * 10,
+        ) / 10
+      : null,
+    // Per-night sleep series for the last 7 LOCAL days (oldest
+    // first). Bucketed by local-date so a 1am Monday sleep logs as
+    // Sunday's row (see morningReport.ts for the same convention).
+    sleepByDay: buildSleepByDaySeries(measurementsSleep, sevenAgo, userToday, tz),
+  };
+
+  // ── Habits ────────────────────────────────────────────────────────
+  const habitRows = await prisma.habitLog.findMany({
+    where: { userId, loggedAt: { gte: sevenAgo } },
+    orderBy: { loggedAt: 'desc' },
+    take: 5,
+    include: { habit: { select: { name: true, direction: true } } },
+  });
+  const positiveCount7d = await prisma.habitLog.count({
+    where: {
+      userId,
+      loggedAt: { gte: sevenAgo },
+      habit: { direction: 'POSITIVE' as any },
+    },
+  });
+  const negativeCount7d = await prisma.habitLog.count({
+    where: {
+      userId,
+      loggedAt: { gte: sevenAgo },
+      habit: { direction: 'NEGATIVE' as any },
+    },
+  });
+  const habits = {
+    recent: habitRows.map((h) => ({
+      habitName: h.habit.name,
+      direction: h.habit.direction as 'POSITIVE' | 'NEGATIVE',
+      delta: h.delta,
+      goldDelta: h.goldDelta,
+      xpDelta: h.xpDelta,
+      loggedAt: h.loggedAt.toISOString(),
+    })),
+    positiveCount7d,
+    negativeCount7d,
+  };
+
+  // ── Dailies (yesterday's per-daily status + 7d completion rate) ──
+  const dailyLogsYesterday = await prisma.dailyLog.findMany({
+    where: {
+      userId,
+      loggedAt: { gte: yesterdayStart, lt: yesterdayEnd },
+    },
+    select: { dailyKey: true, goldDelta: true, xpDelta: true },
+  });
+  const dailyLogs7d = await prisma.dailyLog.findMany({
+    where: { userId, loggedAt: { gte: sevenAgo } },
+    select: { dailyKey: true },
+  });
+  const activeDailyCount = await prisma.daily.count({
+    where: { userId, archived: false },
+  });
+  // "Planned" = unique dailyKeys the user has touched in the last
+  // 7d OR the active-daily count if they've never used the system.
+  // Either way it's a denominator — exact value doesn't matter for
+  // coaching copy ("you hit 4/7").
+  const plannedDailyKeyCount = new Set(dailyLogs7d.map((l) => l.dailyKey)).size
+    || activeDailyCount;
+  const dailies = {
+    yesterdayCompletion: dailyLogsYesterday.map((l) => ({
+      dailyKey: l.dailyKey,
+      completed: true,
+      goldDelta: l.goldDelta,
+      xpDelta: l.xpDelta,
+    })),
+    // Include the configured but-not-yesterday'd dailies too, so
+    // the coach can see "you missed your 'Water' daily yesterday".
+    // For v1 we just surface the yesterday logs — the "planned but
+    // missed" list can come from a `configuredKeys - loggedKeys`
+    // diff that the route could compute on demand if asked.
+    completionRate7d: {
+      completed: new Set(dailyLogs7d.map((l) => l.dailyKey)).size,
+      planned: Math.max(plannedDailyKeyCount, 1),
+    },
+  };
+
+  // ── Substances ────────────────────────────────────────────────────
+  // The two groupBy queries above give us 7d totals (caffeine/alcohol/
+  // nicotine/electrolyte) and yesterday+today combined. We split
+  // caffeine from the yesterday groupBy into "today" vs "yesterday"
+  // by re-bucketing on the local-day key for each row. (groupBy
+  // doesn't directly bucket by local-day since the enum groupBy is
+  // cheaper; we accept the second pass for caffeine only.)
+  const yesterdayTodayCaffeineRows = await prisma.substanceLog.findMany({
+    where: {
+      userId,
+      category: 'CAFFEINE',
+      loggedAt: { gte: yesterdayStart, lt: todayEnd },
+    },
+    select: { loggedAt: true },
+  });
+  const todayStartMs = todayStart.getTime();
+  const todayEndMs = todayEnd.getTime();
+  let caffeineToday = 0;
+  for (const r of yesterdayTodayCaffeineRows) {
+    const ms = r.loggedAt.getTime();
+    if (ms >= todayStartMs && ms < todayEndMs) caffeineToday++;
+  }
+  const countByCat = (cat: string) =>
+    substanceLast7d.find((c) => c.category === cat)?._count?._all ?? 0;
+  const substances = {
+    caffeineToday,
+    caffeineThisWeek: countByCat('CAFFEINE'),
+    alcoholThisWeek: countByCat('ALCOHOL'),
+    nicotineThisWeek: countByCat('NICOTINE'),
+    electrolyteThisWeek: countByCat('ELECTROLYTE'),
+  };
+
+  // ── Nutrition: today's meal totals. Sum of (servings × FoodItem
+  //    macros) per mealEntry. mealEntry.servings is a multiplier on
+  //    the underlying FoodItem's calories/protein/carb/fat. We do
+  //    the join here because MealEntry doesn't carry the macros
+  //    directly — they're on the joined FoodItem.
+  const nutrition = await aggregateNutrition(mealsToday, mealsYesterday, userId, todayStart, todayEnd, yesterdayStart, yesterdayEnd);
+
+  // ── Pending skills (already loaded) ───────────────────────────────
+  const pendingSkills = {
+    count: pendingSkillCount,
+    recent: pendingUnlocks.map((u) => ({
+      skillName: u.skill.name,
+      className: u.skill.className,
+      tier: u.skill.tier,
+      matchedAt: u.createdAt.toISOString(),
+    })),
+  };
+
+  // ── Routine this-week count (Mon-anchored local week) ───────────
   let thisWeekCount = 0;
   if (routine) {
     const weekStart = localMidnightUtc(userToday, tz ?? 'UTC');
@@ -289,26 +694,141 @@ export async function gatherCoachContext(userId: string): Promise<CoachContext> 
       mode: (me.mode as 'CASUAL' | 'HARDCORE') ?? 'CASUAL',
       hearts: me.hearts,
       ordained: me.ordained,
+      goal: me.goal,
+      heightCm: me.heightCm,
+      weightKg: me.weightKg,
+      bodyFatPct: me.bodyFatPct,
     },
     timing: {
       userToday,
+      userYesterday,
       serverNowIso: now.toISOString(),
-    },
-    last7Days: {
-      workoutCount: workouts.length,
-      workoutMinutes: workouts.reduce((s, w) => s + (w.duration ?? 0), 0),
-      workoutTypes: Array.from(new Set(workouts.map((w) => w.type))).sort(),
-      prCount,
-      avgSleepHours: avgSleep,
     },
     routine: {
       currentStreak: routine?.currentStreak ?? 0,
       longestStreak: routine?.longestStreak ?? 0,
       weeklyGoal: routine?.weeklyGoal ?? 3,
       thisWeekCount,
+      lastCompletedWeek: routine?.lastCompletedWeek ?? null,
     },
-    recovery: {
-      todayScore: recoveryScore,
+    recovery: { todayScore: recoveryScore },
+    last7Days,
+    recentWorkouts,
+    recentPrs: prs.map((p) => ({
+      exercise: p.exercise,
+      value: p.value,
+      type: p.type,
+      achievedAt: p.achievedAt.toISOString(),
+    })),
+    measurements: {
+      latestWeight: measurementsWeight
+        ? { value: measurementsWeight.value, recordedAt: measurementsWeight.recordedAt.toISOString() }
+        : null,
+      latestBodyFat: measurementsBodyFat
+        ? { value: measurementsBodyFat.value, recordedAt: measurementsBodyFat.recordedAt.toISOString() }
+        : null,
+      weightTrend14d: measurementsWeight14d.map((m) => ({
+        value: m.value,
+        recordedAt: m.recordedAt.toISOString(),
+      })),
     },
+    substances,
+    habits,
+    dailies,
+    nutrition,
+    pendingSkills,
+  };
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// Bucket sleep rows by local-day key (oldest first) for the last
+/// `days` local days, filling missing days with null. The morning
+/// report uses the same convention — see streakDomain in morningReport.ts.
+function buildSleepByDaySeries(
+  sleepRows: Array<{ value: number; recordedAt: Date }>,
+  sevenAgo: Date,
+  userToday: string,
+  tz: string | null,
+): Array<{ day: string; hours: number | null }> {
+  // Build day-key → value map from the rows (last value per day wins).
+  const byDay = new Map<string, number>();
+  for (const r of sleepRows) {
+    if (r.recordedAt < sevenAgo) continue;
+    const key = todayInTz(tz, r.recordedAt);
+    byDay.set(key, r.value);
+  }
+  // Walk the 7-day window from sevenAgo's local-day up to userToday.
+  const out: Array<{ day: string; hours: number | null }> = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(localMidnightUtc(userToday, tz ?? 'UTC').getTime() - i * 24 * 60 * 60 * 1000);
+    const key = todayInTz(tz, d);
+    out.push({ day: key, hours: byDay.get(key) ?? null });
+  }
+  return out;
+}
+
+/// Compute today's + yesterday's meal-totals. MealEntry carries
+/// `servings` (a multiplier) + a FK to FoodItem (which has the
+/// per-serving macros). The aggregate we did above only returned
+/// `_count` + `_sum.servings`; we need the actual FoodItem join to
+/// sum calories/protein/carb/fat. Cheap because the mealEntry set
+/// per day is small.
+async function aggregateNutrition(
+  _mealsTodayAgg: { _sum: { servings: number | null }; _count: { _all: number } },
+  _mealsYesterdayAgg: { _sum: { servings: number | null }; _count: { _all: number } },
+  userId: string,
+  todayStart: Date,
+  todayEnd: Date,
+  yesterdayStart: Date,
+  yesterdayEnd: Date,
+): Promise<CoachContext['nutrition']> {
+  const sumMacros = async (from: Date, to: Date) => {
+    const rows = await prisma.mealEntry.findMany({
+      where: { userId, loggedAt: { gte: from, lt: to } },
+      select: {
+        servings: true,
+        food: {
+          select: {
+            calories: true,
+            proteinG: true,
+            carbG: true,
+            fatG: true,
+          },
+        },
+      },
+    });
+    let cal = 0;
+    let pro = 0;
+    let carb = 0;
+    let fat = 0;
+    let count = 0;
+    for (const r of rows) {
+      const s = r.servings ?? 1;
+      cal += r.food.calories * s;
+      pro += r.food.proteinG * s;
+      carb += r.food.carbG * s;
+      fat += r.food.fatG * s;
+      count++;
+    }
+    return {
+      calories: count > 0 ? Math.round(cal) : null,
+      proteinG: count > 0 ? Math.round(pro) : null,
+      carbG: count > 0 ? Math.round(carb) : null,
+      fatG: count > 0 ? Math.round(fat) : null,
+      mealCount: count,
+    };
+  };
+  const today = await sumMacros(todayStart, todayEnd);
+  const yesterday = await sumMacros(yesterdayStart, yesterdayEnd);
+  return {
+    todayCalories: today.calories,
+    todayProteinG: today.proteinG,
+    todayCarbG: today.carbG,
+    todayFatG: today.fatG,
+    todayMealCount: today.mealCount,
+    yesterdayCalories: yesterday.calories,
   };
 }

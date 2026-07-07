@@ -57,7 +57,11 @@ const TRUSTED_DEVICE_TTL_DAYS = 90;
 /// to /login for ~25 min until the migration ran. This helper
 /// makes the next such mismatch self-healing instead of
 /// session-killing.
-async function safeReadField<T>(
+///
+/// Exported for direct unit testing — the integration coverage
+/// (this function actually saving /me during a column-mismatch)
+/// requires a real DB, which we don't have in unit tests.
+export async function safeReadField<T>(
   cheapRead: () => T | undefined,
   dbFallback: () => Promise<T | null | undefined>,
   fallback: T,

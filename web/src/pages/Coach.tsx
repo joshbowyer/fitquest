@@ -220,6 +220,55 @@ function CoachInner() {
                   />
                   <SummaryRow label="PRs" value={String(summary.last7Days.prCount)} />
                 </div>
+                <div className="pt-2 mt-2 border-t border-ink-700/30">
+                  <div className="text-[10px] font-display tracking-widest uppercase text-ink-300 mb-1">
+                    Coach also sees
+                  </div>
+                  <SummaryRow
+                    label="Recent workouts"
+                    value={`${summary.recentWorkoutCount}`}
+                  />
+                  <SummaryRow
+                    label="Pending skills"
+                    value={String(summary.pendingSkillsCount)}
+                    tone={summary.pendingSkillsCount > 0 ? 'cyan' : undefined}
+                  />
+                  <SummaryRow
+                    label="Caffeine today"
+                    value={String(summary.caffeineToday)}
+                    tone={
+                      summary.caffeineToday >= 3
+                        ? 'magenta'
+                        : summary.caffeineToday === 0
+                          ? 'lime'
+                          : undefined
+                    }
+                  />
+                  <SummaryRow
+                    label="Yesterday's kcal"
+                    value={
+                      summary.yesterdayMealCalories == null
+                        ? '—'
+                        : `${summary.yesterdayMealCalories}`
+                    }
+                  />
+                  <SummaryRow
+                    label="Latest weight"
+                    value={
+                      summary.latestWeightKg == null
+                        ? '—'
+                        : `${summary.latestWeightKg} kg`
+                    }
+                  />
+                  <SummaryRow
+                    label="Body fat"
+                    value={
+                      summary.latestBodyFatPct == null
+                        ? '—'
+                        : `${summary.latestBodyFatPct}%`
+                    }
+                  />
+                </div>
               </div>
             )}
           </Panel>
