@@ -73,10 +73,46 @@ function CoachInner() {
   const [rateLimitRetryMs, setRateLimitRetryMs] = useState<number | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
 
-  // Scroll to bottom on every new message. Smooth-scroll keeps
-  // it from feeling jumpy on a long assistant reply.
+  // The messages panel has its own overflow-y-auto div inside
+  // the Panel (max-h-[60vh]). On FIRST render we scroll it to
+  // the top so the user sees the start of the conversation (or
+  // the empty state). On SUBSEQUENT renders — i.e. the user
+  // sent a new message — we scroll to the bottom to show the
+  // latest reply. Without this split, navigating to /coach
+  // always lands at the bottom (because the auto-scroll-to-bottom
+  // effect fires on initial mount), and the ScrollToTop helper
+  // on Layout's <main> doesn't help because the messages div is
+  // an independent scroller.
+  //
+  // We track the previous count via a ref so the effect can
+  // distinguish "first load" (count == 0 before, then > 0) from
+  // "new message appended" (count strictly greater than before).
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevMsgCountRef = useRef<number>(0);
+  const initializedRef = useRef<boolean>(false);
+
+  // Initial render: scroll messages panel to top so the user
+  // sees the start of the conversation (or the empty state).
+  // Subsequent renders where the message count grew: scroll to
+  // bottom so the latest reply is visible. See the long comment
+  // on messagesContainerRef above for the full rationale.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const msgs = messagesQ.data?.messages;
+    if (!msgs) return; // still loading — wait until the next render
+    const count = msgs.length;
+    if (!initializedRef.current) {
+      // First time messages have loaded — scroll the messages div
+      // to its top. The Layout-level ScrollToTop already handled
+      // the page-level scroll by the time this fires, so this
+      // handles just the inner scroller.
+      messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'instant' });
+      initializedRef.current = true;
+    } else if (count > prevMsgCountRef.current) {
+      // New messages appended (e.g. user sent a turn) — scroll to
+      // bottom so the new reply is visible.
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMsgCountRef.current = count;
   }, [messagesQ.data?.messages.length]);
 
   // Send mutation. Wraps the POST + invalidates the messages
@@ -369,7 +405,10 @@ function CoachInner() {
               </button>
             }
           >
-            <div className="flex flex-col gap-3 min-h-[400px] max-h-[60vh] overflow-y-auto pr-1">
+            <div
+              ref={messagesContainerRef}
+              className="flex flex-col gap-3 min-h-[400px] max-h-[60vh] overflow-y-auto pr-1"
+            >
               {messagesQ.isLoading && (
                 <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink-300">
                   Loading conversation…
