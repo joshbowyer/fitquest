@@ -71,14 +71,6 @@ export type CoachChatRequest = {
   message: string;
 };
 
-export type CoachChatResponse = {
-  text: string;
-  personality: CoachPersonality;
-  model: string;
-  provider: string;
-  latencyMs: number;
-};
-
 /// PATCH /coach/personality body + response.
 export type CoachPersonalityPatchRequest = {
   personality: CoachPersonality | null;
@@ -87,6 +79,62 @@ export type CoachPersonalityPatchRequest = {
 export type CoachPersonalityPatchResponse = {
   coachPersonality: CoachPersonality | null;
   effective: CoachPersonality;
+};
+
+/// One turn in the persisted coach conversation. Returned by
+/// GET /coach/messages and hydrated into the page on load. The
+/// model + latency fields are populated only for assistant
+/// messages (the LLM call's bookkeeping).
+export type CoachMessage = {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  model: string | null;
+  latencyMs: number | null;
+  createdAt: string;
+};
+
+/// GET /coach/messages response. The summary text itself isn't
+/// exposed — only the meta (has it been compacted? when?). The
+/// coach injects the summary into the prompt server-side, so
+/// the client doesn't need to render it.
+export type CoachMessagesResponse = {
+  messages: CoachMessage[];
+  hasSummary: boolean;
+  messageCount: number;
+  summaryUpdatedAt: string | null;
+  slidingWindowSize: number;
+};
+
+/// Per-conversation metadata returned on the meta endpoint so
+/// the page header can show "12 messages" + "summarized: yes".
+export type CoachConversationMeta = {
+  messageCount: number;
+  hasSummary: boolean;
+  lastMessageAt: string | null;
+  createdAt: string;
+};
+
+/// Augmented meta response: the GET /coach return now includes
+/// `conversation` so the page header can render the count without
+/// a separate fetch.
+export type CoachMetaWithConversation = CoachMeta & {
+  conversation: CoachConversationMeta;
+};
+
+/// POST /coach response — now includes the persisted message IDs
+/// and the post-append conversation stats so the page can update
+/// the header without a follow-up GET.
+export type CoachChatResponse = {
+  text: string;
+  personality: CoachPersonality;
+  model: string;
+  provider: string;
+  latencyMs: number;
+  userMessageId: string;
+  assistantMessageId: string;
+  messageCount: number;
+  slidingWindowSize: number;
 };
 
 export type MetricType =

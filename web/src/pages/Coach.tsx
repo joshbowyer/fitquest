@@ -2,35 +2,40 @@
  * AI Coach page — chat-style interface for talking to the configured
  * LLM with a FitQuest-aware personality preset.
  *
- * v1 (scaffold):
+ * v1.1 (persistence):
  *   - Personality selector (5 presets, server-driven list)
- *   - Simple conversation: local-state message list, non-streaming
- *     POST /coach per send (matches every other LLM endpoint)
- *   - Context chips: hearts / streak / week / recovery surfaced from
- *     GET /coach so the user knows what the coach is looking at
+ *   - Persistent conversation: GET /coach/messages hydrates on
+ *     page load so the user can close the browser and come back
+ *     tomorrow with their context intact.
+ *   - Sliding window: the page renders every persisted message;
+ *     the server only sends the last 20 to the LLM at any time
+ *     (older turns get folded into a summary block on the 30th
+ *     message).
+ *   - Rate limits: 5/min burst + 50/day cost cap; UI surfaces the
+ *     429 with a friendly retry message.
+ *   - "Clear conversation" button in the panel header so the user
+ *     can wipe history (saves the personality choice).
  *
- * Deliberately NOT in this scaffold:
- *   - Conversation persistence (server doesn't store history yet;
- *     each page load starts fresh — fine for v1, the use case is
- *     "ask one focused question")
- *   - Streaming responses (would need SSE plumbing; out of scope)
- *   - Per-message personality override (use the global picker)
+ * Deliberately NOT yet:
+ *   - Streaming responses (SSE plumbing — out of scope)
+ *   - Multi-conversation list / "New chat" / rename / delete
+ *   - Per-message personality override
  *
  * Future additions (roadmap items already noted):
- *   - Server-side conversation history (CoachMessage table)
  *   - Admin LlmConfig.coachSystemPromptOverrides per personality
  */
 import { useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type {
-  CoachMeta,
   CoachChatRequest,
   CoachChatResponse,
+  CoachMessagesResponse,
+  CoachMetaWithConversation,
+  CoachMessage,
   CoachPersonality,
   CoachPersonalityMeta,
 } from '@/lib/types';
@@ -45,53 +50,88 @@ function CoachInner() {
   const [draft, setDraft] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Meta: current personality + available list + context summary.
-  // 5-min stale time so quick tab-switches don't re-fetch; manually
-  // invalidated after a successful PATCH /coach/personality.
+  // Meta: current personality + available list + context summary +
+  // conversation stats. 5-min stale time so quick tab-switches
+  // don't re-fetch; manually invalidated after personality change
+  // or message append.
   const metaQ = useQuery({
     queryKey: ['coach', 'meta'],
-    queryFn: () => api<CoachMeta>('/coach'),
+    queryFn: () => api<CoachMetaWithConversation>('/coach'),
     staleTime: 5 * 60 * 1000,
   });
 
-  // Conversation is local-state only in v1. Each entry is one
-  // turn; the user's text + the assistant's reply. Server has no
-  // history of any of this yet — that's the next milestone.
-  const [messages, setMessages] = useState<
-    Array<{ role: 'user' | 'assistant'; text: string; ts: string }>
-  >([]);
+  // Persisted messages for the current conversation. Hydrated from
+  // GET /coach/messages on page load; mutated locally on send.
+  // React Query handles cache invalidation so a reload sees the
+  // latest server state.
+  const messagesQ = useQuery({
+    queryKey: ['coach', 'messages'],
+    queryFn: () => api<CoachMessagesResponse>('/coach/messages'),
+    staleTime: 30 * 1000,
+  });
+
+  const [rateLimitRetryMs, setRateLimitRetryMs] = useState<number | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   // Scroll to bottom on every new message. Smooth-scroll keeps
   // it from feeling jumpy on a long assistant reply.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messagesQ.data?.messages.length]);
 
-  // Send mutation. Wraps the POST + appends both the user message
-  // and the assistant reply to the conversation in one place.
-  // 1200ms min delay keeps the spinner visible long enough to
-  // feel deliberate (matches SpiritualDirectorCard's pattern).
-  const sendM = useDelayedMutation<CoachChatResponse, string>({
-    mutationFn: (message: string) =>
-      api<CoachChatResponse>('/coach', {
-        method: 'POST',
-        body: { message } satisfies CoachChatRequest,
-      }),
-    onSuccess: (res, vars) => {
-      const now = new Date().toISOString();
-      setMessages((m) => [
-        ...m,
-        { role: 'user', text: vars, ts: now },
-        { role: 'assistant', text: res.text, ts: now },
-      ]);
+  // Send mutation. Wraps the POST + invalidates the messages
+  // query so the new turn appears (server is the source of truth
+  // for message IDs + creation timestamps).
+  const sendM = useMutation<CoachChatResponse, Error, string>({
+    mutationFn: async (message: string) => {
+      try {
+        return await api<CoachChatResponse>('/coach', {
+          method: 'POST',
+          body: { message } satisfies CoachChatRequest,
+        });
+      } catch (err: any) {
+        // Surface rate-limit details so the UI can render a
+        // friendly retry hint instead of "unknown error".
+        const status = err?.status ?? err?.response?.status;
+        if (status === 429) {
+          const ra = err?.response?.headers?.get?.('Retry-After')
+            ?? err?.response?.headers?.get?.('retry-after');
+          setRateLimitRetryMs(ra ? Number(ra) * 1000 : null);
+          setLastError('Too many messages — slow down a bit.');
+        } else if (status === 502) {
+          setLastError("The coach didn't answer — try again, it might be a transient provider hiccup.");
+        } else if (status === 422) {
+          setLastError("The LLM isn't configured yet — an admin needs to set it up in /admin.");
+        } else {
+          setLastError(err?.message ?? 'Something went wrong.');
+        }
+        throw err;
+      }
+    },
+    onSuccess: () => {
+      setRateLimitRetryMs(null);
+      setLastError(null);
+      void qc.invalidateQueries({ queryKey: ['coach', 'messages'] });
+      void qc.invalidateQueries({ queryKey: ['coach', 'meta'] });
       setDraft('');
     },
-  }, 1200);
+  });
+
+  // Clear conversation — wipes messages + summary. Personality
+  // choice is preserved.
+  const clearM = useMutation<{ ok: boolean }, Error, void>({
+    mutationFn: () => api('/coach/messages', { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['coach', 'messages'] });
+      void qc.invalidateQueries({ queryKey: ['coach', 'meta'] });
+    },
+  });
 
   // Personality PATCH. Updates the server, invalidates the meta
   // query so the picker reflects the change immediately.
-  const personalityM = useDelayedMutation<
+  const personalityM = useMutation<
     { coachPersonality: CoachPersonality | null; effective: CoachPersonality },
+    Error,
     CoachPersonality | null
   >({
     mutationFn: (personality) =>
@@ -100,17 +140,42 @@ function CoachInner() {
         body: { personality },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['coach', 'meta'] }),
-  }, 600);
+  });
 
   const meta = metaQ.data;
   const activePersonality = meta?.activePersonality;
   const summary = meta?.contextSummary;
+  const conversation = meta?.conversation;
+  const messages = messagesQ.data?.messages ?? [];
+  const isSending = sendM.isPending;
+
+  const onSubmit = () => {
+    const text = draft.trim();
+    if (!text || isSending || rateLimitRetryMs) return;
+    sendM.mutate(text);
+  };
 
   return (
     <>
       <PageHeader
         title="AI Coach"
         subtitle="Personal training & habits advisor — pick a personality, ask anything"
+        // Conversation status badges in the header action slot.
+        action={
+          conversation ? (
+            <div className="flex items-center gap-2 text-[10px] font-mono text-ink-300">
+              <span>
+                {conversation.messageCount}{' '}
+                {conversation.messageCount === 1 ? 'message' : 'messages'}
+              </span>
+              {conversation.hasSummary && (
+                <span className="px-1.5 py-0.5 rounded border border-neon-violet/40 text-neon-violet">
+                  summarized
+                </span>
+              )}
+            </div>
+          ) : null
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -129,7 +194,7 @@ function CoachInner() {
                     <button
                       key={p.key}
                       type="button"
-                      onClick={() => personalityM.run(p.key)}
+                      onClick={() => personalityM.mutate(p.key)}
                       disabled={personalityM.isPending}
                       className={
                         'w-full text-left rounded border p-3 transition-colors disabled:opacity-50 ' +
@@ -283,11 +348,34 @@ function CoachInner() {
         {/* Conversation */}
         <div className="lg:col-span-2">
           <Panel
-            title={activePersonality ? 'Conversation' : 'Conversation'}
+            title="Conversation"
             variant="violet"
+            action={
+              // Clear button — only show when there's something
+              // to clear, and confirm before wiping (it's not
+              // destructive per se, but loses context the coach
+              // has accumulated).
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Clear this conversation? Your personality choice is kept.')) {
+                    clearM.mutate();
+                  }
+                }}
+                disabled={clearM.isPending || messages.length === 0}
+                className="text-[10px] font-mono text-ink-300 hover:text-neon-magenta disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {clearM.isPending ? 'clearing…' : 'clear conversation'}
+              </button>
+            }
           >
             <div className="flex flex-col gap-3 min-h-[400px] max-h-[60vh] overflow-y-auto pr-1">
-              {messages.length === 0 && (
+              {messagesQ.isLoading && (
+                <div className="flex-1 flex items-center justify-center text-xs font-mono text-ink-300">
+                  Loading conversation…
+                </div>
+              )}
+              {!messagesQ.isLoading && messages.length === 0 && (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center max-w-md space-y-2">
                     <div className="text-3xl text-neon-violet/50 mb-2">✦</div>
@@ -307,9 +395,16 @@ function CoachInner() {
                   </div>
                 </div>
               )}
-              {messages.map((m, i) => (
-                <ChatBubble key={i} role={m.role} text={m.text} />
+              {messages.map((m) => (
+                <ChatBubble key={m.id} role={m.role} text={m.content} />
               ))}
+              {isSending && (
+                <div className="flex justify-start">
+                  <div className="bg-bg-800/60 border border-ink-700/40 rounded-lg px-3 py-2 text-xs font-mono text-ink-300 animate-pulse-slow">
+                    thinking…
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -317,48 +412,49 @@ function CoachInner() {
               className="mt-4 flex gap-2 border-t border-ink-700/30 pt-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                const text = draft.trim();
-                if (!text || sendM.isPending) return;
-                sendM.run(text);
+                onSubmit();
               }}
             >
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  // Enter sends, Shift+Enter adds a newline. Standard
-                  // chat pattern; keeps power users from losing their
-                  // line breaks on muscle memory.
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    const text = draft.trim();
-                    if (!text || sendM.isPending) return;
-                    sendM.run(text);
+                    onSubmit();
                   }
                 }}
                 placeholder={
                   metaQ.error
                     ? 'Coach unavailable — admin must configure LLM first.'
-                    : 'Ask anything…  (Enter to send · Shift+Enter for newline)'
+                    : isSending
+                      ? 'Coach is thinking…'
+                      : 'Ask anything…  (Enter to send · Shift+Enter for newline)'
                 }
-                disabled={!!metaQ.error || sendM.isPending}
+                disabled={!!metaQ.error || isSending || !!rateLimitRetryMs}
                 rows={2}
                 className="flex-1 bg-bg-900 border border-ink-700/40 rounded px-3 py-2 text-sm font-mono text-ink-50 placeholder:text-ink-300/60 focus:outline-none focus:border-neon-violet/60 disabled:opacity-50 resize-none"
               />
               <NeonButton
                 type="submit"
                 variant="violet"
-                disabled={!draft.trim() || sendM.isPending}
-                loading={sendM.isPending}
+                disabled={!draft.trim() || isSending || !!rateLimitRetryMs}
+                loading={isSending}
                 loadingText="Asking…"
               >
                 Send
               </NeonButton>
             </form>
 
-            {sendM.error != null && (
+            {rateLimitRetryMs != null && (
               <div className="mt-2 text-[10px] font-mono text-neon-magenta">
-                The coach didn't answer. Try again — it might be a transient provider hiccup.
+                Slow down a bit — try again in{' '}
+                {Math.ceil(rateLimitRetryMs / 1000)}s.
+              </div>
+            )}
+            {lastError && rateLimitRetryMs == null && (
+              <div className="mt-2 text-[10px] font-mono text-neon-magenta">
+                {lastError}
               </div>
             )}
           </Panel>
@@ -373,7 +469,7 @@ function CoachInner() {
 // can scroll through end-to-end without flipping between tabs.
 // =============================================================================
 
-function ChatBubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
+function ChatBubble({ role, text }: { role: 'user' | 'assistant' | 'system'; text: string }) {
   const isUser = role === 'user';
   return (
     <div className={'flex ' + (isUser ? 'justify-end' : 'justify-start')}>

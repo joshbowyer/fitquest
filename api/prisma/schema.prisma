@@ -416,6 +416,12 @@ model User {
   teamParticipations     TeamParticipant[]
   trustedDevices         TrustedDevice[]
   recoveryCodes          RecoveryCode[]
+  /// Single rolling coach conversation per user (auto-spawned on
+  /// first /coach POST). Renaming / multi-conversation support is
+  /// a future item — for now `userId @unique` enforces "one chat
+  /// per user". Reset by DELETE /coach/messages. Messages are
+  /// reached through CoachConversation.messages.
+  coachConversation      CoachConversation?
   // Prayer types the user commits to perform daily. Drives the
   // built-in SPIRITUAL dailies shown on the /today page.
   spiritualDailyPrayers  PrayerType[]            @default([ROSARY, SCRIPTURE])
@@ -2310,6 +2316,63 @@ model SpiritualReflection {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+/// One rolling conversation per user with the AI coach. Auto-spawned
+/// on first /coach POST (no "New conversation" button yet — that's
+/// P3 multi-conversation scope). userId @unique enforces the
+/// "one chat per user" rule; DELETE /coach/messages clears it
+/// (and resets summary/summaryUpTo).
+model CoachConversation {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// LLM-compressed summary of compacted messages — null until the
+  /// first time messageCount crosses 30. Prepended to the prompt as
+  /// "summary of earlier conversation" before the sliding window.
+  /// Stored as plain text (no JSON shape) so it's directly usable
+  /// as a system-prompt block on the next LLM call.
+  summary       String?
+  /// The createdAt timestamp of the most recent message included
+  /// in the summary. Lets us re-summarize incrementally in future
+  /// iterations (today: single-shot at threshold). Nullable for
+  /// the same reason as `summary`.
+  summaryUpTo   DateTime?
+  /// Cheap count — maintained on every append so the route can
+  /// decide whether to trigger compaction without a COUNT(*).
+  messageCount  Int      @default(0)
+  lastMessageAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      CoachMessage[]
+}
+
+/// One turn in the AI Coach conversation. Role = 'user' |
+/// 'assistant' | 'system'. The 'system' role is reserved for
+/// future compaction-injected messages (v1.1 always uses the
+/// summary field on CoachConversation instead — same effect, fewer
+/// rows).
+///
+/// Model + latency are captured per assistant message so the UI
+/// can surface "(minimax-m3 · 1.2s)" and so we can build a
+/// per-user cost/usage dashboard later.
+model CoachMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  conversation   CoachConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String   // 'user' | 'assistant' | 'system'
+  content        String
+  model          String?
+  latencyMs      Int?
+  /// Best-effort token estimates (chars / 4). Used for the
+  /// per-user daily cost cap (future) and the LLM-call display.
+  /// Optional so older rows pre-this-feature don't break the
+  /// SELECT.
+  tokensIn       Int?
+  tokensOut      Int?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 /// Category of a user-tracked item. Drives which panel shows it

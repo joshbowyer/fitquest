@@ -96,3 +96,75 @@ export function clearLoginRate(ip: string, userKey: string): void {
   buckets.delete(`u:${userKey}`);
   lockedUntil.delete(userKey);
 }
+
+// =============================================================================
+// Coach chat rate limits
+// =============================================================================
+//
+// Two policies on the coach:
+//   - BURST: 5 messages / 1 min sliding window per user. Anti-spam
+//     against "click send repeatedly" + accidental double-clicks.
+//     Generous enough that a real user having a long back-and-forth
+//     with the coach (which involves multiple sends in a row) never
+//     trips it.
+//   - DAILY: 50 messages / 24h sliding window per user. Cost cap.
+//     Self-hosted / minimax-m3 budgets are tight; 50 is enough
+//     for a heavy day of Q&A, low enough that a runaway script
+//     can't burn the daily token allotment.
+//
+// Single-process in-memory store — same caveat as the auth
+// limiter: if FitQuest scales to multi-process, swap the Maps
+// for a Redis store with the same interface.
+
+const CHAT_BURST_WINDOW_MS = 60 * 1000;
+const CHAT_BURST_MAX = 5;
+const CHAT_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const CHAT_DAILY_MAX = 50;
+
+/**
+ * Check both chat policies against the same user. Returns the
+ * tighter one (the one the caller should reject with 429).
+ * Allowed = no policy fired; deny = the policy that fired plus
+ * a retry hint in ms.
+ */
+export function checkChatRate(userId: string): RateCheckResult {
+  const now = Date.now();
+  const burstKey = `chat.burst:${userId}`;
+  const dailyKey = `chat.daily:${userId}`;
+  const burstBucket = trimTo(buckets.get(burstKey) ?? [], now, CHAT_BURST_WINDOW_MS);
+  const dailyBucket = trimTo(buckets.get(dailyKey) ?? [], now, CHAT_DAILY_WINDOW_MS);
+  buckets.set(burstKey, burstBucket);
+  buckets.set(dailyKey, dailyBucket);
+  if (burstBucket.length >= CHAT_BURST_MAX) {
+    const oldest = burstBucket[0]!;
+    return { allowed: false, retryAfterMs: oldest + CHAT_BURST_WINDOW_MS - now };
+  }
+  if (dailyBucket.length >= CHAT_DAILY_MAX) {
+    const oldest = dailyBucket[0]!;
+    return { allowed: false, retryAfterMs: oldest + CHAT_DAILY_WINDOW_MS - now };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Record a successful chat send (so the bucket counts it toward
+ * the policy limits). Idempotent re. the burst — if the user
+ * retries a network failure the call has already counted.
+ */
+export function recordChatSend(userId: string): void {
+  const now = Date.now();
+  const burstBucket = trimTo(buckets.get(`chat.burst:${userId}`) ?? [], now, CHAT_BURST_WINDOW_MS);
+  const dailyBucket = trimTo(buckets.get(`chat.daily:${userId}`) ?? [], now, CHAT_DAILY_WINDOW_MS);
+  burstBucket.push(now);
+  dailyBucket.push(now);
+  buckets.set(`chat.burst:${userId}`, burstBucket);
+  buckets.set(`chat.daily:${userId}`, dailyBucket);
+}
+
+/// Trim helper with explicit window (vs. the auth one which uses a
+/// file-scoped WINDOW_MS constant). Avoids leaking the auth
+/// policy's 15-min window into the chat policy.
+function trimTo(bucket: Bucket, now: number, windowMs: number): Bucket {
+  const cutoff = now - windowMs;
+  return bucket.filter((t) => t > cutoff);
+}
