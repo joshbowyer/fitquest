@@ -232,6 +232,33 @@ enum UserMode {
   HARDCORE
 }
 
+/// AI Coach personality preset. Drives the SYSTEM_PROMPT chosen
+/// for /coach/* requests. The actual per-personality prompts live
+/// in `api/src/lib/coach.ts` (code, not DB) so they can be tuned
+/// without a migration; the enum is just the selector.
+///
+/// Personality roadmap: priest bodybuilder / Bob Ross / drill
+/// sergeant / minmaxxer zoomer / generic polite. Generic is the
+/// default — neutral AI-health-assistant tone that new users get
+/// until they pick one.
+enum CoachPersonality {
+  /// Catholic/monastic imagery + hypertrophy talk. The default
+  /// "FitQuest" voice. Reads like a parish priest who also deadlifts.
+  PRIEST_BODYBUILDER
+  /// Extremely soft, affirming, never negative. Bob Ross / Mr.
+  /// Rogers gentle. "We'll just add a little happy little set here."
+  BOB_ROSS
+  /// Direct, focused, no-fluff drill sergeant. Not gratuitously
+  /// foul-mouthed — discipline, not toxic.
+  DRILL_SERGEANT
+  /// Gym-bro subculture, "we pump", aesthetic, meme-fluent.
+  /// Minmaxxer zoomer / Zyzz-bro energy.
+  ZOOMER
+  /// Generic polite AI personal-health-assistant. Safe default;
+  /// used when no personality is selected yet.
+  GENERIC
+}
+
 enum AchievementCategory {
   STRENGTH
   HYPERTROPHY
@@ -418,6 +445,14 @@ model User {
   /// when hearts are low). Default Casual so existing users aren't
   /// surprised by a difficulty change.
   mode                   UserMode                @default(CASUAL)
+  /// AI Coach personality preset. Drives the SYSTEM_PROMPT for
+  /// /coach/* requests — see api/src/lib/coach.ts for the actual
+  /// per-personality prompts. Null = "show the picker, default to
+  /// GENERIC after first selection". Per-user (not admin-controlled);
+  /// the admin can later override the actual prompt text via
+  /// `LlmConfig.coachSystemPromptOverrides` (roadmap item) but
+  /// for now the system-default prompts in coach.ts are used.
+  coachPersonality       CoachPersonality?
   /// Hearts (Hardcore mode only). 5 = full, 0 = -50% XP. Lose 1 per
   /// missed planned workout in the routine, regen 1 per 8h. Always 5
   /// in Casual mode (the value is preserved but unused).

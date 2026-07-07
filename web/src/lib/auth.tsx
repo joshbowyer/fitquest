@@ -67,6 +67,10 @@ export type User = {
   // IRL sacrament (Holy Orders). Set by the user from Profile → Identity.
   // The app never prompts or advertises this; +5% XP on prayer logs.
   ordained: boolean;
+  /// AI Coach personality. null = "never picked yet"; server
+  /// defaults to PRIEST_BODYBUILDER for the next chat. Stored on
+  /// User.coachPersonality via PATCH /coach/personality.
+  coachPersonality: import('./types').CoachPersonality | null;
   // Admin access: only the first user (or anyone explicitly granted)
   // can reach the /admin page, see all users, and configure LLM.
   isAdmin?: boolean;

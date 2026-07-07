@@ -114,6 +114,11 @@ async function publicUser(user: any) {
     ordained: user.ordained,
     isAdmin: user.isAdmin,
     spiritualDailyPrayers: user.spiritualDailyPrayers,
+    /// AI Coach personality. null = "never picked" — server
+    /// defaults to PRIEST_BODYBUILDER for new users until they
+    /// make a selection in /coach. Stored on the user row so it
+    /// persists across devices + sessions.
+    coachPersonality: user.coachPersonality ?? null,
     creatine: user.creatine,
     timezone: user.timezone,
     creatineActive: await isCreatineActive(user.id),

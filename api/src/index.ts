@@ -30,6 +30,7 @@ import { bossRoutes } from './routes/bosses.js';
 import { spiritualRoutes } from './routes/spiritual.js';
 import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
+import { coachRoutes } from './routes/coach.js';
 import { adminRoutes } from './routes/admin.js';
 import { morningReportRoutes } from './routes/morningReport.js';
 import { plateauRoutes } from './routes/plateaus.js';
@@ -155,6 +156,7 @@ async function build() {
   await app.register(savedFoodRoutes);
   await app.register(mealRoutes, { prefix: '/meals' });
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
+  await app.register(coachRoutes, { prefix: '/coach' });
   await app.register(habitRoutes, { prefix: '/habits' });
   await app.register(dailyRoutes, { prefix: '/dailies' });
   await app.register(adminRoutes, { prefix: '/admin' });

@@ -6,6 +6,79 @@ export type ClassName =
   | 'TRACER'
   | 'ORACLE';
 
+/// AI Coach personality preset. Drives the SYSTEM_PROMPT for the
+/// /coach route (api/src/lib/coach.ts). Mirrors the Prisma
+/// CoachPersonality enum. `null` = the user hasn't picked yet;
+/// the server defaults to PRIEST_BODYBUILDER in that case.
+export type CoachPersonality =
+  | 'PRIEST_BODYBUILDER'
+  | 'BOB_ROSS'
+  | 'DRILL_SERGEANT'
+  | 'ZOOMER'
+  | 'GENERIC';
+
+export type CoachPersonalityMeta = {
+  key: CoachPersonality;
+  label: string;
+  blurb: string;
+  icon: string;
+};
+
+/// Compact context the GET /coach endpoint returns so the UI can
+/// show "Hearts 8/10 · 12-day streak" badges next to the chat
+/// without a second request.
+export type CoachContextSummary = {
+  hearts: number;
+  maxHearts: number;
+  mode: 'CASUAL' | 'HARDCORE';
+  level: number;
+  className: string | null;
+  currentStreak: number;
+  thisWeekCount: number;
+  weeklyGoal: number;
+  recoveryToday: number | null;
+  last7Days: {
+    workoutCount: number;
+    avgSleepHours: number | null;
+    prCount: number;
+  };
+};
+
+/// GET /coach response — what the page needs to render the
+/// personality picker + the small summary chips.
+export type CoachMeta = {
+  activePersonality: CoachPersonality;
+  storedPersonality: CoachPersonality | null;
+  defaultPersonality: CoachPersonality;
+  available: CoachPersonalityMeta[];
+  contextSummary: CoachContextSummary;
+  modelLabel: string;
+};
+
+/// POST /coach request body + response shape. The chat is
+/// non-streaming (matches every other LLM-backed endpoint).
+export type CoachChatRequest = {
+  message: string;
+};
+
+export type CoachChatResponse = {
+  text: string;
+  personality: CoachPersonality;
+  model: string;
+  provider: string;
+  latencyMs: number;
+};
+
+/// PATCH /coach/personality body + response.
+export type CoachPersonalityPatchRequest = {
+  personality: CoachPersonality | null;
+};
+
+export type CoachPersonalityPatchResponse = {
+  coachPersonality: CoachPersonality | null;
+  effective: CoachPersonality;
+};
+
 export type MetricType =
   // Hypertrophy (circumferences in cm). BICEP is a legacy alias for
   // BICEP_FLEXED — new client code should pick relaxed vs flexed

@@ -119,6 +119,9 @@ export type CalorieSource = import('@prisma/client').CalorieSource;
 export const ClassName = cjs.ClassName;
 export type ClassName = import('@prisma/client').ClassName;
 
+export const CoachPersonality = cjs.CoachPersonality;
+export type CoachPersonality = import('@prisma/client').CoachPersonality;
+
 export const DailyCategory = cjs.DailyCategory;
 export type DailyCategory = import('@prisma/client').DailyCategory;
 
