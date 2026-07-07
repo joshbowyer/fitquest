@@ -211,6 +211,17 @@ enum SkillTier {
   TIER_1
   TIER_2
   TIER_3
+  // T4 / T5 / T6 are reserved for per-branch "god-tier" skills
+  // that are clearly harder than the rest of the T3 set in the
+  // same branch (e.g. PHANTOM Holds' 30s V-Sit / 5s Back Lever,
+  // JUGGERNAUT Strongman's 200ft Atlas carry, BERSERKER Sandbag's
+  // 30-rep god-tier set). Per-branch maxTier lives in the seed
+  // SPEC.maxTier field, defaulting to TIER_3 if not specified.
+  // The SkillTree page uses `s.tier === branch.maxTier` to
+  // decide which nodes get the god-tier glow treatment.
+  TIER_4
+  TIER_5
+  TIER_6
 }
 
 /// Difficulty / penalty mode. Casual is the legacy no-consequences

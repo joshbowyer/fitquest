@@ -99,6 +99,7 @@ type Skill = {
   test: SkillTest | null;
   effects: unknown;
   unlocked: boolean;
+  tier: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'TIER_4' | 'TIER_5' | 'TIER_6';
 };
 
 type TreeResponse = {
@@ -114,9 +115,31 @@ type TreeResponse = {
 
 type Branch = {
   branchName: string;
-  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  tier: Skill['tier'];
   skills: Skill[];
 };
+
+// Per-branch max tier override (mirrors api/src/lib/seedSkills.ts
+// BRANCH_MAX_TIER). Most branches top out at TIER_3; these four
+// have super-god-tier skills that need their own level above
+// the standard T3 cap. The SkillTree page uses this map to
+// decide which nodes get the god-tier glow treatment — any skill
+// whose `tier` matches its branch's `maxTier` is rendered with
+// the god-tier styling (regardless of what number that tier is).
+//
+//   Holds:    V-Sit T4, Front Lever T4, Back Lever T5
+//   Strongman: Atlas 200ft @ 1×BW T4
+//   Sandbag:   30-reps @ 70kg T4
+//   Mobility:  Pancake+Splits combo T4
+const BRANCH_MAX_TIER: Record<string, Skill['tier']> = {
+  Holds: 'TIER_5',
+  Strongman: 'TIER_4',
+  Sandbag: 'TIER_4',
+  Mobility: 'TIER_4',
+};
+function maxTierFor(branchName: string): Skill['tier'] {
+  return BRANCH_MAX_TIER[branchName] ?? 'TIER_3';
+}
 
 // Canonical branch order per class. Used to sort columns in the
 // correct left-to-right order. Any new branch label returned from
@@ -156,7 +179,7 @@ function buildBranches(items: Skill[], className: string): Branch[] {
       if (oa !== ob) return oa - ob;
       return sa.localeCompare(sb);
     });
-  return sortedBranches.map((b) => ({ ...b, tier: b.skills[0]?.tier ?? 'TIER_1' }));
+  return sortedBranches.map((b) => ({ ...b, tier: maxTierFor(b.branchName) }));
 }
 
 // ---- Result-input component for each metric type ----
@@ -458,8 +481,14 @@ function SkillNode({
       // button width tracks the skill name's intrinsic width, and
       // branches end up looking stretched or compressed relative
       // to each other.
+      // min-h-[92px] forces every SkillNode to the same height
+      // regardless of the skill name wrapping (some names are 1
+      // line, others 2). Combined with `items-center` on the chain
+      // row, this puts every circle at exactly the same Y so the
+      // horizontal connector lines align cleanly across the whole
+      // branch.
       className={classNames(
-        'group flex flex-col items-center gap-1.5 outline-none w-[110px] shrink-0',
+        'group flex flex-col items-center gap-1.5 outline-none w-[110px] shrink-0 min-h-[92px]',
         'focus-visible:ring-2 focus-visible:ring-neon-cyan/60 rounded-lg',
       )}
     >
@@ -500,11 +529,17 @@ function SkillNode({
           // neon-amber for god-tier, dim for locked — all without
           // regenerating the PNG. See scripts/gen-planche-nano.py
           // for how the stroke-free PNG is generated.
-          <i
-            aria-hidden
-            className={classNames(
-              'block w-9 h-9 select-none transition-all duration-200',
-              isGodTier
+            <i
+              aria-hidden
+              className={classNames(
+                // w-7 h-7 = 28px. Same size the hand-coded SVG
+                // ends up at via the `text-2xl` → `1em` flow. Before
+                // this change the calitree mask rendered at 36px
+                // (w-9 h-9) while the SVG was 24px, which made the
+                // icons look like they sat at different vertical
+                // positions even inside identical circles.
+                'block w-7 h-7 select-none transition-all duration-200',
+                isGodTier
                 ? 'text-neon-amber'
                 : isUnlocked
                   ? classColorForClass(className)
@@ -655,12 +690,21 @@ function BranchColumn({
         className="relative flex-1 overflow-x-auto overflow-y-hidden"
         data-branch-chain={branch.branchName}
       >
-        <div className="flex flex-row items-center gap-1.5 px-2 py-2 min-w-fit">
+        <div className="flex flex-row items-stretch gap-1.5 px-2 py-2 min-w-fit">
           {branch.skills.map((s, idx) => {
             const isLast = idx === branch.skills.length - 1;
-            const isGodTier = isLast && s.tier === 'TIER_3';
+            // "God-tier" means the skill is at the highest tier in
+            // its branch. For most branches that's TIER_3 (the
+            // default) but for Holds / Strongman / Sandbag /
+            // Mobility the max tier is TIER_4 or TIER_5 (see
+            // BRANCH_MAX_TIER). The branch.tier field carries the
+            // max for that branch, computed by buildBranches.
+            const isGodTier = isLast && s.tier === branch.tier;
             return (
-              <div key={s.id} className="flex flex-row items-center">
+              <div
+                key={s.id}
+                className="flex flex-row items-center"
+              >
                 <SkillNode
                   skill={s}
                   className={className}
@@ -669,11 +713,20 @@ function BranchColumn({
                   isGodTier={isGodTier}
                 />
                 {/* Connector line — short horizontal bar between
-                    nodes. Replaces the old vertical connector. */}
+                    nodes. -translate-y-4 shifts it up by 16px so
+                    it sits at the icon's vertical center (icon
+                    center is at y=30 in the 92px button: tier
+                    label ~10 + gap 6 + half the 28px icon = 30;
+                    button center is at y=46, so the connector
+                    needs to be 16px higher than the button
+                    center). With this offset the connector
+                    visually passes through the icon center
+                    instead of the button center, which was
+                    "16px too high" relative to the icons. */}
                 {!isLast && (
                   <div
                     className={classNames(
-                      'h-0.5 w-5 mx-0.5',
+                      'h-0.5 w-5 mx-0.5 -translate-y-4',
                       s.unlocked && branch.skills[idx + 1].unlocked
                         ? 'bg-gradient-to-r from-neon-lime/60 to-neon-lime/30'
                         : 'bg-gradient-to-r from-ink-500/40 to-ink-500/10',

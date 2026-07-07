@@ -56,12 +56,21 @@ import { prisma } from './prisma.js';
 // the other classes still use the heuristic (less polished
 // but functional — slated for the "same fix for other classes"
 // ROADMAP follow-up).
+//
+// tier can be any of TIER_1..TIER_6. We extended the enum past
+// TIER_3 in 2026-07 to support per-branch god-tier "super-tiers"
+// — e.g. PHANTOM Holds' 30s V-Sit / 5s Back Lever are clearly
+// harder than the rest of the branch's T3 set, and forced them
+// into the same T3 as L-Sit / Straddle L. With T4..T6 the
+// branch's hard-god-tier can sit at its own level (T5 in Holds).
+type Tier = 'TIER_1' | 'TIER_2' | 'TIER_3' | 'TIER_4' | 'TIER_5' | 'TIER_6';
+
 type Spec = {
   name: string;
   branch: string;
   blurb: string;
   description: string; // in-game perk summary
-  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  tier: Tier;
   prereqs?: string[];
   test: {
     description: string;
@@ -76,6 +85,44 @@ type Spec = {
     };
   };
 };
+
+// Per-branch wrapper. `maxTier` is the highest tier in this
+// branch — the SkillTree page uses it to decide which nodes get
+// the "god-tier" glow treatment (s.tier === branch.maxTier).
+// Most branches default to TIER_3 (the historical cap); the ones
+// that need it explicitly override to TIER_4..TIER_6.
+type BranchSpec = {
+  name: string;
+  maxTier?: Tier;
+  skills: Spec[];
+};
+
+// Per-branch "highest tier" override. Most branches top out at
+// TIER_3 (the historical cap) — those don't need to be in this
+// map. Branches where the hardest skill is clearly past the rest
+// of the T3 set are listed with their god-tier max (TIER_4, TIER_5,
+// or TIER_6). The SkillTree page uses this entry (or TIER_3 as
+// the default) to decide which nodes get the god-tier glow.
+//
+//   Holds: V-Sit is way past L-Sit, Front Lever > Straddle L,
+//          Back Lever is the hardest. The T3/T4/T5 split captures
+//          the realistic progression within the branch.
+//   JUGGERNAUT Strongman: 200ft Atlas-stone carry at 1×BW is a
+//          long event. The other Strongman T3s are shorter / lighter.
+//   BERSERKER Sandbag god-tier (30 reps at 70kg in <8:00) is heavy
+//          high-volume; the other Sandbag T3s are single-event feats.
+//   ORACLE Mobility god-tier (Pancake + Splits combo) is the
+//          culmination of the flexibility branch.
+const BRANCH_MAX_TIER: Record<string, Tier> = {
+  Holds: 'TIER_5',
+  Strongman: 'TIER_4',
+  Sandbag: 'TIER_4',
+  Mobility: 'TIER_4',
+};
+
+function maxTierFor(branchName: string): Tier {
+  return BRANCH_MAX_TIER[branchName] ?? 'TIER_3';
+}
 
 // ---- 1. JUGGERNAUT (heavy + strongman) — 39 skills, linear prereqs ----
 //
@@ -137,7 +184,7 @@ const JUGGERNAUT_SKILLS: Spec[] = [
   { name: 'Atlas Stones 5 in 60s', branch: 'Strongman', tier: 'TIER_2', prereqs: ['Farmer Walk 50m'], blurb: 'Loading event — multiple stone lifts to platform.', description: '+8% strongman XP', test: { description: '5 atlas stones to a 48" platform in under 60 seconds. Use tacky. Lap each stone.', safety: 'Use proper lifting form. Tacky or chalk for grip. Spotter nearby.', metric: 'duration', threshold: { duration_sec: 60 } } },
   { name: 'Atlas 100ft @ 1×BW', branch: 'Strongman', tier: 'TIER_3', prereqs: ['Atlas Stones 5 in 60s'], blurb: 'Strongman loading event at bodyweight — long carry, multiple stones.', description: '+10% strongman XP', test: { description: '100ft atlas-stone carry at 1× bodyweight total. Multiple stones, lap them as needed.', safety: 'Use proper form. Tacky + belt. Spotter for transitions.', metric: 'reps', threshold: { reps: 100, weight_kg_mult_of_bw: 1.0 } } },
   { name: 'Husafell 50m @ 1.5×BW', branch: 'Strongman', tier: 'TIER_3', prereqs: ['Yoke Walk 20m'], blurb: 'The iconic — circular yoke walk with stones.', description: '+12% strongman XP', test: { description: '50m circular walk with 1.5×BW total weight (per hand 0.75×BW). Use the stones, walk the circle, transition smoothly.', safety: 'Practice lighter loads first. Tacky + belt.', metric: 'reps', threshold: { reps: 50, weight_kg_mult_of_bw: 1.5 } } },
-  { name: 'Atlas 200ft @ 1×BW', branch: 'Strongman', tier: 'TIER_3', prereqs: ['Atlas 100ft @ 1×BW'], blurb: 'Strongman god-tier — long loading carry at bodyweight.', description: '+15% strongman XP', test: { description: '200ft atlas-stone carry at 1× bodyweight total. Multiple stones, plan transitions.', safety: 'Practice shorter distances first. Belt + tacky + spotter.', metric: 'reps', threshold: { reps: 200, weight_kg_mult_of_bw: 1.0 } } },
+  { name: 'Atlas 200ft @ 1×BW', branch: 'Strongman', tier: 'TIER_4', prereqs: ['Atlas 100ft @ 1×BW'], blurb: 'Strongman god-tier — long loading carry at bodyweight.', description: '+15% strongman XP', test: { description: '200ft atlas-stone carry at 1× bodyweight total. Multiple stones, plan transitions.', safety: 'Practice shorter distances first. Belt + tacky + spotter.', metric: 'reps', threshold: { reps: 200, weight_kg_mult_of_bw: 1.0 } } },
 
   // F. Sled (strongman variety — disambiguated from BERSERKER's
   // prowler-sled branch by the (Strongman) infix so the upsert-by-name
@@ -233,16 +280,16 @@ const PHANTOM_SKILLS: Spec[] = [
   { name: '30s L-Sit', branch: 'Holds', tier: 'TIER_3', prereqs: ['10s L-Sit Initiate'],
     blurb: 'Core + hip flexor endurance.', description: '+10% core XP',
     test: { description: '30s L-sit. Legs straight, parallel to floor.', safety: 'Don\'t shrug shoulders. Warm up first.', metric: 'duration', threshold: { duration_sec: 30 } } },
-  { name: '30s V-Sit', branch: 'Holds', tier: 'TIER_3', prereqs: ['30s L-Sit'],
+  { name: '30s V-Sit', branch: 'Holds', tier: 'TIER_4', prereqs: ['30s L-Sit'],
     blurb: 'V-sit (legs together) — harder than L-sit.', description: '+12% core XP',
     test: { description: '30s V-sit (legs together, straight, parallel to floor).', safety: 'Master 30s L-sit first. Don\'t shrug.', metric: 'duration', threshold: { duration_sec: 30 } } },
   { name: '10s Straddle L', branch: 'Holds', tier: 'TIER_3', prereqs: ['30s V-Sit'],
     blurb: 'Straddle L-sit — advanced hold.', description: '+12% core XP',
     test: { description: '10s straddle L (legs spread wide, straight, parallel to floor).', safety: 'Master V-sit first. Stretch hip adductors before testing.', metric: 'duration', threshold: { duration_sec: 10 } } },
-  { name: '5s Front Lever', branch: 'Holds', tier: 'TIER_3', prereqs: ['10s Straddle L', '5 Strict Pull-Ups'],
+  { name: '5s Front Lever', branch: 'Holds', tier: 'TIER_4', prereqs: ['10s Straddle L', '5 Strict Pull-Ups'],
     blurb: 'Holds god-tier — the front lever is the king of static holds (requires both serious core + pulling).', description: '+20% core XP',
     test: { description: '5s front lever hold (body horizontal, arms straight, pulling from shoulders).', safety: 'Master multiple L-sits + 5+ strict pull-ups first. Warm up thoroughly. Stop if shoulder/elbow pain.', metric: 'duration', threshold: { duration_sec: 5 } } },
-  { name: '5s Back Lever', branch: 'Holds', tier: 'TIER_3', prereqs: ['10s Straddle L', '5 Strict Pull-Ups'],
+  { name: '5s Back Lever', branch: 'Holds', tier: 'TIER_5', prereqs: ['10s Straddle L', '5 Strict Pull-Ups'],
     blurb: 'Back lever — the antagonist of the front lever (face-down, open shoulders).', description: '+15% core XP',
     test: { description: '5s back lever hold (face-down, body horizontal, arms straight, shoulders externally rotated).', safety: 'Master straddle L + strict pull-ups first. Stretch shoulders thoroughly. Stop if shoulder/elbow pain — back lever is shoulder-stress-intense.', metric: 'duration', threshold: { duration_sec: 5 } } },
 
@@ -495,7 +542,7 @@ const BERSERKER_SKILLS: Spec[] = [
   { name: 'Bear Hug Walk 25m @ 50kg', branch: 'Sandbag', tier: 'TIER_2', prereqs: ['Bear Hug Hold 30s @ 25kg'], blurb: 'Walking bear-hug carry — grip + gait + core.', description: '+8% sandbag XP', test: { description: 'Bear-hug carry a 50kg sandbag for 25m without setting it down.', safety: 'Use a flat surface. Stand tall — don\'t lean. Spotter for transitions.', metric: 'reps', threshold: { reps: 25 } } },
   { name: 'Sandbag Clean + Squat × 10 @ 50kg', branch: 'Sandbag', tier: 'TIER_2', prereqs: ['Sandbag Clean to Shoulder × 10 @ 30kg'], blurb: 'Clean + front squat — combine the carry pattern with leg strength.', description: '+8% sandbag XP', test: { description: '10 sandbag cleans to shoulder followed by a front squat at 50kg. Alternating sides.', safety: 'Master T1 clean + light front squat first. Use a controlled bag.', metric: 'reps', threshold: { reps: 10 } } },
   { name: 'Sandbag Load 80kg to 48" Platform < 30s', branch: 'Sandbag', tier: 'TIER_3', prereqs: ['Bear Hug Walk 25m @ 50kg'], blurb: 'Strongman classic — lift the bag onto a platform fast.', description: '+12% sandbag XP', test: { description: 'Lift an 80kg sandbag onto a 48" platform in under 30 seconds, any number of attempts. Use any carry style.', safety: 'Use a stable platform. Warm up the spine. Spotter for transitions. Stop if back pain.', metric: 'duration', threshold: { duration_sec: 30 } } },
-  { name: 'Sandbag-to-Shoulder 30 reps @ 70kg < 8:00', branch: 'Sandbag', tier: 'TIER_3', prereqs: ['Sandbag Clean + Squat × 10 @ 50kg'], blurb: 'Sandbag god-tier — heavy sandbag volume in time.', description: '+15% sandbag XP', test: { description: '30 sandbag cleans to shoulder at 70kg in under 8:00, any carry style.', safety: 'Strong T2 base first. Coach / spotter recommended. Pre-plan grip rotation.', metric: 'duration', threshold: { duration_sec: 480 } } },
+  { name: 'Sandbag-to-Shoulder 30 reps @ 70kg < 8:00', branch: 'Sandbag', tier: 'TIER_4', prereqs: ['Sandbag Clean + Squat × 10 @ 50kg'], blurb: 'Sandbag god-tier — heavy sandbag volume in time.', description: '+15% sandbag XP', test: { description: '30 sandbag cleans to shoulder at 70kg in under 8:00, any carry style.', safety: 'Strong T2 base first. Coach / spotter recommended. Pre-plan grip rotation.', metric: 'duration', threshold: { duration_sec: 480 } } },
 
   // G. Medicine Ball (NEW — replaces the old Hero WODs slot) — two
   // T1s (chest pass + slam) seed the heavier patterns. T2s:
@@ -585,7 +632,7 @@ const ORACLE_SKILLS: Spec[] = [
   { name: 'Pancake 100% ROM 60s', branch: 'Mobility', tier: 'TIER_2', prereqs: ['30s Bridge'], blurb: 'Full pancake — advanced hip mobility.', description: '+8% mobility XP', test: { description: 'Seated pancake at 100% ROM (chest to floor). 60s hold.', safety: 'Master 80% first. Stretch before testing.', metric: 'duration', threshold: { duration_sec: 60 } } },
   { name: '30s Front Split', branch: 'Mobility', tier: 'TIER_3', prereqs: ['Pancake 100% ROM 60s'], blurb: 'Front split — peak hamstring flexibility.', description: '+10% mobility XP', test: { description: '30s front split (one leg forward, one back, both straight, pelvis square).', safety: 'Master 100% pancake first. Stretch before testing. Don\'t force into the split.', metric: 'duration', threshold: { duration_sec: 30 } } },
   { name: '30s Middle Split', branch: 'Mobility', tier: 'TIER_3', prereqs: ['Pancake 100% ROM 60s'], blurb: 'Middle split — peak adductor flexibility.', description: '+10% mobility XP', test: { description: '30s middle split (legs wide, both straight, pelvis square, chest to floor).', safety: 'Master 100% pancake + front split first. Stretch thoroughly. Don\'t force.', metric: 'duration', threshold: { duration_sec: 30 } } },
-  { name: 'Pancake + Splits Combo', branch: 'Mobility', tier: 'TIER_3', prereqs: ['30s Front Split', '30s Middle Split'], blurb: 'Mobility god-tier — pancake + both splits.', description: '+15% mobility XP', test: { description: 'Hold pancake (30s) + front split (30s, each side) + middle split (30s) in sequence.', safety: 'Master each individual milestone first. Stretch thoroughly before testing.', metric: 'duration', threshold: { duration_sec: 90 } } },
+  { name: 'Pancake + Splits Combo', branch: 'Mobility', tier: 'TIER_4', prereqs: ['30s Front Split', '30s Middle Split'], blurb: 'Mobility god-tier — pancake + both splits.', description: '+15% mobility XP', test: { description: 'Hold pancake (30s) + front split (30s, each side) + middle split (30s) in sequence.', safety: 'Master each individual milestone first. Stretch thoroughly before testing.', metric: 'duration', threshold: { duration_sec: 90 } } },
 
   // B. Breath — T1 box breathing feeds two T2 paths (4-7-8
   // structured breathwork + 60s hold). T2 60s hold → T3 90s → T3
