@@ -41,6 +41,53 @@ import { checkLoginRate, clearLoginRate, recordFailedLogin } from '../lib/rateLi
 
 const TRUSTED_DEVICE_TTL_DAYS = 90;
 
+/// Read an optional field with a graceful fallback if the column
+/// doesn't exist on the live database yet. Used by `publicUser()`
+/// for fields added in newer migrations — the alternative (a
+/// P2022 throwing inside /me) kicks every user to /login until
+/// the admin runs `prisma migrate deploy`. Wrap the
+/// never-fails path (a destructured property) and the
+/// can-fail path (a re-fetch with `select`) with the same
+/// try/catch so the endpoint never 500s on a schema-vs-DB
+/// mismatch.
+///
+/// Regression: cd46826 (AI coach) added `User.coachPersonality`
+/// without running `prisma migrate deploy` against the live DB
+/// before the web's /me call hit it — every user got bounced
+/// to /login for ~25 min until the migration ran. This helper
+/// makes the next such mismatch self-healing instead of
+/// session-killing.
+async function safeReadField<T>(
+  cheapRead: () => T | undefined,
+  dbFallback: () => Promise<T | null | undefined>,
+  fallback: T,
+): Promise<T> {
+  try {
+    const v = cheapRead();
+    if (v !== undefined) return v as T;
+  } catch {
+    // Property access threw (e.g. the row was shaped with a
+    // missing column). Fall through to the DB read.
+  }
+  try {
+    const v = await dbFallback();
+    return (v ?? fallback) as T;
+  } catch (err: any) {
+    // Prisma P2022 = "column does not exist". Anything else is a
+    // real error and should still surface. Log so the missing-
+    // column situation is visible in the API logs.
+    if (err?.code === 'P2022') {
+      console.warn(
+        '[publicUser] DB missing column — degrading to fallback. ' +
+        'Run `npx prisma migrate deploy`.',
+        { code: err.code, meta: err.meta },
+      );
+      return fallback;
+    }
+    throw err;
+  }
+}
+
 // Username-only registration — no email. Email features (verification,
 // password reset, etc.) are deferred until we have a mail provider.
 const RegisterSchema = z.object({
@@ -86,6 +133,24 @@ async function publicUser(user: any) {
   const soulstoneCount = await prisma.soulstone.count({
     where: { userId: user.id, consumed: false, expiresAt: { gt: new Date() } },
   });
+  // `coachPersonality` was added in commit cd46826. If the live
+  // database hasn't had the corresponding migration applied yet,
+  // the raw `prisma.user.findUnique` row will be missing the field
+  // — but `publicUser` is called on every /me load, so a
+  // P2022-throwing reference would kick every user to /login.
+  // Wrap in a defensive read so a missing column degrades to null
+  // instead of 500-ing the whole endpoint. Same pattern used by
+  // `web/src/lib/auth.tsx` (which marks the field optional).
+  const coachPersonality = await safeReadField(
+    () => user.coachPersonality,
+    () => prisma.user
+      .findUnique({
+        where: { id: user.id },
+        select: { coachPersonality: true },
+      })
+      .then((row) => row?.coachPersonality ?? null),
+    null,
+  );
   return {
     id: user.id,
     email: user.email,
