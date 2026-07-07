@@ -1,62 +1,100 @@
 /**
- * ScrollToTop — auto-scroll to top of page on every route change.
+ * ScrollToTop — auto-scroll to top on every navigation AND on
+ * initial page load.
  *
- * Why: the app uses <Link> / <NavLink> for in-app navigation, which
- * preserves scroll position by default. Long pages (Spiritual,
- * Coach, Insights, etc.) load in the scrolled-down position from
- * the previous page, so the user lands at the bottom and has to
- * scroll up to see the actual content. This component listens to
- * react-router's location changes and scrolls to top.
+ * Why: the app's scrollable surface is the `<main>` element in
+ * Layout (not the window), and react-router preserves scroll
+ * position by default across nav. Long pages (Spiritual, Coach,
+ * Insights, etc.) used to load scrolled to the bottom of the
+ * previous page — v1.0.29's first cut of this component called
+ * `window.scrollTo(...)` which is a no-op because the window
+ * isn't the scroller; the scroll position never moved. This
+ * version targets `<main>` explicitly + also handles hard
+ * reloads (the browser's history-based scroll restoration kicks
+ * in *after* the React app mounts; if we don't scroll on mount,
+ * a reload at the bottom of a page stays at the bottom).
  *
- * Hash handling: if the URL has a `#fragment`, we scroll to that
- * element instead (gives #class and #anchor deep-links from the
- * roadmap their full meaning). Uses scrollIntoView with smooth
- * behavior so deep-links from a same-page jump animate instead
- * of snapping.
+ * Hash handling: if the URL has a `#fragment`, scroll to that
+ * element instead (gives #class and #anchor deep-links their
+ * full meaning). Uses scrollIntoView with smooth behavior. If
+ * the target element hasn't mounted yet (lazy route component,
+ * route guard not done), retry on the next frame up to 10 times
+ * before falling back to top.
  *
  * Mount ONCE at the top of <App> (above the <Routes>); no props.
  */
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
+/// The Layout component renders the scrollable surface as `<main
+/// className="... overflow-y-auto">`. Hardcoded here because the
+/// component is mounted once and Layout is rendered once — no
+/// DOM lookup is needed for a known selector, and a selector is
+/// more robust to Layout refactors than `document.body` or
+/// `document.scrollingElement` (which can be `<html>` or
+/// `<body>` depending on the browser).
+const SCROLLABLE_SELECTOR = 'main';
+
+function getScrollTarget(): Element | Window {
+  // Fall back to window only if the layout hasn't mounted yet
+  // (first paint on the login page maybe, or during route
+  // transitions that unmount <main>). On every authenticated
+  // page <main> is present from the same render that includes
+  // ScrollToTop's effect, so this rarely fires.
+  return document.querySelector(SCROLLABLE_SELECTOR) ?? window;
+}
+
+function scrollToTop() {
+  const target = getScrollTarget();
+  if (target === window) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    // Use scrollTo on the element directly — smooth behavior
+    // requires passing the options dict on HTMLElement.scrollTo
+    // (modern browsers). scrollIntoView with smooth is the most
+    // cross-browser-reliable form on element targets.
+    (target as Element).scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+function scrollToHash(hash: string) {
+  const id = hash.slice(1);
+  const tryScroll = (retries: number) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    // Target element not in DOM yet (lazy route component? route
+    // guard not done?). Retry up to 10 frames before falling back
+    // to top — covers the worst case of a code-split chunk taking
+    // a tick to hydrate.
+    if (retries < 10) {
+      requestAnimationFrame(() => tryScroll(retries + 1));
+    } else {
+      scrollToTop();
+    }
+  };
+  requestAnimationFrame(() => tryScroll(0));
+}
+
 export function ScrollToTop() {
   const location = useLocation();
 
   useEffect(() => {
+    // The browser's scroll-restoration-on-back/forward can run
+    // AFTER React mounts. requestAnimationFrame defers our scroll
+    // one frame so we run *after* the browser, winning the race.
+    // For the initial mount (location.key === 'default') this
+    // also covers the case where the user reloaded at the bottom
+    // of a long page — without this they'd stay at the bottom.
     if (location.hash) {
-      // Defer one frame so the new route has rendered and the
-      // target element is in the DOM before we try to scroll to
-      // it. Without this, switching to a page with a #hash from
-      // another page scrolls to 0 first then jumps (looks janky).
-      const id = location.hash.slice(1);
-      const tryScroll = () => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-          // Element not mounted yet (lazy route component? route
-          // guard not done?); retry on the next frame, up to 10
-          // times before giving up and going to the top.
-          if (retries < 10) {
-            retries++;
-            requestAnimationFrame(tryScroll);
-          } else {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-        }
-      };
-      let retries = 0;
-      requestAnimationFrame(tryScroll);
-      return;
+      scrollToHash(location.hash);
+    } else {
+      scrollToTop();
     }
-
-    // No hash: scroll to the top of the page.
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    // `location` is in the dep array so the effect re-fires on
-    // every route change. `location.key` is what react-router
-    // increments per navigation; using it (not the whole object)
-    // keeps the effect stable across query-param tweaks that don't
-    // actually change the route.
+    // Deps: every field that could change the "current route" so
+    // a back-button or query-string tweak still triggers.
   }, [location.pathname, location.search, location.hash, location.key]);
 
   return null;
