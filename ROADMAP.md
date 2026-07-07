@@ -546,6 +546,29 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.35 todos + /vitals + GB_FITQUEST_SYNC design doc
+
+- ✅ **One-shot TODO list** at `/todos`. New `TodoItem` table
+  (title, description, dueDate, priority LOW/MED/HIGH, status
+  OPEN/DONE, completedAt). CRUD + 10/20/30 XP reward scaled by
+  priority on the OPEN→DONE transition. Nav icon ☐.
+- ✅ **`POST /vitals` + `GET /vitals`** for the upcoming
+  Gadgetbridge FitQuest auto-sync (see `GB_FITQUEST_SYNC.md`
+  for the full GB-side architecture). Accepts batched time-series
+  JSON, upserts into `Measurement` keyed on `(userId, metric,
+  recordedAt)`. Same-value skip avoids churn on re-syncs. Validates
+  `kind` against the known `MetricType` enum values; 400 with
+  `unknown_metric` if a typo. `?since=...` cursor endpoint returns
+  existing samples for reconciliation. Up to 1000 samples per POST.
+- ✅ **`docs/GB_FITQUEST_SYNC.md`** — comprehensive design doc for
+  the GB-side auto-sync that closes the FitQuestBridge's
+  "body battery not in FIT" gap. Copies the HealthConnect
+  syncer pattern. Tracker-agnostic interface so Endurain /
+  Wanderer / FitTrackee get the same benefit for 50 lines of
+  impl each. Defines a 3-PR strategy (server → framework+Steps
+  → remaining 10 syncers). Use as the take-back-up reference
+  after compaction.
+
 ### 2026-07-07 session — v1.0.34 FIT type 16 + unique constraint
 
 Commit `f400934`, release

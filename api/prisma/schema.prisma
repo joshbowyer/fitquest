@@ -394,6 +394,7 @@ model User {
   prayerLogs             PrayerLog[]
   habits                 Habit[]
   habitLogs              HabitLog[]
+  todos                  TodoItem[]
   supplements            SupplementLog[]
   routineDays            RoutineDay[]
   dailies                Daily[]
@@ -1758,6 +1759,55 @@ model PainLog {
 
   @@index([userId, bodyPart])
   @@index([userId, loggedAt])
+}
+
+/// One-shot task that doesn't recur (use Habit for recurring
+/// tick-able things, Daily for scheduled daily check-ins, this
+/// for finite "register for the marathon" / "schedule PT appt"
+/// items). Marking complete grants XP scaled by priority; no
+/// penalty for missing.
+model TodoItem {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Short title (required). Display-first line in the list.
+  title       String
+  /// Optional longer description / notes. Not shown in the list
+  /// row but rendered in the detail / edit pane.
+  description String?
+  /// Optional due date — surfaces a "due today" / "overdue" badge
+  /// in the list. Time-agnostic (date only, no tz) so the
+/// client interprets in their local timezone.
+  dueDate     DateTime?
+  /// LOW = 10 XP, MEDIUM = 20, HIGH = 30. Awarded on transition
+  /// to DONE only (re-completing an already-DONE todo does NOT
+  /// re-award).
+  priority    TodoPriority   @default(MEDIUM)
+  /// OPEN or DONE. Single state field; we don't model ARCHIVED or
+  /// DELETED — soft-delete just flips status to DONE with the
+  /// deletedAt-on-OPEN idea, or use a separate deletedAt field if
+  /// soft-delete is needed later.
+  status      TodoStatus     @default(OPEN)
+  /// When the user marked it DONE. Null while OPEN. Together
+  /// with status lets the list sort by "recently completed".
+  completedAt DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@index([userId, createdAt])
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TodoStatus {
+  OPEN
+  DONE
 }
 
 // Add new muscle groups to BodyPart enum

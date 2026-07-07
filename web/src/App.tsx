@@ -22,6 +22,7 @@ import { QuestWorldPage } from './pages/QuestWorld';
 import { BreachPage } from './pages/Breach';
 import { SpiritualPage } from './pages/Spiritual';
 import CoachPage from './pages/Coach';
+import TodoPage from './pages/Todo';
 import { AchievementsPage } from './pages/Achievements';
 import { HomeBaseFullPage, HomeBasePage } from './components/HomeBaseNew';
 import { InventoryPage } from './pages/Inventory';
@@ -105,6 +106,7 @@ export default function App() {
       <Route path="/team-workout/:id" element={<RequireAuth><TeamWorkoutPage /></RequireAuth>} />
       <Route path="/spiritual" element={<RequireAuth><SpiritualPage /></RequireAuth>} />
       <Route path="/coach" element={<RequireAuth><CoachPage /></RequireAuth>} />
+      <Route path="/todos" element={<RequireAuth><TodoPage /></RequireAuth>} />
       <Route path="/home-base" element={<RequireAuth><HomeBaseFullPage /></RequireAuth>} />
       <Route path="/portal-leak" element={<RequireAuth><PortalLeakPage /></RequireAuth>} />
       <Route path="/achievements" element={<RequireAuth><AchievementsPage /></RequireAuth>} />

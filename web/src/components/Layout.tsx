@@ -28,6 +28,7 @@ const NAV: NavItem[] = [
   { to: '/routines',     label: 'Routines',   icon: '☰', mobile: false },
   { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
   { to: '/coach',        label: 'AI Coach',   icon: '✺', mobile: false },
+  { to: '/todos',        label: 'Todos',      icon: '☐', mobile: false },
   { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },
   { to: '/forecast',     label: 'Forecast',   icon: '☀', mobile: true },
   { to: '/calendar',     label: 'Calendar',   icon: '◷', mobile: false },

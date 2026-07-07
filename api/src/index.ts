@@ -31,6 +31,8 @@ import { spiritualRoutes } from './routes/spiritual.js';
 import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
 import { coachRoutes } from './routes/coach.js';
+import { todoRoutes } from './routes/todos.js';
+import { vitalsRoutes } from './routes/vitals.js';
 import { adminRoutes } from './routes/admin.js';
 import { morningReportRoutes } from './routes/morningReport.js';
 import { plateauRoutes } from './routes/plateaus.js';
@@ -157,6 +159,8 @@ async function build() {
   await app.register(mealRoutes, { prefix: '/meals' });
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
   await app.register(coachRoutes, { prefix: '/coach' });
+  await app.register(todoRoutes, { prefix: '/todos' });
+  await app.register(vitalsRoutes, { prefix: '/vitals' });
   await app.register(habitRoutes, { prefix: '/habits' });
   await app.register(dailyRoutes, { prefix: '/dailies' });
   await app.register(adminRoutes, { prefix: '/admin' });
@@ -177,6 +181,16 @@ async function build() {
 
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');
+    // ZodError — thrown when a route does `schema.parse(req.body)`.
+    // Fastify 5 does NOT wrap this; the raw ZodError reaches the
+    // error handler with `name === 'ZodError'`. Convert to 400.
+    if (err?.name === 'ZodError' || Array.isArray((err as any).issues)) {
+      const issues = (err as any).issues ?? [];
+      return reply.code(400).send({
+        error: 'Invalid request',
+        details: issues.map((i: any) => `${i.path?.join('.') ?? '<root>'}: ${i.message}`).join('; '),
+      });
+    }
     if ('validation' in (err as any) || (err as any).code === 'FST_ERR_VALIDATION') {
       return reply.code(400).send({ error: 'Invalid request', details: (err as any).message });
     }

@@ -81,6 +81,27 @@ export type CoachPersonalityPatchResponse = {
   effective: CoachPersonality;
 };
 
+// ---------------------------------------------------------------------------
+// One-shot todo items (PR scope: feature + scaffold of design).
+// Server returns { id, title, description?, dueDate?, priority, status,
+// completedAt?, createdAt, updatedAt }. todoRoutes /api/todos
+// is the canonical reference implementation of CRUD + XP reward.
+// ---------------------------------------------------------------------------
+export type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH';
+export type TodoStatus = 'OPEN' | 'DONE';
+
+export type TodoItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  dueDate: string | null;       // ISO
+  priority: TodoPriority;
+  status: TodoStatus;
+  completedAt: string | null;   // ISO
+  createdAt: string;
+  updatedAt: string;
+};
+
 /// One turn in the persisted coach conversation. Returned by
 /// GET /coach/messages and hydrated into the page on load. The
 /// model + latency fields are populated only for assistant

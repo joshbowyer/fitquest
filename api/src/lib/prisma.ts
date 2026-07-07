@@ -122,6 +122,12 @@ export type ClassName = import('@prisma/client').ClassName;
 export const CoachPersonality = cjs.CoachPersonality;
 export type CoachPersonality = import('@prisma/client').CoachPersonality;
 
+export const TodoPriority = cjs.TodoPriority;
+export type TodoPriority = import('@prisma/client').TodoPriority;
+
+export const TodoStatus = cjs.TodoStatus;
+export type TodoStatus = import('@prisma/client').TodoStatus;
+
 export const DailyCategory = cjs.DailyCategory;
 export type DailyCategory = import('@prisma/client').DailyCategory;
 
