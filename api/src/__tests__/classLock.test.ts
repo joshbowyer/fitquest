@@ -94,19 +94,27 @@ describe('getClassLockStatus', () => {
 });
 
 describe('assertCanChangeClass', () => {
+  // Soulstone count is an explicit argument (3rd param) — it comes
+  // from counting active Soulstone rows in the route (users.ts), not
+  // from a field on the user. The old fixture carried a stale
+  // `soulstones` field from the pre-relation design, which the
+  // implementation (correctly) ignored — making the "has a
+  // soulstone" test fail forever.
+  // NOW is pinned (5th param) so these tests don't depend on the
+  // real clock — the "locked" fixtures would otherwise start
+  // passing/failing differently once the next birthday rolls by.
   const user = {
     class: 'PHANTOM' as any,
     classChangedAt: new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000),
     birthDate: BIRTHDAY,
-    soulstones: 0,
   };
 
   it('returns { useSoulstone: false } when no class change requested', () => {
-    expect(assertCanChangeClass(user, null)).toEqual({ useSoulstone: false });
+    expect(assertCanChangeClass(user, null, 0, null, NOW)).toEqual({ useSoulstone: false });
   });
 
   it('returns { useSoulstone: false } when changing to same class', () => {
-    expect(assertCanChangeClass(user, 'PHANTOM')).toEqual({ useSoulstone: false });
+    expect(assertCanChangeClass(user, 'PHANTOM', 0, null, NOW)).toEqual({ useSoulstone: false });
   });
 
   it('returns { useSoulstone: false } when unlocked (birthday reached)', () => {
@@ -116,17 +124,16 @@ describe('assertCanChangeClass', () => {
       ...user,
       classChangedAt: new Date('2025-06-01'),
     };
-    expect(assertCanChangeClass(unlocked, 'JUGGERNAUT')).toEqual({ useSoulstone: false });
+    expect(assertCanChangeClass(unlocked, 'JUGGERNAUT', 0, null, NOW)).toEqual({ useSoulstone: false });
   });
 
   it('returns { useSoulstone: true } when locked but user has a soulstone', () => {
-    const withStone = { ...user, soulstones: 1 };
-    expect(assertCanChangeClass(withStone, 'JUGGERNAUT')).toEqual({ useSoulstone: true });
+    expect(assertCanChangeClass(user, 'JUGGERNAUT', 1, null, NOW)).toEqual({ useSoulstone: true });
   });
 
   it('throws 423 with classLock when locked and no soulstone', () => {
     try {
-      assertCanChangeClass(user, 'JUGGERNAUT');
+      assertCanChangeClass(user, 'JUGGERNAUT', 0, null, NOW);
       expect.fail('Should have thrown');
     } catch (e: any) {
       expect(e.statusCode).toBe(423);

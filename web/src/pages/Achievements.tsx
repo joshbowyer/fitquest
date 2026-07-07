@@ -34,7 +34,7 @@ export function AchievementsPage() {
     const total = items.length;
     const unlocked = items.filter((a) => a.unlocked).length;
     const points = items.filter((a) => a.unlocked).reduce((s, a) => s + a.points, 0);
-    const totalPoints = items.reduce((s, a) => a.s.points, 0);
+    const totalPoints = items.reduce((s, a) => s + a.points, 0);
     return { total, unlocked, points, totalPoints, pct: total ? Math.round((unlocked / total) * 100) : 0 };
   }, [items]);
 

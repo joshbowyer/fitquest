@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -464,7 +465,8 @@ function AddTrackedItemModal({
           </NeonButton>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

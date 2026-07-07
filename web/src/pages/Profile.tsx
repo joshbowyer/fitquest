@@ -1255,7 +1255,10 @@ export function ProfilePage() {
                 ))}
               </div>
             )}
-            {locationSearchM.isError && (
+            {/* useDelayedMutation exposes `error`, not `isError` —
+                the old `isError` check was always undefined, so
+                geocoding failures produced zero user feedback. */}
+            {locationSearchM.error != null && (
               <div className="text-[10px] font-mono neon-text-magenta mb-2">
                 Search failed: {(locationSearchM.error as any)?.message ?? 'unknown'}
               </div>

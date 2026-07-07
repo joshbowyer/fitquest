@@ -1245,11 +1245,18 @@ function SubstanceLogModal({
  * ============================================================ */
 
 function WorkoutLoggerModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { user } = useAuth();
+  // user + units are REQUIRED by WorkoutLogger. This previously
+  // passed `open`/`setOpen` (props WorkoutLogger doesn't have) and
+  // omitted user/units — so `units` was undefined, IMPERIAL users
+  // got kg labels AND their lb entries were stored unconverted as
+  // kg, and bodyweight-derived set weights fell back to 0.
   return (
     <Modal open={open} onClose={onClose} title="Log activity" width="max-w-3xl">
       <WorkoutLogger
-        open={open}
-        setOpen={(b) => { if (!b) onClose(); }}
+        user={user}
+        units={user?.units ?? 'METRIC'}
+        onCommit={() => onClose()}
       />
     </Modal>
   );

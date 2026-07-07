@@ -415,8 +415,15 @@ export async function pickItemOfRarity(
   fallback = 3,
 ): Promise<{ id: string } | null> {
   for (let i = 0; i < fallback; i++) {
-    const tiers = ['EPIC', 'RARE', 'UNCOMMON', 'COMMON'];
-    const targetTier = tiers[Math.min(tiers.indexOf(rarity) + i, tiers.length - 1)];
+    // LEGENDARY was missing from this walk even though
+    // rollLootRarity() can return it at level 20+. indexOf then
+    // gave -1 → tiers[-1] === undefined → buildItemWhere built a
+    // rarity-less filter and the "legendary" drop was whatever
+    // ItemDef row came back first. Unknown rarities now clamp to
+    // COMMON instead of undefined.
+    const tiers = ['LEGENDARY', 'EPIC', 'RARE', 'UNCOMMON', 'COMMON'];
+    const idx = tiers.indexOf(rarity);
+    const targetTier = tiers[Math.min((idx < 0 ? tiers.length - 1 : idx) + i, tiers.length - 1)];
     const item = await prisma.itemDef.findFirst({
       where: buildItemWhere(targetTier, classFilter ?? null),
       // Skip the user (since users won't have one yet for the

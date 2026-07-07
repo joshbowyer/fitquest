@@ -23,6 +23,11 @@ type Props = {
   icon?: ReactNode;
   className?: string;
   fullWidth?: boolean;
+  /** Native tooltip. 11 call sites across the app were already
+   * passing this — it was silently dropped before this prop
+   * existed, so none of those tooltips ever showed (including
+   * icon-only buttons whose ONLY label was the tooltip). */
+  title?: string;
 };
 
 const SIZE_CLASS = {
@@ -50,12 +55,14 @@ export function NeonButton({
   icon,
   className,
   fullWidth,
+  title,
 }: Props) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
+      title={title}
       className={classNames(
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],

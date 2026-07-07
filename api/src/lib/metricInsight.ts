@@ -75,11 +75,6 @@ export async function gatherMetricInsightData(args: {
   const { userId, metric } = args;
   const now = new Date();
   const day = 24 * 60 * 60 * 1000;
-  const win = (days: number) => new Date(now.getTime() - days * day);
-  const winPrior = (days: number) => ({
-    gte: new Date(now.getTime() - 2 * days * day),
-    lt: new Date(now.getTime() - days * day),
-  });
 
   // Look up the user's tz once so coverage-day bucketing matches
   // their frame of reference, not the server's UTC clock.
@@ -89,7 +84,15 @@ export async function gatherMetricInsightData(args: {
   });
   const tz = userRow?.timezone ?? null;
 
-  async function loadWindow(days: number): Promise<{
+  // offsetDays shifts the whole window back in time: the window is
+  // [now − offset − days, now − offset) and its comparison window is
+  // the `days` before that. offset=0 → "last N days"; offset=days →
+  // "the prior N-day window". The prior7/prior30/prior90 payload
+  // fields were previously built with loadWindow(7/30/90) — the
+  // *same* args as last7/last30/last90 — so the LLM prompt's
+  // prior-window stats were duplicates of the last-window stats and
+  // every metric appeared flat.
+  async function loadWindow(days: number, offsetDays = 0): Promise<{
     avg: number | null;
     delta: number | null;
     deltaPct: number | null;
@@ -97,16 +100,19 @@ export async function gatherMetricInsightData(args: {
     lastValue: number | null;
     lastRecordedAt: Date | null;
   }> {
+    const winEnd = new Date(now.getTime() - offsetDays * day);
+    const winStart = new Date(now.getTime() - (offsetDays + days) * day);
+    const priorStart = new Date(now.getTime() - (offsetDays + 2 * days) * day);
     const [rows, priorRows, latest] = await Promise.all([
       prisma.measurement.findMany({
-        where: { userId, metric: metric as any, recordedAt: { gte: win(days) } },
+        where: { userId, metric: metric as any, recordedAt: { gte: winStart, lt: winEnd } },
         select: { value: true, recordedAt: true },
       }),
       prisma.measurement.findMany({
         where: {
           userId,
           metric: metric as any,
-          recordedAt: winPrior(days),
+          recordedAt: { gte: priorStart, lt: winStart },
         },
         select: { value: true },
       }),
@@ -133,11 +139,11 @@ export async function gatherMetricInsightData(args: {
 
   const [last7, prior7, last30, prior30, last90, prior90, geneticMax] = await Promise.all([
     loadWindow(7),
-    loadWindow(7),
+    loadWindow(7, 7),
     loadWindow(30),
-    loadWindow(30),
+    loadWindow(30, 30),
     loadWindow(90),
-    loadWindow(90),
+    loadWindow(90, 90),
     prisma.geneticMax.findFirst({
       where: { userId, metric: metric as any },
       select: { value: true },
@@ -161,28 +167,16 @@ export async function gatherMetricInsightData(args: {
   return {
     metric,
     windows: {
-      last7: overrideLastWindow(last7, prior7),
+      last7,
       prior7,
-      last30: overrideLastWindow(last30, prior30),
+      last30,
       prior30,
-      last90: overrideLastWindow(last90, prior90),
+      last90,
       prior90,
     },
     geneticMax: geneticMax?.value ?? null,
     relatedMetrics: related,
   };
-}
-
-// Loadwindow computed delta twice (lastX + priorX) — re-use priorX for
-// the last-window's delta (the loadWindow helper returns both avg
-// + delta in the "last" window; the prior-args version doesn't need
-// its own delta).
-function overrideLastWindow(
-  last: Awaited<ReturnType<typeof loadWindow>>,
-  prior: Awaited<ReturnType<typeof loadWindow>>,
-): MetricWindow {
-  // `last` already has delta vs prior (computed inside loadWindow).
-  return last;
 }
 
 function relatedMetricsFor(metric: string): string[] {

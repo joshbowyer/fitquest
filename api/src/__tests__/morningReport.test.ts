@@ -41,7 +41,10 @@ function makePayload(overrides: Partial<{
     spiritual: { prayerCount: 0, customDays: 0, daysHit: 0, totalMinutes: 0 },
     recovery: { score: null, trend: null },
     mode: overrides.mode ?? 'CASUAL',
-    hearts: overrides.hearts ?? 5,
+    // Default = full hearts (10 since the graduated-penalty
+    // redesign) so "no issues" payloads genuinely have no heart
+    // penalty. Any count < 10 now produces a Hearts ledger entry.
+    hearts: overrides.hearts ?? 10,
     streak: {
       currentStreak: overrides.currentStreak ?? 0,
       lastCompletedWeek: null,
@@ -92,7 +95,7 @@ describe('buildPenalties', () => {
   });
 
   it('returns empty array for Hardcore with full hearts and no caps', () => {
-    const penalties = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 5 }));
+    const penalties = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 10 }));
     expect(penalties).toEqual([]);
   });
 
@@ -102,7 +105,7 @@ describe('buildPenalties', () => {
       const heart = p.find((x) => x.label === 'Hearts');
       expect(heart).toBeDefined();
       expect(heart?.severity).toBe('scold');
-      expect(heart?.note).toContain('halved');
+      expect(heart?.note).toContain('zeroed');
     });
 
     it('fires a warn at 1-2 hearts (hearts low)', () => {
@@ -112,15 +115,16 @@ describe('buildPenalties', () => {
       expect(p2.find((x) => x.label === 'Hearts')?.severity).toBe('warn');
     });
 
-    it('fires a soft warn at 3-4 hearts (recovery info)', () => {
+    it('fires a soft warn at 3-9 hearts with the actual multiplier', () => {
       const p = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 3 }));
       const heart = p.find((x) => x.label === 'Hearts');
       expect(heart?.severity).toBe('warn');
-      expect(heart?.note).toContain('3/5');
+      expect(heart?.note).toContain('3/10');
+      expect(heart?.note).toContain('×0.5');
     });
 
-    it('fires nothing at full 5 hearts', () => {
-      const p = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 5 }));
+    it('fires nothing at full 10 hearts', () => {
+      const p = buildPenalties(makePayload({ mode: 'HARDCORE', hearts: 10 }));
       expect(p.find((x) => x.label === 'Hearts')).toBeUndefined();
     });
   });

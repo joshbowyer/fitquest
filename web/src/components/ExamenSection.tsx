@@ -204,7 +204,7 @@ function ExamenModal({
     godsPresence.trim().length > 0;
 
   return (
-    <Modal onClose={onClose} title={initial ? 'Edit this week\'s examen' : 'Begin this week\'s examen'}>
+    <Modal open onClose={onClose} title={initial ? 'Edit this week\'s examen' : 'Begin this week\'s examen'}>
       <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
         <ExamenField
           label="What consoled you this week?"

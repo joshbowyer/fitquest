@@ -126,29 +126,34 @@ const OUTCOME_LABELS: Record<string, string> = {
 /// Outcome builders. All return a DailyMap of date -> value so
 /// they can flow through the same alignPair() machinery as
 /// habit maps.
-type OutcomeBuilder = (userId: string, from: Date, to: Date) => Promise<DailyMap>;
+/// tz is a required 4th param (mirroring SYNTHETIC_HABITS): the
+/// builder closures all bucket by the user's local day. They used
+/// to reference a bare `tz` that didn't exist in scope — a
+/// ReferenceError that 500'd the insights route and killed the
+/// nightly correlation snapshot cron for every user.
+type OutcomeBuilder = (userId: string, from: Date, to: Date, tz: string | null) => Promise<DailyMap>;
 const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
-  WORKOUT_VOLUME: async (userId, from, to) => {
+  WORKOUT_VOLUME: async (userId, from, to, tz) => {
     const { volume } = await workoutDaily(userId, from, to, tz);
     return volume;
   },
-  AVG_RPE: async (userId, from, to) => {
+  AVG_RPE: async (userId, from, to, tz) => {
     const { rpe } = await workoutDaily(userId, from, to, tz);
     return rpe;
   },
-  PR_COUNT: async (userId, from, to) => {
+  PR_COUNT: async (userId, from, to, tz) => {
     const { pr } = await workoutDaily(userId, from, to, tz);
     return pr;
   },
-  NEXT_DAY_ENERGY: async (userId, from, to) => {
+  NEXT_DAY_ENERGY: async (userId, from, to, tz) => {
     const m = await habitDaily(userId, 'ENERGY', from, to, tz);
     return shiftKeysByOneDay(m, tz);
   },
-  NEXT_DAY_MOOD: async (userId, from, to) => {
+  NEXT_DAY_MOOD: async (userId, from, to, tz) => {
     const m = await habitDaily(userId, 'MOOD', from, to, tz);
     return shiftKeysByOneDay(m, tz);
   },
-  WEIGHT_TREND_7D: async (userId, from, to) => {
+  WEIGHT_TREND_7D: async (userId, from, to, tz) => {
     // Per-day weight, then convert to 7-day rolling slope.
     // We use a simple difference (today - 7 days ago) so the
     // resulting number is interpretable: negative = losing,
@@ -174,7 +179,7 @@ const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
     }
     return out;
   },
-  WORKOUT_DURATION: async (userId, from, to) => {
+  WORKOUT_DURATION: async (userId, from, to, tz) => {
     const workouts = await prisma.workout.findMany({
       where: { userId, performedAt: { gte: from, lt: to } },
       select: { performedAt: true, duration: true },
@@ -187,7 +192,7 @@ const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
     }
     return out;
   },
-  SET_VOLUME: async (userId, from, to) => {
+  SET_VOLUME: async (userId, from, to, tz) => {
     const { sets } = await workoutDaily(userId, from, to, tz);
     return sets;
   },
@@ -384,7 +389,7 @@ export async function computeCorrelations(
   // keys forward.
   const outcomeMaps: Record<string, DailyMap> = {};
   for (const [name, build] of Object.entries(OUTCOME_BUILDERS)) {
-    outcomeMaps[name] = await build(userId, from, to);
+    outcomeMaps[name] = await build(userId, from, to, tz);
   }
 
   // Skip pairs that are trivially the same data (e.g. correlating

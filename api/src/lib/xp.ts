@@ -9,8 +9,15 @@ export function xpForLevel(level: number): number {
 }
 
 export function levelFromXp(xp: number): number {
-  // Inverse of xpForLevel. Solving level^2 - level - xp/50 >= 0
-  const lvl = Math.floor((1 + Math.sqrt(1 + (xp * 2) / 100)) / 2);
+  // Inverse of xpForLevel: largest L with 50·L·(L−1) ≤ xp.
+  // Quadratic: L² − L − xp/50 ≤ 0 → L = (1 + √(1 + 4·xp/50)) / 2.
+  // The old code used √(1 + xp/50) — a factor-4 error under the
+  // radical that granted levels at exactly 4× the documented XP
+  // (100 XP computed level 1 instead of 2; 4500 XP → 5 instead of
+  // 10), pinning the XP progress bar at 100% for most of every
+  // level. At exact thresholds the discriminant is (2L−1)², so
+  // the sqrt is float-exact.
+  const lvl = Math.floor((1 + Math.sqrt(1 + (xp * 4) / 50)) / 2);
   return Math.max(1, lvl);
 }
 

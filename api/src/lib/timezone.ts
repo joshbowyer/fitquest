@@ -54,10 +54,22 @@ export function tzOffsetMinutes(timezone: string, at: Date = new Date()): number
 /// timezone; the function returns the UTC equivalent of local 00:00.
 /// This is the lower boundary that "today" / "yesterday" filters use.
 export function localMidnightUtc(localDate: string, timezone: string): Date {
-  const offsetMin = tzOffsetMinutes(timezone, new Date(`${localDate}T12:00:00Z`));
-  // The 12:00 UTC anchor is just to pick a DST-safe instant; we only
-  // care about the offset for that calendar day.
-  return new Date(new Date(`${localDate}T00:00:00Z`).getTime() - offsetMin * 60_000);
+  const utcMidnight = new Date(`${localDate}T00:00:00Z`).getTime();
+  // First guess: offset sampled at noon UTC (an instant that never
+  // falls inside a real-world DST transition window).
+  const guessOffset = tzOffsetMinutes(timezone, new Date(`${localDate}T12:00:00Z`));
+  const guess = utcMidnight - guessOffset * 60_000;
+  // Refinement pass: on the two DST transition days each year the
+  // noon offset differs from the midnight offset by the DST delta,
+  // which used to put this boundary an hour off (e.g. Berlin's
+  // spring-forward Sunday got 22:00Z instead of 23:00Z — i.e.
+  // 23:00 local SATURDAY). Re-sampling the offset at the guessed
+  // instant converges to the true local midnight. (If midnight
+  // itself doesn't exist — zones that spring forward at 00:00 —
+  // the result stays within the skipped hour, which is the best
+  // available answer.)
+  const realOffset = tzOffsetMinutes(timezone, new Date(guess));
+  return new Date(utcMidnight - realOffset * 60_000);
 }
 
 /// Return the local-date (YYYY-MM-DD) at the given instant in the
@@ -97,13 +109,24 @@ export function lastSundayMidnightUtc(
   at: Date = new Date(),
 ): Date {
   const tz = timezone || "UTC";
-  // Local-date for the anchor instant, then the weekday.
+  // Local-date for the anchor instant.
   const localDate = todayInTz(tz, at);
-  const anchor = localMidnightUtc(localDate, tz);
-  // getUTCDay: 0=Sun, 1=Mon, ... 6=Sat. We want the most recent Sun.
-  const dow = anchor.getUTCDay();
-  const daysBack = dow; // 0 on Sun, 1 on Mon, etc.
-  return new Date(anchor.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  // Weekday of that LOCAL date, computed in date-space by parsing
+  // the date string as UTC. The old code read getUTCDay() off the
+  // local-midnight UTC *instant* — for every UTC-positive zone
+  // local midnight is the previous UTC day, so the weekday came
+  // back one day early and the "Sunday" anchor landed on Monday of
+  // the PREVIOUS week (e.g. Berlin/Tokyo users regenerated hearts
+  // against a week-old Monday anchor).
+  const d = new Date(`${localDate}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0=Sun ... 6=Sat, of the LOCAL date
+  // Step back to Sunday in date-space, then convert that local
+  // date back to its UTC instant. (Also replaces the old fixed
+  // `− daysBack·24h` instant arithmetic, which drifted an hour
+  // across DST transitions.)
+  d.setUTCDate(d.getUTCDate() - dow);
+  const sundayLocalDate = d.toISOString().slice(0, 10);
+  return localMidnightUtc(sundayLocalDate, tz);
 }
 
 /// Fractional hours since local midnight for the given instant in

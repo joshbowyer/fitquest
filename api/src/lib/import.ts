@@ -829,21 +829,43 @@ export async function importExport(
   }
 
   // ----- FOOD ITEMS → MEAL ENTRIES → SAVED FOODS -----
+  // FoodItem is a SHARED catalog keyed by @@unique([source,
+  // sourceId]) with no userId. Resolve each exported row against
+  // the live catalog first and only create it when missing — the
+  // old code blind-created with a fresh uuid, which collided with
+  // the unique key whenever the catalog already had the row (the
+  // common case when restoring onto the same instance) and then
+  // skipped every meal entry attached to that food.
   if (Array.isArray(t.foodItems)) {
+    const mealRows = Array.isArray(t.mealEntries)
+      ? (t.mealEntries as Array<Record<string, unknown>>)
+      : [];
     for (const f of t.foodItems as Array<Record<string, unknown>>) {
       try {
         const oldId = String(f.id ?? '');
-        const newId = randomUuid();
+        const existing = await prisma.foodItem.findFirst({
+          where: { source: f.source as any, sourceId: String(f.sourceId ?? '') },
+          select: { id: true },
+        });
+        let newId: string;
+        if (existing) {
+          newId = existing.id;
+        } else {
+          newId = randomUuid();
+          // No userId strip needed — FoodItem has no userId — but
+          // keep it in the strip list for old exports that carried
+          // one.
+          const data = stripUnknown(f, ['id', 'userId']);
+          await prisma.foodItem.create({ data: { ...data, id: newId } as any });
+          bump('foodItems', 1);
+        }
         idMap.set(oldId, newId);
-        const data = stripUnknown(f, ['id', 'userId']);
-        await prisma.foodItem.create({ data: { ...data, id: newId, userId } });
-        bump('foodItems', 1);
 
-        const meals = (t.mealEntries as Array<Record<string, unknown>>).filter((m) => m.foodId === oldId);
+        const meals = mealRows.filter((m) => m.foodId === oldId);
         for (const mRaw of meals) {
           try {
             const m = stripUnknown(mRaw, ['id', 'foodId', 'userId']);
-            await prisma.mealEntry.create({ data: { ...m, foodId: newId, userId } });
+            await prisma.mealEntry.create({ data: { ...m, foodId: newId, userId } as any });
             bump('mealEntries', 1);
           } catch (e: any) {
             fail('mealEntries', String(mRaw.id ?? ''), e?.message ?? 'unknown');

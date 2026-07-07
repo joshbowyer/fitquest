@@ -774,7 +774,7 @@ export async function workoutRoutes(app: FastifyInstance) {
   // none. The UserSkill / pending-unlock cascades fire as part of
   // the transaction.
   const BulkDeleteSchema = z.object({ ids: z.array(z.string().min(1)).min(1).max(200) });
-  app.post('/bulk-delete', async (req) => {
+  app.post('/bulk-delete', async (req, reply) => {
     const me = await requireUser(req);
     const body = BulkDeleteSchema.parse(req.body);
     // Ownership check — only delete rows the user owns.

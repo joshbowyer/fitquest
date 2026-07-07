@@ -143,7 +143,12 @@ export function BreachPage() {
     }
   });
 
-  const claim = useMutation({
+  // NOTE: options object goes straight into useDelayedMutation below.
+  // This was previously a standalone useMutation whose RESULT was
+  // passed to useDelayedMutation — which reads it as an options bag
+  // with no mutationFn, so `run()` rejected with "No mutationFn
+  // found" and the claim POST never fired. Claim victory was dead.
+  const claimDelayed = useDelayedMutation<{ reward: BreachReward }>({
     mutationFn: () => postJson<{ reward: BreachReward }>('/breach/claim', {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['breach'] });
@@ -158,8 +163,6 @@ export function BreachPage() {
       queryClient.invalidateQueries({ queryKey: ['users/me'] });
     },
   });
-
-  const claimDelayed = useDelayedMutation(claim);
 
   if (isLoading) {
     return (
@@ -346,10 +349,10 @@ export function BreachPage() {
                 {isVictory ? (
                   <button
                     onClick={() => claimDelayed.run(undefined as never)}
-                    disabled={claimDelayed.isPending || claim.isPending}
+                    disabled={claimDelayed.isPending}
                     className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs uppercase tracking-widest disabled:opacity-50"
                   >
-                    {claimDelayed.isPending || claim.isPending ? 'Claiming…' : '⚡ Claim victory'}
+                    {claimDelayed.isPending ? 'Claiming…' : '⚡ Claim victory'}
                   </button>
                 ) : (
                   <button
@@ -411,36 +414,36 @@ export function BreachPage() {
       </div>
 
       {/* Victory modal */}
-      {claim.data && (
-        <Modal open={true} onClose={() => { claim.reset(); }} title="VICTORY">
+      {claimDelayed.data && (
+        <Modal open={true} onClose={() => { claimDelayed.reset(); }} title="VICTORY">
           <div className="space-y-4">
             <p className="text-sm text-slate-300">
               <span style={{ color: affinityColor }}>{boss.name}</span> has been defeated.
             </p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div className="space-y-1">
-                <div className="text-2xl font-mono text-amber-400">+{claim.data.reward.gold}</div>
+                <div className="text-2xl font-mono text-amber-400">+{claimDelayed.data.reward.gold}</div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">gold</div>
               </div>
               <div className="space-y-1">
-                <div className="text-2xl font-mono text-violet-300">+{claim.data.reward.soulstones}</div>
+                <div className="text-2xl font-mono text-violet-300">+{claimDelayed.data.reward.soulstones}</div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">soulstones</div>
               </div>
               <div className="space-y-1">
-                <div className="text-2xl font-mono text-emerald-400">+{claim.data.reward.xp}</div>
+                <div className="text-2xl font-mono text-emerald-400">+{claimDelayed.data.reward.xp}</div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">XP</div>
               </div>
             </div>
-            {claim.data.reward.itemTier && (
+            {claimDelayed.data.reward.itemTier && (
               <div className="text-center">
                 <div className="text-xs text-slate-400 mb-2">ITEM DROP</div>
                 <div className="inline-block px-3 py-1 rounded bg-slate-800 border border-slate-700 text-xs font-mono uppercase">
-                  {claim.data.reward.itemTier} item
+                  {claimDelayed.data.reward.itemTier} item
                 </div>
               </div>
             )}
             <button
-              onClick={() => { claim.reset(); }}
+              onClick={() => { claimDelayed.reset(); }}
               className="w-full px-4 py-2 rounded bg-violet-600 hover:bg-violet-500 text-white font-mono text-xs uppercase tracking-widest"
             >
               Enter the next breach

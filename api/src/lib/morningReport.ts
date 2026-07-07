@@ -30,7 +30,7 @@
 import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
-import { tickHearts, hardcoreSubstanceCapReason, HARDCORE_SUBSTANCE_CAPS } from './mode.js';
+import { tickHearts, hardcoreSubstanceCapReason, heartMultiplier, HARDCORE_SUBSTANCE_CAPS, MAX_HEARTS } from './mode.js';
 import { setVolumeKg } from './exerciseVolume.js';
 import { firePenance } from './penance.js';
 import { detectPlateaus, type Plateau } from './plateau.js';
@@ -431,6 +431,12 @@ export type ReportPayload = {
     totalWeeks: number;
     latestWeekStart: string | null;
   };
+  /// User's IANA timezone (opts override, else the user row's).
+  /// buildPenalties needs it to bucket heart-loss events against
+  /// the user's local "today" — sourceDate strings are user-tz
+  /// dates. Optional so hand-built test payloads don't have to
+  /// care; absent/null falls back to UTC in todayInTz().
+  timezone?: string | null;
 };
 
 function todayInTz(timezone: string | null): DateStr {
@@ -516,10 +522,10 @@ export async function gatherReportData(
     spiritual,
     recovery: { score: recovery.score, trend: null },
     mode: me?.mode === 'HARDCORE' ? 'HARDCORE' : 'CASUAL',
+    timezone: tz,
     // Tick hearts on gather so the count in the payload matches
-    // what the dashboard would see right now. No-op for Casual
-    // (returns 5).
-    hearts: me ? await tickHearts(me.id) : 5,
+    // what the dashboard would see right now.
+    hearts: me ? await tickHearts(me.id) : MAX_HEARTS,
     streak,
     substanceCounts,
     plateaus,
@@ -667,23 +673,29 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
   if (payload.mode === 'CASUAL') return [];
   const out: Penalty[] = [];
 
+  // Graduated 10-heart penalty ladder (see mode.ts heartMultiplier).
+  // Any count below MAX_HEARTS carries a real reward reduction, so
+  // every sub-full state gets a ledger entry with the actual
+  // multiplier — the ledger's whole job is to explain WHY rewards
+  // are down. (The old copy said "halved" and "/5" — stale remnants
+  // of the pre-graduated 5-heart system.)
   if (payload.hearts <= 0) {
     out.push({
       label: 'Hearts',
       severity: 'scold',
-      note: '0 hearts. XP, gold, and raid damage are halved until the next Sunday regen (~7 days).',
+      note: '0 hearts. XP, gold, and raid damage are zeroed until the next Sunday regen (~7 days).',
     });
   } else if (payload.hearts <= 2) {
     out.push({
       label: 'Hearts',
       severity: 'warn',
-      note: `${payload.hearts} hearts remaining. Try to log a workout today — HeartLoss flag is now active.`,
+      note: `${payload.hearts}/${MAX_HEARTS} hearts — rewards ×${heartMultiplier(payload.hearts)}. Log your planned workouts to stop the bleed; 1 heart regens each Sunday.`,
     });
-  } else if (payload.hearts < 5) {
+  } else if (payload.hearts < MAX_HEARTS) {
     out.push({
       label: 'Hearts',
       severity: 'warn',
-      note: `${payload.hearts}/5 hearts. ${5 - payload.hearts} more heart(s) before you're back to full.`,
+      note: `${payload.hearts}/${MAX_HEARTS} hearts — rewards ×${heartMultiplier(payload.hearts)}. ${MAX_HEARTS - payload.hearts} more heart(s) before you're back to full (1 per Sunday).`,
     });
   }
 
@@ -730,8 +742,12 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     // "Today" must be the user's local date — sourceDate is also a
     // user-tz date string. Was previously `new Date().toISOString()
     // .slice(0,10)` (UTC), which misbucketed events that fell on
-    // either side of midnight local vs UTC.
-    const today = todayInTz(opts.timezone ?? user?.timezone ?? null);
+    // either side of midnight local vs UTC. The tz rides on the
+    // payload (set by gatherReportData); an earlier version
+    // referenced `opts`/`user` here, which don't exist in this
+    // function's scope — a ReferenceError that crashed the whole
+    // morning report for any hardcore user with heart-loss events.
+    const today = todayInTz(payload.timezone ?? null);
     const sorted = [...payload.heartLossEvents].sort((a, b) => {
       const aRecent = a.sourceDate >= today ? 1 : 0;
       const bRecent = b.sourceDate >= today ? 1 : 0;
@@ -1312,9 +1328,14 @@ export async function fireHardcoreHeartPenalties(
     }
 
     // ---- Trigger 3-5: SUBSTANCE_* ----
+    // Bounded to [startOfYesterday, todayMidnight) — this is
+    // yesterday's per-day count. It previously had no upper bound,
+    // so espressos logged THIS morning counted toward YESTERDAY's
+    // cap and could cost a heart even though neither day was
+    // actually over the limit.
     const substanceCounts = await prisma.substanceLog.groupBy({
       by: ['category'],
-      where: { userId, loggedAt: { gte: startOfYesterday } },
+      where: { userId, loggedAt: { gte: startOfYesterday, lt: todayMidnight } },
       _count: { _all: true },
     });
     // For caffeine we only count yesterday. For alcohol/nicotine we

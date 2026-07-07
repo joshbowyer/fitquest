@@ -18,6 +18,7 @@ import {
   weightToKg,
   weightUnitLabel,
   distanceUnit,
+  distanceInputToKm,
   toLocalInput,
   localInputToIso,
   parseDuration,

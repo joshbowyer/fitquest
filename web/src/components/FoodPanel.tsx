@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { DeleteButton } from '@/components/DeleteButton';

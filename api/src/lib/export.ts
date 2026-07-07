@@ -80,6 +80,15 @@ export type ExportPayload = {
     userTrackedItems: unknown[];
     dailyTrackedItems: unknown[];
     substanceLogs: unknown[];
+    // FoodItem is a shared catalog (no userId), but the export
+    // carries the SUBSET of catalog rows referenced by this user's
+    // meal entries so a restore onto a fresh instance is
+    // self-contained. mealEntries is the user's actual meal log —
+    // it was previously missing entirely, so a backup→restore
+    // round trip silently lost the whole food diary (while the
+    // exportInfo preview still advertised the meal count).
+    foodItems: unknown[];
+    mealEntries: unknown[];
     savedFoods: unknown[];
     correlationSnapshots: unknown[];
     metricInsights: unknown[];
@@ -196,6 +205,8 @@ export async function buildExport(
     userTrackedItems,
     dailyTrackedItems,
     substanceLogs,
+    foodItems,
+    mealEntries,
     savedFoods,
     correlationSnapshots,
     metricInsights,
@@ -250,9 +261,12 @@ export async function buildExport(
     prisma.userTrackedItem.findMany({ where: { userId } }),
     prisma.dailyTrackedItem.findMany({ where: { userId } }),
     prisma.substanceLog.findMany({ where: { userId }, orderBy: { loggedAt: 'asc' } }),
-    // FoodItem is a shared catalog (USDA/OFF cached entries) — not
-    // per-user, so excluded from the export. SavedFood is the
-    // per-user shadow of the catalog; that's what we export.
+    // FoodItem is a shared catalog (USDA/OFF cached entries), so we
+    // export only the rows this user's meals reference — enough to
+    // make the meal log restorable on a fresh instance without
+    // dumping the whole shared cache.
+    prisma.foodItem.findMany({ where: { mealEntries: { some: { userId } } } }),
+    prisma.mealEntry.findMany({ where: { userId }, orderBy: { loggedAt: 'asc' } }),
     prisma.savedFood.findMany({ where: { userId } }),
     prisma.correlationSnapshot.findMany({ where: { userId }, orderBy: { snapshotDate: 'asc' } }),
     prisma.metricInsight.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
@@ -298,6 +312,8 @@ export async function buildExport(
     userTrackedItems,
     dailyTrackedItems,
     substanceLogs,
+    foodItems,
+    mealEntries,
     savedFoods,
     correlationSnapshots,
     metricInsights,

@@ -77,18 +77,26 @@ export async function scheduleMorningReminder(): Promise<{ scheduled: boolean; r
   // Schedule daily at 8:00 AM. Capacitor's local-notifications
   // 'every: day' + 'at: <next 8am>' = daily 8 AM. The plugin
   // handles the repeating logic natively.
+  // Capacitor's API takes `{ notifications: [...] }` — passing the
+  // notification fields at the top level (as this previously did)
+  // is silently rejected by the plugin, so the reminder was never
+  // actually registered.
   await LocalNotifications.schedule({
-    id: REMINDER_ID,
-    channelId: CHANNEL_ID,
-    title: 'FitQuest // Today',
-    body: 'Check your dailies · log a workout · mark the day complete.',
-    schedule: {
-      repeats: true,
-      every: 'day',
-      at: next830am(),
-    },
-    sound: 'default',
-    smallIcon: 'ic_stat_notification',
+    notifications: [
+      {
+        id: REMINDER_ID,
+        channelId: CHANNEL_ID,
+        title: 'FitQuest // Today',
+        body: 'Check your dailies · log a workout · mark the day complete.',
+        schedule: {
+          repeats: true,
+          every: 'day',
+          at: next830am(),
+        },
+        sound: 'default',
+        smallIcon: 'ic_stat_notification',
+      },
+    ],
   });
 
   return { scheduled: true };

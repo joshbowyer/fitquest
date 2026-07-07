@@ -259,10 +259,11 @@ export function assertCanChangeClass(
   newClass: string | null,
   soulstoneCount: number = 0,
   tz: string | null = null,
+  now: Date = new Date(),
 ): { useSoulstone: boolean } {
   if (!newClass) return { useSoulstone: false };
   if (user.class === newClass) return { useSoulstone: false };
-  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount, undefined, tz);
+  const status = getClassLockStatus(user.class, user.classChangedAt, user.birthDate, soulstoneCount, now, tz);
   if (!status.locked) return { useSoulstone: false };
   if (status.canUseSoulstone) return { useSoulstone: true };
   const err: any = new Error(

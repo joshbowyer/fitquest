@@ -27,19 +27,35 @@ describe('HARDCORE_SUBSTANCE_CAPS', () => {
 });
 
 describe('heartMultiplier', () => {
-  it('returns 1.0 for any heart count >= 1', () => {
-    expect(heartMultiplier(5)).toBe(1.0);
-    expect(heartMultiplier(3)).toBe(1.0);
-    expect(heartMultiplier(1)).toBe(1.0);
+  // Graduated Hardcore curve introduced in 021082d (hearts 5→10).
+  // The old tests asserted the pre-graduated binary system
+  // (>=1 → 1.0, 0 → 0.5) and were never updated with the redesign.
+  it('applies the graduated Hardcore curve from the mode.ts table', () => {
+    expect(heartMultiplier(10)).toBe(1.0);
+    expect(heartMultiplier(9)).toBe(0.95);
+    expect(heartMultiplier(8)).toBe(0.9);
+    expect(heartMultiplier(7)).toBe(0.85);
+    expect(heartMultiplier(6)).toBe(0.8);
+    expect(heartMultiplier(5)).toBe(0.7);
+    expect(heartMultiplier(4)).toBe(0.6);
+    expect(heartMultiplier(3)).toBe(0.5);
+    expect(heartMultiplier(2)).toBe(0.4);
+    expect(heartMultiplier(1)).toBe(0.25);
   });
 
-  it('returns 0.5 for 0 hearts', () => {
-    expect(heartMultiplier(0)).toBe(0.5);
+  it('returns 0 at 0 hearts — no progress at all', () => {
+    expect(heartMultiplier(0)).toBe(0);
   });
 
-  it('handles edge cases gracefully', () => {
-    expect(heartMultiplier(-1)).toBe(0.5); // clamped to 0
-    expect(heartMultiplier(10)).toBe(1.0); // over max, still full
+  it('handles out-of-range counts gracefully', () => {
+    expect(heartMultiplier(-1)).toBe(0); // below 0 → treated as 0
+    expect(heartMultiplier(11)).toBe(1.0); // above max → full credit
+  });
+
+  it('CASUAL mode never applies a penalty', () => {
+    expect(heartMultiplier(0, 'CASUAL')).toBe(1.0);
+    expect(heartMultiplier(5, 'CASUAL')).toBe(1.0);
+    expect(heartMultiplier(10, 'CASUAL')).toBe(1.0);
   });
 });
 

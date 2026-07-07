@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Gauge } from '@/components/Gauge';

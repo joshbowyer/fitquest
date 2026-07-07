@@ -441,9 +441,15 @@ function formatProgress(current: number, target: number, units: 'METRIC' | 'IMPE
   return `${Math.round(current)} / ${Math.round(target)}`;
 }
 
-function worldColorToVariant(c: 'magenta' | 'lime' | 'goldenrod' | 'periwinkle' | 'violet' | 'cyan'):
+function worldColorToVariant(c: import('@/lib/quest').WorldColor):
   'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' {
   switch (c) {
+    // red/orange worlds exist in the API's world list (e.g. the
+    // Juggernaut/Tracer worlds). They were missing here, so the
+    // switch returned undefined and those world pages rendered
+    // with the default cyan accents instead of their theme.
+    case 'red':        return 'magenta';
+    case 'orange':     return 'amber';
     case 'magenta':    return 'magenta';
     case 'lime':       return 'lime';
     case 'goldenrod':  return 'amber';

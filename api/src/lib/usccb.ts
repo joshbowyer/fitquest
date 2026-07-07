@@ -369,23 +369,24 @@ async function fetchReadingByWayback(date: string): Promise<DailyReading | null>
   }
 
   // If the main page only contains the "Vigil/Day" picker and
-  // no actual readings, fall back to fetching the -Day variant
-  // directly (the previous Wayback lookup for -Day may have
-  // missed a snapshot; try harder here).
+  // no actual readings, fall back to fetching the LIVE -Day URL
+  // directly (the Wayback lookup for -Day may have missed a
+  // snapshot; try harder here). This block previously referenced
+  // a `dayUrl` variable that never existed — a ReferenceError
+  // that turned "no readings found" into a crash that propagated
+  // out of seedReading and 500'd the spiritual routes.
   if (!/Reading\s+(?:[0-9]+|[IVX]+)/i.test(html)) {
-    if (snapshotUrl !== dayUrl && daySnapshot) {
-      try {
-        const r2 = await fetch(dayUrl, {
-          headers: { 'User-Agent': 'FitQuest/1.0 (+https://fitquest.local)' },
-          signal: AbortSignal.timeout(15_000),
-          redirect: 'follow',
-        });
-        if (r2.ok) {
-          const h2 = await r2.text();
-          if (/Reading\s+(?:[0-9]+|[IVX]+)/i.test(h2)) html = h2;
-        }
-      } catch { /* ignore */ }
-    }
+    try {
+      const r2 = await fetch(dayNoCfm, {
+        headers: { 'User-Agent': 'FitQuest/1.0 (+https://fitquest.local)' },
+        signal: AbortSignal.timeout(15_000),
+        redirect: 'follow',
+      });
+      if (r2.ok) {
+        const h2 = await r2.text();
+        if (/Reading\s+(?:[0-9]+|[IVX]+)/i.test(h2)) html = h2;
+      }
+    } catch { /* ignore */ }
     if (!/Reading\s+(?:[0-9]+|[IVX]+)/i.test(html)) {
       console.log(`[fetchReadingByWayback] ${date}: HTML has no Reading sections (page might be a vigil/day picker)`);
       return null;
