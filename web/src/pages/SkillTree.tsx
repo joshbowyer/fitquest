@@ -573,14 +573,13 @@ function BranchColumn({
   className: string;
   onSkillClick: (skill: Skill) => void;
 }) {
-  // Mobile horizontal-scroll: per-branch fixed width (no flex-1)
-  // + data-branch attribute so the scroll-indicator can compute
-  // the active branch by `el.offsetLeft` without an index lookup.
-  // Removing flex-1 + bumping the min-width lets the columns sit
-  // at their natural size and the parent scroll horizontally
-  // between them — the flex-1 behavior was crushing all 7
-  // branches into a single screen-width row on mobile with no
-  // overflow.
+  // Mobile layout: this is one ROW in a vertical stack of branches.
+  // Inside the row, skills flow HORIZONTALLY (left to right). The
+  // row scrolls horizontally to reveal the T3 god-tier skills that
+  // don't fit in the viewport width. `overflow-x-auto` on the inner
+  // flex parent + `data-branch` on the row so the parent knows
+  // what this is. Each row is its own scroll region — swiping
+  // right on a branch row scrolls the skills, NOT the page.
   const icon = branchIcon(branch.branchName, className);
   const calitreeFile = calitreeIconFor(branch.branchName);
   const unlockedCount = branch.skills.filter((s) => s.unlocked).length;
@@ -589,31 +588,27 @@ function BranchColumn({
   return (
     <div
       data-branch={branch.branchName}
-      className="shrink-0 snap-center w-[160px] md:w-[180px] flex flex-col gap-3"
+      className="flex flex-row items-center gap-2 min-w-fit"
     >
-      {/* Branch header — centered icon + name + progress. Always
-          rendered in the class color (or neon-lime if every skill
-          is unlocked) regardless of whether the icon is a
-          calitree PNG or a hand-coded SVG — without this, the
-          hand-coded SVG branches render in default text color
-          (white) while the calitree PNG branches get tinted to
-          the class hue, so a class like TRACER ends up with
-          "3 yellow, 2 white" headers. */}
-      <div className="flex flex-col items-center gap-1 pb-2 border-b border-ink-700/30">
+      {/* Branch label column — fixed-width on the LEFT of the row.
+          Holds the icon + name + progress, all stacked vertically.
+          On mobile and desktop this label has the same size so the
+          rows align vertically and feel like a list. */}
+      <div
+        className="shrink-0 w-20 flex flex-col items-center gap-1 py-2 pr-2 border-r border-ink-700/30"
+        style={{ minHeight: '64px' }}
+      >
         <div
           className={classNames(
-            'text-3xl leading-none',
+            'text-2xl leading-none',
             allDone ? 'text-neon-lime' : classColorForClass(className),
             'transition-colors duration-200',
           )}
         >
           {calitreeFile ? (
-            // Masked PNG — picks up the parent's currentColor via
-            // background-color: currentColor. The mask silouhette
-            // becomes the class-tinted icon shape.
             <i
               aria-hidden
-              className="block w-8 h-8 select-none"
+              className="block w-7 h-7 select-none"
               style={{
                 WebkitMaskImage: `url(/icons/calitree/${calitreeFile}.png)`,
                 maskImage: `url(/icons/calitree/${calitreeFile}.png)`,
@@ -631,7 +626,7 @@ function BranchColumn({
             <span className="block">{icon}</span>
           )}
         </div>
-        <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">
+        <div className="text-[9px] font-mono uppercase tracking-widest text-neon-cyan/80 truncate w-full text-center">
           {branch.branchName}
         </div>
         <div
@@ -643,110 +638,67 @@ function BranchColumn({
           {unlockedCount}/{total}
         </div>
       </div>
-      {/* Vertical chain — circles connected by short gradient lines */}
-      <div className="flex flex-col items-center gap-0">
-        {branch.skills.map((s, idx) => {
-          const isLast = idx === branch.skills.length - 1;
-          const isGodTier = isLast && s.tier === 'TIER_3';
-          return (
-            <div key={s.id} className="flex flex-col items-center">
-              <SkillNode
-                skill={s}
-                className={className}
-                onClick={() => onSkillClick(s)}
-                isUnlocked={s.unlocked}
-                isGodTier={isGodTier}
-              />
-              {/* Connector line — short gradient bar between nodes */}
-              {!isLast && (
-                <div
-                  className={classNames(
-                    'w-0.5 h-5 my-0.5',
-                    s.unlocked && branch.skills[idx + 1].unlocked
-                      ? 'bg-gradient-to-b from-neon-lime/60 to-neon-lime/30'
-                      : 'bg-gradient-to-b from-ink-500/40 to-ink-500/10',
-                  )}
+      {/* HORIZONTAL scroll region for the skills. The chain
+          flows left-to-right. `overflow-x-auto` lets the user
+          swipe right to reveal the T3 god-tier skills that
+          overflow on narrow viewports. Each branch has its own
+          scroll region, so a horizontal swipe on one branch
+          doesn't move its siblings. Right-edge gradient hint at
+          the end shows there's more to scroll to. */}
+      <div
+        className="relative flex-1 overflow-x-auto overflow-y-hidden"
+        data-branch-chain={branch.branchName}
+      >
+        <div className="flex flex-row items-center gap-1.5 px-2 py-2 min-w-fit">
+          {branch.skills.map((s, idx) => {
+            const isLast = idx === branch.skills.length - 1;
+            const isGodTier = isLast && s.tier === 'TIER_3';
+            return (
+              <div key={s.id} className="flex flex-row items-center">
+                <SkillNode
+                  skill={s}
+                  className={className}
+                  onClick={() => onSkillClick(s)}
+                  isUnlocked={s.unlocked}
+                  isGodTier={isGodTier}
                 />
-              )}
-            </div>
-          );
-        })}
+                {/* Connector line — short horizontal bar between
+                    nodes. Replaces the old vertical connector. */}
+                {!isLast && (
+                  <div
+                    className={classNames(
+                      'h-0.5 w-5 mx-0.5',
+                      s.unlocked && branch.skills[idx + 1].unlocked
+                        ? 'bg-gradient-to-r from-neon-lime/60 to-neon-lime/30'
+                        : 'bg-gradient-to-r from-ink-500/40 to-ink-500/10',
+                    )}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Right-edge fade — hint at "more to the right" */}
+        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-bg-900/60 to-transparent" aria-hidden />
       </div>
     </div>
   );
 }
 
 /**
- * Branch scroll indicator — a row of dots above the tree showing
- * which branch is currently scrolled into view, plus a "Branch
- * N of M" label. The active dot updates on scroll via a passive
- * listener (no setState in the scroll handler — we use a ref + the
- * "scroll" event to compute the index lazily and only update state
- * when the index actually changes). On desktop where the whole
- * tree fits, the dots render collapsed (single dot, no label)
- * because the active index never changes.
+ * Layout hint — small "→ scroll right for god-tier" line that
+ * appears above the tree on narrow viewports where the T3
+ * god-tier skills would otherwise be clipped. Hidden on desktop
+ * where the per-branch chain usually fits. The hint is purely
+ * a one-time visible affordance — there's no active state or
+ * scroll listener; once the user starts scrolling each branch's
+ * own overflow-x-auto region, the right-edge gradient inside
+ * the branch takes over.
  */
-function BranchScrollIndicator({
-  branches,
-  scrollRef,
-}: {
-  branches: Branch[];
-  scrollRef: RefObject<HTMLDivElement | null>;
-}) {
-  const [activeIdx, setActiveIdx] = useState(0);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const compute = () => {
-      const scrollLeft = el.scrollLeft;
-      const containerWidth = el.clientWidth;
-      const children = Array.from(el.querySelectorAll('[data-branch]')) as HTMLElement[];
-      if (children.length === 0) return;
-      let best = 0;
-      for (let i = 0; i < children.length; i++) {
-        const offsetLeft = children[i].offsetLeft;
-        if (offsetLeft - scrollLeft < containerWidth * 0.5) {
-          best = i;
-        } else {
-          break;
-        }
-      }
-      setActiveIdx((prev) => (prev === best ? prev : best));
-    };
-    compute();
-    el.addEventListener('scroll', compute, { passive: true });
-    window.addEventListener('resize', compute);
-    return () => {
-      el.removeEventListener('scroll', compute);
-      window.removeEventListener('resize', compute);
-    };
-  }, [scrollRef, branches.length]);
-  // If everything fits (no overflow), don't show a busy row of
-  // dots — the user can already see the whole tree. The
-  // scrollWidth vs clientWidth comparison is cheap and lets
-  // desktop look clean.
-  const needsScroll = scrollRef.current
-    ? scrollRef.current.scrollWidth > scrollRef.current.clientWidth + 4
-    : branches.length > 3;
-  if (!needsScroll) return null;
+function TreeScrollHint() {
   return (
-    <div className="flex items-center justify-center gap-2 px-2 pt-1 pb-2 text-[10px] font-mono uppercase tracking-widest text-ink-300">
-      <span>Branch {activeIdx + 1} of {branches.length}</span>
-      <span className="text-ink-500">·</span>
-      <div className="flex items-center gap-1">
-        {branches.map((b, i) => (
-          <span
-            key={b.branchName}
-            aria-label={b.branchName}
-            className={classNames(
-              'inline-block rounded-full transition-all',
-              i === activeIdx
-                ? 'w-2.5 h-2.5 bg-neon-cyan shadow-neon-cyan'
-                : 'w-1.5 h-1.5 bg-ink-500/60',
-            )}
-          />
-        ))}
-      </div>
+    <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 text-center py-1">
+      scroll right inside a branch for god-tier skills →
     </div>
   );
 }
@@ -934,30 +886,26 @@ export function SkillTreePage() {
         subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · pass the test to unlock`}
       />
 
-      {/* Tree view — branches as columns, each skill a circular flow node.
-          Mobile-first: branches have a fixed min-width (no flex-1
-          shrinking) and the parent uses scroll-snap-x so the user
-          pans branch-to-branch with a clean stop. Edge-fade
-          gradients on left/right hint that more content is off-
-          screen; the dot indicator above shows the current branch
-          position. On desktop the page renders the same — all 7
-          branches fit horizontally with no scrolling required. */}
-      <BranchScrollIndicator branches={branches} scrollRef={treeScrollRef} />
+      {/* Tree view — all 7 branches visible AT ONCE on the left,
+          stacked top-to-bottom. Each branch row scrolls
+          HORIZONTALLY within itself to reveal its T3 god-tier
+          skills. This is the calitree.app-style layout:
+            ┌───────────────────────────────────────────┐
+            │ BRANCH LABEL │  T1  ─  T2  ─  T3  ─  T3   │
+            │              └──────────────────────────→
+            └───────────────────────────────────────────┘
+            All 7 rows visible on the screen at once; only the
+            horizontal direction scrolls. */}
       <div
         ref={treeScrollRef}
         className={classNames(
-          'relative overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory',
+          'relative flex flex-col gap-2 px-2 pb-2',
         )}
       >
-        {/* Left edge fade — gradient mask hinting at "scroll right" */}
-        <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-bg-900/80 to-transparent z-10" aria-hidden />
-        {/* Right edge fade — gradient mask hinting at "more to the right" */}
-        <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-bg-900/80 to-transparent z-10" aria-hidden />
-        <div className="flex gap-4 px-2 py-2">
-          {branches.map((b) => (
-            <BranchColumn key={b.branchName} branch={b} className={treeQ.data.className} onSkillClick={setSelected} />
-          ))}
-        </div>
+        <TreeScrollHint />
+        {branches.map((b) => (
+          <BranchColumn key={b.branchName} branch={b} className={treeQ.data.className} onSkillClick={setSelected} />
+        ))}
       </div>
 
       {/* Legend */}
