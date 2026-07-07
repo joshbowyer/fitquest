@@ -179,8 +179,16 @@ export function localNightStartInTz(
   // Evening (18:00 – 23:59) → same day.
   let nightDate: string;
   if (localHour < 12) {
-    const prev = new Date(localMidnightUtc(localDate, tz).getTime() - 24 * 60 * 60 * 1000);
-    nightDate = todayInTz(tz, prev);
+    // Step back in DATE space (one calendar day), not instant
+    // space (−24h). The old approach subtracted 24h from the
+    // UTC instant of "today's local midnight" — and on the night
+    // of DST spring-forward, that local-midnight UTC instant is
+    // 1h earlier than usual (the offset shifted overnight), so
+    // the −24h subtraction landed in the wrong UTC day for some
+    // timezones. Walking the date string keeps us tz-clean.
+    const d = new Date(`${localDate}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    nightDate = d.toISOString().slice(0, 10);
   } else {
     nightDate = localDate;
   }

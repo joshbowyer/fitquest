@@ -86,4 +86,29 @@ describe('localNightStartInTz', () => {
       new Date(sundayLocalMidnightUtc).toISOString(),
     );
   });
+
+  it('DST spring-forward: onset at 00:30 CDT (after the 02:00 transition) buckets to the PREVIOUS day in date-space', () => {
+    // 2026-03-09 (Mon) is the US spring-forward day (DST starts at
+    // 02:00 local). An onset at 00:30 on this date is ambiguous —
+    // it happens twice in the US timezones that fall forward at
+    // 02:00 local:
+    //   1. 00:30 CST (before transition) = 06:30 UTC on Mar 9.
+    //   2. 00:30 CDT (after transition)  = 05:30 UTC on Mar 9.
+    //
+    // Both should bucket to Sunday March 8 (a "post-midnight sleep
+    // onset"). The OLD −24h-on-instant code landed the second one
+    // on Saturday March 7 because local-midnight UTC for Mar 9 in
+    // Chicago is at 06:00 UTC (CST), subtract 24h → 06:00 UTC Mar
+    // 8, and Mar 8 00:00 CST is Mar 8 06:00 UTC — but the
+    // arithmetic falls apart once the day itself is the transition
+    // day. The new code walks the date string by one calendar
+    // day, then asks localMidnightUtc for the previous date —
+    // always correct regardless of offset shifts.
+    const at = new Date('2026-03-09T05:30:00Z'); // 00:30 CDT (post-DST)
+    const result = localNightStartInTz(at, 'America/Chicago');
+    // The returned Date is the UTC instant of Sunday Mar 8's local
+    // midnight in Chicago. Mar 8 is BEFORE spring-forward, so the
+    // offset is still CST (UTC-6) and local midnight = 06:00 UTC.
+    expect(result.toISOString()).toBe('2026-03-08T06:00:00.000Z');
+  });
 });

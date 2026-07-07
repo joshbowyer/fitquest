@@ -440,4 +440,59 @@ describe('POST /skills/unlock', () => {
     const res = await call({ method: 'POST', url: '/unlock', payload: { skillId: 's1', result: { reps: 5, weight_kg: 100 } }, user: { id: 'u1' } });
     expect(res.statusCode).toBe(200);
   });
+
+  it('response.reward reflects the Hardcore-multiplier-scaled grant (not the raw bonus)', async () => {
+    // Regression guard: /skills/unlock used to return `reward:
+    // bonus` (the pre-multiplier intent) while internally going
+    // through awardXpGold, so the unlock toast told the user
+    // "+30 XP" while their XP didn't change (0-heart Hardcore
+    // multiplier = ×0). Now reward.grantedXp matches the
+    // actually-granted amount.
+    //
+    // The mock's user.findUnique returns the user with mode:
+    // HARDCORE — we set it via __setCurrentUser directly so it
+    // survives the mock returning the unfiltered object. The
+    // heartMultiplier of 0 hearts at HARDCORE is ×0 (per
+    // mode.ts), so the granted XP/GOLD round to 0.
+    setupUser({ id: 'u1', class: 'BERSERKER', level: 5, weightKg: 80 });
+    currentUser.mode = 'HARDCORE';
+    currentUser.hearts = 0;
+    setupSkill({
+      id: 's1',
+      className: 'BERSERKER',
+      tier: 'TIER_3',
+      name: 'Heavy Stone Pull',
+      cost: 1,
+      prerequisites: [],
+      test: {
+        metric: 'weight:reps',
+        description: '1 rep at 2× BW',
+        safety: 'Belt + spotter',
+        threshold: { reps: 1, weight_kg_mult_of_bw: 2.0 },
+      },
+    });
+    const res = await call({
+      method: 'POST',
+      url: '/unlock',
+      payload: { skillId: 's1', result: { reps: 1, weight_kg: 160 } },
+      user: { id: 'u1' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // T3-with-test bonus is { xp: 50, gold: 25 }; ×0 multiplier
+    // must yield 0.
+    expect(body.bonusXp).toBe(50);
+    expect(body.bonusGold).toBe(25);
+    expect(body.multiplier).toBe(0);
+    expect(body.grantedXp).toBe(0);
+    expect(body.grantedGold).toBe(0);
+    // The toast surface (`reward`) mirrors `granted*`.
+    expect(body.reward).toEqual({ xp: 0, gold: 0 });
+    // And the user's actual XP didn't change. (The test mock's
+    // user.update does Object.assign(u, data), so the stored xp
+    // field ends up as `{ increment: 0 }` — assert on that shape
+    // rather than the numeric 0.)
+    expect(currentUser.xp).toEqual({ increment: 0 });
+    expect(currentUser.gold).toEqual({ increment: 0 });
+  });
 });

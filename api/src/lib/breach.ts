@@ -81,6 +81,17 @@ const TIER_SOULSTONES: Record<string, [number, number]> = {
   APEX: [8, 12],
 };
 
+/// Numeric tier used as `bossTier` on the Soulstone rows for
+/// cosmetic sort order + UI badge. Matches the order in
+/// TIER_GOLD / TIER_SOULSTONES (MINOR=1 < ELITE=3 < LEGENDARY=4
+/// < APEX=5). Unknown tiers default to 1 so a new tier is safe.
+const TIER_NUMERIC: Record<string, number> = {
+  MINOR: 1,
+  ELITE: 3,
+  LEGENDARY: 4,
+  APEX: 5,
+};
+
 // Gold range per kill by tier.
 const TIER_GOLD: Record<string, [number, number]> = {
   MINOR: [10, 25],
@@ -609,23 +620,44 @@ export async function claimKill(
       recentBossIds: [nextBoss.id, ...((progress.recentBossIds as string[]).filter((id) => id !== boss.id))].slice(0, RECENT_BOSS_MEMORY),
     },
   });
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      gold: { increment: reward.gold },
-      xp: { increment: reward.xp },
-    },
-  });
-  await prisma.breachDamageEvent.create({
-    data: {
-      userId,
-      bossId: boss.id,
-      workoutId: null,
-      damage: 0,
-      bossHpAfter: 0,
-      matchType: 'kill',
-    },
-  });
+  // Drop the rolled Soulstones. Each one is a 24h-TTL row in the
+  // `Soulstone` table (same shape raid/world-boss drops use) so
+  // `classLock.assertCanChangeClass` can find + consume them
+  // later. The previous design wrote to `UserBreachProgress
+  // .soulstones` — that column was dropped in the soulstone-TTL
+  // migration (021082d) and the write threw
+  // PrismaClientValidationError on every claim. `reward.soulstones`
+  // was still being returned to the caller (always 0 in practice
+  // since the increment was removed) and displayed in the
+  // victory modal — a guaranteed-broken preview.
+  const ssRows = Array.from({ length: reward.soulstones }, () => ({
+    userId,
+    bossName: boss.name,
+    bossTier: TIER_NUMERIC[boss.tier] ?? 1,
+    droppedAt: new Date(),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  }));
+
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: userId },
+      data: {
+        gold: { increment: reward.gold },
+        xp: { increment: reward.xp },
+      },
+    }),
+    ...(ssRows.length > 0 ? [prisma.soulstone.createMany({ data: ssRows })] : []),
+    prisma.breachDamageEvent.create({
+      data: {
+        userId,
+        bossId: boss.id,
+        workoutId: null,
+        damage: 0,
+        bossHpAfter: 0,
+        matchType: 'kill',
+      },
+    }),
+  ]);
 
   // Pet combat XP — boss kill. Awards full XP if the pet was
   // deployed and survived; posthumous XP if it fainted mid-fight

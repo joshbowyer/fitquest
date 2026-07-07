@@ -104,7 +104,20 @@ export async function bossRoutes(app: FastifyInstance) {
       // Apply class multiplier
       const classMult = me.class ? (CLASS_BOSS_MULT[me.class] ?? 1.0) : 1.0;
       const actualDamage = Math.floor(body.damage * classMult);
-      const newHp = Math.max(0, boss.bossHp - actualDamage);
+      // Cap a single request at 25% of boss maxHp. The schema
+      // already rejects damage > 10000, but a 1.3× Juggernaut
+      // mult would still let a malicious client one-shot a boss
+      // by sending the cap (10000 × 1.3 = 13000 vs typical
+      // boss.maxHp of 500-2500). The workout-driven damage path
+      // (applyWorldBossDamage in the workout commit hook) is the
+      // authoritative path for "real" damage from a real workout;
+      // this endpoint is the manual tap that lets the user chip
+      // away between workouts. A 25% ceiling on taps means it
+      // takes at least 4 real attacks to kill any boss — fine for
+      // the current UX, immune to one-shot exploits.
+      const maxPerRequest = Math.max(1, Math.floor(boss.bossMaxHp * 0.25));
+      const cappedDamage = Math.min(actualDamage, maxPerRequest);
+      const newHp = Math.max(0, boss.bossHp - cappedDamage);
       const defeated = newHp <= 0;
 
       const updated = await prisma.worldBoss.update({
@@ -206,7 +219,7 @@ export async function bossRoutes(app: FastifyInstance) {
 
       return {
         boss: updated,
-        actualDamage,
+actualDamage: cappedDamage,
         rewards,
         breachReset: breachReset && breachReset.reset
           ? { cycle: breachReset.cycle, variant: breachReset.variant }

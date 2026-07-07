@@ -46,6 +46,16 @@ async function userTz(userId: string): Promise<string | null> {
   return u?.timezone ?? null;
 }
 
+/// Days between two YYYY-MM-DD day-key strings, in date-space.
+/// Pure date math — no instant arithmetic — so DST transitions
+/// (which shift UTC instants by ±1h without changing the calendar
+/// day) don't move the count by an off-by-one.
+function daysBetweenKeys(fromKey: string, toKey: string): number {
+  return Math.round(
+    (Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
 export type WeighInStreak = {
   current: number;
   longest: number;
@@ -68,21 +78,21 @@ export async function getWeighInStreak(userId: string): Promise<WeighInStreak> {
   for (const m of measurements) {
     days.add(dayKey(new Date(m.recordedAt), tz));
   }
-  const sortedDesc = Array.from(days)
-    .map((k) => dayKeyToInstant(k, tz))
-    .sort((a, b) => b.getTime() - a.getTime());
+  const sortedDesc = Array.from(days).sort().reverse(); // newest dayKey first
+  const todayKey = dayKey(new Date(), tz);
 
-  // Current streak: start from today or yesterday, count consecutive days
-  const today = startOfDay(new Date(), tz);
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  // Current streak: start from today or yesterday, count consecutive
+  // days. Day-key comparison (not UTC-instant equality) so the
+  // 23h/25h DST transition days don't drop the user's streak.
   let current = 0;
-  if (sortedDesc[0]!.getTime() === today.getTime() || sortedDesc[0]!.getTime() === yesterday.getTime()) {
+  if (
+    sortedDesc.length > 0 &&
+    (sortedDesc[0] === todayKey ||
+      daysBetweenKeys(sortedDesc[0]!, todayKey) === 1)
+  ) {
     current = 1;
     for (let i = 1; i < sortedDesc.length; i++) {
-      const prev = sortedDesc[i - 1]!;
-      const cur = sortedDesc[i]!;
-      const diff = Math.round((prev.getTime() - cur.getTime()) / (24 * 60 * 60 * 1000));
-      if (diff === 1) current++;
+      if (daysBetweenKeys(sortedDesc[i]!, sortedDesc[i - 1]!) === 1) current++;
       else break;
     }
   }
@@ -91,10 +101,7 @@ export async function getWeighInStreak(userId: string): Promise<WeighInStreak> {
   let longest = 1;
   let running = 1;
   for (let i = 1; i < sortedDesc.length; i++) {
-    const prev = sortedDesc[i - 1]!;
-    const cur = sortedDesc[i]!;
-    const diff = Math.round((prev.getTime() - cur.getTime()) / (24 * 60 * 60 * 1000));
-    if (diff === 1) {
+    if (daysBetweenKeys(sortedDesc[i]!, sortedDesc[i - 1]!) === 1) {
       running++;
       if (running > longest) longest = running;
     } else {
@@ -105,7 +112,7 @@ export async function getWeighInStreak(userId: string): Promise<WeighInStreak> {
   return {
     current,
     longest,
-    lastDate: sortedDesc[0]!.toISOString(),
+    lastDate: dayKeyToInstant(sortedDesc[0]!, tz).toISOString(),
   };
 }
 
@@ -204,23 +211,18 @@ export async function getMetricStreak(
   for (const m of measurements) {
     days.add(dayKey(new Date(m.recordedAt), tz));
   }
-  const sortedDesc = Array.from(days)
-    .map((k) => dayKeyToInstant(k, tz))
-    .sort((a, b) => b.getTime() - a.getTime());
+  const sortedDesc = Array.from(days).sort().reverse(); // newest dayKey first
+  const todayKey = dayKey(new Date(), tz);
 
-  const today = startOfDay(new Date(), tz);
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   let current = 0;
   if (
-    sortedDesc[0]!.getTime() === today.getTime() ||
-    sortedDesc[0]!.getTime() === yesterday.getTime()
+    sortedDesc.length > 0 &&
+    (sortedDesc[0] === todayKey ||
+      daysBetweenKeys(sortedDesc[0]!, todayKey) === 1)
   ) {
     current = 1;
     for (let i = 1; i < sortedDesc.length; i++) {
-      const prev = sortedDesc[i - 1]!;
-      const cur = sortedDesc[i]!;
-      const diff = Math.round((prev.getTime() - cur.getTime()) / (24 * 60 * 60 * 1000));
-      if (diff === 1) current++;
+      if (daysBetweenKeys(sortedDesc[i]!, sortedDesc[i - 1]!) === 1) current++;
       else break;
     }
   }
@@ -228,10 +230,7 @@ export async function getMetricStreak(
   let longest = 1;
   let running = 1;
   for (let i = 1; i < sortedDesc.length; i++) {
-    const diff = Math.round(
-      (sortedDesc[i - 1]!.getTime() - sortedDesc[i]!.getTime()) / (24 * 60 * 60 * 1000)
-    );
-    if (diff === 1) {
+    if (daysBetweenKeys(sortedDesc[i]!, sortedDesc[i - 1]!) === 1) {
       running++;
       if (running > longest) longest = running;
     } else {

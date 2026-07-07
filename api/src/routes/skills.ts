@@ -198,7 +198,19 @@ app.post('/unlock', async (req, reply) => {
     const newLevel = award.level;
     return {
       ok: true,
-      reward: bonus,
+      // `reward` is the ACTUALLY-GRANTED amount (post Hardcore heart
+      // multiplier) — previously this was the raw `bonus` and the
+      // toast showed "+20 XP" even when the user's 0-heart Hardcore
+      // multiplier paid out ×0. `grantedXp`/`grantedGold` give the
+      // same numbers without breaking consumers that keyed off
+      // `reward`; `bonusXp`/`bonusGold` keep the raw intent for any
+      // debug/display use.
+      reward: { xp: award.xp, gold: award.gold },
+      grantedXp: award.xp,
+      grantedGold: award.gold,
+      bonusXp: bonus.xp,
+      bonusGold: bonus.gold,
+      multiplier: award.mult,
       newXp: updatedUser.xp,
       newGold: updatedUser.gold,
       newLevel: updatedUser.level,
