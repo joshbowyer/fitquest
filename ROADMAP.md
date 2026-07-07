@@ -546,6 +546,23 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.28 /me resilience
+
+Commit `ed3576a`, release [v1.0.28](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.28).
+
+- ✅ **`publicUser()` degrades gracefully on a missing-column
+  migration mismatch.** When v1.0.27 added `User.coachPersonality`
+  the migration file was written but `prisma migrate deploy` was
+  not run before the next /me hit the live DB — every user got
+  `PrismaClient P2022` (column does not exist) on every /auth/me
+  for ~25 minutes and was kicked to /login. New `safeReadField()`
+  helper wraps user-row property reads + a fallback DB select in
+  try/catch that swallows P2022 specifically (logs a warning so
+  the missing-migration is visible) and returns the fallback.
+  Real Prisma errors still propagate. Runbook note added in the
+  helper comment: `npx prisma migrate deploy` after each new
+  migration file.
+
 ### 2026-07-07 session — v1.0.27 AI Coach scaffold
 
 Commit `cd46826`, release
