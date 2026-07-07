@@ -75,15 +75,6 @@ are the changelog of what got shipped.
   same way web now does. This is the single highest-leverage
   hygiene item left — the web-side equivalent is what caught the
   Dashboard-crash class of bug.
-- **Breach kills never drop their advertised Soulstones.**
-  `rewardForKill()` computes `reward.soulstones` and the UI shows
-  it, but nothing creates a Breach-sourced `Soulstone` row (the
-  old `UserBreachProgress.soulstones` counter writes were removed
-  because that column was dropped in `021082d` — they'd been
-  throwing PrismaClientValidationError on every new user's first
-  Breach touch). Fix: on claim, create TTL Soulstone rows
-  (bossName = breach boss, 24h expiry) like raid/world-boss drops
-  do, or stop advertising soulstones in the reward preview.
 - **Dark/light theme toggle** (currently dark-only).
 - **Notification feed / inbox.** Right now unlocks, achievement
   pops, penance events, level-ups, daily digest, etc. all fire
@@ -184,25 +175,11 @@ are the changelog of what got shipped.
 
 ### P1.5 — small follow-ups from the 2026-07-07 bug hunt (hours each, low urgency)
 
-- **DST micro-issues (one night/year each):**
-  `localNightStartInTz` buckets a post-spring-forward early-AM
-  sleep onset two days back (subtract the day in date-string
-  space instead of `−24h` on the instant);
-  `streaks.ts` "yesterday" checks compare exact instants across
-  the fall-back 25h day (compare `localDayKey` strings instead).
 - **`sync-android.sh` NEXT_VERSION mode doesn't bump
   versionCode.** The comment says "explicit code bump" but only
   `BUMP=1` increments it — a `NEXT_VERSION=x.y.z` release would
   ship a duplicate versionCode and Android would refuse the
   update. (`BUMP=1` is what's actually used, so latent.)
-- **/skills/unlock response reports the BASE reward** while the
-  actual grant is heart-multiplier-scaled (awardXpGold). Either
-  return `award.xp/gold` in the response or annotate the toast.
-- **`POST /bosses/:worldId/damage` trusts client-supplied
-  damage** — same class as the removed `/raids/:id/contribute`
-  side door, but blast radius is the user's own single-player
-  world boss. Derive server-side from the committing workout,
-  or cap.
 - **Web main chunk is 2.3 MB** (vite warns on every build).
   Route-level `React.lazy` code-splitting for the heavy pages
   (Three.js avatar, Recharts pages) would cut initial load on
@@ -581,6 +558,42 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-07 session — v1.0.26 P1.5 follow-ups
+
+Commit `aeac6a7`, release [v1.0.26](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.26).
+Tests 546 → 554 (8 new).
+
+- ✅ **Breach kills actually drop Soulstones now.** `claimKill()`
+  was returning `reward.soulstones` to the caller (and showing it
+  in the victory modal) while the actual insert path targeted a
+  `UserBreachProgress.soulstones` column that was dropped in
+  `021082d` — PrismaClientValidationError on every claim since.
+  Now: claimKill rolls the count from `TIER_SOULSTONES`, creates
+  matching `Soulstone` rows (24h TTL, bossName=boss.name,
+  bossTier=numeric per cosmetic-sort map) in a transaction with
+  the gold/xp increment. 3 regression tests.
+- ✅ **`/skills/unlock` response reports the actual grant.** The
+  unlock toast was showing the raw bonus ("+50 XP") even when
+  the 0-heart Hardcore multiplier paid out ×0. `reward.xp/gold`
+  now reflect the actual grant; `bonusXp/bonusGold/multiplier`
+  added for any future UI that wants both. Response shape
+  unchanged on the read path.
+- ✅ **`POST /bosses/:worldId/damage` capped at 25% boss.maxHp per
+  request.** The schema rejected damage > 10000 but a 1.3×
+  Juggernaut mult could still one-shot a boss. The authoritative
+  damage path is the workout-commit hook; this endpoint is the
+  manual tap and now takes at least 4 real attacks to kill any
+  boss.
+- ✅ **DST micro-issues fixed.** `localNightStartInTz` now steps
+  back in date-space (one calendar day) instead of instant-space
+  (−24h) so a 00:30 CDT sleep onset on spring-forward no longer
+  buckets to Saturday. `getWeighInStreak` + `getMetricStreak`
+  switched the "today or yesterday" check from UTC-instant
+  equality to day-key string comparison — on the 25h fall-back
+  day, "yesterday's local midnight" via −24h sat 23h before
+  today's, the exact ms equality missed, and the streak dropped
+  to 0. 5 regression tests (1 sleep-onset + 3 streak).
 
 ### 2026-07-07 session — the bug hunt (v1.0.24 + v1.0.25)
 
