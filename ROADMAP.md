@@ -546,6 +546,39 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.34 FIT type 16 + unique constraint
+
+Commit `f400934`, release
+[v1.0.34](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.34).
+
+- ✅ **FIT_MONITORING_B type corrected to 16 (was 119).** v1.0.33
+  added `type 119` to the kind label map based on a wrong FIT
+  spec reading. Per `@garmin/fitsdk`, modern Garmin watches
+  write the monitoring-b file as numeric type **16**. The
+  user's actual MONITOR files all show `type 16`; the wrong
+  mapping meant every monitoring FIT was still classified as
+  'unknown' and parsed to nothing. Verified end-to-end: 3
+  MONITOR files imported via `/import` yielded
+  `kind: 'monitor'` and extracted RESPIRATION_RATE + STEPS.
+- ✅ **Measurement unique constraint migration.** The schema
+  declared `@@unique([userId, metric, recordedAt])` but the
+  live DB only had the plain index, so
+  `prisma.measurement.upsert` was failing with Postgres
+  `42P10` ("no unique or exclusion constraint matching the
+  ON CONFLICT specification"). New migration
+  `20260707120000_measurement_unique_constraint` swaps the
+  non-unique index for a unique one in-place (no duplicates
+  exist).
+- ✅ **Body battery is genuinely not in the FIT files.**
+  Decoded every directory in the user's test pool (ACTIVITY,
+  METRICS, HRV_STATUS, MONITOR, SLEEP) — zero
+  `hsaBodyBatteryDataMesgs` anywhere. This particular watch +
+  Gadgetbridge sync path doesn't surface body battery via FIT
+  export; it lives in Garmin Connect's database (Health API)
+  and would need a separate integration. Out of scope for the
+  FIT pipeline; a Garmin Connect Health API integration is a
+  roadmap item if needed.
+
 ### 2026-07-07 session — v1.0.33 Body Battery fix
 
 Commit `c90ea45`, release
