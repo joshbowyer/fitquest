@@ -546,6 +546,21 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.31 scroll-to-top hotfix
+
+Commit `e49a7cb`, release
+[v1.0.31](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.31).
+
+- ✅ **ScrollToTop actually scrolls now.** The v1.0.29 version
+  called `window.scrollTo(0, 0)` on every nav, but Layout's
+  scrollable surface is `<main className="... overflow-y-auto">`
+  — the window isn't actually scrollable. v1.0.31 targets
+  `<main>` directly via querySelector (window fallback only for
+  the rare pre-mount case). Also fires on initial mount with
+  a requestAnimationFrame defer so the scroll wins the race
+  against the browser's scroll restoration on back/forward
+  and hard reload.
+
 ### 2026-07-07 session — v1.0.30 coach persistence + limits + compaction
 
 Commit `75b754f`, release
