@@ -481,21 +481,26 @@ function SkillNode({
       // button width tracks the skill name's intrinsic width, and
       // branches end up looking stretched or compressed relative
       // to each other.
-      // min-h-[92px] forces every SkillNode to the same height
-      // regardless of the skill name wrapping (some names are 1
-      // line, others 2). Combined with `items-center` on the chain
-      // row, this puts every circle at exactly the same Y so the
-      // horizontal connector lines align cleanly across the whole
-      // branch.
+      // Every vertical segment of this button has a FIXED height:
+      // tier label h-2.5 (10px) + gap 6px + circle h-14 (56px) +
+      // gap 6px + name h-[22px] = 100px, for every node. Combined
+      // with `items-start` on the chain wrapper, the circle top is
+      // at a constant y=16 in every node, so all icons share the
+      // same Y. (The old min-h-[92px] + items-center approach
+      // failed because 2-line names made those buttons ~100px tall
+      // while 1-line ones were floored at 92px; centering the
+      // shorter buttons inside the stretched row pushed their
+      // circles ~4px lower than their 2-line-name neighbors.)
       className={classNames(
-        'group flex flex-col items-center gap-1.5 outline-none w-[110px] shrink-0 min-h-[92px]',
+        'group flex flex-col items-center gap-1.5 outline-none w-[110px] shrink-0',
         'focus-visible:ring-2 focus-visible:ring-neon-cyan/60 rounded-lg',
       )}
     >
-      {/* Tier label */}
+      {/* Tier label — fixed 10px height so the icon's vertical
+          position below it is constant across all buttons. */}
       <div
         className={classNames(
-          'text-[8px] font-display tracking-widest uppercase',
+          'text-[8px] font-display tracking-widest uppercase h-2.5 leading-none',
           isGodTier
             ? 'text-neon-amber'
             : isUnlocked
@@ -511,7 +516,11 @@ function SkillNode({
       <div
         className={classNames(
           'relative w-14 h-14 rounded-full border-2 flex items-center justify-center',
-          'text-2xl transition-all duration-200',
+          // text-[28px]: the hand-coded SVGs render at 1em, so this
+          // makes them exactly 28px — the same size as the w-7 h-7
+          // calitree PNG masks. (text-2xl was 24px, which left the
+          // SVG icons visibly smaller than the PNG ones.)
+          'text-[28px] transition-all duration-200',
           isGodTier
             ? 'border-neon-amber bg-neon-amber/10 shadow-neon-amber'
             : isUnlocked
@@ -533,11 +542,10 @@ function SkillNode({
               aria-hidden
               className={classNames(
                 // w-7 h-7 = 28px. Same size the hand-coded SVG
-                // ends up at via the `text-2xl` → `1em` flow. Before
-                // this change the calitree mask rendered at 36px
-                // (w-9 h-9) while the SVG was 24px, which made the
-                // icons look like they sat at different vertical
-                // positions even inside identical circles.
+                // ends up at via the `text-[28px]` → `1em` flow on
+                // the circle above. Both icon kinds are flex-
+                // centered in the same 56px circle, so their
+                // centers — and sizes — now match exactly.
                 'block w-7 h-7 select-none transition-all duration-200',
                 isGodTier
                 ? 'text-neon-amber'
@@ -590,11 +598,15 @@ function SkillNode({
           </span>
         )}
       </div>
-      {/* Skill name */}
+      {/* Skill name — fixed two-line box (h-[22px] = 2 × 11px
+          lines) so the button height is identical whether the
+          name wraps to 1 or 2 lines. This is what keeps every
+          button exactly 100px tall (see the className comment on
+          the button above). */}
       <div
         className={classNames(
           'text-[9px] font-display tracking-wide text-center max-w-[110px]',
-          'leading-tight line-clamp-2',
+          'leading-[11px] h-[22px] line-clamp-2',
           isUnlocked ? 'text-neon-lime' : 'text-ink-200',
         )}
         title={skill.name}
@@ -641,7 +653,9 @@ function BranchColumn({
       >
         <div
           className={classNames(
-            'text-2xl leading-none',
+            // text-[28px] so the hand-coded SVG label icons (1em)
+            // match the 28px (w-7) calitree PNG label icons.
+            'text-[28px] leading-none',
             allDone ? 'text-neon-lime' : classColorForClass(className),
             'transition-colors duration-200',
           )}
@@ -703,7 +717,13 @@ function BranchColumn({
             return (
               <div
                 key={s.id}
-                className="flex flex-row items-center"
+                // items-start (NOT items-center): top-align the node
+                // and its connector so the icon's Y position depends
+                // only on the fixed-height segments ABOVE it (tier
+                // label + gap), never on the total button height.
+                // items-center re-introduced per-node vertical drift
+                // whenever button heights differed.
+                className="flex flex-row items-start"
               >
                 <SkillNode
                   skill={s}
@@ -713,20 +733,19 @@ function BranchColumn({
                   isGodTier={isGodTier}
                 />
                 {/* Connector line — short horizontal bar between
-                    nodes. -translate-y-4 shifts it up by 16px so
-                    it sits at the icon's vertical center (icon
-                    center is at y=30 in the 92px button: tier
-                    label ~10 + gap 6 + half the 28px icon = 30;
-                    button center is at y=46, so the connector
-                    needs to be 16px higher than the button
-                    center). With this offset the connector
-                    visually passes through the icon center
-                    instead of the button center, which was
-                    "16px too high" relative to the icons. */}
+                    nodes. The chain wrapper is top-aligned
+                    (items-start), so the icon center sits at a
+                    constant y=44 from the top of every node: tier
+                    label 10 + gap 6 + half the 56px circle 28 =
+                    44. mt-[43px] puts this 2px bar's center
+                    exactly there (43 + 1 = 44). Measured from the
+                    TOP, so — unlike the old center-then-translate
+                    approach — it holds no matter how tall the
+                    button is or how the skill name wraps. */}
                 {!isLast && (
                   <div
                     className={classNames(
-                      'h-0.5 w-5 mx-0.5 -translate-y-4',
+                      'h-0.5 w-5 mx-0.5 mt-[43px]',
                       s.unlocked && branch.skills[idx + 1].unlocked
                         ? 'bg-gradient-to-r from-neon-lime/60 to-neon-lime/30'
                         : 'bg-gradient-to-r from-ink-500/40 to-ink-500/10',
