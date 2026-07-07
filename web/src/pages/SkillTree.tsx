@@ -452,8 +452,14 @@ function SkillNode({
     <button
       onClick={onClick}
       aria-label={`${skill.name} (${skill.tier}${isGodTier ? ' god-tier' : ''})`}
+      // w-[110px] forces every SkillNode to the same width so the
+      // connector-to-connector spacing is identical across all
+      // branches (short vs long skill names). Without this, the
+      // button width tracks the skill name's intrinsic width, and
+      // branches end up looking stretched or compressed relative
+      // to each other.
       className={classNames(
-        'group flex flex-col items-center gap-1.5 outline-none',
+        'group flex flex-col items-center gap-1.5 outline-none w-[110px] shrink-0',
         'focus-visible:ring-2 focus-visible:ring-neon-cyan/60 rounded-lg',
       )}
     >
