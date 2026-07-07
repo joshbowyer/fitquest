@@ -204,11 +204,16 @@ are the changelog of what got shipped.
   (overlay diff or fade slider) vs. the previous photo. Needs
   a new migration for `MeasurementPhoto` rows + storage
   (S3-compatible or local disk).
-- **AI coach / HUD with selectable personalities.** Per-user
-  LLM persona (intense priest bodybuilder / Bob Ross / drill
-  sergeant / minmaxxer zoomer / generic polite). Backend:
-  add `coachPersonality` enum to User + per-personality
-  system-prompt overrides on the admin's LLM config.
+- (was: AI coach / HUD with selectable personalities — v1
+  shipped in `cd46826` (release [v1.0.27](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.27)).
+  /coach page with 5 personality presets + system-prompt
+  seeding + persistence on `User.coachPersonality`. Uses the
+  system default LLM (`minimax-m3`). Remaining work, all
+  scoped to "polish the v1": per-personality admin prompt
+  overrides on `LlmConfig.coachSystemPromptOverrides`; server-
+  side conversation history (CoachMessage table); streaming
+  responses; richer per-message personality override.)
+
 
 ### P3 — stretch
 
@@ -487,29 +492,11 @@ with edit + delete inline.)
 
 ## Stretch / Future
 
-- **AI coach / HUD with selectable personalities.** Pick a
-  voice and the LLM system prompt + tone changes
-  accordingly. Personality presets (mix-and-match
-  intensity × religious-secular × silly-serious, not all
-  four corners need to be filled):
-  - **Slightly intense priest bodybuilder** — uses Catholic /
-    monastic imagery mixed with hypertrophy talk. "Your
-    shoulders are a yoke — load them and reap."
-  - **Bob Ross / Mr. Rogers gentle** — extremely soft,
-    affirming, never negative. "We'll just add a little
-    happy little set here."
-  - **Drill sergeant** — direct but not gratuitously
-    foul-mouthed. No "drop and give me twenty" trope.
-  - **Minmaxxing zoomer / Zyzz bro** — subcultural gym-bro
-    slang. "Aesthetic. We pump. We shrek. We wither the
-    rec."
-  - **Stereotypical AI personal health assistant** — generic
-    polite. "I've noticed your sleep was below your 7-day
-    average — would you like to discuss?"
-  - The selection is per-user (saved on User, default = the
-    last one picked). Backend: add a `coachPersonality`
-    enum to User; the admin's existing LLM config gets a
-    `coachSystemPromptOverrides` map keyed by personality.
+- (was: AI coach / HUD — see P2 item above; v1 shipped in
+  v1.0.27. The "Pick a voice" brainstorming below is folded
+  into the v1 prompt library (`api/src/lib/coach.ts`); the
+  per-personality admin overrides remain the next milestone.)
+
 - **3D avatar polish (rendering + shape).** Two parts:
   1. **Scale the avatar to user measurements.** Body height
      sets the avatar's vertical scale; shoulder / waist
@@ -558,6 +545,46 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-07 session — v1.0.27 AI Coach scaffold
+
+Commit `cd46826`, release
+[v1.0.27](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.27).
+Tests 554 → 566 (12 new in `coach.test.ts`).
+
+- ✅ **`/coach` page + personality picker.** New nav entry
+  (icon ✺), chat layout (messages + textarea), 5 personality
+  presets (PRIEST_BODYBUILDER, BOB_ROSS, DRILL_SERGEANT, ZOOMER,
+  GENERIC), Shift+Enter newline / Enter sends. Personality choice
+  persists via PATCH /coach/personality; default for new users is
+  PRIEST_BODYBUILDER (the FitQuest voice).
+- ✅ **Backend prompt seeding.** `api/src/lib/coach.ts`
+  composes each SYSTEM_PROMPT from a shared preamble + a
+  per-personality voice block + FitQuest world context (6 classes,
+  CASUAL/HARDCORE, heart system, skill tree). `gatherCoachContext`
+  builds a ~500-token JSON user-context block per request (class,
+  level, mode, hearts, last-7d workouts/sleep/PRs, streak,
+  recovery) — same lazy-gather pattern as morningReport.
+- ✅ **Routes.** GET /coach (meta + contextSummary), POST /coach
+  (non-streaming chat, matches every other LLM endpoint),
+  PATCH /coach/personality. `'coach'` added to `LlmTask` union
+  so future per-task model overrides can route coach specifically.
+  POST returns 422 with `llm_not_configured` if the admin hasn't
+  set up the LLM yet (page shows a disabled input).
+- ✅ **Schema.** New `CoachPersonality` enum + `User.coachPersonality`
+  nullable column + migration. `publicUser()` exposes it on every
+  /me read so the picker reflects saved state across devices.
+
+**Deliberately deferred** (will follow once the v1 is bedded in):
+- Admin-side per-personality prompt overrides on
+  `LlmConfig.coachSystemPromptOverrides`
+- Server-side conversation history (`CoachMessage` table + GET
+  /coach/messages for the page to hydrate on reload)
+- Streaming responses (would need SSE plumbing in the api +
+  EventSource consumption on the web — same work the morning
+  report's regenerate could benefit from)
+- Per-message personality override (separate from the user's
+  global choice) — defer until there's a real use case
 
 ### 2026-07-07 session — v1.0.26 P1.5 follow-ups
 
