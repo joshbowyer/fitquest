@@ -63,19 +63,33 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
-          # Per-arch tags. The merge job combines these into the
-          # shared :main / :latest / :sha-* tags afterwards.
-          # Without -${{ matrix.arch }} suffix, two matrix entries
-          # pushing the same tag would race and the later one
-          # would overwrite the earlier multi-arch manifest list
-          # with a single-arch one (losing the other arch).
+          # Per-arch tags ONLY. Every tag here carries the
+          # -${{ matrix.arch }} suffix; the merge job below combines
+          # them into the shared :main / :latest / :<version> /
+          # :sha-* multi-arch manifest lists. Two rules:
+          #   1. Without the arch suffix, two matrix entries pushing
+          #      the same tag would race and the later one would
+          #      overwrite the earlier manifest list with a
+          #      single-arch image (losing the other arch).
+          #   2. `enable=amd64-only` unsuffixed tags (the old
+          #      approach for branch/semver) are just rule 1 with
+          #      extra steps: the merge job then can't find the
+          #      -amd64/-arm64 sources it expects. That's why every
+          #      v* tag build failed at the merge step (e.g.
+          #      "fitquest-api:1.0.22-arm64: not found") — the
+          #      semver tag was only ever pushed unsuffixed.
           tags: |
-            type=ref,event=branch,enable=${{ matrix.arch == 'amd64' }}
-            type=ref,event=pr,enable=${{ matrix.arch == 'amd64' }}
-            type=semver,pattern={{version}},enable=${{ matrix.arch == 'amd64' }}
+            type=ref,event=branch,suffix=-${{ matrix.arch }}
+            type=semver,pattern={{version}},suffix=-${{ matrix.arch }}
             type=raw,value=latest-${{ matrix.arch }}
             type=sha,prefix=sha-,format=short,suffix=-${{ matrix.arch }}
-          flavor: latest=auto
+          # latest=false: with `auto`, semver tag pushes ALSO emit an
+          # unsuffixed :latest from BOTH arch builds — the exact
+          # single-arch-overwrite race described above (and if the
+          # merge job then fails, :latest is left single-arch, which
+          # is what production pulls). The merge job is the only
+          # writer of :latest.
+          flavor: latest=false
 
       - name: Build + push ${{ matrix.service }} (${{ matrix.arch }})
         uses: docker/build-push-action@v5
@@ -122,16 +136,22 @@ jobs:
         # The build job's metadata-action suffixes with -amd64 /
         # -arm64; the shared tag (without suffix) is the same
         # value with that suffix stripped.
+        # extra_tag: on branch pushes (and manual dispatch) the
+        # build job also pushed <branch>-<arch> tags, so the merge
+        # job must maintain the shared :<branch> tag too —
+        # otherwise :main only ever points at a stale single-arch
+        # image.
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            BASE="pr-${{ github.event.pull_request.number }}"
-          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+          EXTRA=""
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
             # v1.2.3 → 1.2.3
             BASE="${GITHUB_REF_NAME#v}"
           else
             BASE="sha-${GITHUB_SHA::7}"
+            EXTRA="${GITHUB_REF_NAME}"
           fi
           echo "shared_tag=${BASE}" >> "$GITHUB_OUTPUT"
+          echo "extra_tag=${EXTRA}" >> "$GITHUB_OUTPUT"
           echo "amd64_tag=${BASE}-amd64" >> "$GITHUB_OUTPUT"
           echo "arm64_tag=${BASE}-arm64" >> "$GITHUB_OUTPUT"
 
@@ -144,16 +164,21 @@ jobs:
           set -euo pipefail
           IMAGE_BASE="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}"
           SHARED_TAG="${{ steps.src.outputs.shared_tag }}"
+          EXTRA_TAG="${{ steps.src.outputs.extra_tag }}"
           AMD64_TAG="${{ steps.src.outputs.amd64_tag }}"
           ARM64_TAG="${{ steps.src.outputs.arm64_tag }}"
+          TAG_ARGS=(--tag "${IMAGE_BASE}:${SHARED_TAG}" --tag "${IMAGE_BASE}:latest")
+          if [[ -n "$EXTRA_TAG" ]]; then
+            TAG_ARGS+=(--tag "${IMAGE_BASE}:${EXTRA_TAG}")
+          fi
           echo "Merging per-arch manifests into manifest list:"
           echo "  ${IMAGE_BASE}:${AMD64_TAG}"
           echo "  ${IMAGE_BASE}:${ARM64_TAG}"
           echo "As:"
           echo "  ${IMAGE_BASE}:${SHARED_TAG}"
           echo "  ${IMAGE_BASE}:latest"
+          if [[ -n "$EXTRA_TAG" ]]; then echo "  ${IMAGE_BASE}:${EXTRA_TAG}"; fi
           docker buildx imagetools create \
-            --tag "${IMAGE_BASE}:${SHARED_TAG}" \
-            --tag "${IMAGE_BASE}:latest" \
+            "${TAG_ARGS[@]}" \
             "${IMAGE_BASE}:${AMD64_TAG}" \
             "${IMAGE_BASE}:${ARM64_TAG}"
