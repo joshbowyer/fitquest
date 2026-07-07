@@ -108,17 +108,20 @@ const FIT_KIND_LABELS: Record<number | string, FitKind> = {
   68: 'hrv',           // FIT_FILE_HRV
   // FIT_FILE_MONITORING_B — modern Garmin watches (FR255, FR955,
   // Fenix 7, etc.) write this all-day file every few hours with
-  // HSA messages (body battery, stress, steps, HRV). This is the
-  // MOST COMMON file the FitQuestBridge uploads, by far — was
-  // missing from the original map so every monitoring FIT was
-  // classified as 'unknown' and parsed to nothing.
-  119: 'monitor',
+  // HSA messages (body battery, stress, steps, HRV). Type 16 is
+  // the actual numeric per @garmin/fitsdk's profile (an earlier
+  // version of this code had 119 which was wrong — that was a
+  // FIT 2.0-vs-FIT-2.1 spec confusion). This is the MOST COMMON
+  // file the FitQuestBridge uploads, by far; the previous map
+  // missed it so every monitoring FIT was classified as 'unknown'
+  // and parsed to nothing.
+  16: 'monitor',
   monitoring_b: 'monitor',
   monitoringB: 'monitor',
   // FIT_FILE_MONITORING_A — older watches (FR645 and earlier)
-  // use this format. Same HSA-ish structure, just older schema
-  // version. Treat as monitor.
-  120: 'monitor',
+  // use type 10 (per @garmin/fitsdk profile). Same HSA-ish
+  // structure, just older schema version.
+  10: 'monitor',
   monitoring_a: 'monitor',
   monitoringA: 'monitor',
   44: 'metrics',       // FIT_FILE_SUMMARY (rare daily rollup)
@@ -127,7 +130,6 @@ const FIT_KIND_LABELS: Record<number | string, FitKind> = {
   1: 'unknown',        // FIT_FILE_SETTINGS (device settings, no metrics)
   2: 'unknown',        // FIT_FILE_SPORT (sport definitions)
   3: 'unknown',        // FIT_FILE_TOTALS
-  6: 'unknown',        // FIT_FILE_ACTIVITY_SUMMARY (older activity summary format)
   device: 'unknown',
   totals: 'unknown',
   settings: 'unknown',
@@ -575,8 +577,10 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
   // Previously this lived in parseMetrics (which is only called for
   // file type 44 — a rare daily-summary file most watches never
   // write). The actual HSA body battery messages arrive in
-  // MONITORING files (type 119/120), so extracting here is what
-  // makes the daily body battery data flow into the user's account.
+  // MONITORING files (type 16 = FIT_FILE_MONITORING_B per
+  // @garmin/fitsdk; older watches use type 10), so extracting
+  // here is what makes the daily body battery data flow into the
+  // user's account.
   //
   // Garmin stores per-interval `level` as a Sint8 array
   // (-16 = "no reading"). Average the valid readings across the

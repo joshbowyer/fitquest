@@ -36,12 +36,16 @@ describe('detectFitKind — file type → parser kind', () => {
     // HRV files.
     expect(detectFitKind(68)).toBe('hrv');
     // Modern monitoring files (most watches — FR255, FR955, etc).
-    // Type 119 is FIT_FILE_MONITORING_B. The previous code didn't
-    // include this in the map so every monitoring FIT got
-    // 'unknown' and parsed to nothing — see ROADMAP v1.0.33.
-    expect(detectFitKind(119)).toBe('monitor');
+    // Type 16 is FIT_FILE_MONITORING_B per @garmin/fitsdk's
+    // profile. The earlier version of this code used 119 which
+    // was wrong (an FIT spec version confusion) — verified
+    // against the user's actual MONITOR files all showing type 16
+    // in the file header. This is the bug that caused body battery
+    // to never get extracted; the kind detection missed this type
+    // and fell through to 'unknown'.
+    expect(detectFitKind(16)).toBe('monitor');
     // Older monitoring format (FR645 and earlier).
-    expect(detectFitKind(120)).toBe('monitor');
+    expect(detectFitKind(10)).toBe('monitor');
     // Daily rollup file (rare).
     expect(detectFitKind(44)).toBe('metrics');
     // String variants the SDK sometimes uses depending on version.
@@ -100,6 +104,6 @@ describe('parseMonitor — body battery extraction (v1.0.33 fix)', () => {
   // the end-to-end behavior (after deploy, new uploads should
   // start populating BODY_BATTERY rows).
   it('placeholder — kind detection is the regression lock', () => {
-    expect(detectFitKind(119)).toBe('monitor');
+    expect(detectFitKind(16)).toBe('monitor');
   });
 });
