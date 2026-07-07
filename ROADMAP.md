@@ -546,6 +546,39 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.30 coach persistence + limits + compaction
+
+Commit `75b754f`, release
+[v1.0.30](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.30).
+Tests 572 → 595 (23 new: 16 in coachStore.test.ts, 7 in
+chatRateLimit.test.ts).
+
+- ✅ **Coach conversation persistence.** New `CoachConversation`
+  (one rolling per user, `@unique` on `userId`) + `CoachMessage`
+  tables + migration `20260707093000_coach_conversation`.
+  POST /coach persists user + assistant in one tx so we never
+  half-write a turn. GET /coach/messages paginates the history
+  for page-load hydration. DELETE /coach/messages wipes the
+  convo (preserves personality).
+- ✅ **Rate limits.** New `chatByUser()` policy in
+  `lib/rateLimit.ts` reusing the existing in-memory bucket
+  shape: 5 msgs/min burst + 50 msgs/24h cost cap. Returns 429 +
+  `Retry-After`. UI surfaces as "Slow down a bit — try again in Ns".
+- ✅ **Sliding window.** `SLIDING_WINDOW_SIZE = 20` — the LLM
+  only sees the most recent 20 messages per request. Older
+  turns are folded into a summary or dropped, keeping the
+  prompt bounded regardless of conversation length.
+- ✅ **LLM summary compaction.** Triggered at `messageCount
+  >= 30`. Fire-and-forget LLM call summarizes the oldest 10
+  turns, stored on `CoachConversation.summary`. Future prompts
+  prepend a system message with the summary so the coach
+  remembers goals / programs / PRs past the sliding window.
+- ✅ **Frontend hydration.** Page-load GET /coach/messages
+  populates the chat panel from the server (was local-state only
+  in v1.0.27). New sends invalidate the query. Clear button in
+  the panel header. "thinking…" bubble during LLM call. Header
+  chips: message count + "summarized" badge.
+
 ### 2026-07-07 session — v1.0.29 scroll-to-top + richer coach context
 
 Commit `7c41fe1`, release
