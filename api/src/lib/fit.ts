@@ -102,14 +102,36 @@ export type ParsedMeasurement = {
 };
 
 const FIT_KIND_LABELS: Record<number | string, FitKind> = {
-  4: 'activity',       // activity files
+  4: 'activity',       // FIT_FILE_ACTIVITY (workout)
   activity: 'activity',
-  49: 'sleep',
-  68: 'hrv',
+  49: 'sleep',         // FIT_FILE_SLEEP
+  68: 'hrv',           // FIT_FILE_HRV
+  // FIT_FILE_MONITORING_B — modern Garmin watches (FR255, FR955,
+  // Fenix 7, etc.) write this all-day file every few hours with
+  // HSA messages (body battery, stress, steps, HRV). This is the
+  // MOST COMMON file the FitQuestBridge uploads, by far — was
+  // missing from the original map so every monitoring FIT was
+  // classified as 'unknown' and parsed to nothing.
+  119: 'monitor',
   monitoring_b: 'monitor',
   monitoringB: 'monitor',
-  44: 'metrics',
-  12: 'activity', // 12 = activity_summary (workouts merged across devices)
+  // FIT_FILE_MONITORING_A — older watches (FR645 and earlier)
+  // use this format. Same HSA-ish structure, just older schema
+  // version. Treat as monitor.
+  120: 'monitor',
+  monitoring_a: 'monitor',
+  monitoringA: 'monitor',
+  44: 'metrics',       // FIT_FILE_SUMMARY (rare daily rollup)
+  12: 'activity',      // 12 = activity_summary (workouts merged across devices)
+  // Common cruft file types that should be skipped cleanly.
+  1: 'unknown',        // FIT_FILE_SETTINGS (device settings, no metrics)
+  2: 'unknown',        // FIT_FILE_SPORT (sport definitions)
+  3: 'unknown',        // FIT_FILE_TOTALS
+  6: 'unknown',        // FIT_FILE_ACTIVITY_SUMMARY (older activity summary format)
+  device: 'unknown',
+  totals: 'unknown',
+  settings: 'unknown',
+  sport: 'unknown',
 };
 
 export function detectFitKind(typeValue: unknown): FitKind {
@@ -455,6 +477,18 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
   const stress = (messages.stressLevelMesgs ?? []) as StressLevelMesg[];
   const resp = (messages.respirationRateMesgs ?? []) as RespirationRateMesg[];
   const monitoring = (messages.monitoringMesgs ?? []) as MonitoringMesg[];
+  const bbData = (messages.hsaBodyBatteryDataMesgs ?? []) as Array<{
+    level?: number[];
+    charged?: number[];
+    uncharged?: number[];
+  }>;
+  const hrvSummary = (messages.hrvStatusSummaryMesgs ?? []) as Array<{
+    weeklyAverage?: number;
+    lastNightAverage?: number;
+  }>;
+  const hrvValues = (messages.hrvValueMesgs ?? []) as Array<{
+    value?: number;
+  }>;
   const measurements: ParsedMeasurement[] = [];
 
   // Average stress: average across the file's window
@@ -537,6 +571,50 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
     void calValues;
   }
 
+  // ── Body battery (HSA: Health Snapshot API) ──────────────────────
+  // Previously this lived in parseMetrics (which is only called for
+  // file type 44 — a rare daily-summary file most watches never
+  // write). The actual HSA body battery messages arrive in
+  // MONITORING files (type 119/120), so extracting here is what
+  // makes the daily body battery data flow into the user's account.
+  //
+  // Garmin stores per-interval `level` as a Sint8 array
+  // (-16 = "no reading"). Average the valid readings across the
+  // file's window for a single BODY_BATTERY row.
+  const bbLevels: number[] = [];
+  for (const row of bbData) {
+    if (Array.isArray(row.level)) {
+      for (const v of row.level) {
+        if (typeof v === 'number' && v >= 0 && v <= 100) bbLevels.push(v);
+      }
+    }
+  }
+  if (bbLevels.length > 0) {
+    const avg = Math.round(bbLevels.reduce((s, v) => s + v, 0) / bbLevels.length);
+    measurements.push({ metric: 'BODY_BATTERY', value: avg, recordedAt: new Date() });
+  }
+
+  // ── HRV from HSA summary / samples ───────────────────────────────
+  // Same shape as the body battery fix — HSA HRV messages live in
+  // monitoring files, not the rare metrics-summary file. Prefer
+  // the weekly average from the summary; fall back to the mean of
+  // 5-min samples if no summary is present.
+  let hrv = NaN;
+  const firstSummary = hrvSummary[0];
+  if (firstSummary && typeof firstSummary.weeklyAverage === 'number') {
+    hrv = firstSummary.weeklyAverage;
+  } else if (hrvValues.length > 0) {
+    const vals = hrvValues
+      .map((v) => v.value)
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    if (vals.length > 0) {
+      hrv = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+    }
+  }
+  if (Number.isFinite(hrv) && hrv > 0) {
+    measurements.push({ metric: 'HRV', value: hrv, recordedAt: new Date() });
+  }
+
   return measurements.length ? { measurements } : {};
 }
 
@@ -558,74 +636,14 @@ function parseMonitor(messages: any): Pick<FitImportResult, 'measurements'> {
 // morning report can mention "body battery avg was 38/100, lowest
 // at 2pm" if the data is there.
 
+// 'metrics' kind (file type 44, FIT_FILE_SUMMARY) is Garmin's
+// rare daily-rollup file. It carries the same HSA messages as
+// monitoring files (body battery, steps, HRV summary) so the
+// extraction logic is identical. Delegate to parseMonitor —
+// keeps a hook for future metrics-specific fields (e.g. device
+// goals) without duplicating the body-battery code path.
 function parseMetrics(messages: any): Pick<FitImportResult, 'measurements'> {
-  const bbData = (messages.hsaBodyBatteryDataMesgs ?? []) as Array<{
-    level?: number[];
-    charged?: number[];
-    uncharged?: number[];
-  }>;
-  const stepData = (messages.hsaStepDataMesgs ?? []) as Array<{
-    steps?: number[];
-  }>;
-  const hrvSummary = (messages.hrvStatusSummaryMesgs ?? []) as Array<{
-    weeklyAverage?: number;
-    lastNightAverage?: number;
-  }>;
-  const hrvValues = (messages.hrvValueMesgs ?? []) as Array<{
-    value?: number;
-  }>;
-  const measurements: ParsedMeasurement[] = [];
-
-  // Body battery: Garmin stores per-interval `level` as a Sint8 array
-  // (-16 = "no reading"). Average the valid readings across the day
-  // for a single Body Battery row. We also report the final level
-  // (last valid reading) as a separate measurement so the trend line
-  // on /measurements shows the EOD value rather than the day average.
-  const bbLevels: number[] = [];
-  for (const row of bbData) {
-    if (Array.isArray(row.level)) {
-      for (const v of row.level) {
-        if (typeof v === 'number' && v >= 0 && v <= 100) bbLevels.push(v);
-      }
-    }
-  }
-  if (bbLevels.length > 0) {
-    const avg = Math.round(bbLevels.reduce((s, v) => s + v, 0) / bbLevels.length);
-    measurements.push({ metric: 'BODY_BATTERY', value: avg, recordedAt: new Date() });
-  }
-
-  // Steps: sum per-interval counts to a daily total.
-  if (stepData.length > 0) {
-    let total = 0;
-    for (const row of stepData) {
-      if (Array.isArray(row.steps)) {
-        for (const v of row.steps) if (typeof v === 'number' && v > 0) total += v;
-      }
-    }
-    if (total > 0) {
-      measurements.push({ metric: 'STEPS', value: total, recordedAt: new Date() });
-    }
-  }
-
-  // HRV: prefer the weekly average from the summary. Fall back to
-  // the mean of the 5-min samples if no summary is present.
-  let hrv = NaN;
-  const firstSummary = hrvSummary[0];
-  if (firstSummary && typeof firstSummary.weeklyAverage === 'number') {
-    hrv = firstSummary.weeklyAverage;
-  } else if (hrvValues.length > 0) {
-    const vals = hrvValues
-      .map((v) => v.value)
-      .filter((v): v is number => typeof v === 'number' && v > 0);
-    if (vals.length > 0) {
-      hrv = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
-    }
-  }
-  if (Number.isFinite(hrv) && hrv > 0) {
-    measurements.push({ metric: 'HRV', value: hrv, recordedAt: new Date() });
-  }
-
-  return measurements.length ? { measurements } : {};
+  return parseMonitor(messages);
 }
 
 function toDate(v: unknown): Date {
