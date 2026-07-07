@@ -546,6 +546,32 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.29 scroll-to-top + richer coach context
+
+Commit `7c41fe1`, release
+[v1.0.29](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.29).
+Tests 566 → 572 (6 new in `safeReadField.test.ts`).
+
+- ✅ **Scroll-to-top on every sidebar nav.** Long pages used to
+  land scrolled to the bottom (previous page's scroll position
+  persisted). New `web/src/components/ScrollToTop.tsx` mounted at
+  the top of App listens to react-router location changes and
+  scrolls to top on every route change. Hash deep-links
+  (`#class`, `#anchor`) still work — defers one frame + retries
+  up to 10 times for the target to mount, then falls back to top.
+- ✅ **AI Coach context ~3-4× richer.** Was ~500 tokens (hearts /
+  streak / 7d workout count / avg sleep / today recovery). Now
+  ~1500-2000 tokens covering last 5 workouts with exercise names
+  + top sets + total sets + duration; per-night sleep for 7 local
+  days; substance counts broken down (caffeine today,
+  caffeine/alcohol/nicotine/electrolyte this week); latest weight
+  + body fat + 14-day weight trend; last 5 habit logs + 7d pos/neg
+  counts; yesterday's dailies + 7d completion rate; today's
+  nutrition totals (cal/protein/carb/fat/meal count) + yesterday's
+  calories; last 5 PRs; pending skill unlocks. Coach page
+  sidebar now shows a "Coach also sees" section so the user can
+  sanity-check what data is available.
+
 ### 2026-07-07 session — v1.0.28 /me resilience
 
 Commit `ed3576a`, release [v1.0.28](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.28).
