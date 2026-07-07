@@ -546,6 +546,30 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-07 session — v1.0.33 Body Battery fix
+
+Commit `c90ea45`, release
+[v1.0.33](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.33).
+Tests 595 → 599 (4 new in `fitKind.test.ts`).
+
+- ✅ **Monitoring FIT files now extract body battery + HRV.**
+  Two bugs: (1) `detectFitKind()` was missing the common
+  Garmin file types `119` (`FIT_FILE_MONITORING_B`, modern
+  watches) and `120` (`FIT_FILE_MONITORING_A`, older watches)
+  — both fell through to the `?? 'unknown'` default so the
+  parser extracted nothing. (2) Body battery + HRV extraction
+  was in `parseMetrics` (file type 44, rare daily rollup)
+  instead of `parseMonitor` (where the HSA messages actually
+  live) — so monitoring files uploaded by the bridge never hit
+  the right code path. Moved body battery + HRV extraction
+  from `parseMetrics` to `parseMonitor`. `parseMetrics` now
+  delegates to `parseMonitor`.
+
+  Note: the bridge dedupes by absolute file path, so files
+  that were already uploaded as 'unknown' before this fix
+  won't be re-uploaded. To backfill: clear GB's app data +
+  re-sync, or wait for new monitoring data.
+
 ### 2026-07-07 session — v1.0.32 Coach messages panel scroll fix
 
 Commit `b60b7ef`, release
