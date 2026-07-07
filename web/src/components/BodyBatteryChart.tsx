@@ -264,7 +264,8 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
             }}
             labelStyle={{ color: '#00f0ff' }}
             labelFormatter={(d) => formatAbsolute(d as string)}
-            formatter={(value: number | null, name: string) => {
+            // typed `number` (not `number | null`) to satisfy recharts' TValue constraint; runtime null guard below still applies
+            formatter={(value: number, name: string) => {
               if (value == null) return ['—', name];
               if (name === 'BB') return [`${Math.round(value)}/100`, 'Body Battery'];
               if (name === 'Onset') {

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { classNames } from '@/lib/format';
 
-type Variant = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
+type Variant = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet' | 'default';
 
 const VARIANT: Record<Variant, string> = {
   cyan: 'border-neon-cyan/30',
@@ -9,6 +9,9 @@ const VARIANT: Record<Variant, string> = {
   lime: 'border-neon-lime/30',
   amber: 'border-neon-amber/30',
   violet: 'border-neon-violet/30',
+  // 'default' = base .panel styling only (border-neon-cyan/20), no
+  // brighter variant border. Empty string is dropped by classNames.
+  default: '',
 };
 
 export function Panel({

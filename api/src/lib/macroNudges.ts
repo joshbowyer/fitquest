@@ -308,12 +308,16 @@ export function substanceSleepOverlapRule(
   // the context number — useful for the LLM/UI hover).
   const last = window[0];
   let lastHoursBefore: number | null = null;
-  for (const s of substances) {
-    if (s.category !== category) continue;
-    const hrs = hoursBeforeOnset(last.value, last.recordedAt, s.loggedAt, tz);
-    if (hrs == null) continue;
-    if (lastHoursBefore == null || (hrs >= 0 && hrs < lastHoursBefore)) {
-      lastHoursBefore = hrs;
+  // `last` always exists (window.length >= SLEEP_OVERLAP_MIN_NIGHTS
+  // was checked above); the guard is for noUncheckedIndexedAccess.
+  if (last) {
+    for (const s of substances) {
+      if (s.category !== category) continue;
+      const hrs = hoursBeforeOnset(last.value, last.recordedAt, s.loggedAt, tz);
+      if (hrs == null) continue;
+      if (lastHoursBefore == null || (hrs >= 0 && hrs < lastHoursBefore)) {
+        lastHoursBefore = hrs;
+      }
     }
   }
 
@@ -368,22 +372,16 @@ function hoursSinceLocalMidnight(d: Date, tz: string): number | null {
   }
 }
 
-function localDayKey(d: Date, tz: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-  } catch {
-    return d.toISOString().slice(0, 10);
-  }
-}
+// localDayKey comes from ./timezone.js (imported at top) — a local
+// copy used to shadow it with identical behavior; removed to fix
+// the import/local declaration conflict.
 
 function dayKeyDiff(a: string, b: string): number {
-  const [ay, am, ad] = a.split('-').map(Number);
-  const [by, bm, bd] = b.split('-').map(Number);
+  // Defaults keep the malformed-key behavior identical: a short
+  // split previously produced NaN via `undefined - 1`; now the
+  // NaN is explicit.
+  const [ay = NaN, am = NaN, ad = NaN] = a.split('-').map(Number);
+  const [by = NaN, bm = NaN, bd = NaN] = b.split('-').map(Number);
   return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86400000);
 }
 
@@ -462,7 +460,9 @@ export async function buildMacroNudges(
       context: {
         nightsWith: r.nightsWith,
         nightsTotal: r.nightsTotal,
-        lastHoursBefore: r.lastHoursBefore ?? undefined,
+        // Omit the key when null — JSON output is identical to the
+        // old `?? undefined` (undefined values are dropped anyway).
+        ...(r.lastHoursBefore != null ? { lastHoursBefore: r.lastHoursBefore } : {}),
       },
     });
   }

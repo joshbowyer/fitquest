@@ -116,9 +116,8 @@ export type User = {
   // Thresholds for Hardcore substance caps (sourced from the
   // server so the UI can't drift from the actual logic).
   hardcoreCaps?: { caffeinePerDay: number; alcoholPerWeek: number };
-  // Last fetched body weight in kg. Used for water + protein
-  // floor calculations. Not always present.
-  weightKg?: number | null;
+  // Whether TOTP 2FA is active (server always sends this from /auth/me).
+  totpEnabled: boolean;
   // Goal-derived daily targets. Server-computed so the web side
   // always reflects the latest values after a goal switch.
   targets?: {

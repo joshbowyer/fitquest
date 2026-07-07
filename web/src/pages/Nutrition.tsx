@@ -8,7 +8,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { DeleteButton } from '@/components/DeleteButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
+import type { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { FoodPanel } from '@/components/FoodPanel';
@@ -500,7 +500,11 @@ function SubstancesPanel() {
   /// updates happen via query cache mutation so the Recent list
   /// shows the new entry immediately, before the network round-trip.
   const [flashKey, setFlashKey] = useState<string | null>(null);
-  const logM = useDelayedMutation<{ log: SubstanceLog }, { category: SubstanceCategory; form: string; amount?: number; unit?: string; context?: string }>({
+  const logM = useDelayedMutation<
+    { log: SubstanceLog },
+    { category: SubstanceCategory; form: string; amount?: number; unit?: string; context?: string },
+    { optimisticId: string }
+  >({
     mutationFn: (body) => api('/substances', { method: 'POST', body }),
     onMutate: (vars) => {
       // Optimistic insert: push a placeholder row into the cached

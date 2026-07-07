@@ -259,7 +259,12 @@ const logSchema = z.union([
   // refresh for a specific date. Walks the full cascade (cache →
   // EWTN → RSS → Wayback) and returns the resulting status so the
   // user can see whether the reseed produced a reading.
+  // requireUser: unlike /refresh-readings (deliberately open,
+  // fixed-scope cache refresh), this one takes an arbitrary ?date=
+  // and fans out to external fetches (EWTN/USCCB/Wayback) — an
+  // unauthenticated request-amplification vector.
   app.post<{ Querystring: { date?: string } }>('/readings-reseed', async (req) => {
+    await requireUser(req);
     const date = req.query.date ?? new Date().toISOString().slice(0, 10);
     const reading = await seedReading(date);
     const status = await getReadingsStatus(date);

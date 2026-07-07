@@ -292,29 +292,48 @@ export async function teamWorkoutRoutes(app: FastifyInstance) {
   });
 
   // ----- Cron: mark no-shows + abandon stale sessions -----
-  app.post('/cleanup', async (_req) => {
-    const now = Date.now();
-    const noShowBefore = new Date(now - NO_SHOW_AFTER_MS);
-    const abandonBefore = new Date(now - ABANDON_AFTER_MS);
-    // No-shows: invited or accepted >30min ago, never joined.
-    const noShows = await prisma.teamParticipant.updateMany({
-      where: {
-        status: { in: ['INVITED', 'ACCEPTED'] },
-        respondedAt: { lt: noShowBefore },
-        // also require no join — i.e. status field still INVITED/ACCEPTED
-      },
-      data: { status: 'NO_SHOW' },
-    });
-    // Abandoned sessions: started >1h ago and still PENDING/ACTIVE.
-    const abandoned = await prisma.teamWorkout.updateMany({
-      where: {
-        status: { in: ['PENDING', 'ACTIVE'] },
-        startedAt: { lt: abandonBefore },
-      },
-      data: { status: 'ABANDONED', endedAt: new Date() },
-    });
-    return { noShowsMarked: noShows.count, sessionsAbandoned: abandoned.count };
+  // requireUser: this was the only unauthenticated state-mutating
+  // route in the API — anyone on the network could force-mark
+  // participants NO_SHOW / sessions ABANDONED for every user. The
+  // operation is timestamp-gated housekeeping (only touches rows
+  // that are genuinely stale), so any signed-in user may trigger
+  // it; the real cadence comes from the index.ts interval, which
+  // calls cleanupStaleTeamWorkouts() directly.
+  app.post('/cleanup', async (req) => {
+    await requireUser(req);
+    return cleanupStaleTeamWorkouts();
   });
+}
+
+/// Mark no-shows (invited/accepted >30min ago, never joined) and
+/// abandon stale sessions (started >1h ago, still PENDING/ACTIVE).
+/// Called by the /cleanup route above AND the index.ts interval
+/// cron — the "cron" the header comment always promised but which
+/// never actually existed, so stale sessions lingered forever
+/// unless someone manually POSTed the endpoint.
+export async function cleanupStaleTeamWorkouts(): Promise<{
+  noShowsMarked: number;
+  sessionsAbandoned: number;
+}> {
+  const now = Date.now();
+  const noShowBefore = new Date(now - NO_SHOW_AFTER_MS);
+  const abandonBefore = new Date(now - ABANDON_AFTER_MS);
+  const noShows = await prisma.teamParticipant.updateMany({
+    where: {
+      status: { in: ['INVITED', 'ACCEPTED'] },
+      respondedAt: { lt: noShowBefore },
+      // also require no join — i.e. status field still INVITED/ACCEPTED
+    },
+    data: { status: 'NO_SHOW' },
+  });
+  const abandoned = await prisma.teamWorkout.updateMany({
+    where: {
+      status: { in: ['PENDING', 'ACTIVE'] },
+      startedAt: { lt: abandonBefore },
+    },
+    data: { status: 'ABANDONED', endedAt: new Date() },
+  });
+  return { noShowsMarked: noShows.count, sessionsAbandoned: abandoned.count };
 }
 
 async function unlockAchievement(userId: string, key: string): Promise<void> {

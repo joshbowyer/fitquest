@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { ClassName } from '../lib/prisma.js';
+import { ClassName, PrismaRuntime } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { levelFromXp } from '../lib/xp.js';
@@ -189,17 +189,13 @@ app.post('/unlock', async (req, reply) => {
     // a slightly smaller flat reward since they're "free" unlocks
     // (no test validation).
     const bonus = skill.test ? tierBonus : { xp: 5, gold: 3 };
-    const updatedUser = await prisma.user.update({
-      where: { id: me.id },
-      data: { xp: { increment: bonus.xp }, gold: { increment: bonus.gold } },
-      select: { xp: true, gold: true, level: true },
-    });
-    const prevLevel = me.level;
-    const newLevel = levelFromXp(updatedUser.xp);
-    if (newLevel > prevLevel) {
-      await prisma.user.update({ where: { id: me.id }, data: { level: newLevel } });
-      updatedUser.level = newLevel;
-    }
+    // Centralized award (heart multiplier + level recompute in one
+    // place instead of the inline increment-then-maybe-level dance).
+    const { awardXpGold } = await import('../lib/award.js');
+    const award = await awardXpGold(me.id, { xp: bonus.xp, gold: bonus.gold });
+    const updatedUser = { xp: award.totalXp, gold: award.totalGold, level: award.level };
+    const prevLevel = award.previousLevel;
+    const newLevel = award.level;
     return {
       ok: true,
       reward: bonus,
@@ -232,18 +228,18 @@ app.post('/unlock', async (req, reply) => {
   app.get('/calisthenics-progress', async (req) => {
     const me = await requireUser(req);
     const [totalSkills, unlockedRows, recentRows, bestHoldPr, deadHangPr] = await Promise.all([
-      prisma.skill.count({ where: { className: 'PHANTOM', test: { not: null } } }),
+      prisma.skill.count({ where: { className: 'PHANTOM', test: { not: PrismaRuntime.AnyNull } } }),
       prisma.userSkill.findMany({
         where: {
           userId: me.id,
-          skill: { className: 'PHANTOM', test: { not: null } },
+          skill: { className: 'PHANTOM', test: { not: PrismaRuntime.AnyNull } },
         },
         select: { skillId: true },
       }),
       prisma.userSkill.findMany({
         where: {
           userId: me.id,
-          skill: { className: 'PHANTOM', test: { not: null } },
+          skill: { className: 'PHANTOM', test: { not: PrismaRuntime.AnyNull } },
         },
         orderBy: { unlockedAt: 'desc' },
         take: 5,

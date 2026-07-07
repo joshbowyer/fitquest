@@ -82,6 +82,9 @@ type Spec = {
       duration_sec?: number;
       distance_m?: number;
       rounds?: number;
+      /** 'each' (per side) or 'total' — stored in the seeded
+       *  threshold JSON for unilateral tests. */
+      sides?: string;
     };
   };
 };
@@ -704,7 +707,7 @@ const SKILLS_BY_CLASS: Record<string, Spec[]> = {
   ORACLE: ORACLE_SKILLS,
 };
 
-export async function seedSkills(): Promise<{ upserted: number }> {
+export async function seedSkills(): Promise<{ upserted: number; deleted: number }> {
   let upserted = 0;
   // Compute prereqs two ways, per skill:
   // Two prereq modes, picked per class:

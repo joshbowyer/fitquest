@@ -4,6 +4,7 @@ import { HabitDirection } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { awardXpGold } from '../lib/award.js';
 import { clampShield, tierForShield } from '../lib/penance.js';
 import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
@@ -158,9 +159,18 @@ export async function habitRoutes(app: FastifyInstance) {
     // For POSITIVE: reward. For NEGATIVE: penalty (apply negative sign
     // to both gold and xp deltas).
     const sign = habit.direction === 'POSITIVE' ? 1 : -1;
-    const goldDelta = sign * habit.goldReward;
-    const xpDelta = sign * habit.xpReward;
     const delta = sign; // log delta is just the sign for simplicity
+
+    // Centralized award: positive rewards get the Hardcore heart
+    // multiplier + level recompute; NEGATIVE deltas apply at full
+    // magnitude (the multiplier never softens a penalty). The log
+    // row stores the actual granted/charged amounts.
+    const award = await awardXpGold(me.id, {
+      xp: sign * habit.xpReward,
+      gold: sign * habit.goldReward,
+    });
+    const goldDelta = award.gold;
+    const xpDelta = award.xp;
 
     const log = await prisma.habitLog.create({
       data: {
@@ -172,15 +182,7 @@ export async function habitRoutes(app: FastifyInstance) {
       },
     });
 
-    // Apply to user's gold + xp.
-    const updated = await prisma.user.update({
-      where: { id: me.id },
-      data: {
-        gold: { increment: goldDelta },
-        xp: { increment: xpDelta },
-      },
-      select: { gold: true, xp: true, level: true },
-    });
+    const updated = { gold: award.totalGold, xp: award.totalXp, level: award.level };
 
     // NEGATIVE habits also chip the home-base shield. Magnitude
     // scales with the habit's difficulty tier (mapped from its

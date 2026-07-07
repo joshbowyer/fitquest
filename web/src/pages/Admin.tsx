@@ -332,7 +332,6 @@ export function AdminPage() {
                     isResettingSkills={
                       resetSkillsM.isPending && resetSkillsM.variables?.id === u.id
                     }
-                    isSelf={u.id === user?.id}
                   />
                 ))}
               </div>

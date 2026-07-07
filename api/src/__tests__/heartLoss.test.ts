@@ -143,16 +143,36 @@ describe('fireHardcoreHeartPenalties — triggers', () => {
   });
 
   it('fires MISSED_ALL_DAILIES when every expected daily was skipped', async () => {
-    // User has 2 user dailies + 1 spiritual prayer. None completed.
+    // User has 2 user dailies + 1 spiritual prayer. None completed,
+    // and no workout logged either (workout.count = 0 — the sweep
+    // now treats a logged Workout row as completing the WORKOUT
+    // built-in, so this must be explicit; the previous test in this
+    // file leaves the mock at 1).
     mockedPrisma.daily.findMany.mockResolvedValue([{ id: 'd1' }, { id: 'd2' }]);
     store.users.get('user-hardcore').spiritualDailyPrayers = ['ROSARY'];
     mockedPrisma.dailyLog.findMany.mockResolvedValue([]);
     mockedPrisma.dailyLog.count.mockResolvedValue(0);
+    mockedPrisma.workout.count.mockResolvedValue(0);
 
     await fireHardcoreHeartPenalties('user-hardcore', 'UTC');
 
     const kinds = store.heartLossEvents.map((e: any) => e.kind);
     expect(kinds).toContain('MISSED_ALL_DAILIES');
+  });
+
+  it('does NOT fire MISSED_ALL_DAILIES when a workout was logged (even with zero dailyLog rows)', async () => {
+    // Regression guard: the sweep used to check only dailyLog rows
+    // for the WORKOUT built-in — nothing in the workout-save path
+    // writes one — so users who genuinely trained yesterday were
+    // docked a heart for "missing all dailies" while the Today page
+    // showed the WORKOUT daily as done.
+    mockedPrisma.daily.findMany.mockResolvedValue([{ id: 'd1' }]);
+    mockedPrisma.dailyLog.findMany.mockResolvedValue([]);
+    mockedPrisma.workout.count.mockResolvedValue(1);
+
+    await fireHardcoreHeartPenalties('user-hardcore', 'UTC');
+
+    expect(store.heartLossEvents.find((e: any) => e.kind === 'MISSED_ALL_DAILIES')).toBeUndefined();
   });
 
   it('fires SUBSTANCE_CAFFEINE when yesterday caffeine > cap', async () => {

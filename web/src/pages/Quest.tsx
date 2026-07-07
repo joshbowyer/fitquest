@@ -246,16 +246,3 @@ function primaryColorForClass(c: string): WorldColor {
   return meta.color as WorldColor;
 }
 
-function worldColorToVariant(c: WorldColor):
-  'cyan' | 'red' | 'magenta' | 'lime' | 'amber' | 'violet' {
-  switch (c) {
-    case 'magenta':    return 'magenta';
-    case 'lime':       return 'lime';
-    case 'goldenrod':  return 'amber';
-    case 'periwinkle': return 'violet';
-    case 'cyan':       return 'cyan';
-    case 'violet':     return 'violet';
-    case 'red':        return 'red';
-  }
-}
-

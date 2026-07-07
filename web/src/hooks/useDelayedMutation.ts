@@ -20,8 +20,8 @@ import { useMutation, type UseMutationOptions } from '@tanstack/react-query';
  * mutation are in flight (e.g. disable the specific row's button
  * while it's in flight, not the whole list).
  */
-export function useDelayedMutation<TData = unknown, TVariables = void>(
-  options: UseMutationOptions<TData, Error, TVariables>,
+export function useDelayedMutation<TData = unknown, TVariables = void, TContext = unknown>(
+  options: UseMutationOptions<TData, Error, TVariables, TContext>,
   minDelayMs: number = 1000,
 ) {
   const [isPending, setIsPending] = useState(false);
@@ -29,7 +29,7 @@ export function useDelayedMutation<TData = unknown, TVariables = void>(
   // renders — readers consume it synchronously in the same render
   // the in-flight button is being checked.
   const lastVariablesRef = useRef<TVariables | undefined>(undefined);
-  const mutation = useMutation<TData, Error, TVariables>(options);
+  const mutation = useMutation<TData, Error, TVariables, TContext>(options);
 
   const run = useCallback(
     async (variables: TVariables) => {

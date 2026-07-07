@@ -24,7 +24,11 @@ type Criteria =
   | { kind: 'time_of_day_workout'; hourStart: number; hourEnd: number; gte?: number }
   | { kind: 'profile_complete' }
   | { kind: 'quest_world_complete'; worldId: string }
-  | { kind: 'boss_kill' };
+  | { kind: 'boss_kill' }
+  // Not evaluated by checkAchievements() — awarded directly via
+  // unlockAchievement() in routes/teamWorkouts.ts. Kept in the
+  // union so the seeded criteria JSON typechecks.
+  | { kind: 'team_workout_count'; gte: number };
 
 export const ACHIEVEMENT_DEFS: Array<{
   key: string;

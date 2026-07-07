@@ -289,7 +289,7 @@ async function bodyFatSourcesDomain(
  * the streak label on the dashboard. We don't write here; this
  * is read-only.
  */
-async function streakDomain(userId: string): Promise<{
+async function streakDomain(userId: string, tz: string | null): Promise<{
   currentStreak: number;
   lastCompletedWeek: string | null;
   brokenThisWeek: boolean;
@@ -297,14 +297,19 @@ async function streakDomain(userId: string): Promise<{
   const routine = await prisma.routine.findUnique({ where: { userId } });
   if (!routine) return { currentStreak: 0, lastCompletedWeek: null, brokenThisWeek: false };
 
-  const now = new Date();
+  // Monday of the user's LOCAL week. Was previously computed with
+  // getUTCDay()/setUTCHours — i.e. the server's UTC week — which
+  // disagreed with routine.ts's (now tz-aware) week anchoring and
+  // flagged "streak broken" for weeks that were complete in the
+  // user's own frame (e.g. a Sunday-8pm CDT workout is Monday in
+  // UTC). weekKey is a LOCAL-date string, matching what
+  // checkRoutineProgress stores in routine.lastCompletedWeek.
+  const todayLocal = todayInTz(tz);
   const monday = (() => {
-    const d = new Date(now);
-    const day = d.getUTCDay();
-    // 0 = Sunday, 1 = Monday, ...
+    const d = new Date(`${todayLocal}T00:00:00Z`);
+    const day = d.getUTCDay(); // weekday of the LOCAL date
     const offset = day === 0 ? -6 : 1 - day;
     d.setUTCDate(d.getUTCDate() + offset);
-    d.setUTCHours(0, 0, 0, 0);
     return d;
   })();
 
@@ -492,7 +497,7 @@ export async function gatherReportData(
     supplementsDomain(userId, since7),
     spiritualDomain(userId, since7),
     substanceCountsDomain(userId, since1d, since7),
-    streakDomain(userId),
+    streakDomain(userId, tz),
     detectPlateaus(userId, now),
     buildMacroNudges(userId, now, tz),
     buildSleepOverlapReport(userId, tz, 14, now),
@@ -1176,6 +1181,19 @@ async function fireMissedAllDailiesPenance(
     });
     const completed = new Set(completedKeys.map((k) => k.dailyKey));
 
+    // The WORKOUT built-in is completed by *logging a workout*, not
+    // by ticking a dailyLog row — the Today page derives it from the
+    // Workout table (see dailies.ts `todayDone`), and nothing in the
+    // workout-save path writes a dailyLog. Checking only dailyLog
+    // here punished users (-20 shield) who genuinely trained
+    // yesterday but ticked no dailies.
+    if (!completed.has('WORKOUT')) {
+      const workoutCount = await prisma.workout.count({
+        where: { userId, performedAt: { gte: startOfDay, lte: endOfDay } },
+      });
+      if (workoutCount > 0) completed.add('WORKOUT');
+    }
+
     // All-missed = expectedKeys is non-empty AND none of them were
     // completed yesterday.
     const allMissed = [...expectedKeys].every((k) => !completed.has(k));
@@ -1188,9 +1206,9 @@ async function fireMissedAllDailiesPenance(
 }
 
 // =============================================================================
-// Hardcore-mode heart-loss sweep. Wired alongside the all-dailies
-// penance above so the user gets one morning fetch = one set of
-// idempotent side-effects.
+// Heart-loss sweep. Wired alongside the all-dailies penance above
+// so the user gets one morning fetch = one set of idempotent
+// side-effects.
 //
 // Each trigger can independently cost a heart. The HeartLossEvent
 // unique constraint on (userId, kind, sourceDate) makes the sweep
@@ -1198,7 +1216,9 @@ async function fireMissedAllDailiesPenance(
 // local day is a no-op because the dup INSERT raises P2002 and we
 // silently skip.
 //
-// Triggers fired (Hardcore mode only):
+// Casual mode fires ONLY the MISSED_WORKOUT trigger (visual-only
+// drop per mode.ts's header — no reward impact). The rest are
+// Hardcore-only:
 //   MISSED_WORKOUT      — yesterday was a RoutineDay workout day and
 //                         no Workout row landed in that window.
 //   MISSED_ALL_DAILIES  — every expected daily (incl. spiritual
@@ -1226,7 +1246,17 @@ export async function fireHardcoreHeartPenalties(
       where: { id: userId },
       select: { mode: true, spiritualDailyPrayers: true },
     });
-    if (!user || user.mode !== 'HARDCORE') return;
+    if (!user) return;
+    // Casual mode still runs the MISSED_WORKOUT trigger — mode.ts's
+    // contract is "lose 1 per missed planned workout … in either
+    // mode", with the Casual drop being visual-only (heartMultiplier
+    // returns 1.0 for Casual, and buildPenalties returns [] — so no
+    // reward impact and no scold ledger; the count just drops where
+    // the user can see it). All other triggers (dailies, substance
+    // caps, zero-spiritual) stay Hardcore-only per the same header.
+    // Before this change Casual hearts never moved at all: the whole
+    // sweep bailed here, making the heart bar pure decoration.
+    const hardcore = user.mode === 'HARDCORE';
 
     const { todayInTz, localMidnightUtc } = await import('./timezone.js');
     const today = todayInTz(timezone);
@@ -1312,7 +1342,7 @@ export async function fireHardcoreHeartPenalties(
     for (const prayer of user.spiritualDailyPrayers ?? []) {
       expectedKeys.add(`SPIRITUAL:${prayer}`);
     }
-    if (expectedKeys.size > 0) {
+    if (hardcore && expectedKeys.size > 0) {
       const completedLogs = await prisma.dailyLog.findMany({
         where: {
           userId,
@@ -1321,77 +1351,92 @@ export async function fireHardcoreHeartPenalties(
         select: { dailyKey: true },
       });
       const completed = new Set(completedLogs.map((k: { dailyKey: string }) => k.dailyKey));
+      // Same workout-awareness as fireMissedAllDailiesPenance: a
+      // logged Workout row completes the WORKOUT built-in even
+      // though nothing writes a dailyLog for it. (Trigger 1 above
+      // already counted yesterday's workouts — reuse would tangle
+      // the branches, and prisma.count is cheap.)
+      if (!completed.has('WORKOUT')) {
+        const workoutsYesterday = await prisma.workout.count({
+          where: { userId, performedAt: { gte: startOfYesterday, lte: endOfYesterday } },
+        });
+        if (workoutsYesterday > 0) completed.add('WORKOUT');
+      }
       const allMissed = [...expectedKeys].every((k) => !completed.has(k));
       if (allMissed) {
         await fire('MISSED_ALL_DAILIES', `0/${expectedKeys.size} expected dailies completed yesterday`);
       }
     }
 
-    // ---- Trigger 3-5: SUBSTANCE_* ----
+    // ---- Trigger 3-5: SUBSTANCE_* (Hardcore only) ----
     // Bounded to [startOfYesterday, todayMidnight) — this is
     // yesterday's per-day count. It previously had no upper bound,
     // so espressos logged THIS morning counted toward YESTERDAY's
     // cap and could cost a heart even though neither day was
     // actually over the limit.
-    const substanceCounts = await prisma.substanceLog.groupBy({
-      by: ['category'],
-      where: { userId, loggedAt: { gte: startOfYesterday, lt: todayMidnight } },
-      _count: { _all: true },
-    });
-    // For caffeine we only count yesterday. For alcohol/nicotine we
-    // count the rolling 7-day window ending yesterday (last 7 full
-    // days). The groupBy above already gives us yesterday-only
-    // counts; roll back the window for alcohol/nicotine.
-    const sevenDayStart = new Date(todayMidnight.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const rollingCounts = await prisma.substanceLog.groupBy({
-      by: ['category'],
-      where: { userId, loggedAt: { gte: sevenDayStart, lt: todayMidnight } },
-      _count: { _all: true },
-    });
-    const yesterdayCount = (cat: string) =>
-      substanceCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
-    const rollingCount = (cat: string) =>
-      rollingCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
+    if (hardcore) {
+      const substanceCounts = await prisma.substanceLog.groupBy({
+        by: ['category'],
+        where: { userId, loggedAt: { gte: startOfYesterday, lt: todayMidnight } },
+        _count: { _all: true },
+      });
+      // For caffeine we only count yesterday. For alcohol/nicotine we
+      // count the rolling 7-day window ending yesterday (last 7 full
+      // days). The groupBy above already gives us yesterday-only
+      // counts; roll back the window for alcohol/nicotine.
+      const sevenDayStart = new Date(todayMidnight.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const rollingCounts = await prisma.substanceLog.groupBy({
+        by: ['category'],
+        where: { userId, loggedAt: { gte: sevenDayStart, lt: todayMidnight } },
+        _count: { _all: true },
+      });
+      const yesterdayCount = (cat: string) =>
+        substanceCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
+      const rollingCount = (cat: string) =>
+        rollingCounts.find((c: { category: string }) => c.category === cat)?._count?._all ?? 0;
 
-    if (yesterdayCount('CAFFEINE') > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
-      await fire(
-        'SUBSTANCE_CAFFEINE',
-        `${yesterdayCount('CAFFEINE')} caffeine logs (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}/day)`,
-      );
-    }
-    if (rollingCount('ALCOHOL') > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
-      await fire(
-        'SUBSTANCE_ALCOHOL',
-        `${rollingCount('ALCOHOL')} alcohol logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}/week)`,
-      );
-    }
-    if (rollingCount('NICOTINE') > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
-      await fire(
-        'SUBSTANCE_NICOTINE',
-        `${rollingCount('NICOTINE')} nicotine logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}/week)`,
-      );
+      if (yesterdayCount('CAFFEINE') > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
+        await fire(
+          'SUBSTANCE_CAFFEINE',
+          `${yesterdayCount('CAFFEINE')} caffeine logs (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}/day)`,
+        );
+      }
+      if (rollingCount('ALCOHOL') > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
+        await fire(
+          'SUBSTANCE_ALCOHOL',
+          `${rollingCount('ALCOHOL')} alcohol logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}/week)`,
+        );
+      }
+      if (rollingCount('NICOTINE') > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
+        await fire(
+          'SUBSTANCE_NICOTINE',
+          `${rollingCount('NICOTINE')} nicotine logs in 7d (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}/week)`,
+        );
+      }
     }
 
-    // ---- Trigger 6: ZERO_SPIRITUAL ----
+    // ---- Trigger 6: ZERO_SPIRITUAL (Hardcore only) ----
     // Independent of configured dailies — a user who logs nothing
     // spiritual yesterday, regardless of whether they have any
     // spiritual obligations configured, gets dinged. This rewards
     // any engagement (mass, rosary, scripture reading, ad-hoc
     // meditation, etc.).
-    const [prayerLogs, spiritualDailyLogs] = await Promise.all([
-      prisma.prayerLog.count({
-        where: { userId, loggedAt: { gte: startOfYesterday, lte: endOfYesterday } },
-      }),
-      prisma.dailyLog.count({
-        where: {
-          userId,
-          loggedAt: { gte: startOfYesterday, lte: endOfYesterday },
-          dailyKey: { startsWith: 'SPIRITUAL:' },
-        },
-      }),
-    ]);
-    if (prayerLogs + spiritualDailyLogs === 0) {
-      await fire('ZERO_SPIRITUAL', 'no PrayerLog and no SPIRITUAL:* daily logged yesterday');
+    if (hardcore) {
+      const [prayerLogs, spiritualDailyLogs] = await Promise.all([
+        prisma.prayerLog.count({
+          where: { userId, loggedAt: { gte: startOfYesterday, lte: endOfYesterday } },
+        }),
+        prisma.dailyLog.count({
+          where: {
+            userId,
+            loggedAt: { gte: startOfYesterday, lte: endOfYesterday },
+            dailyKey: { startsWith: 'SPIRITUAL:' },
+          },
+        }),
+      ]);
+      if (prayerLogs + spiritualDailyLogs === 0) {
+        await fire('ZERO_SPIRITUAL', 'no PrayerLog and no SPIRITUAL:* daily logged yesterday');
+      }
     }
   } catch (err) {
     console.warn('[morning-report] hardcore heart-loss sweep failed', err);

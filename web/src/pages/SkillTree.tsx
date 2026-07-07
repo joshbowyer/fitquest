@@ -86,7 +86,6 @@ type PendingUnlock = {
 type Skill = {
   id: string;
   name: string;
-  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
   // Branch label (e.g. JUGGERNAUT "Squat", PHANTOM "Pull") as
   // stored on the Skill row. The page groups skills by this field.
   // Pre-v1 leftover skills have null and fall into the "Other"
@@ -189,7 +188,11 @@ function ResultInput({
   onChange,
 }: {
   metric: string;
-  onChange: (v: Record<string, number>) => void;
+  // Accepts a value or a functional updater — two-field metrics
+  // (weight:reps etc.) merge into the previous result via updater.
+  onChange: (
+    v: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>),
+  ) => void;
 }) {
   // Render the appropriate input(s) per metric. Single field for
   // most metrics; two for weighted.
@@ -413,7 +416,7 @@ function UnlockModal({
           </label>
           <ResultInput
             metric={test.metric}
-            onChange={(v) => setResult((p) => typeof v === 'function' ? (v as (p: typeof p) => typeof p)(p) : { ...p, ...v } as typeof p)}
+            onChange={(v) => setResult((p) => (typeof v === 'function' ? v(p) : { ...p, ...v }))}
           />
         </div>
         {unlockError && (

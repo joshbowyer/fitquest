@@ -113,7 +113,9 @@ export function portalLayoutFor(worlds: World[]): PortalTile[] {
  * share the same color assignments without duplicating the mapping.
  */
 export type ClassAccent = 'red' | 'magenta' | 'lime' | 'orange' | 'goldenrod' | 'periwinkle';
-export function primaryColorForClass(c: string): ClassAccent {
+// 'cyan' = neutral fallback for unknown/unset classes; consumers look
+// the value up in WORLD_COLOR_HEX where 'cyan' is a valid key.
+export function primaryColorForClass(c: string): ClassAccent | 'cyan' {
   // 1-to-1 mapping — each class gets its own distinctive accent so
   // class-lock badges and sprite stripes don't look identical for
   // different classes. Matches the world color scheme in

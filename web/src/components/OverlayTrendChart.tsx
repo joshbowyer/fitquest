@@ -13,7 +13,7 @@ import { convertForDisplay, formatInUnits } from '@/lib/units';
 import type { UnitSystem } from '@/lib/units';
 import type { MetricType } from '@/lib/types';
 
-type Series = {
+export type Series = {
   metric: MetricType;
   color: string;
   label: string;

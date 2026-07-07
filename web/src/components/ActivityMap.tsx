@@ -88,7 +88,9 @@ export function ActivityMap({ points, height = 360 }: { points: TrackPoint[]; he
         mapInstance.current = null;
       }
 
-      const withGps = points.filter((p) => p.lat != null && p.lon != null) as Array<Required<TrackPoint>>;
+      const withGps = points.filter(
+        (p): p is TrackPoint & { lat: number; lon: number } => p.lat != null && p.lon != null,
+      );
       if (withGps.length === 0) return;
 
       try {

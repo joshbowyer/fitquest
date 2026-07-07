@@ -131,16 +131,25 @@ export async function bossRoutes(app: FastifyInstance) {
         } | null;
       } | null = null;
       if (defeated && !boss.defeatedAt) {
-        // First-time defeat rewards
+        // First-time defeat rewards. XP/gold flow through the
+        // centralized award helper (heart multiplier + level
+        // recompute). The soulstone is a guaranteed 24h-TTL
+        // Soulstone ROW — User.soulstones is a relation, not a
+        // column, so the old `soulstones: { increment: 1 }` threw
+        // PrismaClientValidationError and the ENTIRE first-defeat
+        // reward crashed the endpoint.
         const xp = 500;
         const gold = 250;
         const soulstones = 1;
-        await prisma.user.update({
-          where: { id: me.id },
+        const { awardXpGold } = await import('../lib/award.js');
+        await awardXpGold(me.id, { xp, gold });
+        await prisma.soulstone.create({
           data: {
-            xp: { increment: xp },
-            gold: { increment: gold },
-            soulstones: { increment: soulstones },
+            userId: me.id,
+            bossName: boss.bossName,
+            bossTier: boss.cycle ?? 1,
+            droppedAt: new Date(),
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           },
         });
 
@@ -152,12 +161,15 @@ export async function bossRoutes(app: FastifyInstance) {
         // pass null = unfiltered pool.
         const rarity = rollLootRarity(me.level ?? 1);
         const def = await pickItemOfRarity(prisma, rarity, classForWorld(worldId));
-        let itemDrop: typeof rewards extends infer R
-          ? R extends { itemDrop: infer D }
-            ? D
-            : never
-          : never
-          = null;
+        let itemDrop: {
+          id: string;
+          itemDefId: string;
+          name: string;
+          slot: string;
+          color: string;
+          rarity: string;
+          sprite: string;
+        } | null = null;
         if (def) {
           const inv = await prisma.inventoryItem.create({
             data: {

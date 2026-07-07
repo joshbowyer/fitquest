@@ -7,7 +7,7 @@ import { Panel } from '@/components/Panel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { useAuth } from '@/lib/auth';
 import { classNames } from '@/lib/format';
-import { OverlayTrendChart } from '@/components/OverlayTrendChart';
+import { OverlayTrendChart, type Series } from '@/components/OverlayTrendChart';
 import { WeeklyVolumeChart } from '@/components/WeeklyVolumeChart';
 
 type Correlation = {
@@ -133,7 +133,7 @@ export function InsightsPage() {
     ...(weightQ.data?.items ?? []),
   ];
 
-  const overlaySeries = [
+  const overlaySeries: Series[] = [
     { metric: 'HRV', color: '#c45cff', label: 'HRV', unit: 'ms', yAxis: 'left' as const },
     {
       metric: 'SLEEP_HOURS',
@@ -143,7 +143,7 @@ export function InsightsPage() {
       yAxis: 'right' as const,
     },
   ];
-  const overlaySeries2 = [
+  const overlaySeries2: Series[] = [
     {
       metric: 'WEIGHT',
       color: '#ffc34d',

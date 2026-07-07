@@ -47,15 +47,13 @@ COPY web/nginx.conf ./web/nginx.conf
 # script (which references workspace names that don't match —
 # web's package name is "fitquest-web" not "web").
 #
-# The package.json "build" script is "tsc -b && vite build".
-# tsc -b runs in strict mode and surfaces pre-existing implicit-
-# any / null-mismatch errors in components (ActivityMap,
-# BodyBatteryChart, ExamenSection, FoodPanel). These don't
-# affect runtime but the `&&` short-circuits so vite never runs.
-# Solution: run tsc with `|| true`, then run vite explicitly so
-# the bundle always lands in web/dist. A follow-up PR should fix
-# the underlying typing.
-RUN cd /app/web && (npx tsc -b || true) && npx vite build
+# Typecheck is a HARD build gate. It used to be `(npx tsc -b ||
+# true)` because of accumulated type errors — which is exactly how
+# four page-crashing bugs (Dashboard's missing import among them)
+# shipped to production: vite transpiles without typechecking, so
+# tsc was the only thing that could have caught them, and it was
+# muzzled. The error backlog is now at zero; keep it there.
+RUN cd /app/web && npx tsc -b && npx vite build
 
 FROM nginx:1.27-alpine AS runner
 COPY --from=build /app/web/dist /usr/share/nginx/html

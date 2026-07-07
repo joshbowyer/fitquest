@@ -675,6 +675,14 @@ export type PenanceList = {
 
 export type MealType = 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK';
 
+// Mirrors api/prisma/schema.prisma TrackedItemCategory / TrackedItemUnit.
+export type TrackedItemCategory =
+  | 'VITAMIN' | 'MINERAL' | 'FATTY_ACID' | 'PROBIOTIC'
+  | 'HERB' | 'AMINO_ACID' | 'OTHER';
+
+export type TrackedItemUnit =
+  | 'mg' | 'g' | 'mcg' | 'iu' | 'cfu' | 'capsule' | 'drop' | 'scoop' | 'pill';
+
 export type FoodMatch = {
   source: FoodSource;
   sourceId: string;
@@ -689,7 +697,8 @@ export type FoodMatch = {
   fiberG: number | null;
   sugarG: number | null;
   sodiumMg: number | null;
-  sourceUrl: string;
+  // Nullable server-side (api/prisma FoodItem.sourceUrl String?).
+  sourceUrl: string | null;
 };
 
 export type MealEntryFood = {

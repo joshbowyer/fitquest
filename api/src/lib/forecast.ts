@@ -283,7 +283,7 @@ export function isSnowCode(code: number): boolean {
 export function summarizeDay(
   date: string,
   hourly: HourlyWeather,
-  daily: { tempMax: number; tempMin: number; precipSum: number; windMax: number; weatherCode: number },
+  daily: { tempMax: number; tempMin: number; precipSum: number; precipProbabilityMax: number; windMax: number; weatherCode: number },
 ): DayInsight {
   // Slice hourly to this day's samples.
   const dayHourly = hourly.time
@@ -338,8 +338,13 @@ export function summarizeDay(
     let bestSum = Infinity;
     let bestStartIdx = -1;
     for (let i = 0; i <= scored.length - 2; i++) {
-      if (scored[i].hour < 5 || scored[i].hour >= 22) continue;
-      const sum = scored[i].score + scored[i + 1].score;
+      const s0 = scored[i];
+      const s1 = scored[i + 1];
+      // Always in bounds (i + 1 <= length - 1); guard satisfies
+      // noUncheckedIndexedAccess.
+      if (!s0 || !s1) continue;
+      if (s0.hour < 5 || s0.hour >= 22) continue;
+      const sum = s0.score + s1.score;
       if (sum < bestSum) {
         bestSum = sum;
         bestStartIdx = i;
@@ -348,19 +353,23 @@ export function summarizeDay(
     if (bestStartIdx >= 0) {
       const a = scored[bestStartIdx];
       const b = scored[bestStartIdx + 1];
-      const startHour = a.hour;
-      const endHour = (b.hour + 1) % 24;
-      const apparentTempF = Math.round((a.apparentTempF + b.apparentTempF) / 2);
-      const precipProbability = Math.max(a.precipProbability, b.precipProbability);
-      const windGustMph = Math.max(a.windGustMph, b.windGustMph);
-      bestWindow = {
-        startHour,
-        endHour,
-        apparentTempF,
-        precipProbability,
-        windGustMph,
-        label: `${formatHour(startHour)}-${formatHour(endHour)} at ${apparentTempF}°F`,
-      };
+      // bestStartIdx was set inside the in-bounds loop above, so
+      // both exist; the guard satisfies noUncheckedIndexedAccess.
+      if (a && b) {
+        const startHour = a.hour;
+        const endHour = (b.hour + 1) % 24;
+        const apparentTempF = Math.round((a.apparentTempF + b.apparentTempF) / 2);
+        const precipProbability = Math.max(a.precipProbability, b.precipProbability);
+        const windGustMph = Math.max(a.windGustMph, b.windGustMph);
+        bestWindow = {
+          startHour,
+          endHour,
+          apparentTempF,
+          precipProbability,
+          windGustMph,
+          label: `${formatHour(startHour)}-${formatHour(endHour)} at ${apparentTempF}°F`,
+        };
+      }
     }
   }
 
@@ -663,7 +672,10 @@ async function callOpenMeteoAirQuality(lat: number, lng: number): Promise<AirQua
     // into its date's max.
     type DailyAcc = { pm25Max: number | null; pm10Max: number | null; usAqiMax: number | null };
     const dayMap = new Map<string, DailyAcc>();
-    const takeMax = (cur: number | null, n: number | null): number | null => {
+    // `n` also accepts undefined: indexing the hourly arrays under
+    // noUncheckedIndexedAccess yields `number | null | undefined`,
+    // and the `== null` check already covers undefined.
+    const takeMax = (cur: number | null, n: number | null | undefined): number | null => {
       if (n == null || !Number.isFinite(n)) return cur;
       if (cur == null) return n;
       return Math.max(cur, n);

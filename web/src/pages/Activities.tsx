@@ -72,7 +72,7 @@ export function ActivitiesPage() {
   // batch; the api runs the deletes in a transaction and verifies
   // ownership. On success, invalidate the workouts query and exit
   // selection mode.
-  const bulkDeleteM = useMutation<{ deleted: number }, string[]>({
+  const bulkDeleteM = useMutation<{ deleted: number }, Error, string[]>({
     mutationFn: (ids) =>
       api('/workouts/bulk-delete', { method: 'POST', body: { ids } }),
     onSuccess: () => {

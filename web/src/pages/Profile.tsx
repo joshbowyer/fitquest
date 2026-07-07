@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
-import { useAuth } from '@/lib/auth';
+import { useAuth, type UserSex } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION, getClassDisplayName } from '@/lib/types';
 import { classNames } from '@/lib/format';
@@ -136,13 +136,13 @@ export function ProfilePage() {
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [classChoice, setClassChoice] = useState<ClassName | null>(null);
   const [birthDate, setBirthDate] = useState<string | null>(null);
-  // Sex picker is now MALE or FEMALE only — body-fat formulas
+  // Sex picker offers MALE or FEMALE only — body-fat formulas
   // (Jackson-Pollock, Navy tape) branch on this and only have
-  // validated forms for those two. The api still accepts OTHER
-  // (legacy enum value, never offered in the UI) for backward
-  // compat with any existing row — those users get the male
-  // formula at the picker.
-  const [sexDraft, setSexDraft] = useState<'MALE' | 'FEMALE' | null>(null);
+  // validated forms for those two. The state still admits OTHER
+  // (legacy enum value, never offered in the UI) because it's
+  // seeded from user.sex for backward compat with any existing
+  // row — those users get the male formula at the picker.
+  const [sexDraft, setSexDraft] = useState<UserSex | null>(null);
   const [ordainedDraft, setOrdainedDraft] = useState<boolean>(false);
   const [timezoneDraft, setTimezoneDraft] = useState<string>('');
   const [latitudeDraft, setLatitudeDraft] = useState<string>('');

@@ -4,6 +4,7 @@ import { DayOfWeek, DailyCategory, prisma } from '../lib/prisma.js';
 import type { DayOfWeek as DayOfWeekType } from '@prisma/client';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { awardXpGold } from '../lib/award.js';
 import { computeRecovery } from '../lib/recovery.js';
 import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
@@ -429,8 +430,19 @@ app.get('/today', async (req) => {
       dailyId = fallback.id;
     }
 
-    const goldDelta = daily?.goldReward ?? 0;
-    const xpDelta = daily?.xpReward ?? 0;
+    // Centralized award: heart multiplier + level recompute. The
+    // old inline increment ignored both — a 0-heart Hardcore user
+    // still collected full daily rewards, and daily XP never
+    // leveled anyone up until their next workout. The log row
+    // stores the ACTUAL granted amounts (post-multiplier) so
+    // history reflects what really happened.
+    const baseGold = daily?.goldReward ?? 0;
+    const baseXp = daily?.xpReward ?? 0;
+    const award = (baseGold || baseXp)
+      ? await awardXpGold(me.id, { xp: baseXp, gold: baseGold })
+      : null;
+    const goldDelta = award?.gold ?? 0;
+    const xpDelta = award?.xp ?? 0;
 
     const log = await prisma.dailyLog.create({
       data: {
@@ -441,13 +453,6 @@ app.get('/today', async (req) => {
         xpDelta,
       },
     });
-
-    if (goldDelta || xpDelta) {
-      await prisma.user.update({
-        where: { id: me.id },
-        data: { gold: { increment: goldDelta }, xp: { increment: xpDelta } },
-      });
-    }
 
     await checkAchievements(me.id);
 

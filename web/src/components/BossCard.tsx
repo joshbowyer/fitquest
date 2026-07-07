@@ -44,7 +44,25 @@ export function BossCard({ worldId, bossName, bossGlyph, bossLore, worldColor, a
   const DAMAGE_PRESETS = [50, 100, 250, 500];
 
   const dealDamage = useDelayedMutation<
-    { boss: Boss; actualDamage: number; rewards: { xp: number; gold: number; soulstones: number } | null },
+    {
+      boss: Boss;
+      actualDamage: number;
+      // Mirrors api/src/routes/bosses.ts damage-route response.
+      rewards: {
+        xp: number;
+        gold: number;
+        soulstones: number;
+        itemDrop: {
+          id: string;
+          itemDefId: string;
+          name: string;
+          slot: string;
+          color: string;
+          rarity: string;
+          sprite: string;
+        } | null;
+      } | null;
+    },
     number
   >({
     mutationFn: (dmg) =>

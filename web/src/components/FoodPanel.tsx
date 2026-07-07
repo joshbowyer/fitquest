@@ -283,11 +283,11 @@ export function FoodPanel() {
         </NeonButton>
       </div>
 
-      {/* Results list (either search or Ask AI) */}
-      {(searchResults || askResults?.items) && (
+      {/* Results list (search hits; Ask AI results render via AskAiModal) */}
+      {searchResults && (
         <FoodResultsList
-          items={askResults?.items ?? searchResults ?? []}
-          searchQuery={askResults?.query ?? searchInput}
+          items={searchResults ?? []}
+          searchQuery={searchInput}
           aiReason={askResults?.reason}
           loading={searchM.isPending || askM.isPending}
           onLog={(food) => setLogFood(food)}

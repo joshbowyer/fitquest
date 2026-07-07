@@ -90,7 +90,10 @@ export type PlateauKind =
   | 'ONE_RM_REGRESSION'
   | 'VOLUME_REGRESSION'
   | 'WEIGHT_FLATLINE'
-  | 'METRIC_FLATLINE';
+  | 'METRIC_FLATLINE'
+  // Special pause-only kind: mutes every heuristic. Present in
+  // PLATEAU_KINDS and the route schema; detectors never emit it.
+  | 'ALL';
 
 export type Plateau = {
   /** Stable identifier for grouping + analytics. */
@@ -301,9 +304,11 @@ async function detectWeightFlatline(userId: string, now: Date): Promise<Plateau 
   });
   if (readings.length < WEIGHT_FLATLINE_MIN_READINGS) return null;
 
-  const first = readings[0].value;
-  const last = readings[readings.length - 1].value;
-  const drift = Math.abs(last - first);
+  const first = readings[0];
+  const last = readings[readings.length - 1];
+  // Unreachable: length >= WEIGHT_FLATLINE_MIN_READINGS above.
+  if (!first || !last) return null;
+  const drift = Math.abs(last.value - first.value);
   if (drift >= WEIGHT_FLATLINE_KG) return null;
 
   return {

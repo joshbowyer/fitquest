@@ -9,7 +9,7 @@ import {
   Cell,
 } from 'recharts';
 import { formatInUnits } from '@/lib/units';
-import type { UnitSystem } from '@/lib/types';
+import type { UnitSystem } from '@/lib/units';
 
 type WeekRow = {
   week: string;

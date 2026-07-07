@@ -80,10 +80,12 @@ export function localTodayEndUtc(
   return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
 }
 
-function tzOffsetMinutes(timezone: string, at: Date): number {
+function tzOffsetMinutes(timezone: string | null, at: Date): number {
   try {
     const dtf = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone, timeZoneName: 'longOffset',
+      // null intentionally reaches Intl: it throws and the catch
+      // below returns the 0 (UTC) fallback.
+      timeZone: timezone as string, timeZoneName: 'longOffset',
     });
     const parts = dtf.formatToParts(at);
     const offset = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+0';

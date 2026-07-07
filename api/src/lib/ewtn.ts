@@ -79,9 +79,14 @@ export async function fetchEwtnReading(date: string): Promise<ParsedSections | n
   );
   if (!ldMatch) return null;
 
+  // Group 1 always exists on a successful match; the guard is for
+  // noUncheckedIndexedAccess.
+  const ldJson = ldMatch[1];
+  if (ldJson == null) return null;
+
   let parsed: any;
   try {
-    parsed = JSON.parse(ldMatch[1]);
+    parsed = JSON.parse(ldJson);
   } catch {
     return null;
   }
@@ -115,7 +120,10 @@ function extractLiturgicalTitle(html: string): string {
   const divRe = /<div[^>]*>([^<]{8,120})<\/div>/g;
   let m: RegExpExecArray | null;
   while ((m = divRe.exec(html)) !== null) {
-    const t = m[1].trim();
+    // Group 1 always exists on a match (required by the pattern).
+    const raw = m[1];
+    if (raw == null) continue;
+    const t = raw.trim();
     const isBareWeekday = /^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/.test(t);
     const isBareMonth = /^(?:January|February|March|April|May|June|July|August|September|October|November|December)$/.test(t);
     if (isBareWeekday || isBareMonth) continue;
@@ -222,36 +230,42 @@ function splitIntoSections(body: string): { liturgicalInfo: string; sections: Se
   const sections: Section[] = [];
   let i = 0;
 
+  // NOTE: split() arrays are dense, so every in-bounds lines[i] is
+  // a string. The `?? ''` fallbacks below only satisfy
+  // noUncheckedIndexedAccess — they never fire inside the
+  // `i < lines.length` guards.
+
   // Skip leading blanks.
-  while (i < lines.length && !lines[i].trim()) i++;
+  while (i < lines.length && !(lines[i] ?? '').trim()) i++;
 
   // First non-blank line is the global page title (e.g. "The
   // Nativity of Saint John the Baptist"). Return it separately
   // so the caller can put it in liturgicalInfo.
   if (i >= lines.length) return null;
-  const liturgicalInfo = lines[i].trim();
+  const liturgicalInfo = (lines[i] ?? '').trim();
   i++;
 
   while (i < lines.length) {
-    if (!lines[i].trim()) { i++; continue; }
-    const header = lines[i].trim();
+    if (!(lines[i] ?? '').trim()) { i++; continue; }
+    const header = (lines[i] ?? '').trim();
     i++;
     // Skip blanks between header and citation.
-    while (i < lines.length && !lines[i].trim()) i++;
+    while (i < lines.length && !(lines[i] ?? '').trim()) i++;
     if (i >= lines.length) break;
-    const citation = lines[i].trim();
+    const citation = (lines[i] ?? '').trim();
     i++;
     // Collect verse pairs until we hit a blank or end-of-body.
     const verses: string[] = [];
-    while (i < lines.length && lines[i].trim()) {
-      const numLine = lines[i].trim();
+    while (i < lines.length && (lines[i] ?? '').trim()) {
+      const numLine = (lines[i] ?? '').trim();
       i++;
       // If the next line is verse text (non-blank, not a known
       // section header), the numLine was a verse number — append
       // "num text". Otherwise numLine was the next section's
       // header and we should rewind so the outer loop picks it up.
-      if (i < lines.length && lines[i].trim() && !isLikelySectionHeader(lines[i])) {
-        verses.push(`${numLine} ${lines[i].trim()}`);
+      const next = lines[i];
+      if (next != null && next.trim() && !isLikelySectionHeader(next)) {
+        verses.push(`${numLine} ${next.trim()}`);
         i++;
       } else if (!isLikelySectionHeader(numLine)) {
         // Section body without a verse number — rare but happens

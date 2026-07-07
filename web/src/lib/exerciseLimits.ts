@@ -120,7 +120,6 @@ export const EXERCISE_LIMITS: Record<string, ExerciseLimit> = {
   'Pushups':              { bodyweightCoefficient: 0.64, flagOneRmKg: 130, blockOneRmKg: 200, maxReps: 200 },
   'Dip':                  { bodyweightCoefficient: 0.85, flagOneRmKg: 175, blockOneRmKg: 260, maxReps: 100 },
   'Dips':                 { bodyweightCoefficient: 0.85, flagOneRmKg: 175, blockOneRmKg: 260, maxReps: 100 },
-  'Squat':                { flagOneRmKg: 350, blockOneRmKg: 500, maxReps: 60 },
   'Bodyweight Squat':     { bodyweightCoefficient: 0.7,  flagOneRmKg: 175, blockOneRmKg: 260, maxReps: 100 },
   'Air Squat':            { bodyweightCoefficient: 0.7,  flagOneRmKg: 175, blockOneRmKg: 260, maxReps: 100 },
   'Pistol Squat':         { bodyweightCoefficient: 0.9,  flagOneRmKg: 130, blockOneRmKg: 200, maxReps: 50 },

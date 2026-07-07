@@ -27,7 +27,7 @@ const RATE_LIMIT_MS = 1100; // 1 req/sec + 100ms grace
 /// Single-flight: while one request is in flight we queue
 /// others and resolve them from the same response so a 26-file
 /// bulk import can't fan out 26 concurrent calls.
-let inflight: Promise<string | null> | null = null;
+let inflight: Promise<{ shortName: string; displayName: string } | null> | null = null;
 let lastCallAt = 0;
 
 function round3(n: number): string {
@@ -64,7 +64,7 @@ function pickShort(addr: any): string | null {
 
 async function callNominatim(lat: number, lng: number): Promise<{ shortName: string; displayName: string } | null> {
   // Coalesce concurrent callers onto a single inflight request.
-  if (inflight) return inflight as any;
+  if (inflight) return inflight;
   // Respect the 1 req/sec policy.
   const now = Date.now();
   const wait = Math.max(0, lastCallAt + RATE_LIMIT_MS - now);
@@ -92,7 +92,7 @@ async function callNominatim(lat: number, lng: number): Promise<{ shortName: str
       inflight = null;
     }
   })();
-  return inflight as any;
+  return inflight;
 }
 
 /**

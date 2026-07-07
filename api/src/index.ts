@@ -51,7 +51,6 @@ import { substanceRoutes } from './routes/substances.js';
 import { foodRoutes, savedFoodRoutes } from './routes/foods.js';
 import { mealRoutes } from './routes/meals.js';
 import { ensureAchievementsSeeded } from './lib/achievements.js';
-import { ensureSkillsSeeded } from './lib/skills.js';
 import { seedSkills } from './lib/seedSkills.js';
 import { seedItems } from './lib/seedItems.js';
 import { ensureDefaultAdmin } from './lib/seedAdmin.js';
@@ -351,6 +350,23 @@ async function main() {
       }
     }, 7 * 24 * 60 * 60 * 1000);
   }, plateauMs);
+
+  // Team-workout housekeeping — mark no-shows + abandon stale
+  // sessions every 15 minutes. The teamWorkouts.ts header always
+  // described this cron, but it was never wired up: stale PENDING/
+  // ACTIVE sessions and unanswered invites lingered forever unless
+  // someone manually POSTed /team-workouts/cleanup.
+  setInterval(async () => {
+    try {
+      const { cleanupStaleTeamWorkouts } = await import('./routes/teamWorkouts.js');
+      const r = await cleanupStaleTeamWorkouts();
+      if (r.noShowsMarked > 0 || r.sessionsAbandoned > 0) {
+        app.log.info(r, 'team-workout cleanup');
+      }
+    } catch (err: any) {
+      app.log.warn({ err: String(err?.message ?? err) }, 'team-workout cleanup failed');
+    }
+  }, 15 * 60 * 1000);
 
   const shutdown = async () => {
     app.log.info('shutting down');

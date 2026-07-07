@@ -97,8 +97,24 @@ export async function questRoutes(app: FastifyInstance) {
     const sleepHistory = await loadSleepHistory(me.id);
     const recoveryHistory = await loadRecoveryHistory(me.id);
 
+    // Per-world current cycle (WorldBoss.cycle — 1 for static
+    // worlds, 1..N for the Breach). The progress unique key is
+    // (userId, levelId, cycle) since the cycle migration; the old
+    // `userId_levelId` two-field key used below no longer exists,
+    // so every findUnique/upsert here threw
+    // PrismaClientValidationError and quest auto-completion was
+    // dead (no completions, no rewards).
+    const checkBossRows = await prisma.worldBoss.findMany({
+      where: { userId: me.id },
+      select: { worldId: true, cycle: true },
+    });
+    const checkCycleByWorld = new Map<string, number>(
+      checkBossRows.map((b: { worldId: string; cycle: number }) => [b.worldId, b.cycle]),
+    );
+
     const results: Array<{ levelId: string; cleared: boolean; progress: RequirementProgress; dropId?: string | null }> = [];
     for (const world of WORLDS) {
+      const cycle = checkCycleByWorld.get(world.id) ?? 1;
       for (const lvl of world.levels) {
         const progress = computeRequirementProgress(
           lvl.requirement,
@@ -108,16 +124,17 @@ export async function questRoutes(app: FastifyInstance) {
           recoveryHistory,
         );
         const existing = await prisma.userWorldProgress.findUnique({
-          where: { userId_levelId: { userId: me.id, levelId: lvl.id } },
+          where: { userId_levelId_cycle: { userId: me.id, levelId: lvl.id, cycle } },
         });
         const wasCompleted = existing?.completed ?? false;
         if (progress.cleared && !wasCompleted) {
           // Auto-complete this level and grant rewards
           await prisma.userWorldProgress.upsert({
-            where: { userId_levelId: { userId: me.id, levelId: lvl.id } },
+            where: { userId_levelId_cycle: { userId: me.id, levelId: lvl.id, cycle } },
             create: {
               userId: me.id,
               levelId: lvl.id,
+              cycle,
               completed: true,
               completedAt: new Date(),
               attempts: 1,
@@ -129,13 +146,11 @@ export async function questRoutes(app: FastifyInstance) {
               attempts: { increment: 1 },
             },
           });
-          await prisma.user.update({
-            where: { id: me.id },
-            data: {
-              xp: { increment: lvl.xp },
-              gold: { increment: lvl.gold },
-            },
-          });
+          // Centralized award: heart multiplier + level recompute
+          // (quest XP previously never leveled you up until the
+          // next workout recomputed level).
+          const { awardXpGold } = await import('../lib/award.js');
+          await awardXpGold(me.id, { xp: lvl.xp, gold: lvl.gold });
           // Pet combat XP — quest level clear. XP only, no HP loss.
           // Gate: pet.deployed && !faintedAt (handled inside
           // applyCombatPetXp; we fetch via getDeployedCombatPet to

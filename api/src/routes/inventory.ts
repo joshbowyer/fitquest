@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { EquipSlot } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
-import { requireUser } from '../lib/auth.js';
+import { requireUser, requireAdmin } from '../lib/auth.js';
 
 /**
  * Inventory — equipment catalog + per-user ownership + equip/unequip.
@@ -127,16 +127,18 @@ export async function inventoryRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // POST /inventory/grant — convenience: grant an item by defId.
-  // Currently used for starter kits and dev testing. Could later be
-  // gated to loot drops / shop purchases.
+  // POST /inventory/grant — grant an item by defId. Admin-only:
+  // the only caller is the Admin page's item-grant tool, and an
+  // ungated version let ANY authenticated user mint arbitrary
+  // items (including MYTHIC gear that feeds raid/boss stats) for
+  // free, bypassing the shop/loot economy entirely.
   const GrantBody = z.object({
     itemDefId: z.string().min(1),
     source: z.enum(['MONSTER_DROP', 'BOSS_DROP', 'QUEST_REWARD', 'SHOP', 'CRAFTED', 'ACHIEVEMENT', 'STARTER_KIT']).default('STARTER_KIT'),
     notes: z.string().max(200).optional(),
   });
   app.post('/grant', async (req, reply) => {
-    const me = await requireUser(req);
+    const me = await requireAdmin(req);
     const body = GrantBody.parse(req.body);
     const def = await prisma.itemDef.findUnique({ where: { id: body.itemDefId } });
     if (!def) return reply.code(404).send({ error: 'ItemDef not found' });

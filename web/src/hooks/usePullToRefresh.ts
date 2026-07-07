@@ -30,11 +30,13 @@ export function usePullToRefresh<T extends HTMLElement>(opts: {
   scrollRef?: React.RefObject<T | null>;
   scrollSelector?: string;
   thresholdPx?: number;
+  /** Cap on the visual pull distance. Default: 200px. */
+  maxPullPx?: number;
   /** Direction the user pulls. Default: 'down'. */
   direction?: 'down' | 'up';
 }) {
   const thresholdPx = opts.thresholdPx ?? DEFAULT_THRESHOLD_PX;
-  const maxPullPx = opts.DEFAULT_MAX_PULL_PX ?? DEFAULT_MAX_PULL_PX;
+  const maxPullPx = opts.maxPullPx ?? DEFAULT_MAX_PULL_PX;
   const direction = opts.direction ?? 'down';
 
   const stateRef = useRef<{

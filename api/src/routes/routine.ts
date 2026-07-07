@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DayOfWeek } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
+import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 
 const patchSchema = z.object({
   weeklyGoal: z.number().int().min(1).max(14).optional(),
@@ -14,18 +15,38 @@ const dayUpdateSchema = z.object({
   notes: z.string().max(200).optional().nullable(),
 });
 
-// Returns the Monday (00:00 UTC) of the week containing `date`.
-function mondayOf(date: Date): Date {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  const dow = d.getUTCDay(); // 0=Sun, 1=Mon, ...
-  const daysFromMonday = (dow + 6) % 7;
+// The user's LOCAL week containing `date`: Monday-anchored.
+// Returns the UTC instants of local Monday-midnight → next local
+// Monday-midnight (for performedAt range queries) plus the local
+// Monday date-string (the week's identity key).
+//
+// Was previously computed with getUTCDay()/setUTCHours — the
+// SERVER's UTC week — so e.g. a Chicago user's Sunday-8pm workout
+// (Monday 01:00 UTC) counted toward NEXT week, silently breaking
+// streaks that were complete in the user's own frame. (The
+// morning report's MISSED_WORKOUT trigger already used tz-local
+// days, so the two systems disagreed about the same workout.)
+function localWeekOf(date: Date, tz: string | null): { start: Date; end: Date; weekKey: string } {
+  const localDate = todayInTz(tz, date);
+  const d = new Date(`${localDate}T00:00:00Z`);
+  const daysFromMonday = (d.getUTCDay() + 6) % 7; // 0=Mon ... 6=Sun
   d.setUTCDate(d.getUTCDate() - daysFromMonday);
-  return d;
+  const weekKey = d.toISOString().slice(0, 10);
+  d.setUTCDate(d.getUTCDate() + 7);
+  const nextKey = d.toISOString().slice(0, 10);
+  return {
+    start: localMidnightUtc(weekKey, tz ?? 'UTC'),
+    end: localMidnightUtc(nextKey, tz ?? 'UTC'),
+    weekKey,
+  };
 }
 
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/// Whole weeks between two YYYY-MM-DD Monday keys, in date-space
+/// (never mixes tz-offset instants with date-string parses).
+function weeksBetweenKeys(fromKey: string, toKey: string): number {
+  return Math.round((Date.parse(`${toKey}T00:00:00Z`) - Date.parse(`${fromKey}T00:00:00Z`)) / WEEK_MS);
 }
 
 export async function routineRoutes(app: FastifyInstance) {
@@ -40,15 +61,12 @@ export async function routineRoutes(app: FastifyInstance) {
       });
     }
 
-    const now = new Date();
-    const monday = mondayOf(now);
-    const nextMonday = new Date(monday);
-    nextMonday.setUTCDate(monday.getUTCDate() + 7);
+    const week = localWeekOf(new Date(), me.timezone ?? null);
 
     const thisWeekWorkouts = await prisma.workout.count({
       where: {
         userId: me.id,
-        performedAt: { gte: monday, lt: nextMonday },
+        performedAt: { gte: week.start, lt: week.end },
       },
     });
 
@@ -64,10 +82,7 @@ export async function routineRoutes(app: FastifyInstance) {
     // week behind, currentStreak is effectively 0.
     let effectiveStreak = routine.currentStreak;
     if (routine.lastCompletedWeek) {
-      const last = new Date(routine.lastCompletedWeek + 'T00:00:00Z');
-      const weeksBehind = Math.floor(
-        (monday.getTime() - last.getTime()) / (7 * 24 * 60 * 60 * 1000)
-      );
+      const weeksBehind = weeksBetweenKeys(routine.lastCompletedWeek, week.weekKey);
       if (weeksBehind >= 2) {
         effectiveStreak = 0;
         // Lazily reset in the DB
@@ -78,12 +93,19 @@ export async function routineRoutes(app: FastifyInstance) {
       }
     }
 
+    // weekStart/weekEnd are LOCAL date strings (Mon..Sun of the
+    // user's week), not UTC-instant slices.
+    const weekEndKey = (() => {
+      const d = new Date(`${week.weekKey}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 6);
+      return d.toISOString().slice(0, 10);
+    })();
     return {
       weeklyGoal: routine.weeklyGoal,
       thisWeekCount: thisWeekWorkouts,
       thisWeekCleared: thisWeekWorkouts >= routine.weeklyGoal,
-      weekStart: isoDate(monday),
-      weekEnd: isoDate(new Date(nextMonday.getTime() - 1)),
+      weekStart: week.weekKey,
+      weekEnd: weekEndKey,
       currentStreak: effectiveStreak,
       longestStreak: routine.longestStreak,
       lastCompletedWeek: routine.lastCompletedWeek,
@@ -163,17 +185,19 @@ export async function checkRoutineProgress(userId: string): Promise<{
     update: {},
   });
 
-  const now = new Date();
-  const monday = mondayOf(now);
-  const nextMonday = new Date(monday);
-  nextMonday.setUTCDate(monday.getUTCDate() + 7);
+  // Week boundaries in the USER's timezone (see localWeekOf).
+  const userRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const week = localWeekOf(new Date(), userRow?.timezone ?? null);
 
   const thisWeekCount = await prisma.workout.count({
-    where: { userId, performedAt: { gte: monday, lt: nextMonday } },
+    where: { userId, performedAt: { gte: week.start, lt: week.end } },
   });
 
   const cleared = thisWeekCount >= routine.weeklyGoal;
-  const weekKey = isoDate(monday);
+  const weekKey = week.weekKey;
 
   let newStreak = routine.currentStreak;
   let incremented = false;
@@ -184,10 +208,7 @@ export async function checkRoutineProgress(userId: string): Promise<{
       // Already counted this week — nothing to do.
     } else if (routine.lastCompletedWeek) {
       // Check if lastCompletedWeek was last week (consecutive)
-      const last = new Date(routine.lastCompletedWeek + 'T00:00:00Z');
-      const weeksAhead = Math.round(
-        (monday.getTime() - last.getTime()) / (7 * 24 * 60 * 60 * 1000)
-      );
+      const weeksAhead = weeksBetweenKeys(routine.lastCompletedWeek, weekKey);
       if (weeksAhead === 1) {
         newStreak = routine.currentStreak + 1;
         incremented = true;

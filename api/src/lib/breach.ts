@@ -287,7 +287,9 @@ export async function getOrCreateProgress(
         bossHp: 0,
         kills: 0,
         deaths: 0,
-        soulstones: 0,
+        // NOTE: no `soulstones` here — the counter column was
+        // dropped in the soulstone-TTL migration (021082d);
+        // writing it made Prisma reject the create at runtime.
         damageToday: 0,
         recentBossIds: [],
       },
@@ -347,10 +349,13 @@ export async function rollNextBoss(
   return weightedPick(candidates, userClass);
 }
 
-function weightedPick(
-  candidates: { id: string; classAffinity: string; tier: string; difficulty: string; hp: number }[],
+// Generic over the candidate row so callers get back the full
+// BreachBoss shape they passed in (rollNextBoss passes complete
+// rows — the old inline annotation dropped maxHp/name/etc.).
+function weightedPick<T extends { classAffinity: string }>(
+  candidates: T[],
   userClass?: string | null
-) {
+): T {
   // Weight per candidate:
   //   - Matching classAffinity: 4x
   //   - ANY class: 2x (always relevant)
@@ -368,7 +373,11 @@ function weightedPick(
     r -= w.weight;
     if (r <= 0) return w.c;
   }
-  return weighted[weighted.length - 1].c;
+  // Non-null assertion preserves the original behavior exactly:
+  // with a non-empty list the loop above always returns (weights
+  // sum to `total` and r < total); an empty list threw TypeError
+  // before and still does.
+  return weighted[weighted.length - 1]!.c;
 }
 
 // ============================================================
@@ -512,8 +521,10 @@ export type BreachKillReward = {
 };
 
 export function rewardForKill(boss: { tier: string; maxHp: number }, userLevel: number): BreachKillReward {
-  const goldRange = TIER_GOLD[boss.tier] || TIER_GOLD.MINOR;
-  const ssRange = TIER_SOULSTONES[boss.tier] || TIER_SOULSTONES.MINOR;
+  // `.MINOR!` — MINOR is a static key of the literals above; the
+  // Record<string, ...> index type just can't prove it.
+  const goldRange = TIER_GOLD[boss.tier] || TIER_GOLD.MINOR!;
+  const ssRange = TIER_SOULSTONES[boss.tier] || TIER_SOULSTONES.MINOR!;
   const tierMult = TIER_XP_MULT[boss.tier] || 1.0;
   const gold = randInt(goldRange[0], goldRange[1]);
   const soulstones = randInt(ssRange[0], ssRange[1]);
@@ -591,7 +602,10 @@ export async function claimKill(
       currentBossId: nextBoss.id,
       bossHp: nextBoss.maxHp,
       kills: progress.kills + 1,
-      soulstones: progress.soulstones + reward.soulstones,
+      // NOTE: no `soulstones` counter update — the column was
+      // dropped in the soulstone-TTL migration (021082d); the
+      // stale write made Prisma reject this update at runtime.
+      // reward.soulstones is still returned to the caller.
       recentBossIds: [nextBoss.id, ...((progress.recentBossIds as string[]).filter((id) => id !== boss.id))].slice(0, RECENT_BOSS_MEMORY),
     },
   });

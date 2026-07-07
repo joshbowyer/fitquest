@@ -7,9 +7,11 @@
  *
  *  - **Hearts**: 10 hearts (both modes). Lose 1 per missed planned
  *    workout (routine day with no workout by end of day) in either
- *    mode. Regen 1 per week (anchored to local Sunday midnight in
- *    the user's tz). Casual drops are visual-only; Hardcore drops
- *    apply a graduated multiplier (see heartMultiplier below).
+ *    mode. Regen: Hardcore +1 per week (anchored to local Sunday
+ *    midnight in the user's tz); Casual +1 per local day — the
+ *    Casual drop is visual-only, so recovery is deliberately fast.
+ *    Casual drops are visual-only; Hardcore drops apply a
+ *    graduated multiplier (see heartMultiplier below).
  *
  *  - **Hardcore graduated penalty** (per current heart count):
  *      10 hearts: ×1.00
@@ -41,19 +43,18 @@
  *    /insights anti-staleness surface.
  *
  * Heart regen is computed at *read* time, not via a cron, because the
- * value is bounded (10 max, 0 min) and the math is trivial. We compute
- * `floor((now - heartsLastRegenAt) / 1 week)` and add it to the stored
- * value, capped at 10. The last-regen timestamp is anchored to local
- * Sunday-midnight in the user's tz, so a user who lost a heart on
- * Wednesday gets a new one on Sunday morning (not just "one week
- * from the loss"). Casual mode skips the regen math entirely and
- * just returns the current count.
+ * value is bounded (10 max, 0 min) and the math is trivial. We count
+ * regen boundaries crossed since heartsLastRegenAt (local Sundays
+ * for Hardcore, local midnights for Casual) and add them to the
+ * stored value, capped at 10. The anchor is always a boundary
+ * instant, so a Hardcore user who lost a heart on Wednesday gets a
+ * new one on Sunday morning (not just "one week from the loss").
  *
  * The lib is pure-ish — the only DB touchpoints are read/write on
  * `User.hearts` + `User.heartsLastRegenAt`. The rest is computation.
  */
 import { prisma } from './prisma.js';
-import { lastSundayMidnightUtc } from './timezone.js';
+import { lastSundayMidnightUtc, localMidnightUtc, todayInTz, localDayKey } from './timezone.js';
 
 /// Maximum hearts. Bumped from 5 to 10 so the graduated Hardcore
 /// penalty curve has meaningful resolution. The default is also 10
@@ -83,9 +84,56 @@ export const HARDCORE_SUBSTANCE_CAPS = {
 export type UserMode = 'CASUAL' | 'HARDCORE';
 
 /**
+ * The most recent regen boundary for the user's mode:
+ *   HARDCORE → the most recent local Sunday midnight (1 heart/week)
+ *   CASUAL   → the most recent local midnight (1 heart/day)
+ * Both as UTC instants.
+ */
+function regenBoundary(mode: UserMode, timezone: string | null, now: Date): Date {
+  if (mode === 'CASUAL') {
+    return localMidnightUtc(todayInTz(timezone, now), timezone ?? 'UTC');
+  }
+  return lastSundayMidnightUtc(timezone, now);
+}
+
+/**
+ * Count regen boundaries crossed in (anchor, boundary]. Computed in
+ * LOCAL-DATE space (day keys), not instant arithmetic, so DST
+ * transitions and legacy mid-week anchors can't skew the count:
+ *   - CASUAL: one boundary per local midnight → the day difference.
+ *   - HARDCORE: one per Sunday → ceil(days/7) handles both
+ *     Sunday-aligned anchors (7 days → 1) and legacy arbitrary
+ *     anchors (Wed→Sun = 4 days → 1; the header's "lost a heart on
+ *     Wednesday, new one Sunday morning" contract).
+ */
+function boundariesCrossed(
+  mode: UserMode,
+  timezone: string | null,
+  anchor: Date,
+  boundary: Date,
+): number {
+  const anchorDay = localDayKey(anchor, timezone);
+  const boundaryDay = localDayKey(boundary, timezone);
+  const days = Math.round((Date.parse(`${boundaryDay}T00:00:00Z`) - Date.parse(`${anchorDay}T00:00:00Z`)) / 86_400_000);
+  if (days <= 0) return 0;
+  return mode === 'CASUAL' ? days : Math.ceil(days / 7);
+}
+
+/**
  * Read the current heart count, applying accrued regen since the
  * last tick. Persists the bumped lastRegenAt so the next read sees
  * the new floor.
+ *
+ * Regen cadence: Hardcore +1/local-Sunday, Casual +1/local-day (the
+ * Casual drop is visual-only, so the recovery is gentle-fast).
+ *
+ * Anchor discipline (the previous version got this wrong): the
+ * heartsLastRegenAt anchor is ONLY ever set to a boundary instant
+ * (Sunday midnight / local midnight), never to `new Date()`. The
+ * old code reset the anchor to "now" on every full-hearts read,
+ * which un-anchored the whole system — a heart lost on Wednesday
+ * regenerated the following Wednesday-at-whatever-time you last
+ * opened the app, instead of Sunday morning.
  *
  * Returns the freshly-ticked value. Mutates the row in place.
  */
@@ -96,55 +144,43 @@ export async function tickHearts(userId: string): Promise<number> {
   });
   if (!user) return 0;
 
-  // Casual: hearts are visual-only — no regen math, no penalty. Just
-  // return the current value (the UI shows the count, the user can
-  // see it dropping, but no reward is affected).
-  if (user.mode === 'CASUAL') return user.hearts;
+  const now = new Date();
+  const mode: UserMode = user.mode === 'HARDCORE' ? 'HARDCORE' : 'CASUAL';
+  const boundary = regenBoundary(mode, user.timezone, now);
 
   if (user.hearts >= MAX_HEARTS) {
-    // Already full. Reset the timer so future losses regen from now.
-    if (user.heartsLastRegenAt) {
+    // Full: pin the anchor to the CURRENT boundary (not `now`!) so
+    // a future loss starts its countdown from the boundary the
+    // user was last full at — i.e. the next boundary after a loss
+    // grants the heart back. Only write when it actually moves
+    // (once per day/week) instead of on every read.
+    if (!user.heartsLastRegenAt || user.heartsLastRegenAt.getTime() !== boundary.getTime()) {
       await prisma.user.update({
         where: { id: userId },
-        data: { heartsLastRegenAt: new Date() },
+        data: { heartsLastRegenAt: boundary },
       });
     }
     return MAX_HEARTS;
   }
 
-  // Anchor: the most recent Sunday midnight in the user's tz.
-  // If the user just dropped to 9 hearts on Wednesday, this still
-  // returns the same Sunday they ticked on, so the next regen
-  // happens at the FOLLOWING Sunday — not "one week from the loss".
-  const now = new Date();
-  const lastSunday = lastSundayMidnightUtc(user.timezone, now);
-
-  // Initial value: never ticked. Seed to this Sunday so the next
-  // tick is at most a week away. For a user entering Hardcore
-  // mid-week, their first regen is the upcoming Sunday.
-  const last = user.heartsLastRegenAt ?? lastSunday;
-  if (last.getTime() > now.getTime()) {
-    // Stored value is in the future (legacy / clock skew). Snap to
-    // this Sunday and re-evaluate.
+  // Never ticked → seed to the current boundary (first regen is the
+  // next boundary). Future-dated anchor (legacy/clock skew) → snap.
+  const anchor = user.heartsLastRegenAt ?? boundary;
+  if (!user.heartsLastRegenAt || anchor.getTime() > now.getTime()) {
     await prisma.user.update({
       where: { id: userId },
-      data: { heartsLastRegenAt: lastSunday },
+      data: { heartsLastRegenAt: boundary },
     });
     return user.hearts;
   }
 
-  const weeksSince = Math.floor((now.getTime() - last.getTime()) / HEART_REGEN_MS);
-  if (weeksSince < 1) {
-    // Same Sunday window — no regen yet. Return current.
-    return user.hearts;
-  }
-  const next = Math.min(MAX_HEARTS, user.hearts + weeksSince);
-  // Bump the timer to the most recent Sunday (weeksSince back from
-  // now rounded). Next tick is then the following Sunday.
-  const newLast = new Date(now.getTime() - (now.getTime() - last.getTime()) % HEART_REGEN_MS);
+  const ticks = boundariesCrossed(mode, user.timezone, anchor, boundary);
+  if (ticks < 1) return user.hearts;
+
+  const next = Math.min(MAX_HEARTS, user.hearts + ticks);
   await prisma.user.update({
     where: { id: userId },
-    data: { hearts: next, heartsLastRegenAt: newLast },
+    data: { hearts: next, heartsLastRegenAt: boundary },
   });
   return next;
 }
@@ -165,21 +201,27 @@ export async function tickHearts(userId: string): Promise<number> {
 export async function loseHeart(userId: string, opts?: { reason?: string }): Promise<number> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { hearts: true, mode: true },
+    select: { hearts: true, mode: true, timezone: true, heartsLastRegenAt: true },
   });
   if (!user) return 0;
   const next = Math.max(0, user.hearts - 1);
-  // When dropping to 0 (Hardcore only — Casual regen cadence is
-  // daily so this doesn't apply), reset the regen timer so the next
-  // tick is a full regen-window away. For Casual we leave the
-  // existing timer alone (it's a 24h cadence; see tickHearts).
-  const isHardcore = user.mode === 'HARDCORE';
+  // When dropping FROM full, pin the anchor to the current boundary
+  // so the regen countdown starts from a boundary instant — a
+  // long-idle full-hearts user could otherwise have a months-old
+  // anchor and instantly refill on the next tick. We deliberately
+  // do NOT touch the anchor otherwise: regen stays boundary-aligned
+  // (next local Sunday for Hardcore / next local midnight for
+  // Casual). The old code reset the anchor to `new Date()` when
+  // hitting 0, which pushed the "Sunday" regen to a random mid-week
+  // instant a full week away.
+  const mode: UserMode = user.mode === 'HARDCORE' ? 'HARDCORE' : 'CASUAL';
+  const pinAnchor = user.hearts >= MAX_HEARTS;
   await prisma.user.update({
     where: { id: userId },
     data: {
       hearts: next,
-      ...(isHardcore && next === 0
-        ? { heartsLastRegenAt: new Date() }
+      ...(pinAnchor
+        ? { heartsLastRegenAt: regenBoundary(mode, user.timezone, new Date()) }
         : {}),
     },
   });

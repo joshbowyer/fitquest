@@ -215,7 +215,9 @@ export const LEAK_MONSTERS: LeakMonster[] = [
 // spawn time (not at claim time) so the prize is stable.
 // ============================================================
 
-const RARITY_WEIGHTS: Record<string, [number, number][]> = {
+// Keyed record (not Record<string, ...>) so .low/.mid/.high are
+// known-present; entries are [rarityName, weight] pairs.
+const RARITY_WEIGHTS: Record<'low' | 'mid' | 'high', [string, number][]> = {
   // Level 1-9: heavy common, light uncommon, small rare chance
   low:    [['COMMON', 0.7], ['UNCOMMON', 0.25], ['RARE', 0.05], ['EPIC', 0]],
   // Level 10-19: more uncommon, real rare chance, tiny epic
@@ -234,7 +236,8 @@ export function rollLootRarity(userLevel: number): string {
     r -= weight;
     if (r <= 0) return rarity;
   }
-  return weights[0][0];
+  // `!`: every RARITY_WEIGHTS tier is a non-empty literal array.
+  return weights[0]![0];
 }
 
 // Drop-table filter helper. When `classFilter` is provided, restricts
@@ -327,7 +330,9 @@ export async function maybeSpawnLeak(
   if (activeCount >= MAX_ACTIVE_LEAKS) return { spawned: false };
 
 // Spawn!
-  const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
+  // `!`: floor(random * length) is always in-bounds for the
+  // non-empty LEAK_MONSTERS literal.
+  const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)]!;
   const maxHp = Math.floor(
     LEAK_BASE_HP_MIN + Math.random() * (LEAK_BASE_HP_MAX - LEAK_BASE_HP_MIN)
   );
@@ -379,7 +384,9 @@ export async function maybeSpawnBreachLeak(
   });
   if (activeCount >= MAX_ACTIVE_LEAKS) return { spawned: false };
 
-  const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)];
+  // `!`: floor(random * length) is always in-bounds for the
+  // non-empty LEAK_MONSTERS literal.
+  const monster = LEAK_MONSTERS[Math.floor(Math.random() * LEAK_MONSTERS.length)]!;
   // Breach leaks are slightly tougher (taller HP range) so the
   // user feels the consequence of clearing the Breach world.
   const maxHp = Math.floor(
@@ -423,7 +430,9 @@ export async function pickItemOfRarity(
     // COMMON instead of undefined.
     const tiers = ['LEGENDARY', 'EPIC', 'RARE', 'UNCOMMON', 'COMMON'];
     const idx = tiers.indexOf(rarity);
-    const targetTier = tiers[Math.min((idx < 0 ? tiers.length - 1 : idx) + i, tiers.length - 1)];
+    // The min() clamp keeps the index in bounds; `?? 'COMMON'`
+    // never fires and matches the documented clamp-to-COMMON intent.
+    const targetTier = tiers[Math.min((idx < 0 ? tiers.length - 1 : idx) + i, tiers.length - 1)] ?? 'COMMON';
     const item = await prisma.itemDef.findFirst({
       where: buildItemWhere(targetTier, classFilter ?? null),
       // Skip the user (since users won't have one yet for the

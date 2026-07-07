@@ -266,6 +266,16 @@ export async function workoutRoutes(app: FastifyInstance) {
       // exercises / sets when re-uploading. The `create` block
       // has the full nested tree for first-time inserts.
       const performedAt = body.performedAt ? new Date(body.performedAt) : new Date();
+      // Detect update-vs-create BEFORE the upsert. Re-uploads (the
+      // FitQuestBridge restart case the upsert exists for) must not
+      // re-run the reward pipeline: the row dedups but XP/gold,
+      // raid/breach/leak damage, and penances used to fire again on
+      // every re-POST — free rewards for replaying the same file.
+      const existingWorkout = await tx.workout.findUnique({
+        where: { userId_performedAt: { userId: me.id, performedAt } },
+        select: { id: true },
+      });
+      const wasUpdate = !!existingWorkout;
       const sharedTopLevel = {
         type: body.type,
         name: body.name,
@@ -385,30 +395,36 @@ export async function workoutRoutes(app: FastifyInstance) {
         }
       }
 
-      // XP / gold. Apply heart multiplier when the user is in
-      // Hardcore mode with 0 hearts — halves both rewards until
-      // they tick back up. Casual mode always returns 1.0 so the
-      // math is identical to before.
-      const baseXp = xpFromWorkout({
-        type: workout.type,
-        totalVolumeKg,
-        durationMin: duration,
-        prCount: prs.length,
-      });
-      const baseGold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: duration });
-      const xp = Math.round(baseXp * mult);
-      const gold = Math.round(baseGold * mult);
-      const newXp = me.xp + xp;
-      const newGold = me.gold + gold;
-      const newLevel = levelFromXp(newXp);
-      // leveledUp drives the level-up pulse animation on the client.
-      // Also include the level-before so the bus can render the
-      // before/after without an extra GET.
+      // XP / gold. Apply the graduated Hardcore heart multiplier
+      // (Casual always returns 1.0). Skipped entirely on re-uploads
+      // (wasUpdate) — the original upload already paid out.
       const previousLevel = me.level;
-      await tx.user.update({
-        where: { id: me.id },
-        data: { xp: newXp, gold: newGold, level: newLevel },
-      });
+      let xp = 0;
+      let gold = 0;
+      let newXp = me.xp;
+      let newGold = me.gold;
+      let newLevel = me.level;
+      if (!wasUpdate) {
+        const baseXp = xpFromWorkout({
+          type: workout.type,
+          totalVolumeKg,
+          durationMin: duration,
+          prCount: prs.length,
+        });
+        const baseGold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: duration });
+        xp = Math.round(baseXp * mult);
+        gold = Math.round(baseGold * mult);
+        newXp = me.xp + xp;
+        newGold = me.gold + gold;
+        // leveledUp drives the level-up pulse animation on the client.
+        // Also include the level-before so the bus can render the
+        // before/after without an extra GET.
+        newLevel = Math.max(me.level, levelFromXp(newXp));
+        await tx.user.update({
+          where: { id: me.id },
+          data: { xp: newXp, gold: newGold, level: newLevel },
+        });
+      }
 
       // NOTE: pet XP used to be auto-trained from workout XP at a
       // 10% rate. We removed that path — pets now grow via
@@ -426,10 +442,11 @@ export async function workoutRoutes(app: FastifyInstance) {
         level: newLevel,
         previousLevel,
         leveledUp: newLevel > previousLevel,
+        wasUpdate,
       };
     });
 
-    await checkAchievements(me.id);
+    if (!result.wasUpdate) await checkAchievements(me.id);
 
     // Activity → skill matching pass. Best-effort: a slow match
     // shouldn't fail the workout save, so we catch + log and
@@ -437,8 +454,10 @@ export async function workoutRoutes(app: FastifyInstance) {
     // of workouts + sets, so this is the natural place to fire
     // it (any new workout might match a locked skill). The
     // /check-eligible endpoint is also exposed separately for
-    // manual re-runs.
-    try {
+    // manual re-runs. Skipped on re-uploads (no new sets can have
+    // landed — the upsert's update branch doesn't touch nested
+    // exercises).
+    if (!result.wasUpdate) try {
       const skillLib = await import('../lib/skillMatching.js');
       const eligible = await skillLib.findEligibleSkillUnlocks(
         me.id,
@@ -475,8 +494,9 @@ export async function workoutRoutes(app: FastifyInstance) {
     // Home-base penances on workout commit. The two big repair
     // events: MOBILITY workouts +6 and CARDIO ≥ 30min +8. Fire
     // both when applicable. No-op when the templates are disabled
-    // or the user's shield is already clamped.
-    {
+    // or the user's shield is already clamped. Skipped on
+    // re-uploads (already fired for the original commit).
+    if (!result.wasUpdate) {
       const penanceLib = await import('../lib/penance.js');
       const fires: Array<{ key: 'logged_mobility' | 'logged_cardio_30' | 'log_stretch'; source: 'workout_commit' }> = [];
       if (body.type === 'MOBILITY') {
@@ -517,7 +537,7 @@ export async function workoutRoutes(app: FastifyInstance) {
     );
 
     let raidContribution: { id: string; damage: number; source: string; raidId: string } | null = null;
-    if (me.class && raidDamage.total > 0) {
+    if (me.class && raidDamage.total > 0 && !result.wasUpdate) {
       const membership = await prisma.partyMember.findUnique({ where: { userId: me.id } });
       if (membership) {
         const raid = await prisma.raid.findFirst({
@@ -537,8 +557,10 @@ export async function workoutRoutes(app: FastifyInstance) {
           const buffedDamage = buffActive
             ? Math.round(raidDamage.total * mult * (1 + (buff?.raidDmgBonusPct ?? 0) / 100))
             : Math.round(raidDamage.total * mult);
-          const newHp = Math.max(0, raid.bossHp - buffedDamage);
-          const status = newHp <= 0 ? 'VICTORY' : 'ACTIVE';
+          // Atomic decrement — the old read-modify-write
+          // (newHp = raid.bossHp − damage, then update) dropped
+          // concurrent party members' damage: both read 5000,
+          // both wrote 5000−their-own, last write won.
           const [contribution] = await prisma.$transaction([
             prisma.raidContribution.create({
               data: {
@@ -550,29 +572,35 @@ export async function workoutRoutes(app: FastifyInstance) {
             }),
             prisma.raid.update({
               where: { id: raid.id },
-              data: {
-                bossHp: newHp,
-                status,
-                endedAt: status === 'VICTORY' ? new Date() : null,
-              },
+              data: { bossHp: { decrement: buffedDamage } },
             }),
           ]);
+          // Victory claim: a single conditional UPDATE means exactly
+          // ONE request flips ACTIVE→VICTORY and pays the party —
+          // two simultaneous killing blows used to both compute
+          // newHp ≤ 0 and both run the reward loop (double XP/gold
+          // for every member).
+          const claimed = await prisma.raid.updateMany({
+            where: { id: raid.id, status: 'ACTIVE', bossHp: { lte: 0 } },
+            data: { status: 'VICTORY', endedAt: new Date(), bossHp: 0 },
+          });
+          const status = claimed.count === 1 ? 'VICTORY' : 'ACTIVE';
           raidContribution = {
             id: contribution.id,
             damage: contribution.damage,
             source: contribution.source,
             raidId: contribution.raidId,
           };
-          // On victory, distribute XP+gold to all members (mirror the
-          // manual contribute flow).
+          // On victory, distribute XP+gold to all members. Runs only
+          // in the single request that won the claim above.
           if (status === 'VICTORY') {
+            const { awardXpGold } = await import('../lib/award.js');
             const members = await prisma.partyMember.findMany({ where: { partyId: raid.partyId } });
             const totalAgg = await prisma.raidContribution.aggregate({
               where: { raidId: raid.id },
               _sum: { damage: true },
             });
             const total = totalAgg._sum.damage ?? raidDamage.total;
-            // Same Soulstone drop rate as manual contribute.
             const SOULSTONE_CHANCE = 0.08;
             for (const m of members) {
               const myAgg = await prisma.raidContribution.aggregate({
@@ -581,16 +609,24 @@ export async function workoutRoutes(app: FastifyInstance) {
               });
               const my = myAgg._sum.damage ?? 0;
               const share = Math.round((my / total) * 200) + 50;
-              const u = await prisma.user.findUnique({ where: { id: m.userId } });
-              if (!u) continue;
+              // Centralized award: applies each member's own heart
+              // multiplier + recomputes their level (raid shares
+              // previously did neither).
+              await awardXpGold(m.userId, { xp: share, gold: Math.floor(share / 4) });
+              // Pet combat XP for deployed Lv15+ pets — ported from
+              // the removed /raids/:id/contribute victory loop (this
+              // path never granted it, so raid kills via workouts
+              // silently skipped pets).
+              try {
+                const petLib = await import('../lib/petStats.js');
+                const deployedPet = await petLib.getDeployedCombatPet(m.userId);
+                if (deployedPet) {
+                  await petLib.applyCombatPetXp(prisma, m.userId, petLib.PET_XP_PER_RAID_BOSS_KILL);
+                }
+              } catch (err) {
+                console.warn('[raid] pet xp grant failed', err);
+              }
               const soulstoneDropped = Math.random() < SOULSTONE_CHANCE;
-              await prisma.user.update({
-                where: { id: m.userId },
-                data: {
-                  xp: u.xp + share,
-                  gold: u.gold + Math.floor(share / 4),
-                },
-              });
               if (soulstoneDropped) {
                 // Drop a Soulstone with 24h TTL. World-boss drops are
                 // guaranteed; raid drops are a rare bonus. Both use the
@@ -639,7 +675,10 @@ export async function workoutRoutes(app: FastifyInstance) {
       leakHpAfter: number;
       resolved: string | null;
     } | null = null;
-    try {
+    // Both damage hooks skipped on re-uploads (each dedupes by
+    // workoutId internally, but skipping keeps re-POSTs a true
+    // no-op).
+    if (!result.wasUpdate) try {
       const breachLib = await import('../lib/breach.js');
       const userBefore = await prisma.user.findUnique({
         where: { id: me.id },
@@ -686,7 +725,7 @@ export async function workoutRoutes(app: FastifyInstance) {
     // workout log fires the damage. Mismatched workouts feed the
     // leak (negative delta); matched ones deal damage. Best-effort:
     // a leak bug doesn't fail the workout save.
-    try {
+    if (!result.wasUpdate) try {
       const leakLib = await import('../lib/portalLeaks.js');
       const leakResult = await leakLib.applyLeakDamage(me.id, result.workout.id);
       if (leakResult) {
@@ -732,6 +771,10 @@ export async function workoutRoutes(app: FastifyInstance) {
       // `unlocked: true` triggers the level-10 cutscene on the
       // client.
       breach: breachDamage,
+      // Portal-leak auto-damage result. Was computed but never
+      // included in the response before — the UI had to refetch to
+      // see the leak move.
+      leak: leakDamage,
     });
   });
 

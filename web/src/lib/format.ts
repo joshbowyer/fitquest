@@ -26,7 +26,7 @@ export function formatDate(s: string | Date): string {
  *  If `tz` is null/undefined, falls back to the browser's local zone. */
 export function formatAbsolute(
   s: string | Date,
-  tz: string | null | undefined,
+  tz?: string | null,
 ): string {
   const d = typeof s === 'string' ? new Date(s) : s;
   if (!tz) {
@@ -77,7 +77,8 @@ export function classNames(...xs: Array<string | false | null | undefined>): str
 // decimals. Capped at 2 so user-typed values like 69.871858...
 // never escape to the UI. Trailing zeros stripped so 100.0
 // reads as "100" and 100.50 reads as "100.5".
-export function formatWeight(value: number, unit: 'kg' | 'lb' = 'kg', maxDecimals = 1): string {
+// '' is allowed: renders the bare number (see `unit ? ... : str` below).
+export function formatWeight(value: number, unit: 'kg' | 'lb' | '' = 'kg', maxDecimals = 1): string {
   if (!Number.isFinite(value)) return '—';
   const rounded = Number(value.toFixed(maxDecimals));
   // Strip trailing zeros without losing integer formatting.
