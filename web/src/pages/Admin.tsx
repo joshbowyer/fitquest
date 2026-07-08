@@ -471,7 +471,7 @@ export function AdminPage() {
         {/* -------- LLM config -------- */}
         <Panel
           title="LLM Configuration"
-          subtitle="Provider + key for future in-app coach/quest narrator."
+          subtitle="Provider + key. Powers the AI Coach (per /coach chat) and any other LLM-backed surface."
           className="sm:col-span-2 lg:col-span-2"
         >
           {llmQ.isLoading || !llmForm ? (
