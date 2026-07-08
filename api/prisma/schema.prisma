@@ -354,6 +354,16 @@ model User {
   penanceTemplates       PenanceTemplate[]
   penanceEvents          PenanceEvent[]
   heartLossEvents        HeartLossEvent[]
+  /// One row per (user, local-date) the user dismissed the morning
+  /// recap modal. Server-side replacement for the per-device
+  /// localStorage flag the component used to read — localStorage
+  /// is browser-scoped so dismissing on the Android Capacitor app
+  /// didn't carry over to the web desktop (or vice-versa) and the
+  /// popup re-opened on the other device. The unique constraint on
+  /// (userId, date) is the API; POST /dailies/morning-popup/dismiss
+  /// is the upsert, GET /dailies/morning-popup reads it for the
+  /// `dismissed` field. See MorningPopupDismissal model below.
+  morningPopupDismissals MorningPopupDismissal[]
   /// Skill unlocks waiting for user confirmation. Created when a
   /// recent workout's set satisfies a locked skill's test. The
   /// SkillTree page shows these one at a time on mount.
@@ -1137,6 +1147,34 @@ model HeartLossEvent {
 
   @@unique([userId, kind, sourceDate])
   @@index([userId, firedAt])
+}
+
+/// One row per (user, local-date) the user dismissed the morning
+/// recap modal. Replaces the per-device localStorage flag the
+/// MorningPopup component used to read (which only worked
+/// single-device — Android app + web desktop have separate
+/// localStorage areas, so a dismiss on one didn't carry to the
+/// other). The composite unique index is the API surface: existence
+/// of a row = dismissed for that day. See migration
+/// 20260708030000_morning_popup_dismissal.
+model MorningPopupDismissal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Local-date (YYYY-MM-DD in the user's tz) the dismissal applies
+  /// to. Stored as a string (not a timestamptz) so the unique
+  /// constraint is per local calendar day, not per UTC instant —
+  /// the server computes the date in the request handler from
+  /// me.timezone. Same shape as HeartLossEvent.sourceDate is a
+  /// @db.Date for; for this table the value never goes near
+  /// arithmetic on a Date, so a plain String is sufficient.
+  date        String
+  /// When the user clicked "Start your day". Currently only used
+  /// for debug + future retention metrics; the show/hide decision
+  /// is existence-based via the unique index.
+  dismissedAt DateTime @default(now())
+
+  @@unique([userId, date])
 }
 
 // ============================================================

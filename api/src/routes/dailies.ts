@@ -280,6 +280,20 @@ app.get('/today', async (req) => {
         select: { level: true, xp: true, mode: true, hearts: true, heartsLastRegenAt: true },
       });
 
+      // "Today" in the user's tz is the day the dismissal flag
+      // applies to. The popup itself shows the *yesterday* recap
+      // (targetDate above), but the dismissal key is per local
+      // calendar day, not per the recap's target date — so a user
+      // who dismisses at 11pm then re-opens at 12:01am the next
+      // day sees the popup again, regardless of what targetDate
+      // was. Computed separately so the dismissal lookup is
+      // independent of the recap date.
+      const todayStr = todayInTz(tz);
+      const dismissedRow = await prisma.morningPopupDismissal.findUnique({
+        where: { userId_date: { userId: me.id, date: todayStr } },
+        select: { id: true },
+      }).catch(() => null);
+
       return {
         date: targetDate,
         mode: user?.mode ?? 'CASUAL',
@@ -315,6 +329,14 @@ app.get('/today', async (req) => {
           recoveryScore: recovery?.score ?? null,
         },
         heartLoss,
+        // Server-side dismissal state for *today* in the user's
+        // tz. Drives the popup's "should I open?" check so a
+        // dismissal on one device (e.g. Android app) carries over
+        // to every other device the user opens the app on that
+        // day. The component's localStorage flag is still a fast
+        // cache for the no-network case; the server is the source
+        // of truth. Migration: 20260708030000_morning_popup_dismissal.
+        dismissed: !!dismissedRow,
       };
     } catch (err: any) {
       // Defensive: any failure here means the popup can't render,
@@ -327,6 +349,38 @@ app.get('/today', async (req) => {
         message: err?.message ?? 'unknown',
       });
     }
+  });
+
+  /**
+   * POST /dailies/morning-popup/dismiss
+   *
+   * Idempotent: records that the user dismissed the morning recap
+   * modal for *today* in the user's tz. Subsequent calls for the
+   * same day are no-ops (the unique index on (userId, date)
+   * guarantees one row per day per user). The "Re-check" footer
+   * button on the popup also hits this — it just records a fresh
+   * timestamp without deleting the row.
+   *
+   * The client uses this to keep the per-day dismissal state in
+   * sync across devices — localStorage alone is browser-scoped,
+   * so a dismiss on the Android app didn't carry over to the web
+   * desktop (or vice-versa) before this endpoint existed.
+   */
+  app.post('/morning-popup/dismiss', async (req) => {
+    const me = await requireUser(req);
+    const tz = me.timezone ?? 'UTC';
+    const todayStr = todayInTz(tz);
+    await prisma.morningPopupDismissal.upsert({
+      where: { userId_date: { userId: me.id, date: todayStr } },
+      // No field changes on update — the existence of the row is
+      // the flag; dismissedAt is a debug-only timestamp and
+      // upsert.update doesn't re-run @default(now()) on existing
+      // rows anyway. A repeat click on "Start your day" is a
+      // no-op past the first.
+      create: { userId: me.id, date: todayStr },
+      update: {},
+    });
+    return { ok: true, date: todayStr };
   });
 
   // POST /dailies — create a user-defined daily

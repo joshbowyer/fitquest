@@ -39,6 +39,13 @@ const MorningPopupPayload = z.object({
     details: z.string().nullable(),
     sourceDate: z.string(),
   })),
+  // Server-side dismissal flag for *today* in the user's tz.
+  // Drives the popup's show/hide check so dismissals carry across
+  // devices (Android app + web desktop have separate localStorage
+  // areas). See migration 20260708030000_morning_popup_dismissal.
+  // New in v1.0.38; older test samples predate it so we mark
+  // optional.
+  dismissed: z.boolean().optional(),
 });
 
 describe('MorningPopupPayload schema', () => {
@@ -94,8 +101,8 @@ describe('MorningPopupPayload schema', () => {
     const sample = {
       date: '2026-06-29',
       mode: 'CASUAL',
-      level: 4,
-      xp: 120,
+      level: 1,
+      xp: 0,
       hearts: 5,
       dailies: {},
       recap: {
@@ -112,5 +119,51 @@ describe('MorningPopupPayload schema', () => {
       ],
     };
     expect(MorningPopupPayload.parse(sample).heartLoss).toHaveLength(1);
+  });
+
+  it('accepts a dismissed=true response (cross-device dismissal state)', () => {
+    const sample = {
+      date: '2026-07-08',
+      mode: 'CASUAL',
+      level: 4,
+      xp: 120,
+      hearts: 5,
+      dailies: { date: '2026-07-08', counts: { total: 0, completed: 0 } },
+      recap: {
+        workoutLogged: false,
+        workoutCount: 0,
+        workoutNames: [],
+        sleepHours: null,
+        weighInLogged: false,
+        latestWeightKg: null,
+        recoveryScore: null,
+      },
+      heartLoss: [],
+      dismissed: true,
+    };
+    expect(MorningPopupPayload.parse(sample).dismissed).toBe(true);
+  });
+
+  it('defaults dismissed to false when the field is omitted (older client)', () => {
+    const sample = {
+      date: '2026-07-08',
+      mode: 'CASUAL',
+      level: 1,
+      xp: 0,
+      hearts: 5,
+      dailies: {},
+      recap: {
+        workoutLogged: false,
+        workoutCount: 0,
+        workoutNames: [],
+        sleepHours: null,
+        weighInLogged: false,
+        latestWeightKg: null,
+        recoveryScore: null,
+      },
+      heartLoss: [],
+    };
+    const parsed = MorningPopupPayload.parse(sample);
+    expect(parsed.dismissed).toBeUndefined();
   });
 });

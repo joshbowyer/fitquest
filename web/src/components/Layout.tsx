@@ -7,6 +7,7 @@ import { classNames } from '@/lib/format';
 import { useNavOrder } from '@/hooks/useNavOrder';
 import { useLiveClock } from '@/hooks/useLiveClock';
 import { api } from '@/lib/api';
+import { MorningPopup } from './MorningPopup';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -397,6 +398,14 @@ export function Layout({ children }: Props) {
       <main className="md:row-start-2 p-4 md:p-6 overflow-y-auto" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 1rem)' }}>
         {children}
       </main>
+
+      {/* Morning popup — Habitica-style recap modal. Mounted here
+          (not inside any individual page) so the first-interaction
+          trigger fires on any page the user lands on, and so the
+          state persists across SPA route changes. The modal
+          itself renders via createPortal to document.body, so its
+          visual position is independent of this mount point. */}
+      <MorningPopup />
     </div>
   );
 }

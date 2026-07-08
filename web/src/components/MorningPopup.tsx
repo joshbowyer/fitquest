@@ -10,7 +10,8 @@ import { classNames } from '@/lib/format';
 /**
  * Morning popup modal — Habitica-style.
  *
- * Pops up on the first visit of each day to surface:
+ * Pops up on the first user interaction of each day, on any page,
+ * to surface:
  *   - The "recap" of yesterday (workout logged, sleep, weigh-in,
  *     recovery score).
  *   - Unchecked dailies from yesterday with one-tap "mark done"
@@ -25,9 +26,30 @@ import { classNames } from '@/lib/format';
  *   - A small "today" digest: workout-day status + substance-cap
  *     warnings if over any cap.
  *
- * Dismissed state is persisted in localStorage keyed by today's
- * date so the popup auto-shows once per day but doesn't block the
- * user after they've already dealt with it.
+ * Auto-open rules:
+ *   - Waits for the first pointerdown or keydown of the day
+ *     (not a hard on-mount) so the popup greets the user when
+ *     they actually start using the app, on whatever page they
+ *     happen to be on. Previously it only fired on /today because
+ *     the component was mounted there, and it fired on the first
+ *     mount regardless of whether the user had interacted yet.
+ *   - Skipped entirely if the popup has been dismissed for today
+ *     (checked via localStorage for the no-network case; the
+ *     server's `dismissed` field on the payload is the source of
+ *     truth and wins on the next fetch).
+ *
+ * Dismissed state is persisted in two places:
+ *   - localStorage: `fitquest:morningPopup:YYYY-MM-DD` →
+ *     'dismissed' (fast cache so the modal's "should I open?"
+ *     decision is instant on subsequent visits in the same tab /
+ *     browser).
+ *   - Server: POST /dailies/morning-popup/dismiss records a row
+ *     keyed on (userId, today-in-user-tz) so a dismissal on one
+ *     device (e.g. the Android Capacitor app) carries over to
+ *     every other device (web desktop, etc.) the user opens the
+ *     app on that day. The Android app and the web browser have
+ *     separate localStorage areas, so without the server-side
+ *     flag the popup would re-open on the other device.
  */
 
 type Daily = {
@@ -71,33 +93,60 @@ type PopupPayload = {
     details: string | null;
     sourceDate: string;
   }>;
+  /**
+   * True iff a MorningPopupDismissal row exists for today in the
+   * user's tz. The component closes itself if the server says the
+   * popup was already dismissed — this is the cross-device fix
+   * for the "dismissed on mobile, popped up again on desktop" bug
+   * (the localStorage flag is browser-scoped, so it couldn't
+   * carry between the Android app and the web browser).
+   * Optional for backwards compat with the pre-migration payload
+   * shape; treated as `undefined → false` when missing.
+   */
+  dismissed?: boolean;
 };
 
 const STORAGE_KEY = 'fitquest:morningPopup:';
 
 function todayLocal(): string {
   // Same YYYY-MM-DD-as-user's-local-machine convention the rest of
-  // the app uses. The popup shows on first /today visit of this
+  // the app uses. The popup shows on first interaction of this
   // date; the server-side endpoint reads the user's tz to decide
-  // what "yesterday" means.
+  // what "yesterday" means + to key the dismissal row.
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function dismissedToday(): boolean {
+function dismissedTodayLocal(): boolean {
   if (typeof window === 'undefined') return false;
   return window.localStorage.getItem(STORAGE_KEY + todayLocal()) === 'dismissed';
 }
 
-function markDismissed() {
+function markDismissedLocal() {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY + todayLocal(), 'dismissed');
 }
 
-function clearDismissed() {
+function clearDismissedLocal() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY + todayLocal());
+}
+
+// Garbage-collect old per-day keys so the user's localStorage
+// doesn't grow unboundedly (one key per day they used the app).
+// Called on mount; cheap because it's a single localStorage
+// pass. Skipped on the server (typeof window === 'undefined').
+function cleanupOldDismissedKeys() {
+  if (typeof window === 'undefined') return;
+  const today = todayLocal();
+  const prefix = STORAGE_KEY;
+  for (let i = window.localStorage.length - 1; i >= 0; i--) {
+    const k = window.localStorage.key(i);
+    if (k && k.startsWith(prefix) && k !== prefix + today) {
+      window.localStorage.removeItem(k);
+    }
+  }
 }
 
 function prettyKind(kind: string): string {
@@ -127,17 +176,48 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
   const [revealedCount, setRevealedCount] = useState(0);
   const [heartsAnim, setHeartsAnim] = useState<number | null>(null);
 
-  // Auto-open on first visit of the day, unless already dismissed.
-  // Reads localStorage eagerly (not via effect) so the first paint
-  // doesn't briefly flash the popup then close it.
+  // Auto-open: wait for the first user interaction of the day,
+  // then show the popup unless it's been dismissed (locally OR
+  // server-side). The localStorage check is the fast path so the
+  // first paint doesn't briefly flash the popup. The server's
+  // `dismissed` field (read from the payload below) is the source
+  // of truth — the post-fetch effect below closes the modal if
+  // the server says "dismissed=true" even when localStorage says
+  // nothing.
+  //
+  // Previously this fired on mount, which made the popup appear
+  // even if the user hadn't clicked anything yet, and only on
+  // /today because the component was mounted there. The
+  // pointerdown/keydown listeners make it fire on the user's
+  // FIRST click anywhere in the app, on any page.
   useEffect(() => {
+    cleanupOldDismissedKeys();
+
     if (forceShow) {
       setOpen(true);
       return;
     }
-    if (!dismissedToday()) {
+    if (dismissedTodayLocal()) return;
+
+    let triggered = false;
+    const trigger = () => {
+      if (triggered) return;
+      triggered = true;
+      // Re-check the localStorage flag here in case the user
+      // dismissed between the initial check above and the first
+      // interaction (e.g. they opened a second tab in another
+      // window and dismissed it there first).
+      if (dismissedTodayLocal()) return;
       setOpen(true);
-    }
+      window.removeEventListener('pointerdown', trigger);
+      window.removeEventListener('keydown', trigger);
+    };
+    window.addEventListener('pointerdown', trigger);
+    window.addEventListener('keydown', trigger);
+    return () => {
+      window.removeEventListener('pointerdown', trigger);
+      window.removeEventListener('keydown', trigger);
+    };
   }, [forceShow]);
 
   const q = useQuery({
@@ -146,6 +226,21 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
     enabled: open,
     staleTime: 60_000,
   });
+
+  // Server-side dismissal check: if the popup is open AND the
+  // server says the user already dismissed it (e.g. they
+  // dismissed on the Android app, then opened the web browser
+  // and interacted), close it. This is the cross-device fix.
+  useEffect(() => {
+    if (!q.data) return;
+    if (q.data.dismissed && open) {
+      // Mirror the server state into localStorage so subsequent
+      // first-paint checks in the same browser can skip the
+      // pointerdown/keydown listener setup entirely.
+      markDismissedLocal();
+      setOpen(false);
+    }
+  }, [q.data?.dismissed, q.data?.date, open]);
 
   // Animate heart counter: count up to the actual value over 1.2s
   // when the payload first lands. The starting value is "5" so the
@@ -172,10 +267,23 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
     return () => cancelAnimationFrame(raf);
   }, [q.data?.date, q.data?.hearts, q.data?.mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // POST the dismissal to the server (fire-and-forget) so the
+  // state syncs to other devices the user might be logged in on
+  // (e.g. Android app + web desktop). localStorage is the
+  // immediate cache; the server is the source of truth.
+  const dismissServerM = useMutation({
+    mutationFn: () => api('/dailies/morning-popup/dismiss', { method: 'POST' }),
+  });
+
   function dismiss() {
-    markDismissed();
+    markDismissedLocal();
     setOpen(false);
     onDismiss?.();
+    // Fire-and-forget: a server failure here just means the
+    // dismissal didn't sync to other devices today. The
+    // localStorage flag is still set so THIS device won't re-open
+    // it. Errors are logged inside the api() helper.
+    dismissServerM.mutate();
   }
 
   // Dailies the user has marked done in this popup session. Resets
@@ -385,7 +493,7 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
             <button
               type="button"
               onClick={() => {
-                clearDismissed();
+                clearDismissedLocal();
                 qc.invalidateQueries({ queryKey: ['dailies', 'morning-popup'] });
               }}
               className="text-[10px] font-mono text-ink-400 hover:text-violet-300"
