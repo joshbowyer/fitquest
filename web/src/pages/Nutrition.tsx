@@ -15,6 +15,8 @@ import { FoodPanel } from '@/components/FoodPanel';
 import { MealSections } from '@/components/MealSections';
 import { DailyTotalsBar } from '@/components/DailyTotalsBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { NutritionTrendChart } from '@/components/NutritionTrendChart';
+import { SubstanceTrendChart } from '@/components/SubstanceTrendChart';
 
 // ============================================================================
 // Nutrition page (post FoodYou rewrite)
@@ -74,6 +76,13 @@ export function NutritionPage() {
         <MealSections />
       </div>
 
+      {/* Nutrition trends — per-day calories / macros / water over time */}
+      <ErrorBoundary>
+        <Panel title="Nutrition Trends" variant="amber" className="mb-4 md:mb-6">
+          <NutritionTrendChart system={system} />
+        </Panel>
+      </ErrorBoundary>
+
       {/* Supplements */}
       <TrackedItemsPanel
         categoryFilter={['VITAMIN', 'MINERAL', 'FATTY_ACID', 'HERB', 'AMINO_ACID', 'OTHER']}
@@ -94,14 +103,20 @@ export function NutritionPage() {
 
       {/* Substances */}
       <SubstancesPanel />
+
+      {/* Substance trends — per-day count per category over time */}
+      <ErrorBoundary>
+        <Panel title="Substance Trends" variant="magenta" className="mt-4 md:mt-6">
+          <SubstanceTrendChart />
+        </Panel>
+      </ErrorBoundary>
     </Layout>
   );
 }
 
 // ============================================================================
-// Re-export the existing TrackedItemsPanel and SubstancesPanel from
-// the legacy module so this file is self-contained. The legacy module
-// still exists at Nutrition.bak.tsx for reference.
+// TrackedItemsPanel, SubstancesPanel, and WaterLogPanel are defined
+// in-file below so this page is self-contained.
 // ============================================================================
 
 // ----------------------------------------------------------------------------
