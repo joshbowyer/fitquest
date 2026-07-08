@@ -82,6 +82,17 @@ export type LiveWorkoutLoggerProps = {
       }>;
     }>;
   } | null;
+  /**
+   * Tightens the visual density for narrow containers (e.g. the
+   * team-workout split-pane). Off by default — the solo Activities
+   * call site must keep the full padding/gap experience. When on:
+   *   - Panel padding drops from p-4 to p-2
+   *   - Section vertical rhythm drops from space-y-4 to space-y-2
+   *   - Width is forced to w-full so it fills the parent column
+   * No logic, state, or rendering branches are affected — purely
+   * layout density.
+   */
+  compact?: boolean;
 };
 
 // One planned set up front. The user only configures count + a single
@@ -146,9 +157,18 @@ const TIMED_TYPES: WorkoutType[] = ['CARDIO', 'MOBILITY', 'OTHER'];
 
 export function LiveWorkoutLogger({
   user, units, title = 'Log Session', initialType = 'STRENGTH', onCommit,
-  templatePrefill,
+  templatePrefill, compact = false,
 }: LiveWorkoutLoggerProps) {
   const qc = useQueryClient();
+
+  // ── Layout-density knobs for the compact (split-pane) call site.
+  // !p-2 is required because Panel hard-codes p-4 in its base classes
+  // and p-4 sorts after p-2 in Tailwind's generated stylesheet, so
+  // without the important modifier our override would lose. w-full
+  // is technically redundant on a <section> (block default) but is
+  // kept explicit per the spec so the intent reads in code review.
+  const panelClass = compact ? '!p-2 w-full' : '';
+  const sectionClass = compact ? 'space-y-2' : 'space-y-4';
 
   // ── Setup-phase state ────────────────────────────────────────────────
   // When the parent passes `templatePrefill`, seed exercises/type/notes
@@ -577,8 +597,8 @@ export function LiveWorkoutLogger({
   // ── Render: Setup phase ──────────────────────────────────────────────
   if (phase === 'setup') {
     return (
-      <Panel variant="cyan" title={title} scanline>
-        <div className="space-y-4">
+      <Panel variant="cyan" title={title} scanline className={panelClass}>
+        <div className={sectionClass}>
           <div>
             <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80 mb-1.5">Type</div>
             <div className="flex flex-wrap gap-2">
@@ -877,6 +897,7 @@ export function LiveWorkoutLogger({
         variant="cyan"
         title={`${currentExercise.name} · Set ${currentSetIndex + 1} / ${currentExercise.sets.length}`}
         scanline
+        className={panelClass}
         action={
           <div className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-widest">
             <span className="text-neon-cyan">⏱ {formatDuration(workoutElapsedSec)}</span>
@@ -891,7 +912,7 @@ export function LiveWorkoutLogger({
           </div>
         }
       >
-        <div className="space-y-4">
+        <div className={sectionClass}>
           {/* Progress bar */}
           <div className="h-1 bg-bg-700 border border-ink-500/30">
             <div
@@ -1219,7 +1240,7 @@ export function LiveWorkoutLogger({
 
   // ── Render: Done (fallback; usually the commit's onSuccess resets to setup) ──
   return (
-    <Panel variant="cyan" title="Wrapping up…">
+    <Panel variant="cyan" title="Wrapping up…" className={panelClass}>
       <div className="text-sm text-ink-200">Committing your workout…</div>
     </Panel>
   );

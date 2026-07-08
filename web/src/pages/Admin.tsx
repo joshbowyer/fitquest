@@ -1039,6 +1039,7 @@ export function AdminPage() {
         open={!!resetTarget}
         onClose={() => setResetTarget(null)}
         title={resetTarget ? `Reset password for ${resetTarget.username}` : ''}
+        hideCloseButton
       >
         {resetTarget && (
           <form
@@ -1233,6 +1234,7 @@ function DeleteUserModal({
       onClose={onCancel}
       title={`Delete ${target.username}?`}
       width="max-w-lg"
+      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
@@ -1362,6 +1364,7 @@ function ResetItemsModal({
       onClose={onCancel}
       title={isAll ? 'Wipe ALL items?' : `Wipe ${user!.username}'s items?`}
       width="max-w-lg"
+      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
@@ -1447,6 +1450,7 @@ function ResetSkillsModal({
       onClose={onCancel}
       title={`Reset ${target.username}'s skill tree?`}
       width="max-w-lg"
+      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">

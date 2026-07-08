@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { classNames } from '@/lib/format';
+import { NeonButton } from '@/components/NeonButton';
 
 export function Modal({
   open,
@@ -8,6 +9,15 @@ export function Modal({
   title,
   children,
   width = 'max-w-md',
+  // Opt-out for modals that wrap an in-progress / unsaved-input
+  // form (loggers, editors, multi-step entry, typed-confirm
+  // dialogs). On those, a stray tap on the bottom Close would
+  // silently throw away draft state, so the caller can suppress
+  // the footer Close and rely on the in-modal cancel / save
+  // controls instead. The backdrop-click + Escape handlers still
+  // fire — those go through the parent-owned onClose, which is
+  // the single source of truth for "user wants to leave".
+  hideCloseButton = false,
   // Common override for destructive-action modals (delete/reset
   // confirmations) where the typed-input field is long enough to
   // squeeze the cancel button off the right edge. Modal callers
@@ -18,6 +28,7 @@ export function Modal({
   title: ReactNode;
   children: ReactNode;
   width?: string;
+  hideCloseButton?: boolean;
 }) {
   // Capture the latest onClose via ref so the effect can stay
   // scoped to `open` only. Without this, every parent re-render
@@ -94,7 +105,8 @@ export function Modal({
         className={classNames(
           // max-h keeps long lists inside the viewport instead of
           // overflowing the screen edge. flex flex-col lets the
-          // children container scroll while the title stays pinned.
+          // children container scroll while the title + footer
+          // stay pinned.
           'panel relative p-5 shadow-panel w-full max-h-[calc(100vh-2rem)] flex flex-col',
           width,
         )}
@@ -106,6 +118,30 @@ export function Modal({
         <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 -mr-2 pr-2">
           {children}
         </div>
+        {/* Bottom Close — mobile bail-out so the user never has
+            to land on the 8px gap outside the panel.
+            • hideCloseButton suppresses this when the modal
+              holds unsaved form state (use the in-modal Cancel
+              / Save instead — those flows expect explicit
+              acknowledgement before discarding).
+            • Cyan variant is the default NeonButton accent; the
+              "low-emphasis" feel comes from size="sm" and the
+              muted title-bar context, not from a loud colour.
+            • Footer is a flex row so sm:ml-auto cleanly pushes
+              the button to the right on desktop while staying
+              full-width on mobile for a comfortable thumb tap. */}
+        {!hideCloseButton && (
+          <div className="pt-3 mt-3 border-t border-ink-700/40 shrink-0 flex">
+            <NeonButton
+              size="sm"
+              variant="cyan"
+              className="w-full sm:w-auto sm:ml-auto"
+              onClick={onClose}
+            >
+              Close
+            </NeonButton>
+          </div>
+        )}
       </div>
     </div>,
     document.body

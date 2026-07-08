@@ -8,6 +8,7 @@ import { useNavOrder } from '@/hooks/useNavOrder';
 import { useLiveClock } from '@/hooks/useLiveClock';
 import { api } from '@/lib/api';
 import { MorningPopup } from './MorningPopup';
+import { NotificationFlyout } from './NotificationFlyout';
 import type { ReactNode } from 'react';
 
 type Props = { children: ReactNode };
@@ -86,6 +87,13 @@ export function Layout({ children }: Props) {
   /// Mobile menu overlay. Single boolean — when true, the
   /// hamburger morphs into an X and a full-screen menu renders.
   const [menuOpen, setMenuOpen] = useState(false);
+  /// Notification flyout. Toggled by the bell button in the top
+  /// bar (both desktop and mobile). Replaces the previous
+  /// navigate('/notifications') behaviour so the user can scan
+  /// recent notifications without leaving the current page. The
+  /// flyout handles its own outside-click + Escape dismiss and
+  /// calls onClose to flip this back to false.
+  const [notifOpen, setNotifOpen] = useState(false);
   /// Sidebar reorder edit-mode. When true, each NavLink becomes
   /// draggable and a drag-handle glyph appears on hover. A "Done"
   /// pill at the bottom of the sidebar flips it back off.
@@ -198,10 +206,23 @@ export function Layout({ children }: Props) {
                   {user.classDisplay ?? cls?.label ?? 'No class'}
                 </span>
               </div>
-              {/* Notification bell + unread badge */}
+              {/* Notification bell + unread badge. Opens the
+                  compact flyout anchored under the bell instead of
+                  navigating to /notifications directly — the
+                  flyout has its own See All button that does the
+                  full-nav if the user wants the inbox. aria-
+                  expanded drives screen-reader announcements for
+                  the popup state. data-notif-bell is read by the
+                  flyout's outside-click handler so a re-click on
+                  the bell while the flyout is open doesn't get
+                  interpreted as "click outside → close" (the bell
+                  is outside the flyout's panel). */}
               <button
                 type="button"
-                onClick={() => navigate('/notifications')}
+                data-notif-bell
+                aria-expanded={notifOpen}
+                aria-haspopup="dialog"
+                onClick={() => setNotifOpen((v) => !v)}
                 className="relative w-8 h-8 flex items-center justify-center text-neon-cyan hover:bg-bg-700/60 rounded transition-colors"
                 aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
                 title="Notifications"
@@ -226,7 +247,10 @@ export function Layout({ children }: Props) {
             <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
               <button
                 type="button"
-                onClick={() => navigate('/notifications')}
+                data-notif-bell
+                aria-expanded={notifOpen}
+                aria-haspopup="dialog"
+                onClick={() => setNotifOpen((v) => !v)}
                 className="relative w-7 h-7 flex items-center justify-center text-neon-cyan"
                 aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
               >
@@ -406,6 +430,17 @@ export function Layout({ children }: Props) {
           itself renders via createPortal to document.body, so its
           visual position is independent of this mount point. */}
       <MorningPopup />
+
+      {/* Notification flyout. Same mount-point pattern as
+          MorningPopup — always mounted, the component itself
+          decides whether to render via portal based on the `open`
+          prop. Always-on-mount keeps the react-query cache warm
+          (the second open after a stale-while-revalidate window
+          returns cached data instantly). */}
+      <NotificationFlyout
+        open={notifOpen}
+        onClose={() => setNotifOpen(false)}
+      />
     </div>
   );
 }

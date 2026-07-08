@@ -329,7 +329,7 @@ function AttackLeakModal({
 }) {
   const { user } = useAuth();
   return (
-    <Modal open={open} onClose={onClose} title="Log workout to attack leak" width="max-w-3xl">
+    <Modal open={open} onClose={onClose} title="Log workout to attack leak" width="max-w-3xl" hideCloseButton>
       <WorkoutLogger
         user={user}
         units={user?.units ?? 'METRIC'}

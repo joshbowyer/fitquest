@@ -401,7 +401,7 @@ export function QuickLogModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`Log ${activeMeta.label}`} width="max-w-md">
+    <Modal open={open} onClose={onClose} title={`Log ${activeMeta.label}`} width="max-w-md" hideCloseButton>
       {saved ? (
         // Brief reward screen — 1 large ✓ + label, then the modal
         // closes itself after 480ms (see onSuccess). The pulse +

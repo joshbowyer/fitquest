@@ -416,7 +416,7 @@ export function SpiritualPage() {
 
       {/* Log prayer modal (built-in) */}
       {logging && data && (
-        <Modal open onClose={() => setLogging(null)} title={`Log ${data.prayerTypes[logging].label}`}>
+        <Modal open onClose={() => setLogging(null)} title={`Log ${data.prayerTypes[logging].label}`} hideCloseButton>
           <div className="space-y-4">
             <p className="text-xs font-mono text-ink-300 italic">
               {data.prayerTypes[logging].description}
@@ -466,7 +466,7 @@ export function SpiritualPage() {
 
       {/* Log custom practice modal */}
       {loggingCustom && (
-        <Modal open onClose={() => setLoggingCustom(null)} title={`Log ${loggingCustom.name}`}>
+        <Modal open onClose={() => setLoggingCustom(null)} title={`Log ${loggingCustom.name}`} hideCloseButton>
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-[10px] font-mono text-ink-300">
               <span className="px-1.5 py-0.5 border border-neon-cyan/40 text-neon-cyan">✦ custom</span>
@@ -804,7 +804,7 @@ function CustomPracticeModal({ onClose, onSaved }: { onClose: () => void; onSave
   }, 800);
 
   return (
-    <Modal open onClose={onClose} title="New spiritual practice">
+    <Modal open onClose={onClose} title="New spiritual practice" hideCloseButton>
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">

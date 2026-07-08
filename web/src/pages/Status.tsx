@@ -856,7 +856,7 @@ function PainLogModal({
   }, 400);
 
   return (
-    <Modal open onClose={onClose} title={`Log pain · ${part.label}`}>
+    <Modal open onClose={onClose} title={`Log pain · ${part.label}`} hideCloseButton>
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-2">

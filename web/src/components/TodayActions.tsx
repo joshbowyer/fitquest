@@ -562,7 +562,7 @@ function WeighInModal({ open, onClose }: { open: boolean; onClose: () => void })
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Daily weigh-in" width="max-w-sm">
+    <Modal open={open} onClose={onClose} title="Daily weigh-in" width="max-w-sm" hideCloseButton>
       <div className="space-y-3">
         {logErr && (
           <div className="text-[10px] font-mono text-rose-300 border border-rose-500/40 bg-rose-500/10 px-2 py-1 rounded">
@@ -752,7 +752,7 @@ function FoodLogModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [meal, setMeal] = useState<MealType>(inferMealType(userTz));
 
   return (
-    <Modal open={open} onClose={onClose} title="Log food" width="max-w-2xl">
+    <Modal open={open} onClose={onClose} title="Log food" width="max-w-2xl" hideCloseButton>
       <div className="space-y-4">
         {/* Mode selector + meal picker */}
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1296,7 +1296,7 @@ function SupplementLogModal({
     },
   }, 300);
   return (
-    <Modal open={open} onClose={onClose} title={category === 'PROBIOTIC' ? 'Log probiotic' : 'Log supplement'} width="max-w-md">
+    <Modal open={open} onClose={onClose} title={category === 'PROBIOTIC' ? 'Log probiotic' : 'Log supplement'} width="max-w-md" hideCloseButton>
       <div className="space-y-2">
         {items.length === 0 && (
           <div className="text-xs text-ink-400 italic py-3 text-center">
@@ -1411,7 +1411,7 @@ function SubstanceLogModal({
     },
   });
   return (
-    <Modal open={open} onClose={onClose} title={`Log ${label.toLowerCase()}`} width="max-w-sm">
+    <Modal open={open} onClose={onClose} title={`Log ${label.toLowerCase()}`} width="max-w-sm" hideCloseButton>
       <div className="space-y-3">
         <div className="text-[10px] font-mono text-ink-300">
           {recentQ.data && (
@@ -1467,7 +1467,7 @@ function WorkoutLoggerModal({ open, onClose }: { open: boolean; onClose: () => v
   // got kg labels AND their lb entries were stored unconverted as
   // kg, and bodyweight-derived set weights fell back to 0.
   return (
-    <Modal open={open} onClose={onClose} title="Log activity" width="max-w-3xl">
+    <Modal open={open} onClose={onClose} title="Log activity" width="max-w-3xl" hideCloseButton>
       <WorkoutLogger
         user={user}
         units={user?.units ?? 'METRIC'}
@@ -1537,7 +1537,7 @@ function PrayerLogModal({
     },
   });
   return (
-    <Modal open={open} onClose={onClose} title={`Log ${PRAYER_LABELS[prayerType]}`} width="max-w-sm">
+    <Modal open={open} onClose={onClose} title={`Log ${PRAYER_LABELS[prayerType]}`} width="max-w-sm" hideCloseButton>
       <div className="space-y-3">
         <div>
           <button

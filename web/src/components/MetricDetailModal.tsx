@@ -308,7 +308,7 @@ export function MetricDetailModal({ open, onClose, metric }: Props) {
     // side-by-side-ish on wide modals without forcing horizontal
     // scroll on smaller viewports. The internal scroll (Modal
     // already does overflow-y-auto) keeps everything reachable.
-    <Modal open={open} onClose={onClose} title={meta.label} width="max-w-lg">
+    <Modal open={open} onClose={onClose} title={meta.label} width="max-w-lg" hideCloseButton>
       <div className="space-y-4">
         {/* Top stats: latest / range / trend. Three small cards
             in a row — gives the user a one-glance summary before

@@ -229,7 +229,7 @@ export function QuestPage() {
           toggle list. Opens from clicking the home-base panel on
           the right OR the home-base node on the constellation map. */}
       {homeBaseOpen && (
-        <Modal open onClose={() => setHomeBaseOpen(false)} title="Home base" width="max-w-3xl">
+        <Modal open onClose={() => setHomeBaseOpen(false)} title="Home base" width="max-w-3xl" hideCloseButton>
           <HomeBasePage />
         </Modal>
       )}

@@ -368,10 +368,10 @@ function UnlockModal({
   if (!test) {
     return (
       <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg">
-        <p className="text-sm text-ink-200 mb-4">
-          This is a legacy skill (pre-SkillTree v1) without a defined
-          test. Confirm to unlock.
-        </p>
+            <p className="text-sm text-ink-200 mb-4">
+              This is a legacy skill (pre-SkillTree v1) without a defined
+              test. Confirm to unlock.
+            </p>
         <div className="flex justify-end gap-2 pt-2">
           <NeonButton variant="cyan" onClick={onClose}>Cancel</NeonButton>
           <NeonButton
@@ -425,7 +425,7 @@ function UnlockModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg">
+    <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg" hideCloseButton>
       <div className="space-y-3">
         {skill.blurb && (
           <div className="text-sm text-ink-200 italic">{skill.blurb}</div>

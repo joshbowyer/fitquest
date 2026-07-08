@@ -683,7 +683,7 @@ function DailyEditor({
   }, 400);
 
   return (
-    <Modal open onClose={onClose} title={mode === 'create' ? 'New Daily' : 'Edit Daily'}>
+    <Modal open onClose={onClose} title={mode === 'create' ? 'New Daily' : 'Edit Daily'} hideCloseButton>
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">

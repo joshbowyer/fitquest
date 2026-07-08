@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { classNames } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { WorkoutLogger } from '@/components/WorkoutLogger';
+import { LiveWorkoutLogger } from '@/components/LiveWorkoutLogger';
 import type { UnitSystem } from '@/lib/units';
 
 type Participant = {
@@ -294,6 +295,12 @@ function ParticipantPane({
 }) {
   const color = STATUS_COLOR[p.status];
   const showLogger = isMe && !sessionOver && (p.status === 'ACCEPTED' || p.status === 'JOINED');
+  // Pane-local toggle: which logger variant to render. Defaults to Live
+  // — the team pane's existing bulk logger stays in place when the
+  // user opts back into it. Switching modes unmounts the inactive
+  // logger entirely, so no stale captured-sets or form state leaks
+  // between the two.
+  const [loggerMode, setLoggerMode] = useState<'live' | 'bulk'>('live');
 
   return (
     <div
@@ -379,19 +386,86 @@ function ParticipantPane({
               /team-workouts/:id/confirm. Once that succeeds the
               pane flips to the "done ✓" state and the rest of
               the app unfreezes (other participants see the
-              confirmation in their polls). */}
+              confirmation in their polls).
+
+              Participants can pick between Live (interactive
+              set-by-set walk) and Bulk (predefined routine) entry
+              via the segmented toggle above. Default is Live. */}
           {showLogger && (
             <>
-              <WorkoutLogger
-                user={userForLogger()}
-                units={meUnits}
-                title="Your sets"
-                initialType={p.status === 'JOINED' ? undefined : 'STRENGTH'}
-                compact
-                onCommit={(workoutId) => {
-                  if (workoutId) onConfirm(workoutId);
-                }}
-              />
+              {/* Live / Bulk segmented toggle. Inline-flex row,
+                  1px themed border, pane-accent (neon-cyan) for
+                  the active segment — matches the existing
+                  status-pill / "I'm starting" button styling
+                  used elsewhere in this pane. text-xs + tight
+                  padding so it sits comfortably in the split-
+                  pane. Reuses theme CSS vars (no hardcoded
+                  hex) so it renders correctly in both dark and
+                  light themes. */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+                  Mode
+                </span>
+                <div
+                  role="tablist"
+                  aria-label="Logger mode"
+                  className="inline-flex rounded border border-neon-cyan/40 overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={loggerMode === 'live'}
+                    onClick={() => setLoggerMode('live')}
+                    className={classNames(
+                      'px-3 py-1 text-xs font-mono uppercase tracking-widest transition-colors',
+                      loggerMode === 'live'
+                        ? 'bg-neon-cyan/15 text-neon-cyan'
+                        : 'text-ink-300 hover:text-ink-100 hover:bg-neon-cyan/5',
+                    )}
+                  >
+                    Live
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={loggerMode === 'bulk'}
+                    onClick={() => setLoggerMode('bulk')}
+                    className={classNames(
+                      'px-3 py-1 text-xs font-mono uppercase tracking-widest border-l border-neon-cyan/40 transition-colors',
+                      loggerMode === 'bulk'
+                        ? 'bg-neon-cyan/15 text-neon-cyan'
+                        : 'text-ink-300 hover:text-ink-100 hover:bg-neon-cyan/5',
+                    )}
+                  >
+                    Bulk
+                  </button>
+                </div>
+              </div>
+
+              {loggerMode === 'live' ? (
+                <LiveWorkoutLogger
+                  user={userForLogger()}
+                  units={meUnits}
+                  title="Your sets"
+                  initialType={p.status === 'JOINED' ? undefined : 'STRENGTH'}
+                  compact
+                  onCommit={(workoutId) => {
+                    if (workoutId) onConfirm(workoutId);
+                  }}
+                />
+              ) : (
+                <WorkoutLogger
+                  user={userForLogger()}
+                  units={meUnits}
+                  title="Your sets"
+                  initialType={p.status === 'JOINED' ? undefined : 'STRENGTH'}
+                  compact
+                  onCommit={(workoutId) => {
+                    if (workoutId) onConfirm(workoutId);
+                  }}
+                />
+              )}
+
               {/* Show a tiny ⏳ indicator while we're POSTing confirm.
                   The poll will pick up the new CONFIRMED status on
                   the next 4s tick; no need for a manual refresh. */}

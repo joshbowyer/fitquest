@@ -244,6 +244,7 @@ export function HomeBasePage() {
             </div>
           }
           width="max-w-3xl"
+          hideCloseButton
         >
           <PortalLeakBody
             leak={{
