@@ -2,15 +2,17 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
+  Legend,
 } from 'recharts';
 import { api } from '@/lib/api';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
+import { classNames } from '@/lib/format';
 
 // One row per day from GET /meals/trend?days=N (oldest-first,
 // contiguous, zero-filled). Mirrors the API's response shape.
@@ -26,19 +28,30 @@ type TrendDay = {
 
 type MetricKey = 'calories' | 'proteinG' | 'carbG' | 'fatG' | 'waterMl';
 
-// Metric metadata: label, data key, stored unit (null = unitless
-// count like calories/grams that we render as-is), and line color.
+// Metric metadata: label, stored unit (null = render as-is, e.g.
+// calories/grams), line color, and which Y axis it plots against.
+// Calories + water are big numbers (~2000) so they share the LEFT
+// axis; the macros are grams (~100-300) so they share the RIGHT
+// axis — otherwise calories would flatten the macro lines into the
+// baseline.
 const METRICS: Record<
   MetricKey,
-  { label: string; short: string; unit: string | null; color: string }
+  {
+    label: string;
+    short: string;
+    unit: string | null;
+    color: string;
+    axis: 'left' | 'right';
+  }
 > = {
-  calories: { label: 'Calories', short: 'cal', unit: null, color: '#ffaa3a' },
-  proteinG: { label: 'Protein', short: 'g', unit: null, color: '#f55cc4' },
-  carbG: { label: 'Carbs', short: 'g', unit: null, color: '#14d6e8' },
-  fatG: { label: 'Fat', short: 'g', unit: null, color: '#9a6cf2' },
-  waterMl: { label: 'Water', short: 'ml', unit: 'ml', color: '#56e88e' },
+  calories: { label: 'Calories', short: 'cal', unit: null, color: '#ffaa3a', axis: 'left' },
+  waterMl: { label: 'Water', short: 'ml', unit: 'ml', color: '#56e88e', axis: 'left' },
+  proteinG: { label: 'Protein', short: 'g', unit: null, color: '#f55cc4', axis: 'right' },
+  carbG: { label: 'Carbs', short: 'g', unit: null, color: '#14d6e8', axis: 'right' },
+  fatG: { label: 'Fat', short: 'g', unit: null, color: '#9a6cf2', axis: 'right' },
 };
 
+const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
 const DAY_OPTIONS = [7, 14, 30] as const;
 
 type Props = {
@@ -52,13 +65,14 @@ type Props = {
  *
  * Fetches GET /meals/trend?days=N (per-day rollups of the meal log +
  * WATER_ML measurements, timezone-aware and zero-filled so the x-axis
- * is contiguous). The user picks which metric to plot (calories /
- * protein / carbs / fat / water) and the window (7/14/30 days). Water
- * is converted to the user's unit system for display; the macros are
- * grams/calories and render as-is.
+ * is contiguous). All metrics are shown as toggleable lines (all on by
+ * default), mirroring the substance + activity-stream charts. Calories
+ * and water plot on the left Y axis; the macros (grams) plot on the
+ * right — different scales would otherwise flatten the macro lines.
+ * Water is converted to the user's unit system for display.
  */
-export function NutritionTrendChart({ system, height = 180 }: Props) {
-  const [metric, setMetric] = useState<MetricKey>('calories');
+export function NutritionTrendChart({ system, height = 220 }: Props) {
+  const [active, setActive] = useState<Set<MetricKey>>(new Set(METRIC_KEYS));
   const [days, setDays] = useState<number>(14);
 
   const q = useQuery({
@@ -68,30 +82,44 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
     refetchInterval: 60_000,
   });
 
-  const meta = METRICS[metric];
-
   const chart = useMemo(() => {
     const rows = q.data?.days ?? [];
     const data = rows.map((r) => {
-      const raw = r[metric];
-      const shown =
-        meta.unit != null
-          ? convertForDisplay(raw, meta.unit as any, system).value
-          : raw;
-      return {
+      const row: Record<string, number | string> = {
         ts: new Date(`${r.day}T00:00:00Z`).getTime(),
         label: r.day,
-        value: Math.round(shown * 10) / 10,
         mealCount: r.mealCount,
       };
+      for (const k of METRIC_KEYS) {
+        const meta = METRICS[k];
+        const raw = r[k];
+        const shown =
+          meta.unit != null
+            ? convertForDisplay(raw, meta.unit as any, system).value
+            : raw;
+        row[k] = Math.round(shown * 10) / 10;
+      }
+      return row;
     });
-    const unitLabel =
-      meta.unit != null ? displayUnit(meta.unit as any, system) : meta.short;
-    const total = data.reduce((s, d) => s + (d.value ?? 0), 0);
-    const loggedDays = data.filter((d) => d.value > 0).length;
-    const avg = loggedDays > 0 ? total / loggedDays : 0;
-    return { data, unitLabel, avg, loggedDays };
-  }, [q.data, metric, meta, system]);
+    // Any nutrition logged in the window at all?
+    const hasData = data.some((d) =>
+      METRIC_KEYS.some((k) => (d[k] as number) > 0),
+    );
+    return { data, hasData };
+  }, [q.data, system]);
+
+  const unitLabelFor = (k: MetricKey) => {
+    const meta = METRICS[k];
+    return meta.unit != null ? displayUnit(meta.unit as any, system) : meta.short;
+  };
+
+  const toggle = (k: MetricKey) =>
+    setActive((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
 
   const formatTick = (ts: number) => {
     const d = new Date(ts);
@@ -99,31 +127,27 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
   };
 
   return (
-    <div>
-      {/* Controls: metric chips + day-range chips */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div className="space-y-2">
+      {/* Controls: metric toggles + day-range chips */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
-          {(Object.keys(METRICS) as MetricKey[]).map((k) => {
-            const m = METRICS[k];
-            const active = k === metric;
+          {METRIC_KEYS.map((k) => {
+            const meta = METRICS[k];
+            const isOn = active.has(k);
             return (
               <button
                 key={k}
                 type="button"
-                onClick={() => setMetric(k)}
-                className={
-                  'px-2 py-1 text-[10px] font-mono uppercase tracking-wider border transition-colors ' +
-                  (active
-                    ? 'text-bg-900 font-bold'
-                    : 'text-ink-300 border-ink-500/30 hover:border-ink-300/50')
-                }
-                style={
-                  active
-                    ? { background: m.color, borderColor: m.color }
-                    : undefined
-                }
+                onClick={() => toggle(k)}
+                className={classNames(
+                  'px-2 py-0.5 text-[9px] font-mono tracking-widest uppercase border transition-all',
+                  isOn
+                    ? 'border-current'
+                    : 'border-ink-500/30 text-ink-400 hover:text-ink-200',
+                )}
+                style={isOn ? { color: meta.color } : undefined}
               >
-                {m.label}
+                {meta.label}
               </button>
             );
           })}
@@ -134,29 +158,16 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
               key={d}
               type="button"
               onClick={() => setDays(d)}
-              className={
-                'px-2 py-1 text-[10px] font-mono border transition-colors ' +
-                (d === days
+              className={classNames(
+                'px-2 py-0.5 text-[9px] font-mono border transition-colors',
+                d === days
                   ? 'text-neon-cyan border-neon-cyan/60'
-                  : 'text-ink-400 border-ink-500/30 hover:border-ink-300/50')
-              }
+                  : 'text-ink-400 border-ink-500/30 hover:text-ink-200',
+              )}
             >
               {d}d
             </button>
           ))}
-        </div>
-      </div>
-
-      {/* Summary line: average per logged day */}
-      <div className="flex items-baseline justify-between mb-1">
-        <div className="text-[10px] font-mono text-ink-300 tracking-widest uppercase">
-          {meta.label} · last {days} days
-        </div>
-        <div className="text-[11px] font-mono" style={{ color: meta.color }}>
-          avg {chart.avg.toFixed(chart.avg < 10 ? 1 : 0)} {chart.unitLabel}
-          <span className="text-[9px] text-ink-400 ml-1">
-            · {chart.loggedDays} logged {chart.loggedDays === 1 ? 'day' : 'days'}
-          </span>
         </div>
       </div>
 
@@ -167,7 +178,7 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
         >
           loading…
         </div>
-      ) : chart.loggedDays === 0 ? (
+      ) : !chart.hasData ? (
         <div
           className="border border-dashed border-ink-700/40 flex items-center justify-center text-center text-[10px] font-mono text-ink-400 px-4"
           style={{ height }}
@@ -177,16 +188,10 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
       ) : (
         <div style={{ width: '100%', height }}>
           <ResponsiveContainer>
-            <AreaChart
+            <LineChart
               data={chart.data}
               margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
             >
-              <defs>
-                <linearGradient id="fill-nutrition" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={meta.color} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={meta.color} stopOpacity={0.05} />
-                </linearGradient>
-              </defs>
               <CartesianGrid
                 stroke="#3a3d4a"
                 strokeDasharray="2 4"
@@ -200,37 +205,58 @@ export function NutritionTrendChart({ system, height = 180 }: Props) {
                 interval="preserveStartEnd"
                 minTickGap={20}
               />
+              {/* Left axis: calories + water (large values) */}
               <YAxis
+                yAxisId="left"
                 stroke="#787888"
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
-                width={36}
+                width={40}
+                domain={[0, 'auto']}
+              />
+              {/* Right axis: macros in grams (small values) */}
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="#787888"
+                tick={{ fontSize: 9, fontFamily: 'monospace' }}
+                width={32}
                 domain={[0, 'auto']}
               />
               <Tooltip
                 contentStyle={{
                   background: '#0e0f1a',
-                  border: `1px solid ${meta.color}66`,
+                  border: '1px solid rgba(20,214,232,0.4)',
                   fontFamily: 'monospace',
                   fontSize: 11,
                 }}
                 labelFormatter={(ts) =>
                   new Date(Number(ts)).toISOString().slice(0, 10)
                 }
-                formatter={(value: any) => [
-                  `${value} ${chart.unitLabel}`,
-                  meta.label,
-                ]}
+                formatter={(value: any, _name: string, entry: any) => {
+                  const k = entry?.dataKey as MetricKey;
+                  const unit = k ? unitLabelFor(k) : '';
+                  return [`${value} ${unit}`, METRICS[k]?.label ?? _name];
+                }}
               />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke={meta.color}
-                strokeWidth={1.5}
-                fill="url(#fill-nutrition)"
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
+              <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'monospace' }} />
+              {METRIC_KEYS.map((k) => {
+                if (!active.has(k)) return null;
+                const meta = METRICS[k];
+                return (
+                  <Line
+                    key={k}
+                    type="monotone"
+                    dataKey={k}
+                    name={meta.label}
+                    stroke={meta.color}
+                    strokeWidth={1.5}
+                    dot={false}
+                    isAnimationActive={false}
+                    yAxisId={meta.axis}
+                  />
+                );
+              })}
+            </LineChart>
           </ResponsiveContainer>
         </div>
       )}
