@@ -536,6 +536,78 @@ with edit + delete inline.)
 
 ## Recently Fixed / Resolved
 
+### 2026-07-08 session — v1.0.38 morning popup + notification expansion
+
+Commits `ec3ad1b` (popup cross-device), `94f03ed` (weigh-in tile),
+`a51b...` (shield digest), `da675cf` (inbox expansion), `5157024`
+(inbox UI), plus ROADMAP + the new migration
+`20260708030000_morning_popup_dismissal`.
+
+- ✅ **Morning popup on any first interaction, not just /today**.
+  `<MorningPopup />` moved from `Today.tsx` to `Layout.tsx` so it
+  persists across SPA route changes and is reachable from any
+  page. The auto-open effect waits for the first `pointerdown` /
+  `keydown` of the day (one-shot listeners) instead of firing on
+  mount — the popup greets the user when they actually start
+  using the app, on whatever page they happen to be on. Was the
+  P0 "morning recap on first user interaction of the day".
+
+- ✅ **Cross-device dismissal state.** The localStorage flag was
+  browser-scoped, so dismissing on the Android (Capacitor) app
+  didn't carry over to the web desktop (or vice-versa) and the
+  popup re-opened on the other device. New
+  `MorningPopupDismissal` model + migration
+  `20260708030000_morning_popup_dismissal`, new
+  `POST /dailies/morning-popup/dismiss` endpoint (idempotent
+  upsert), and the GET response now includes
+  `dismissed: boolean` for today in the user's tz. The
+  component closes itself when the server reports
+  `dismissed=true`. localStorage remains as a fast cache; the
+  server is the source of truth. 8 new tests.
+
+- ✅ **Shield daily digest at midnight** (replaces the per-event
+  repair spam). `firePenance` no longer emits a notification
+  for repair events — only damage events get the per-event
+  treatment. The repair signal is now a single
+  `kind: 'shield_repair_daily'` notification per user per local
+  day with the net delta + top-3 contributing penances. Hourly
+  cron in `index.ts` runs `runShieldDigestForAllUsers()`. Net
+  ≤ 0 days stay silent (damage events have their own
+  notifications). Idempotent via
+  `Notification.findFirst({ kind, payload.date = yesterday })`.
+  8 new tests.
+
+- ✅ **Notification inbox expansion** — closed the ACHIEVEMENT
+  gap and wired up event notifications across the rest of the
+  gamification surface. Single funnel inside
+  `checkAchievements()` lights up `kind: 'achievement_unlocked'`
+  for every newly-unlocked key, auto-covering 15 call sites
+  (workout, shop, meal, party, leak, habit, daily, pet,
+  measurement, import, raid, spiritual, etc.). New kinds:
+  `leak_spawn`, `leak_defeated`, `leak_overwhelmed`,
+  `world_boss_unlocked`, `world_boss_kill`, `breach_unlocked`,
+  `breach_boss_kill`, `raid_started`, `raid_victory`,
+  `party_invite_received`, `party_member_joined`,
+  `party_member_left`, `party_invite_declined`. All fire-and-
+  forget with try/catch; a failed emit never rolls back the
+  primary action. The inbox UI now renders a small per-kind
+  glyph on the right side of each row so the inbox is
+  scannable (▼/▲/✓/✕/☗/✷/⚔/✉/+/-). 16 new tests.
+
+- ✅ **Weigh-in tile in /today's quick-action grid** (replaces
+  the full-size block). New `WeighInTile` + `WeighInModal` in
+  `TodayActions` — same shape and size as `WaterTile`, opens
+  a focused log modal on click (today/streak status,
+  prefilled input, Log button, inline achievement unlock
+  toast). Same `/measurements/weigh-in` endpoint + same
+  query invalidation as the dashboard's `<WeighInPanel />`,
+  so a weigh-in from either page propagates everywhere. Wall
+  mode unaffected — the tile only renders in the normal
+  Layout.
+
+**Verified**: `tsc -b` clean on web, `vite build` succeeds, 664
+api tests pass (was 640; +24 new).
+
 ### 2026-07-08 session — v1.0.37 notification feed + polish
 
 Commits `5cff649` (chart toggle), `d151e1e` (geneticMax refactor),
