@@ -30,10 +30,17 @@ type MetricKey = 'calories' | 'proteinG' | 'carbG' | 'fatG' | 'waterMl';
 
 // Metric metadata: label, stored unit (null = render as-is, e.g.
 // calories/grams), line color, and which Y axis it plots against.
-// Calories + water are big numbers (~2000) so they share the LEFT
-// axis; the macros are grams (~100-300) so they share the RIGHT
-// axis — otherwise calories would flatten the macro lines into the
-// baseline.
+// Calories (energy) plot on the LEFT axis. The macros (grams) +
+// water (ml) plot on the RIGHT — same scale as the macros per the
+// v1.0.38 user-feedback round, since water-vs-calories sharing
+// the LEFT axis was making the water line look like a flat line
+// at the bottom of the chart (a 20oz→80oz day is +1800ml of
+// variation but the LEFT axis was being dominated by the
+// calories line's 1500-3000 range, so the water variation was
+// ~5% of the chart height). Water is the dominant right-axis
+// value now (0-3000 vs macros 0-300); macros still show up as
+// a small line near the bottom but the per-day water variation
+// is the new headline.
 const METRICS: Record<
   MetricKey,
   {
@@ -45,7 +52,7 @@ const METRICS: Record<
   }
 > = {
   calories: { label: 'Calories', short: 'cal', unit: null, color: '#ffaa3a', axis: 'left' },
-  waterMl: { label: 'Water', short: 'ml', unit: 'ml', color: '#56e88e', axis: 'left' },
+  waterMl: { label: 'Water', short: 'ml', unit: 'ml', color: '#56e88e', axis: 'right' },
   proteinG: { label: 'Protein', short: 'g', unit: null, color: '#f55cc4', axis: 'right' },
   carbG: { label: 'Carbs', short: 'g', unit: null, color: '#14d6e8', axis: 'right' },
   fatG: { label: 'Fat', short: 'g', unit: null, color: '#9a6cf2', axis: 'right' },
@@ -67,9 +74,11 @@ type Props = {
  * WATER_ML measurements, timezone-aware and zero-filled so the x-axis
  * is contiguous). All metrics are shown as toggleable lines (all on by
  * default), mirroring the substance + activity-stream charts. Calories
- * and water plot on the left Y axis; the macros (grams) plot on the
- * right — different scales would otherwise flatten the macro lines.
- * Water is converted to the user's unit system for display.
+ * plots on the LEFT Y axis (energy); water + the macros (protein /
+ * carbs / fat) plot on the RIGHT — water was moved off the LEFT axis
+ * in v1.0.38 because 20oz→80oz day-over-day variation was getting
+ * crushed into a flat line at the bottom of the chart by the calories
+ * line. Water is converted to the user's unit system for display.
  */
 export function NutritionTrendChart({ system, height = 220 }: Props) {
   const [active, setActive] = useState<Set<MetricKey>>(new Set(METRIC_KEYS));
@@ -205,7 +214,7 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
                 interval="preserveStartEnd"
                 minTickGap={20}
               />
-              {/* Left axis: calories + water (large values) */}
+              {/* Left axis: calories (energy). */}
               <YAxis
                 yAxisId="left"
                 stroke="#787888"
@@ -213,7 +222,12 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
                 width={40}
                 domain={[0, 'auto']}
               />
-              {/* Right axis: macros in grams (small values) */}
+              {/* Right axis: water + macros. Water is the dominant
+                  value (0-3000ml typical range); macros are smaller
+                  (0-300g). They share the right axis per the
+                  v1.0.38 feedback round so the water day-over-day
+                  variation is visible (it was getting flattened by
+                  the calories line when both were on the LEFT). */}
               <YAxis
                 yAxisId="right"
                 orientation="right"
