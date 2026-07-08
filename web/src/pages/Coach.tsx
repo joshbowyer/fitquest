@@ -3,7 +3,14 @@
  * LLM with a FitQuest-aware personality preset.
  *
  * v1.1 (persistence):
- *   - Personality selector (5 presets, server-driven list)
+ *   - Personality picker (5 presets, server-driven list) — moved
+ *     to /settings in v1.0.39. The chat page no longer shows the
+ *     picker on every visit (it was constant visual noise after
+ *     the first pick). The header now shows a compact "active
+ *     coach" badge + a one-click "change →" link to /settings.
+ *   - First-time setup: when `storedPersonality === null` the
+ *     page renders a one-time "choose your coach" prompt. Click
+ *     any of the 5 to save + drop into the chat. Never re-shown.
  *   - Persistent conversation: GET /coach/messages hydrates on
  *     page load so the user can close the browser and come back
  *     tomorrow with their context intact.
@@ -16,16 +23,25 @@
  *   - "Clear conversation" button in the panel header so the user
  *     can wipe history (saves the personality choice).
  *
- * Deliberately NOT yet:
- *   - Streaming responses (SSE plumbing — out of scope)
- *   - Multi-conversation list / "New chat" / rename / delete
- *   - Per-message personality override
+ * Deliberately NOT yet (deferred per v1.0.39 stop-short list):
+ *   - Streaming responses (SSE plumbing)
+ *   - Edit/branch chat from message X (server plumbing is in
+ *     place; UI not built)
+ *   - Cost dashboard (chars/4 proxy is "close enough" for now)
+ *   - Incremental compaction (replace-oldest-batch is wasteful but
+ *     works)
+ *   - Per-personality admin prompt overrides
+ *     (LlmConfig.coachSystemPromptOverrides) — REMOVED from
+ *     roadmap in v1.0.39. There's exactly one canonical voice
+ *     per personality, versioned in api/src/lib/coach.ts.
  *
- * Future additions (roadmap items already noted):
- *   - Admin LlmConfig.coachSystemPromptOverrides per personality
+ * Explicitly out of scope (per v1.0.39):
+ *   - Multi-conversation / rename / delete — the user wants a
+ *     single rolling conversation per user. Not on the roadmap.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
@@ -36,8 +52,6 @@ import type {
   CoachMessagesResponse,
   CoachMetaWithConversation,
   CoachMessage,
-  CoachPersonality,
-  CoachPersonalityMeta,
 } from '@/lib/types';
 
 // =============================================================================
@@ -163,23 +177,18 @@ function CoachInner() {
     },
   });
 
-  // Personality PATCH. Updates the server, invalidates the meta
-  // query so the picker reflects the change immediately.
-  const personalityM = useMutation<
-    { coachPersonality: CoachPersonality | null; effective: CoachPersonality },
-    Error,
-    CoachPersonality | null
-  >({
-    mutationFn: (personality) =>
-      api('/coach/personality', {
-        method: 'PATCH',
-        body: { personality },
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['coach', 'meta'] }),
-  });
-
   const meta = metaQ.data;
+  // The active personality is the effective one (user's choice
+  // or DEFAULT_COACH_PERSONALITY). storedPersonality is null
+  // when the user has never picked — that's the trigger for the
+  // first-time setup flow. The picker itself lives on /settings
+  // (see "AI Coach" panel); the chat page only shows a compact
+  // badge pointing the user there to change it. See commit
+  // history for the v1.0.39 refactor that moved the picker out
+  // of the chat panel.
   const activePersonality = meta?.activePersonality;
+  const storedPersonality = meta?.storedPersonality ?? null;
+  const needsFirstTimeSetup = metaQ.isSuccess && storedPersonality === null;
   const summary = meta?.contextSummary;
   const conversation = meta?.conversation;
   const messages = messagesQ.data?.messages ?? [];
@@ -195,194 +204,45 @@ function CoachInner() {
     <>
       <PageHeader
         title="AI Coach"
-        subtitle="Personal training & habits advisor — pick a personality, ask anything"
-        // Conversation status badges in the header action slot.
+        subtitle="Personal training & habits advisor — ask anything about training, recovery, sleep, or habits."
+        // Compact "active coach" badge in the header action slot.
+        // Replaces the old left-column personality picker: the
+        // picker itself moved to /settings (v1.0.39). The chat
+        // page only shows "who am I talking to" + a one-click
+        // link to change it, so the user isn't constantly looking
+        // at options for "which coach" they already picked.
         action={
-          conversation ? (
-            <div className="flex items-center gap-2 text-[10px] font-mono text-ink-300">
-              <span>
-                {conversation.messageCount}{' '}
-                {conversation.messageCount === 1 ? 'message' : 'messages'}
-              </span>
-              {conversation.hasSummary && (
-                <span className="px-1.5 py-0.5 rounded border border-neon-violet/40 text-neon-violet">
-                  summarized
-                </span>
-              )}
+          activePersonality && meta ? (
+            <div className="flex items-center gap-2 text-[10px] font-mono">
+              <ActiveCoachBadge
+                active={activePersonality}
+                available={meta.available}
+                conversation={conversation}
+              />
+              <Link
+                to="/settings"
+                className="text-neon-cyan hover:underline shrink-0"
+              >
+                change →
+              </Link>
             </div>
           ) : null
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Personality picker + context summary — sticky on desktop */}
-        <div className="lg:col-span-1 space-y-4">
-          <Panel title="Personality" variant="violet">
-            {metaQ.isLoading && (
-              <div className="text-xs font-mono text-ink-300">Loading…</div>
-            )}
-            {meta && (
-              <div className="space-y-2">
-                {meta.available.map((p: CoachPersonalityMeta) => {
-                  const active = p.key === activePersonality;
-                  const isStored = meta.storedPersonality === p.key;
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => personalityM.mutate(p.key)}
-                      disabled={personalityM.isPending}
-                      className={
-                        'w-full text-left rounded border p-3 transition-colors disabled:opacity-50 ' +
-                        (active
-                          ? 'border-neon-violet/60 bg-neon-violet/10'
-                          : 'border-ink-700/40 hover:border-neon-violet/30 hover:bg-bg-800/50')
-                      }
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg text-neon-violet" aria-hidden>{p.icon}</span>
-                        <span className="font-display tracking-wide text-xs uppercase text-ink-50">
-                          {p.label}
-                        </span>
-                        {isStored && (
-                          <span className="ml-auto text-[9px] font-mono text-neon-cyan/80">
-                            saved
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 text-[10px] text-ink-300 leading-snug">
-                        {p.blurb}
-                      </div>
-                    </button>
-                  );
-                })}
-                {personalityM.error != null && (
-                  <div className="text-[10px] font-mono text-neon-magenta mt-2">
-                    Couldn't save — try again.
-                  </div>
-                )}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="What the coach sees" variant="default">
-            {summary && (
-              <div className="space-y-2 text-xs font-mono">
-                <SummaryRow
-                  label="Class"
-                  value={summary.className ?? '— unclassed —'}
-                />
-                <SummaryRow label="Level" value={String(summary.level)} />
-                <SummaryRow
-                  label="Mode"
-                  value={summary.mode}
-                  tone={summary.mode === 'HARDCORE' ? 'magenta' : 'cyan'}
-                />
-                <SummaryRow
-                  label="Hearts"
-                  value={`${summary.hearts} / ${summary.maxHearts}`}
-                  tone={summary.hearts <= 2 ? 'magenta' : 'lime'}
-                />
-                <SummaryRow
-                  label="Streak"
-                  value={`${summary.currentStreak} day${summary.currentStreak === 1 ? '' : 's'}`}
-                />
-                <SummaryRow
-                  label="This week"
-                  value={`${summary.thisWeekCount} / ${summary.weeklyGoal}`}
-                />
-                <SummaryRow
-                  label="Recovery"
-                  value={
-                    summary.recoveryToday == null
-                      ? '—'
-                      : `${summary.recoveryToday} / 100`
-                  }
-                  tone={
-                    summary.recoveryToday == null
-                      ? 'cyan'
-                      : summary.recoveryToday < 50
-                        ? 'magenta'
-                        : 'lime'
-                  }
-                />
-                <div className="pt-2 mt-2 border-t border-ink-700/30">
-                  <div className="text-[10px] font-display tracking-widest uppercase text-ink-300 mb-1">
-                    Last 7 days
-                  </div>
-                  <SummaryRow label="Workouts" value={String(summary.last7Days.workoutCount)} />
-                  <SummaryRow
-                    label="Avg sleep"
-                    value={
-                      summary.last7Days.avgSleepHours == null
-                        ? '—'
-                        : `${summary.last7Days.avgSleepHours} h`
-                    }
-                  />
-                  <SummaryRow label="PRs" value={String(summary.last7Days.prCount)} />
-                </div>
-                <div className="pt-2 mt-2 border-t border-ink-700/30">
-                  <div className="text-[10px] font-display tracking-widest uppercase text-ink-300 mb-1">
-                    Coach also sees
-                  </div>
-                  <SummaryRow
-                    label="Recent workouts"
-                    value={`${summary.recentWorkoutCount}`}
-                  />
-                  <SummaryRow
-                    label="Pending skills"
-                    value={String(summary.pendingSkillsCount)}
-                    tone={summary.pendingSkillsCount > 0 ? 'cyan' : undefined}
-                  />
-                  <SummaryRow
-                    label="Caffeine today"
-                    value={String(summary.caffeineToday)}
-                    tone={
-                      summary.caffeineToday >= 3
-                        ? 'magenta'
-                        : summary.caffeineToday === 0
-                          ? 'lime'
-                          : undefined
-                    }
-                  />
-                  <SummaryRow
-                    label="Yesterday's kcal"
-                    value={
-                      summary.yesterdayMealCalories == null
-                        ? '—'
-                        : `${summary.yesterdayMealCalories}`
-                    }
-                  />
-                  <SummaryRow
-                    label="Latest weight"
-                    value={
-                      summary.latestWeightKg == null
-                        ? '—'
-                        : `${summary.latestWeightKg} kg`
-                    }
-                  />
-                  <SummaryRow
-                    label="Body fat"
-                    value={
-                      summary.latestBodyFatPct == null
-                        ? '—'
-                        : `${summary.latestBodyFatPct}%`
-                    }
-                  />
-                </div>
-              </div>
-            )}
-          </Panel>
-
-          {meta && (
-            <div className="text-[10px] font-mono text-ink-300 text-center">
-              model: {meta.modelLabel}
-            </div>
-          )}
-        </div>
-
-        {/* Conversation */}
-        <div className="lg:col-span-2">
+      {/* First-time setup: user has never picked a personality.
+          Show a full-page prompt with the 5 options. Clicking
+          one saves it and the chat page renders normally. After
+          this, the picker lives on /settings; the chat page just
+          shows the active-coach badge in the header. */}
+      {needsFirstTimeSetup && meta ? (
+        <FirstTimeCoachSetup
+          available={meta.available}
+          defaultPersonality={meta.defaultPersonality}
+          onPicked={() => qc.invalidateQueries({ queryKey: ['coach', 'meta'] })}
+        />
+      ) : (
+        <div className="max-w-3xl mx-auto">
           <Panel
             title="Conversation"
             variant="violet"
@@ -422,15 +282,6 @@ function CoachInner() {
                       Ask the coach anything about your training, recovery, habits, or what
                       to do next.
                     </div>
-                    {activePersonality && (
-                      <div className="text-[10px] font-mono text-ink-300 mt-3">
-                        You'll be talking to{' '}
-                        <span className="text-neon-violet">
-                          {meta!.available.find((p) => p.key === activePersonality)?.label}
-                        </span>
-                        .
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -498,8 +349,124 @@ function CoachInner() {
             )}
           </Panel>
         </div>
-      </div>
+      )}
     </>
+  );
+}
+
+// =============================================================================
+// Subcomponents
+// =============================================================================
+
+/**
+ * ActiveCoachBadge — small header pill showing "who am I talking
+ * to" plus the conversation message count. Replaces the verbose
+ * left-column personality picker that the v1.0.39 refactor
+ * removed. The full picker lives on /settings.
+ */
+function ActiveCoachBadge({
+  active,
+  available,
+  conversation,
+}: {
+  active: import('@/lib/types').CoachPersonality;
+  available: import('@/lib/types').CoachPersonalityMeta[];
+  conversation: import('@/lib/types').CoachConversationMeta | undefined;
+}) {
+  const meta = available.find((p) => p.key === active);
+  return (
+    <div className="flex items-center gap-2 text-ink-300">
+      {meta && <span className="text-sm text-neon-violet" aria-hidden>{meta.icon}</span>}
+      <span className="text-ink-50">
+        {meta?.label ?? active}
+      </span>
+      {conversation && (
+        <span className="text-ink-500">
+          · {conversation.messageCount} {conversation.messageCount === 1 ? 'message' : 'messages'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * FirstTimeCoachSetup — full-page prompt shown on the user's
+ * first visit to /coach. The 5 personality cards; click one
+ * saves it and the chat page renders normally. The user can
+ * change their choice anytime in /settings.
+ */
+function FirstTimeCoachSetup({
+  available,
+  defaultPersonality,
+  onPicked,
+}: {
+  available: import('@/lib/types').CoachPersonalityMeta[];
+  defaultPersonality: import('@/lib/types').CoachPersonality;
+  onPicked: () => void;
+}) {
+  // PATCH the personality. Disabled while pending.
+  const pick = useMutation<
+    { coachPersonality: import('@/lib/types').CoachPersonality | null; effective: import('@/lib/types').CoachPersonality },
+    Error,
+    import('@/lib/types').CoachPersonality
+  >({
+    mutationFn: (personality) =>
+      api('/coach/personality', {
+        method: 'PATCH',
+        body: { personality },
+      }),
+    onSuccess: onPicked,
+  });
+  return (
+    <div className="max-w-2xl mx-auto space-y-4">
+      <Panel variant="violet">
+        <div className="space-y-2 text-center mb-4">
+          <div className="text-3xl text-neon-violet">✦</div>
+          <h2 className="font-display tracking-widest text-lg uppercase text-ink-50">
+            Choose your coach
+          </h2>
+          <p className="text-sm text-ink-300 max-w-md mx-auto">
+            One-time setup. Pick the voice that fits — you'll be
+            talking to this coach across every conversation. You
+            can change your pick anytime in <span className="text-neon-cyan">Settings → AI Coach</span>.
+          </p>
+        </div>
+        <div className="space-y-2">
+          {available.map((p) => {
+            const isDefault = p.key === defaultPersonality;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => pick.mutate(p.key)}
+                disabled={pick.isPending}
+                className="w-full text-left rounded border p-3 transition-colors disabled:opacity-50 border-ink-700/40 hover:border-neon-violet/40 hover:bg-bg-800/50"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg text-neon-violet" aria-hidden>{p.icon}</span>
+                  <span className="font-display tracking-wide text-xs uppercase text-ink-50">
+                    {p.label}
+                  </span>
+                  {isDefault && (
+                    <span className="ml-auto text-[9px] font-mono uppercase tracking-widest text-ink-300">
+                      default
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-[10px] text-ink-300 leading-snug">
+                  {p.blurb}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {pick.error != null && (
+          <div className="mt-3 text-[10px] font-mono text-neon-magenta text-center">
+            Couldn't save — try again.
+          </div>
+        )}
+      </Panel>
+    </div>
   );
 }
 
@@ -522,31 +489,6 @@ function ChatBubble({ role, text }: { role: 'user' | 'assistant' | 'system'; tex
       >
         {text}
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: 'lime' | 'magenta' | 'cyan';
-}) {
-  const colorClass =
-    tone === 'lime'
-      ? 'text-neon-lime'
-      : tone === 'magenta'
-        ? 'text-neon-magenta'
-        : tone === 'cyan'
-          ? 'text-neon-cyan'
-          : 'text-ink-50';
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-ink-300">{label}</span>
-      <span className={'text-right ' + colorClass}>{value}</span>
     </div>
   );
 }
