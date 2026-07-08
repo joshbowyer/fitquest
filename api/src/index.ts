@@ -32,6 +32,7 @@ import { habitRoutes } from './routes/habits.js';
 import { dailyRoutes } from './routes/dailies.js';
 import { coachRoutes } from './routes/coach.js';
 import { todoRoutes } from './routes/todos.js';
+import { notificationRoutes } from './routes/notifications.js';
 import { vitalsRoutes } from './routes/vitals.js';
 import { adminRoutes } from './routes/admin.js';
 import { morningReportRoutes } from './routes/morningReport.js';
@@ -160,6 +161,7 @@ async function build() {
   await app.register(spiritualRoutes, { prefix: '/spiritual' });
   await app.register(coachRoutes, { prefix: '/coach' });
   await app.register(todoRoutes, { prefix: '/todos' });
+  await app.register(notificationRoutes, { prefix: '/notifications' });
   await app.register(vitalsRoutes, { prefix: '/vitals' });
   await app.register(habitRoutes, { prefix: '/habits' });
   await app.register(dailyRoutes, { prefix: '/dailies' });

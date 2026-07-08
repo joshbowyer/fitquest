@@ -392,9 +392,10 @@ model User {
   sentInvites            PartyInvite[]           @relation("Inviter")
   receivedInvites        PartyInvite[]           @relation("Invitee")
   prayerLogs             PrayerLog[]
-  habits                 Habit[]
-  habitLogs              HabitLog[]
-  todos                  TodoItem[]
+   habits                 Habit[]
+   habitLogs              HabitLog[]
+   todos                  TodoItem[]
+   notifications          Notification[]
   supplements            SupplementLog[]
   routineDays            RoutineDay[]
   dailies                Daily[]
@@ -1808,6 +1809,50 @@ enum TodoPriority {
 enum TodoStatus {
   OPEN
   DONE
+}
+
+// Persistent notification feed. Unlocks, level-ups, penance events,
+// etc. previously fired only as ephemeral modals + the sound bus —
+// if the user dismissed the modal quickly (or was away from the
+// page) the event was lost. Each Notification row is one event; the
+// /notifications inbox aggregates them, supports read/dismiss, and
+// drives the unread-count badge in the top bar.
+model Notification {
+  id        String               @id @default(cuid())
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Coarse category, drives the icon + the inbox filter tabs.
+  category  NotificationCategory
+  /// Machine-readable event kind (e.g. 'level_up', 'skill_unlock',
+  /// 'penance', 'shop_purchase'). Free-form within a category so we
+  /// can add kinds without a migration.
+  kind      String
+  /// One-line summary shown in the list row.
+  title     String
+  /// Optional longer body shown when the row is expanded.
+  body      String?
+  /// Optional deep-link the row navigates to when clicked (e.g.
+  /// '/skills' for an unlock, '/homebase' for a penance event).
+  link      String?
+  /// Arbitrary structured payload for the event (xp gained, skill
+  /// id, level number, etc). Read by the client for richer rendering.
+  payload   Json?
+  /// Null while unread. Set when the user opens/marks-read. The
+  /// unread-count badge is COUNT(*) WHERE readAt IS NULL.
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+enum NotificationCategory {
+  SKILL
+  PENANCE
+  SHOP
+  SYSTEM
+  ACHIEVEMENT
+  LEVEL
 }
 
 // Add new muscle groups to BodyPart enum

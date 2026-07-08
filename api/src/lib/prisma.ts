@@ -128,6 +128,9 @@ export type TodoPriority = import('@prisma/client').TodoPriority;
 export const TodoStatus = cjs.TodoStatus;
 export type TodoStatus = import('@prisma/client').TodoStatus;
 
+export const NotificationCategory = cjs.NotificationCategory;
+export type NotificationCategory = import('@prisma/client').NotificationCategory;
+
 export const DailyCategory = cjs.DailyCategory;
 export type DailyCategory = import('@prisma/client').DailyCategory;
 

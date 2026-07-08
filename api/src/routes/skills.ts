@@ -4,6 +4,7 @@ import { ClassName, PrismaRuntime } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { levelFromXp } from '../lib/xp.js';
+import { emitNotification } from '../lib/notify.js';
 import {
   validateSkillTest,
   type SkillTestSpec,
@@ -202,6 +203,28 @@ app.post('/unlock', async (req, reply) => {
     const updatedUser = { xp: award.totalXp, gold: award.totalGold, level: award.level };
     const prevLevel = award.previousLevel;
     const newLevel = award.level;
+    // Persistent notifications so the unlock (and any level-up it
+    // triggered) survive a dismissed modal / being away from the page.
+    await emitNotification({
+      userId: me.id,
+      category: 'SKILL',
+      kind: 'skill_unlock',
+      title: `Skill unlocked: ${skill.name}`,
+      body: skill.blurb ?? undefined,
+      link: '/skills',
+      payload: { skillId: skill.id, tier: skill.tier, branch: skill.branch, xp: award.xp, gold: award.gold },
+    });
+    if (newLevel > prevLevel) {
+      await emitNotification({
+        userId: me.id,
+        category: 'LEVEL',
+        kind: 'level_up',
+        title: `Level up! You reached level ${newLevel}`,
+        body: `You advanced from level ${prevLevel} to ${newLevel}.`,
+        link: '/status',
+        payload: { previousLevel: prevLevel, level: newLevel },
+      });
+    }
     return {
       ok: true,
       // `reward` is the ACTUALLY-GRANTED amount (post Hardcore heart

@@ -281,7 +281,7 @@ export async function firePenance(
   if (!tpl) return null;
   if (tpl.shieldDelta === 0) return null;
 
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Idempotency: only one (userId, penanceKey) event per local
     // day. Without this, a single morning report fetch that
     // fans out across Dashboard + Today + HomeBase mounts would
@@ -356,6 +356,32 @@ export async function firePenance(
     });
     return { shieldBefore, shieldAfter, tierBefore, tierAfter, label: tpl.label };
   });
+
+  // Persist a notification so the shield change survives a dismissed
+  // modal. Only when a penance actually applied (non-null; null =
+  // idempotency skip / new-user grace / no template). Fire-and-forget.
+  if (result) {
+    const dmg = tpl.shieldDelta < 0;
+    const { emitNotification } = await import('./notify.js');
+    await emitNotification({
+      userId,
+      category: 'PENANCE',
+      kind: dmg ? 'shield_damage' : 'shield_repair',
+      title: dmg
+        ? `Shield damage: ${result.label} (${tpl.shieldDelta})`
+        : `Shield repaired: ${result.label} (+${tpl.shieldDelta})`,
+      body: `Shield ${result.shieldBefore} → ${result.shieldAfter} (${result.tierAfter}).`,
+      link: '/homebase',
+      payload: {
+        penanceKey: key,
+        source,
+        shieldDelta: tpl.shieldDelta,
+        shieldAfter: result.shieldAfter,
+        tierAfter: result.tierAfter,
+      },
+    });
+  }
+  return result;
 }
 
 /**

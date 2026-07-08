@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { checkAchievements } from '../lib/achievements.js';
+import { emitNotification } from '../lib/notify.js';
 import {
   PET_BREED_BUY_GOLD_COST,
   spritePath,
@@ -184,6 +185,16 @@ export async function shopRoutes(app: FastifyInstance) {
     });
 
     await checkAchievements(me.id);
+
+    await emitNotification({
+      userId: me.id,
+      category: 'SHOP',
+      kind: 'shop_purchase',
+      title: `Purchased: ${item.name}`,
+      body: `Spent ${item.cost} gold. Balance: ${result.user.gold}.`,
+      link: '/shop',
+      payload: { itemId: item.id, cost: item.cost, goldAfter: result.user.gold },
+    });
 
     return {
       ok: true,
