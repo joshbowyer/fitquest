@@ -14,12 +14,12 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.36 published.** [v1.0.36 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.36)
-  — nutrition/substance trend charts + full skill-tier rebalance
-  (see Recently Fixed below). APK signed with
+- **Android release: v1.0.37 published.** [v1.0.37 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.37)
+  — persistent notification feed/inbox + nutrition chart multi-toggle
+  + genetic-max refactor (see Recently Fixed below). APK signed with
   debug keystore, ~44.8 MB (the ML Kit + camera AARs are heavy but
-  unavoidable with the native barcode plugin). 33 prior versions
-  published (v1.0.3 → v1.0.35). The SDK upgrade in v1.0.14
+  unavoidable with the native barcode plugin). 34 prior versions
+  published (v1.0.3 → v1.0.36). The SDK upgrade in v1.0.14
   (minSdk 22→26, compileSdk 34→36, AGP 8.13, Gradle 8.13)
   unblocked the native `@capacitor/barcode-scanner` plugin.
 - **Docker images.** Auto-built and pushed to
@@ -76,24 +76,17 @@ are the changelog of what got shipped.
   hygiene item left — the web-side equivalent is what caught the
   Dashboard-crash class of bug.
 - **Dark/light theme toggle** (currently dark-only).
-- **Notification feed / inbox.** Right now unlocks, achievement
-  pops, penance events, level-ups, daily digest, etc. all fire
-  as ephemeral modals + the sound bus. The user can miss things
-  if they dismiss a modal quickly or if they're away from the
-  page. Add a persistent notification center (a sidebar
-  panel or /notifications route) that:
-    - Aggregates all recent events (one row per event, with
-      timestamp + icon + 1-line summary)
-    - Lets the user mark notifications as read / dismiss
-    - Unread count badge in the layout's top bar
-    - Filters by category (skills / penance / shop / system)
-  Storage: a `Notification` table (userId, kind, payload, readAt,
-  createdAt). The seed already creates notifications for level-ups
-  in the morning report sweep, and `/skills/pending-unlocks`
-  creates rows for matches — both could now feed the same inbox
-  API. Unread-count query: `SELECT COUNT(*) FROM "Notification"
-  WHERE "userId" = $1 AND "readAt" IS NULL`.
 ### Recently shipped P0s
+
+- ✅ **Notification feed / inbox** — shipped v1.0.37 (`d0bce16` +
+  `567c4be`). Persistent `Notification` table + `/notifications`
+  inbox (filter tabs, mark-read/dismiss/read-all/clear-all,
+  deep-links) + top-bar bell & unread badge. Emitted from skill
+  unlock, level-up, penance (shield damage/repair), and shop
+  purchase via the fire-and-forget `emitNotification` funnel.
+  Follow-ups if desired: also emit from achievement pops + the
+  daily-digest / morning-report sweep (the funnel is in place,
+  just needs the call sites).
 
 - ✅ **Skill tree: horizontal layout for mobile** — shipped in
   `e1bab61` + `2be45e8` (calitree-style: one horizontal
@@ -159,12 +152,10 @@ are the changelog of what got shipped.
   shadows the formula. Fix: display both side-by-side ("Genetic
   Max: 50 (manual, formula says 45)") + a "reset to formula"
   affordance on the override row.
-- **Genetic-max drift prevention.** Extract the `previewMax` helper
-  from `web/src/pages/Profile.tsx` to a shared
-  `web/src/lib/geneticMax.ts` (imported by Profile, Measurements,
-  and Dashboard's preview helpers) so there's one source of
-  truth. Low-priority refactor — the formula-vs-preview drift
-  bug is fixed; this is the safety net.
+- ✅ **Genetic-max drift prevention** — shipped v1.0.37 (`d151e1e`).
+  `previewMax` + `PREVIEW_METRICS` extracted from `Profile.tsx` to
+  `web/src/lib/geneticMax.ts` (single frontend source of truth,
+  mirrors `api/src/lib/geneticMax.ts`).
 - **Medical metrics UI.** Schema has resting HR / sleep / stress
   data but no medical-themed UI (no "history of resting HR"
   chart, no BP log form). Existing /measurements tiles + the
@@ -175,11 +166,10 @@ are the changelog of what got shipped.
 
 ### P1.5 — small follow-ups from the 2026-07-07 bug hunt (hours each, low urgency)
 
-- **`sync-android.sh` NEXT_VERSION mode doesn't bump
-  versionCode.** The comment says "explicit code bump" but only
-  `BUMP=1` increments it — a `NEXT_VERSION=x.y.z` release would
-  ship a duplicate versionCode and Android would refuse the
-  update. (`BUMP=1` is what's actually used, so latent.)
+- ✅ **`sync-android.sh` NEXT_VERSION versionCode bump** — fixed
+  v1.0.37 (`90d318a`, android repo). The explicit-version path now
+  bumps versionCode (guarded against a no-op when NEXT_VERSION ==
+  current).
 - **Web main chunk is 2.3 MB** (vite warns on every build).
   Route-level `React.lazy` code-splitting for the heavy pages
   (Three.js avatar, Recharts pages) would cut initial load on
@@ -545,6 +535,40 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-08 session — v1.0.37 notification feed + polish
+
+Commits `5cff649` (chart toggle), `d151e1e` (geneticMax refactor),
+`d0bce16` (notification backend), `567c4be` (notification frontend),
+`90d318a` (sync-android fix, android repo).
+
+- ✅ **Persistent notification feed / inbox** (closes the P0). Events
+  (skill unlocks, level-ups, penance shield damage/repair, shop
+  purchases) previously fired only as ephemeral modals + the sound bus,
+  so a dismissed modal (or being away from the page) lost them. New
+  `Notification` model + `NotificationCategory` enum + migration,
+  indexed on `(userId, readAt)` + `(userId, createdAt)`. A single
+  fire-and-forget `lib/notify.ts::emitNotification` funnel (never
+  throws — a notification failure can't roll back the primary action)
+  is wired into the skill-unlock/level-up (`skills.ts`), penance
+  (`penance.ts`), and shop-purchase (`shop.ts`) paths. `/notifications`
+  routes: list (category/unread filters), unread-count (badge),
+  mark-read, read-all, dismiss, clear-all. Frontend: `/notifications`
+  inbox (filter tabs, per-row mark-read/dismiss, mark-all/clear-all,
+  deep-link on click) + a bell + unread badge in the top bar (desktop +
+  mobile). 11 new tests (632 total).
+- ✅ **Nutrition trend chart is now a multi-toggle** (all metrics on by
+  default, each button a toggle) mirroring the substance + activity
+  charts. Dual Y-axis (calories/water left, macros right) so the
+  different scales don't flatten the macro lines.
+- ✅ **Genetic-max drift prevention** (closes the P1 refactor). Extracted
+  `previewMax` + `PREVIEW_METRICS` from `Profile.tsx` into a shared
+  `web/src/lib/geneticMax.ts` — one frontend source of truth mirroring
+  `api/src/lib/geneticMax.ts`.
+- ✅ **`sync-android.sh` NEXT_VERSION versionCode bug** (closes the
+  P1.5). The explicit-version path now bumps versionCode (previously
+  only `BUMP=1` did, so a `NEXT_VERSION=x.y.z` release shipped a stale
+  code that Android refuses to install over the existing app).
 
 ### 2026-07-07 session — v1.0.36 nutrition trends + skill tier rebalance
 
