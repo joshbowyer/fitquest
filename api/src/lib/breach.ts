@@ -334,6 +334,30 @@ export async function unlockBreachIfReady(
       recentBossIds: [boss.id, ...(progress.recentBossIds as string[])].slice(0, RECENT_BOSS_MEMORY),
     },
   });
+  // "The Breach has opened" — high-signal moment (level-10
+  // unlock, gates a whole new game mode). The user just crossed
+  // the level threshold and should know. Fire-and-forget; a
+  // failed emit must not roll back the unlock.
+  try {
+    const { emitNotification } = await import('./notify.js');
+    await emitNotification({
+      userId,
+      category: 'ACHIEVEMENT',
+      kind: 'breach_unlocked',
+      title: 'The Breach has opened',
+      body: `${boss.name} awaits in the Breach — a sealed leak in the constellation.`,
+      link: '/breach',
+      payload: {
+        bossId: boss.id,
+        bossName: boss.name,
+        bossTier: boss.tier,
+        bossMaxHp: reHp,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[breach] breach_unlocked emit failed', { userId, err });
+  }
   return updated;
 }
 
@@ -658,6 +682,39 @@ export async function claimKill(
       },
     }),
   ]);
+
+  // "You killed a Breach boss" is the second-highest-signal
+  // moment in the game (after the level-10 unlock). The
+  // notification goes into the ACHIEVEMENT bucket so the
+  // inbox groups it with the world-boss kills the user
+  // might also be collecting. The companion `raid_victory`
+  // and `world_boss_kill` ACHIEVEMENT entries fire via
+  // `checkAchievements` if the user has those catalog keys
+  // and they cross — both can coexist in the inbox.
+  try {
+    const { emitNotification } = await import('./notify.js');
+    await emitNotification({
+      userId,
+      category: 'ACHIEVEMENT',
+      kind: 'breach_boss_kill',
+      title: `Breach boss slain: ${boss.name}`,
+      body: `+${reward.gold} gold, +${reward.xp} XP${reward.soulstones > 0 ? `, ${reward.soulstones} Soulstone${reward.soulstones === 1 ? '' : 's'}` : ''}.`,
+      link: '/breach',
+      payload: {
+        bossId: boss.id,
+        bossName: boss.name,
+        bossTier: boss.tier,
+        gold: reward.gold,
+        xp: reward.xp,
+        soulstones: reward.soulstones,
+        nextBossId: nextBoss.id,
+        nextBossName: nextBoss.name,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[breach] breach_boss_kill emit failed', { userId, err });
+  }
 
   // Pet combat XP — boss kill. Awards full XP if the pet was
   // deployed and survived; posthumous XP if it fainted mid-fight

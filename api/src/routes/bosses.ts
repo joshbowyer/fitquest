@@ -47,7 +47,7 @@ export async function bossRoutes(app: FastifyInstance) {
 
       if (allCleared && !existing) {
         // Auto-create the boss in ACTIVE state once world is cleared
-        await prisma.worldBoss.create({
+        const created = await prisma.worldBoss.create({
           data: {
             userId: me.id,
             worldId: world.id,
@@ -59,12 +59,62 @@ export async function bossRoutes(app: FastifyInstance) {
             unlockedAt: new Date(),
           },
         });
+        // "A new world boss has appeared" is a high-signal moment —
+        // the user just spent 5 levels clearing this world and
+        // should know there's a final challenge waiting. Fire-
+        // and-forget; a failed emit must not block the GET.
+        try {
+          const { emitNotification } = await import('../lib/notify.js');
+          await emitNotification({
+            userId: me.id,
+            category: 'ACHIEVEMENT',
+            kind: 'world_boss_unlocked',
+            title: `Boss unlocked: ${world.boss.name}`,
+            body: `${world.name} cleared — a new challenge awaits.`,
+            link: '/quest',
+            payload: {
+              worldId: world.id,
+              bossName: world.boss.name,
+              bossGlyph: world.boss.glyph,
+              maxHp: world.boss.maxHp,
+              bossRowId: created.id,
+            },
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[bosses] world_boss_unlocked emit failed', { userId: me.id, err });
+        }
       } else if (allCleared && existing && existing.status === 'LOCKED') {
         // Promote LOCKED → ACTIVE if user clears world later
         await prisma.worldBoss.update({
           where: { id: existing.id },
           data: { status: 'ACTIVE', unlockedAt: new Date() },
         });
+        // Same notification as the create path — the user
+        // previously finished the world but a new boss wasn't
+        // around. Treat the promotion as a fresh unlock from
+        // their perspective.
+        try {
+          const { emitNotification } = await import('../lib/notify.js');
+          await emitNotification({
+            userId: me.id,
+            category: 'ACHIEVEMENT',
+            kind: 'world_boss_unlocked',
+            title: `Boss unlocked: ${existing.bossName}`,
+            body: `${world.name} cleared — a new challenge awaits.`,
+            link: '/quest',
+            payload: {
+              worldId: existing.worldId,
+              bossName: existing.bossName,
+              bossGlyph: existing.bossGlyph,
+              maxHp: existing.bossMaxHp,
+              bossRowId: existing.id,
+            },
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[bosses] world_boss_unlocked (promote) emit failed', { userId: me.id, err });
+        }
       }
     }
 
@@ -206,6 +256,40 @@ export async function bossRoutes(app: FastifyInstance) {
         }
 
         rewards = { xp, gold, soulstones, itemDrop };
+        // First-time defeat notification. Worth a row in the
+        // inbox: the user spent HP grinding to clear the world
+        // and deserves to see "you killed the world boss" next
+        // time they open the bell. Re-defeats (the boss is
+        // already DEFEATED — the `!boss.defeatedAt` guard above
+        // means we only enter this branch on a transition from
+        // not-yet-defeated) don't fire — no spam on retries.
+        // The companion ACHIEVEMENT notification (the
+        // `world_boss_kill` achievement) fires automatically
+        // via `checkAchievements` if any other achievements
+        // also crossed; the user sees both.
+        try {
+          const { emitNotification } = await import('../lib/notify.js');
+          await emitNotification({
+            userId: me.id,
+            category: 'ACHIEVEMENT',
+            kind: 'world_boss_kill',
+            title: `World boss slain: ${boss.bossName}`,
+            body:
+              itemDrop
+                ? `+${xp} XP, +${gold} gold, Soulstone, ${itemDrop.rarity} ${itemDrop.name}`
+                : `+${xp} XP, +${gold} gold, Soulstone`,
+            link: '/quest',
+            payload: {
+              worldId,
+              bossName: boss.bossName,
+              bossGlyph: boss.bossGlyph,
+              itemDrop: itemDrop ? { id: itemDrop.id, name: itemDrop.name, rarity: itemDrop.rarity } : null,
+            },
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[bosses] world_boss_kill emit failed', { userId: me.id, err });
+        }
       }
 
       // Breach world resets on Maw defeat. The reset deletes the

@@ -72,6 +72,40 @@ export async function raidRoutes(app: FastifyInstance) {
         bossMaxHp: boss.hp,
       },
     });
+    // Notify every other party member that a raid just kicked
+    // off. The leader is excluded — they started it. The
+    // notification gives the others enough lead time to log
+    // a workout that matches the boss's matchType (each
+    // RAID_BOSSES entry implies one — actually the workout
+    // hook does the matching server-side, so the body just
+    // tells them "go train").
+    try {
+      const { emitNotification } = await import('../lib/notify.js');
+      const others = await prisma.partyMember.findMany({
+        where: { partyId: membership.partyId, userId: { not: me.id } },
+        select: { userId: true },
+      });
+      await Promise.all(others.map((o) =>
+        emitNotification({
+          userId: o.userId,
+          category: 'SYSTEM',
+          kind: 'raid_started',
+          title: `Raid started: ${boss.name}`,
+          body: `${me.username} kicked off a ${boss.difficulty} raid. Log a matching workout to deal damage.`,
+          link: '/party',
+          payload: {
+            raidId: raid.id,
+            bossName: boss.name,
+            bossDifficulty: boss.difficulty,
+            leaderUsername: me.username,
+            bossMaxHp: boss.hp,
+          },
+        }),
+      ));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[raids] raid_started emit failed', { userId: me.id, err });
+    }
     return { raid, boss };
   });
 

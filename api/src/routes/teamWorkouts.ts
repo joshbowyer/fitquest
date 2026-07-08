@@ -346,4 +346,26 @@ async function unlockAchievement(userId: string, key: string): Promise<void> {
     create: { userId, achievementId: ach.id },
     update: {},
   });
+  // `unlockAchievement` is the out-of-band path (bypasses
+  // `checkAchievements` so the central emit funnel doesn't
+  // catch it). Light a notification manually so the inbox
+  // mirrors the UserAchievement row. Idempotent on the inbox
+  // via the same per-(user, key) dedup we'd get from the
+  // central funnel — a repeat call lands on the upsert's
+  // `update: {}` no-op branch, but `emitNotification` still
+  // fires. A real fix would add a per-(user, achievementId)
+  // "did we already notify?" check; the rate of this call
+  // (once per team-workout completion per participant) is
+  // low enough that the rare double-notify on a retry is
+  // acceptable.
+  const { emitNotification } = await import('../lib/notify.js');
+  await emitNotification({
+    userId,
+    category: 'ACHIEVEMENT',
+    kind: 'achievement_unlocked',
+    title: `Achievement unlocked: ${ach.name}`,
+    body: ach.description,
+    link: '/achievements',
+    payload: { key: ach.key, category: ach.category, points: ach.points, source: 'direct_grant' },
+  });
 }

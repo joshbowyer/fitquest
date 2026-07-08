@@ -73,11 +73,48 @@ export async function partyRoutes(app: FastifyInstance) {
     const me = await requireUser(req);
     const membership = await prisma.partyMember.findUnique({ where: { userId: me.id } });
     if (!membership) return { error: 'Not in a party' };
+    // Capture party name + remaining-member list BEFORE delete
+    // so we can both fan out a "X left" notification and decide
+    // whether to skip the notification entirely when the party
+    // is about to disband (last member leaving → no audience).
+    const party = await prisma.party.findUnique({ where: { id: membership.partyId } });
+    const remainingMembers = await prisma.partyMember.findMany({
+      where: { partyId: membership.partyId, userId: { not: me.id } },
+      select: { userId: true },
+    });
     await prisma.partyMember.delete({ where: { id: membership.id } });
     // If empty, delete the party
     const remaining = await prisma.partyMember.count({ where: { partyId: membership.partyId } });
     if (remaining === 0) {
       await prisma.party.delete({ where: { id: membership.partyId } }).catch(() => {});
+    }
+    // Notify remaining members that someone left. Skip when the
+    // leave empties the party (no one to notify — and a
+    // disbanding party is the natural consequence of the last
+    // member leaving, not a separate event).
+    if (remaining > 0) {
+      try {
+        const { emitNotification } = await import('../lib/notify.js');
+        await Promise.all(remainingMembers.map((r) =>
+          emitNotification({
+            userId: r.userId,
+            category: 'SYSTEM',
+            kind: 'party_member_left',
+            title: `${me.username} left ${party?.name ?? 'the party'}`,
+            body: 'Your party roster has shrunk.',
+            link: '/party',
+            payload: {
+              partyId: membership.partyId,
+              partyName: party?.name ?? null,
+              leaverUsername: me.username,
+              remainingCount: remaining,
+            },
+          }),
+        ));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[parties] party_member_left emit failed', { userId: me.id, err });
+      }
     }
     return { ok: true };
   });
@@ -137,6 +174,37 @@ export async function partyRoutes(app: FastifyInstance) {
         expiresAt,
       },
     });
+    // Notify the invitee — but only if they're a known user
+    // (the username might be a typo / unregistered player; we
+    // can't deliver a notification to no one). Also capture
+    // the party name before the response so the body can read
+    // naturally.
+    if (invitee) {
+      const party = await prisma.party.findUnique({ where: { id } });
+      try {
+        const { emitNotification } = await import('../lib/notify.js');
+        await emitNotification({
+          userId: invitee.id,
+          category: 'SYSTEM',
+          kind: 'party_invite_received',
+          title: `${me.username} invited you to ${party?.name ?? 'a party'}`,
+          body: body.message ?? 'Open /party to accept or decline.',
+          link: '/party',
+          payload: {
+            inviteId: invite.id,
+            partyId: id,
+            partyName: party?.name ?? null,
+            inviterId: me.id,
+            inviterUsername: me.username,
+            message: body.message ?? null,
+            expiresAt: expiresAt.toISOString(),
+          },
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[parties] party_invite_received emit failed', { userId: invitee.id, err });
+      }
+    }
     return { invite };
   });
 
@@ -190,6 +258,42 @@ export async function partyRoutes(app: FastifyInstance) {
       data: { partyId: invite.partyId, userId: me.id, role: 'MEMBER' },
     });
     await checkAchievements(me.id);
+    // Notify the other party members that the roster grew. The
+    // joiner is excluded (they're already aware). Captures the
+    // inviter's username + party name before the response.
+    try {
+      const inviter = await prisma.user.findUnique({
+        where: { id: invite.inviterId },
+        select: { username: true },
+      });
+      const party = await prisma.party.findUnique({ where: { id: invite.partyId } });
+      const others = await prisma.partyMember.findMany({
+        where: { partyId: invite.partyId, userId: { not: me.id } },
+        select: { userId: true },
+      });
+      const { emitNotification } = await import('../lib/notify.js');
+      await Promise.all(others.map((o) =>
+        emitNotification({
+          userId: o.userId,
+          category: 'SYSTEM',
+          kind: 'party_member_joined',
+          title: `${me.username} joined ${party?.name ?? 'the party'}`,
+          body: inviter ? `Invited by ${inviter.username}.` : 'New member joined.',
+          link: '/party',
+          payload: {
+            partyId: invite.partyId,
+            partyName: party?.name ?? null,
+            newMemberId: me.id,
+            newMemberUsername: me.username,
+            inviterId: invite.inviterId,
+            inviterUsername: inviter?.username ?? null,
+          },
+        }),
+      ));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[parties] party_member_joined emit failed', { userId: me.id, err });
+    }
     return { ok: true, partyId: invite.partyId };
   });
 
@@ -211,6 +315,31 @@ export async function partyRoutes(app: FastifyInstance) {
       where: { id },
       data: { status: 'DECLINED', respondedAt: new Date(), inviteeId: me.id },
     });
+    // Notify the inviter so they know the slot is open again
+    // (or to take the hint that the invitee isn't interested).
+    // Only one recipient — the original inviter — so no fan-out.
+    try {
+      const party = await prisma.party.findUnique({ where: { id: invite.partyId } });
+      const { emitNotification } = await import('../lib/notify.js');
+      await emitNotification({
+        userId: invite.inviterId,
+        category: 'SYSTEM',
+        kind: 'party_invite_declined',
+        title: `${me.username} declined your invite`,
+        body: party ? `No slot consumed in ${party.name}.` : 'Invite declined.',
+        link: '/party',
+        payload: {
+          inviteId: invite.id,
+          partyId: invite.partyId,
+          partyName: party?.name ?? null,
+          declinerId: me.id,
+          declinerUsername: me.username,
+        },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[parties] party_invite_declined emit failed', { userId: me.id, err });
+    }
     return { ok: true };
   });
 }

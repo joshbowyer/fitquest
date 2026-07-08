@@ -644,6 +644,42 @@ export async function workoutRoutes(app: FastifyInstance) {
               }
               await checkAchievements(m.userId);
             }
+            // One "raid victory" notification per member, fired
+            // from the single request that won the race for the
+            // claim (the `if (status === 'VICTORY')` guard above
+            // ensures we only enter this branch once per raid).
+            // Fire-and-forget; a failed emit must not roll back
+            // the XP/gold grants or the achievement check.
+            try {
+              const { emitNotification } = await import('../lib/notify.js');
+              for (const m of members) {
+                const myAgg = await prisma.raidContribution.aggregate({
+                  where: { raidId: raid.id, userId: m.userId },
+                  _sum: { damage: true },
+                });
+                const my = myAgg._sum.damage ?? 0;
+                const share = Math.round((my / total) * 200) + 50;
+                await emitNotification({
+                  userId: m.userId,
+                  category: 'ACHIEVEMENT',
+                  kind: 'raid_victory',
+                  title: `Raid victory: ${raid.bossName}`,
+                  body: `Your share: +${share} XP, +${Math.floor(share / 4)} gold.`,
+                  link: '/party',
+                  payload: {
+                    raidId: raid.id,
+                    bossName: raid.bossName,
+                    myDamage: my,
+                    totalDamage: total,
+                    xpShare: share,
+                    goldShare: Math.floor(share / 4),
+                  },
+                });
+              }
+            } catch (err) {
+              // eslint-disable-next-line no-console
+              console.warn('[workouts] raid_victory emit failed', { raidId: raid.id, err });
+            }
           }
         }
       }

@@ -387,5 +387,41 @@ export async function checkAchievements(
       newlyUnlocked.push(a.key);
     }
   }
+
+  // Emit a Notification for each newly-unlocked achievement. This
+  // is the single funnel that lights up the inbox for ALL
+  // achievement call sites — every one of the ~15 callers of
+  // `checkAchievements` (workout commit, shop purchase, meal
+  // log, party create/join/accept, leak claim, habit check,
+  // etc.) gets persistence for free without any per-callsite
+  // wiring. The `UserAchievement` rows are the source of truth
+  // for "unlocked"; the `Notification` row is the source of
+  // truth for "tell the user about it". They dedupe naturally
+  // — `checkAchievements` is idempotent on already-unlocked
+  // keys, so a repeat call returns `[]` and emits nothing.
+  //
+  // Out-of-band unlocks (e.g. `unlockAchievement('side_by_side')`
+  // in `routes/teamWorkouts.ts:264`) skip this funnel because
+  // they don't go through `checkAchievements`. Each such call
+  // site is responsible for its own `emitNotification`.
+  if (newlyUnlocked.length > 0) {
+    const defs = await prisma.achievement.findMany({
+      where: { key: { in: newlyUnlocked } },
+      select: { key: true, name: true, description: true, category: true, points: true },
+    });
+    const { emitNotification } = await import('./notify.js');
+    for (const d of defs) {
+      await emitNotification({
+        userId,
+        category: 'ACHIEVEMENT',
+        kind: 'achievement_unlocked',
+        title: `Achievement unlocked: ${d.name}`,
+        body: d.description,
+        link: '/achievements',
+        payload: { key: d.key, category: d.category, points: d.points },
+      });
+    }
+  }
+
   return newlyUnlocked;
 }

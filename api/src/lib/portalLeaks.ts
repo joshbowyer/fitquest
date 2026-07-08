@@ -362,6 +362,31 @@ export async function maybeSpawnLeak(
       itemDrop: item?.id ?? null,
     },
   });
+  // Notify the user — a new leak in the home-base queue is a
+  // "stop what you're doing and deal with this" signal, the
+  // inverse of a shield_repair digest. Fire-and-forget; a
+  // failed emit must not roll back the leak spawn.
+  try {
+    const { emitNotification } = await import('./notify.js');
+    await emitNotification({
+      userId,
+      category: 'PENANCE',
+      kind: 'leak_spawn',
+      title: `Leak spawned: ${monster.name}`,
+      body: `A ${monster.name.toLowerCase()} tore through at ${maxHp} HP. Match its preferred tags to damage it.`,
+      link: '/homebase',
+      payload: {
+        leakId: leak.id,
+        monsterName: monster.name,
+        monsterEmoji: monster.emoji,
+        hp: maxHp,
+        maxHp,
+        worldSource: 'AMBIENT',
+      },
+    });
+  } catch (err) {
+    console.warn('[portalLeaks] leak_spawn emit failed', { userId, err });
+  }
   return { spawned: true, leakId: leak.id };
 }
 
@@ -412,6 +437,30 @@ export async function maybeSpawnBreachLeak(
       worldSource: 'BREACH',
     },
   });
+  // Breach-sourced leak — same fire-and-forget notification as
+  // the ambient spawn path, with `worldSource: 'BREACH'` so the
+  // inbox row can be highlighted differently in future UI work.
+  try {
+    const { emitNotification } = await import('./notify.js');
+    await emitNotification({
+      userId,
+      category: 'PENANCE',
+      kind: 'leak_spawn',
+      title: `Breach leak: ${monster.name}`,
+      body: `Defeating the Maw tore a ${monster.name.toLowerCase()} loose at ${maxHp} HP.`,
+      link: '/homebase',
+      payload: {
+        leakId: leak.id,
+        monsterName: monster.name,
+        monsterEmoji: monster.emoji,
+        hp: maxHp,
+        maxHp,
+        worldSource: 'BREACH',
+      },
+    });
+  } catch (err) {
+    console.warn('[portalLeaks] breach leak_spawn emit failed', { userId, err });
+  }
   return { spawned: true, leakId: leak.id };
 }
 
@@ -543,6 +592,53 @@ export async function applyLeakDamage(
       },
     }),
   ]);
+
+  // DEFEATED is a high-signal "you sealed it" moment — notify
+  // the user so they can come back to /homebase and claim the
+  // pre-rolled loot. OVERWHELMED is the opposite (a punishment),
+  // also worth surfacing. Other resolutions (no status change)
+  // stay silent — the user can see HP in the portal-leak card.
+  // Fire-and-forget; a failed emit must not block the damage
+  // return.
+  if (resolved) {
+    try {
+      const { emitNotification } = await import('./notify.js');
+      if (resolved === 'DEFEATED') {
+        await emitNotification({
+          userId,
+          category: 'PENANCE',
+          kind: 'leak_defeated',
+          title: `Leak sealed: ${leak.monsterName}`,
+          body: 'Visit /homebase to claim your loot.',
+          link: '/homebase',
+          payload: {
+            leakId: leak.id,
+            monsterName: leak.monsterName,
+            monsterEmoji: leak.monsterEmoji,
+            worldSource: leak.worldSource,
+          },
+        });
+      } else {
+        // OVERWHELMED
+        await emitNotification({
+          userId,
+          category: 'PENANCE',
+          kind: 'leak_overwhelmed',
+          title: `Leak overwhelmed your defenses: ${leak.monsterName}`,
+          body: 'Shield will need extra repair to recover.',
+          link: '/homebase',
+          payload: {
+            leakId: leak.id,
+            monsterName: leak.monsterName,
+            monsterEmoji: leak.monsterEmoji,
+            worldSource: leak.worldSource,
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('[portalLeaks] leak resolution emit failed', { userId, leakId: leak.id, err });
+    }
+  }
 
   return { dealt: leakDelta, matchType, leakHpAfter: newHp, resolved, leakId: leak.id };
 }
