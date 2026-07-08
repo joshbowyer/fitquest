@@ -9,11 +9,15 @@
  * variant is sent to callLlm().
  *
  * Design choices:
- * - **Code, not DB.** Prompts live here so they're versioned with
- *   the codebase and editable without migrations. The roadmap item
- *   `LlmConfig.coachSystemPromptOverrides` (admin-side overrides
- *   keyed by personality) is the next step — when that ships, this
- *   file becomes the FALLBACK and the admin override wins.
+ * - **Code, not DB.** The 5 personality voices live here so they're
+ *   versioned with the codebase and editable without migrations.
+ *   v1.0.39 feedback round: the per-personality admin override
+ *   concept (`LlmConfig.coachSystemPromptOverrides`) is removed
+ *   from the roadmap. There's exactly one canonical system prompt
+ *   per personality, versioned in this file. Editing a voice
+ *   means a code change + deploy, which is the right cadence
+ *   (personality tuning is a product decision, not an admin
+ *   config decision).
  * - **Self-contained tone blocks.** Each prompt has a stable
  *   preamble (role + scope + length) then a personality block
  *   (voice). Frontend should show "demoed against minimax-m3" so
