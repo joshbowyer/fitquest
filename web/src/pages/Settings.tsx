@@ -23,7 +23,7 @@ import {
   emitNotification,
   type NotifyEvent,
 } from '@/lib/notifyBus';
-import type { GeneticMax, Measurement, MetricType } from '@/lib/types';
+import type { GeneticMax, Measurement, MetricType, CoachPersonality, CoachPersonalityMeta } from '@/lib/types';
 import { METRICS, METRICS_BY_CATEGORY } from '@/lib/types';
 
 type Change = { metric: string; from: number | null; to: number };
@@ -1119,6 +1119,23 @@ export function SettingsPage() {
           <ModeSection />
         </Panel>
 
+        {/* AI COACH */}
+        <Panel
+          title="AI Coach"
+          variant="violet"
+          className="mt-4"
+          action={
+            <Link
+              to="/coach"
+              className="text-[10px] font-mono text-neon-cyan hover:underline"
+            >
+              → open chat
+            </Link>
+          }
+        >
+          <CoachPersonalitySection />
+        </Panel>
+
         {/* SOUND */}
         <Panel
           title="Sound"
@@ -1633,6 +1650,110 @@ function UsdaKeyEditor({
         >
           Cancel
         </NeonButton>
+      )}
+    </div>
+  );
+}
+
+/**
+ * AI Coach personality picker. Lives on /settings (v1.0.39
+ * refactor: the picker used to be in the chat panel itself, which
+ * meant the user was looking at "which coach are you using?"
+ * every time they wanted to talk to the coach). The chat page
+ * now shows a compact "active coach" badge in its header
+ * pointing back here to change it. The first-time setup is
+ * handled inline on /coach (FullFirstTimeCoachSetup) so a
+ * brand-new user sees the picker once when they land on /coach
+ * for the first time, never again.
+ */
+function CoachPersonalitySection() {
+  const qc = useQueryClient();
+  // /coach meta is the same shape the /coach chat page uses; a
+  // shared React Query key so a change here invalidates the
+  // chat page's badge and vice versa.
+  const metaQ = useQuery({
+    queryKey: ['coach', 'meta'],
+    queryFn: () =>
+      api<{
+        activePersonality: CoachPersonality;
+        storedPersonality: CoachPersonality | null;
+        defaultPersonality: CoachPersonality;
+        available: CoachPersonalityMeta[];
+      }>('/coach'),
+  });
+  const pick = useMutation<
+    { coachPersonality: CoachPersonality | null; effective: CoachPersonality },
+    Error,
+    CoachPersonality
+  >({
+    mutationFn: (personality) =>
+      api('/coach/personality', {
+        method: 'PATCH',
+        body: { personality },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['coach', 'meta'] });
+    },
+  });
+  if (metaQ.isLoading) {
+    return <div className="text-[10px] font-mono text-ink-300">Loading…</div>;
+  }
+  const meta = metaQ.data;
+  if (!meta) {
+    return (
+      <div className="text-[10px] font-mono text-ink-300 italic">
+        Couldn't load coach config.
+      </div>
+    );
+  }
+  const stored = meta.storedPersonality;
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] text-ink-300 font-mono">
+        Pick the voice the AI Coach uses. You can change this anytime —
+        the chat panel just shows who you're talking to.
+      </div>
+      <div className="space-y-1.5">
+        {meta.available.map((p) => {
+          const isStored = stored === p.key;
+          const isActive = meta.activePersonality === p.key;
+          return (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => pick.mutate(p.key)}
+              disabled={pick.isPending}
+              className={classNames(
+                'w-full text-left rounded border p-2.5 transition-colors disabled:opacity-50',
+                isStored
+                  ? 'border-neon-violet/60 bg-neon-violet/10'
+                  : isActive
+                    ? 'border-neon-violet/30 bg-bg-800/50'
+                    : 'border-ink-700/40 hover:border-neon-violet/30 hover:bg-bg-800/50',
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base text-neon-violet" aria-hidden>{p.icon}</span>
+                <span className="font-display tracking-wide text-xs uppercase text-ink-50">
+                  {p.label}
+                </span>
+                {isStored && (
+                  <span className="ml-auto text-[9px] font-mono uppercase tracking-widest text-neon-cyan/80">
+                    current
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 text-[10px] text-ink-300 leading-snug">
+                {p.blurb}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {pick.error != null && (
+        <div className="text-[10px] font-mono text-neon-magenta">
+          Couldn't save — try again.
+        </div>
       )}
     </div>
   );
