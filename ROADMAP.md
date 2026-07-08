@@ -477,8 +477,213 @@ with edit + delete inline.)
   drops to 2. tickLeakGrowth no longer writes the EXPIRED
   branch; LEAK_TTL_MS kept as a hint for UI copy. Breach leaks
   also respect the cap now (previously blocked on ANY active
-  leak, which made Breach clears feel unrewarded). 8/8 stacking
-  tests pass.)
+   leak, which made Breach clears feel unrewarded). 8/8 stacking
+   tests pass.)
+
+## Stopped Short / Partial Implementations
+
+Deferred work that has working v1 code paths but is explicitly
+scoped-down from the "full" feature. Captured here so we can
+revisit it explicitly instead of re-discovering it from
+inline comments. Each entry points at the file:line + the
+actual deferred work, so the next session can size + prioritise
+without spelunking.
+
+Grouped by area, ordered by "ease of fixing" within each group
+(quick wins first, then larger deferred pieces).
+
+### Auth / Account
+- **Email flows deferred** — `api/src/routes/auth.ts:95-96`: "no email.
+  Email features (verification, password reset, etc.) are deferred
+  until we have a mail provider." Users who forget passwords are
+  stuck; only an admin-reset path exists. No self-serve password
+  change in /profile.
+- **Stub `placeholderEmail`** — `api/src/routes/auth.ts:253-260`:
+  every user has a fake `${usernameLower}@local.fitquest` email
+  as a schema workaround. Strip if/when email is wired.
+- **Stale "v0.5" string in /profile** — `web/src/pages/Profile.tsx:1321`:
+  "account actions (password, 2FA) coming in v0.5". 2FA already
+  ships; only password-change is missing. The string lies about
+  both. Trivial fix (remove the string or wire a real change-pw
+  form).
+
+### AI Coach
+- **Per-personality admin prompt overrides** —
+  `api/src/lib/coach.ts:13-17`: "The roadmap item
+  `LlmConfig.coachSystemPromptOverrides` (admin-side overrides
+  keyed by personality) is the next step." The user has decided
+  NOT to build this (v1.0.39 feedback round: collapse the
+  picker to a one-time onboarding choice + a Settings toggle,
+  no per-personality admin knobs). **Removing this from the
+  deferred list — see v1.0.39 changelog.**
+- **Streaming responses (SSE)** — `web/src/pages/Coach.tsx:18-26`:
+  current POST → 502 on long calls. Real fix needs server SSE +
+  client EventSource + abort-on-navigate. 2-3 days.
+- **Multi-conversation / rename / delete** — explicitly
+  **out of scope** (v1.0.39 feedback round: single rolling
+  conversation per user is intentional; multi-convo is not
+  on the roadmap anymore). Removed from "backlog".
+- **Chat edit/branch from message X** — `api/src/routes/coach.ts:276-279`:
+  message IDs are echoed in the response but no UI consumes
+  them yet. The ID plumbing is here when a future feature
+  wants it. Stay-deferred.
+- **Cost dashboard** — `api/src/routes/coach.ts:355-357`: chars
+  / 4 is "close enough" for the model-time badge. A real cost
+  dashboard would track token usage per session. 1-2 days
+  if/when users hit rate limits regularly.
+- **Incremental compaction** — `api/src/lib/coachStore.ts:248-274`:
+  current "replace oldest batch" is wasteful. Append-style
+  summary builder. 1-2 days.
+
+### Pets
+- **Breed stock rotation** — `api/prisma/seed-pets.ts:7`,
+  `api/src/routes/shop.ts:210-218`: "v1: returns every PetBreed
+  row (rotation deferred until we have enough breeds to make
+  a pool matter)." Only 3 breeds seeded. Schema has
+  `availableFrom`/`availableTo` columns already
+  (`schema.prisma:2980-2981`); API just doesn't use them yet.
+- **No "PC" box for off-roster pets** — `web/src/pages/Pet.tsx:700`:
+  release = hard delete. With 6-pet cap this is small.
+  1-2 days (PC model + storage UI).
+- **Stale "v1 = one per user" comment** — `api/src/routes/shop.ts:262`:
+  `MAX_PETS_PER_USER = 6` is the actual cap, but the comment
+  says 1. Trivial doc fix.
+
+### Quests / Worlds
+- **Separate breach-levels-reissuance endpoint** —
+  `api/src/lib/worlds.ts:445-447`: "the actual re-issuance of
+  new levels happens via a separate `/breach-world/reset`
+  endpoint (out of scope for the initial cut)." The breach.ts
+  rotation already handles the Maw variant + boss HP reset;
+  only the per-level-id regeneration is out. 1 day.
+- **Cardio 5K time is duration-proxy, not distance** —
+  `api/src/lib/worlds.ts:603-606`: "for now use duration as a
+  proxy: assume ~3.33 m/s average pace → 5K = 1500s baseline."
+  A slow 30-min walk satisfies a 5K requirement; can't
+  distinguish pace from cardio log alone. 1-2 days (plumb
+  cardio-set distance from FIT/Garmin to the workout set).
+- **`loadRecoveryHistory` returns literal `[]`** —
+  `api/src/routes/quest.ts:229-235`: recovery score never feeds
+  back into quest-clear progress even though several worlds
+  (Sanctum, Nexus, Crossroads) gate on `RECOVERY_STREAK`. 1 day
+  (just call the existing `recovery.ts` history helper).
+
+### Penances
+- **Shield-tier damage multiplier in combat** —
+  `api/src/lib/penance.ts:11-24`: "Phase 2; this commit ships
+  the foundation + triggers." The `breach.ts:498`
+  `SHIELD_TIER_DMG_MULT` table exists; needs verification it's
+  actually consumed in the world-boss path (looks like it's in
+  Breach combat, not world-boss). Hours to verify, 1-2 days
+  if not yet wired.
+- **Substance over-use caps are flag-only** —
+  `api/src/lib/penance.ts:39-42`, `api/src/lib/mode.ts:36-39`:
+  "these surface in the morning report's risk_flags as a label,
+  not an actual stat change yet." HRV/XP/gold don't get the
+  multiplier applied. 1-2 days (apply the multiplier at
+  award-time in `award.ts` + `recovery.ts`).
+- **Penance-management in /settings is missing** —
+  `api/src/routes/homeBase.ts:61-63`: endpoint exists; the
+  panel only lives on /home-base, not /settings. 1-2 days
+  (port the panel).
+- **`LEAK_TTL_MS` is a dead constant** —
+  `api/src/routes/portalLeaks.ts:771-774`: "kept as a hint for
+  future UI copy but no longer drives any logic." Trivial:
+  delete or actually use.
+
+### Items / Equipment
+- **Set-bonus system not built** — `api/src/lib/seedItems.ts:130-132`:
+  items carry `setId`; no code consumes it for bonuses. 1-2 days
+  (read setId in damage calc + UI chip).
+- **Sprite fallback for missing item art** —
+  `web/src/pages/Inventory.tsx:334-335`: a few legacy items
+  still use `gear/<class>/<slot>.png` paths that don't all
+  exist. Hours (regen sprites or fix paths).
+
+### Skill tree
+- **5 classes still use auto-tier heuristic, not explicit
+  prereqs** — `api/src/lib/seedSkills.ts:1-2, 23-24, 56-58,
+  762-764`: only PHANTOM was converted. "Slated for the 'same
+  fix for other classes' ROADMAP follow-up." Pure-data
+  refactor; no schema change. 1-2 days per class.
+- **Hand-maintained keyword map** — `api/src/lib/skillMatching.ts:5-21`:
+  ~26 entries (`pull-up`, `push-up`, `squat`, etc.). New branch
+  = edit this map. Maintenance contract.
+- **Hand-maintained switch for test metrics** —
+  `api/src/lib/skillTest.ts:191-195`: same maintenance
+  contract.
+
+### Body / Measurements
+- **Workout template `groupIndex` is conditionally written/read**
+  — `api/src/routes/workoutTemplates.ts:45-47`: `as any` cast
+  because the migration may not be applied everywhere. "TODO:
+  track with a version flag." Hours.
+- **`BICEP` is a fossil enum value** —
+  `api/prisma/schema.prisma:53`: "legacy alias (Postgres can't
+  drop enum values without recreating the type)" — nothing in
+  client code emits it. Hours (migration to recreate enum).
+
+### Sound / SFX
+- **Full synthwave synth rev deferred** —
+  `web/src/lib/soundBus.ts:7-15`: current synth is functional
+  but "less polished (8-bit DOS predecessor)"; 6 of ~10 events
+  use Kenney CC0 MP3s. 1-2 days (art/audio design).
+
+### OpenFoodFacts
+- **OFF search via legacy cgi endpoint** —
+  `api/src/lib/openfoodfacts.ts:187-212`: "the v2
+  /api/v2/search endpoint returns a fixed 5 items." Search is
+  rate-limited as a result. Hours to test v2, a day if you need
+  to handle the API shape diff.
+
+### Gadgetbridge / morning report
+- **5am Gadgetbridge auto-sync deferred** —
+  `api/src/lib/morningReport.ts:10-11`: "Gadgetbridge sync
+  (future — for now, manual + the 5am hook)." 1-2 days to wire
+  the 5am cron, week+ for the Gadgetbridge auto-pull.
+- **LLM-disabled stub rows** — `api/src/lib/spiritualDirector.ts:268-287`,
+  `api/src/lib/morningReport.ts:990-1032`: empty
+  `reflection: ''`, `patronSuggestion: ''`, `model: null` when
+  LLM is disabled. The page renders a "no reflection yet"
+  state. Hours to add an explicit "configure LLM" prompt.
+
+### Tools page (UI surface)
+- **Tools page only has the plate calculator** —
+  `web/src/pages/Tools.tsx:22-23, 112`: the file header says
+  "rest timer + more to come" but the `RestTimer` component
+  is only embedded in `LiveWorkoutLogger`, not linked from
+  the Tools page. Hours to add the rest-timer card. Bigger
+  tools (BPM calc, rep-max, body-fat-%) = days-week+ each.
+
+### Misc stale comments to fix (low-effort cleanup)
+- `api/src/lib/penance.ts:13` — "COMPROMISED 30-59 portal leaks
+  possible (Phase 2)" actually shipped (in `portalLeaks.ts:310-330`).
+- `api/src/lib/coach.ts:144` — "v1 doesn't supply prior turns"
+  is misleading; the route already passes the last 20 turns to
+  the LLM (`SLIDING_WINDOW_SIZE=20`).
+- `web/src/pages/Admin.tsx:474` — "future in-app coach/quest
+  narrator" subtitle is misleading (the LLM panel is used for
+  the AI Coach chat; "quest narrator" never landed as a separate
+  feature).
+- `web/src/pages/Profile.tsx:1321` — "account actions coming in
+  v0.5" stale string (see Auth / Account above).
+
+### CLEAN (no deferred work in these areas)
+For completeness — the following areas are fully built with no
+"stopped short" markers:
+- **6 classes** (JUGGERNAUT/PHANTOM/SCOUT/BERSERKER/TRACER/ORACLE)
+  — no 7th planned.
+- **6 item rarities** (COMMON → MYTHIC) — all referenced in code.
+- **6 skill tiers** (T1-T6) — T6 is the cap, no T7 planned.
+- **41 body parts** — fully populated L/R pairs.
+- **60 achievements** — clean catalog, no "more to come" comments.
+- **8 measurement sources** — DEXA, BOD_POD, NAVY, CALIPERS, BIA,
+  VISUAL, MANUAL, UNKNOWN.
+- **4 substance categories** (NICOTINE/CAFFEINE/ALCOHOL/ELECTROLYTE)
+  + separate `TrackedItemCategory` for supplements.
+- **4 LLM providers** (OPENAI/OLLAMA/MINIMAX/ANTHROPIC).
+- **Pet system** — 6-pet cap (not 1), buy/feed/combat/swap-primary
+  all wired.
 
 ## Stretch / Future
 
