@@ -4,14 +4,14 @@ import { Modal } from '@/components/Modal';
 import { BodyfatMethodPicker } from '@/components/BodyfatMethodPicker';
 import { AvatarCustomizer } from '@/components/AvatarCustomizer';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { useAuth, type UserSex } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION, getClassDisplayName } from '@/lib/types';
+import { CLASS_META, isClassEligible, PRIMARY_ASPECT_LABEL, type ClassName, CLASS_EVOLUTION, getClassDisplayName, type GeneticMax } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, roundForUnits, type UnitSystem } from '@/lib/units';
 import {
@@ -325,6 +325,57 @@ export function ProfilePage() {
   }));
   const previewsValid = previewValues.every((v) => v.value != null);
 
+  // Pull the user's stored GeneticMax rows so the preview can compare
+  // formula values against any manual override. Same queryKey as
+  // Dashboard / Settings / MetricDetailModal — invalidating one
+  // refreshes the lot. Mounted alongside the form so the user can
+  // see "your override = 50, formula says 45" without leaving Profile.
+  const geneticQ = useQuery({
+    queryKey: ['genetic-max'],
+    queryFn: () => api<{ items: GeneticMax[] }>('/genetic-max'),
+  });
+  const maxByMetric = useMemo(() => {
+    const map = new Map<string, GeneticMax>();
+    for (const g of geneticQ.data?.items || []) map.set(g.metric, g);
+    return map;
+  }, [geneticQ.data]);
+
+  // Reset a manual override back to the formula-derived value. We
+  // compute the formula locally with the same previewMax() the
+  // preview grid uses (single source of truth: web/src/lib/geneticMax.ts
+  // mirrors api/src/lib/geneticMax.ts exactly), then PUT with
+  // source='FORMULA' so the stored row flips to the formula value.
+  // Mirrors MetricDetailModal's setMaxM but with FORMULA source —
+  // there is no separate "clear" affordance because deleting the row
+  // would leave the dashboard gauge without a max (it falls back to
+  // defaultMin*1.5). Writing the formula value keeps the gauge
+  // legible.
+  const resetMaxM = useDelayedMutation({
+    mutationFn: async (metric: string) => {
+      // Use the *saved* user frame, not the draft — the override
+      // reflects the previous save, and resetting should match that
+      // save (typing in new frame values without saving doesn't
+      // change what "the formula" currently means for this row).
+      const formulaValue = previewMax(
+        metric,
+        user?.wristCm ?? null,
+        user?.ankleCm ?? null,
+        user?.heightCm ?? null,
+        user?.weightKg ?? null,
+      );
+      if (formulaValue == null) {
+        throw new Error('Formula requires height + wrist + ankle (and weight for strength).');
+      }
+      return api('/genetic-max', {
+        method: 'PUT',
+        body: { items: [{ metric, value: formulaValue, source: 'FORMULA' }] },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+    },
+  }, 600);
+
   // Geocoding search — backed by Open-Meteo's free /v1/search
   // endpoint (no API key, no signup). We proxy through /geocode
   // server-side so the request always succeeds regardless of
@@ -543,15 +594,77 @@ export function ProfilePage() {
               </div>
               {previewsValid ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {previewValues.map((m) => (
-                    <div key={m.key} className="border border-neon-cyan/20 bg-neon-cyan/5 p-2 text-center">
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">{m.label}</div>
-                      <div className="font-display text-lg neon-text-cyan">
-                        {m.value != null ? convertForDisplay(m.value, m.unit, system).value.toFixed(1) : '—'}
-                        <span className="text-[10px] text-ink-300 ml-1">{displayUnit(m.unit, system)}</span>
+                  {previewValues.map((m) => {
+                    // Dual-display: when a stored override exists
+                    // and diverges from the formula, surface both so
+                    // the user understands the divergence. The
+                    // override is what's actually used by the
+                    // dashboard gauges; the formula is what would
+                    // be derived from the saved frame. Reset button
+                    // appears only when they differ (per task
+                    // spec) and writes source='FORMULA' so the
+                    // stored row flips back to the formula value.
+                    const stored = maxByMetric.get(m.key);
+                    const formulaV = m.value as number;
+                    const overrideDiverges =
+                      stored != null &&
+                      stored.source === 'MANUAL' &&
+                      Math.abs(stored.value - formulaV) > 0.05;
+                    return (
+                      <div
+                        key={m.key}
+                        className={classNames(
+                          'p-2 text-center border',
+                          overrideDiverges
+                            ? 'border-neon-amber/40 bg-neon-amber/5'
+                            : 'border-neon-cyan/20 bg-neon-cyan/5',
+                        )}
+                      >
+                        <div className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan/80">{m.label}</div>
+                        <div
+                          className={classNames(
+                            'font-display text-lg',
+                            overrideDiverges ? 'neon-text-amber' : 'neon-text-cyan',
+                          )}
+                        >
+                          {stored != null
+                            ? convertForDisplay(stored.value, m.unit, system).value.toFixed(1)
+                            : (formulaV != null ? convertForDisplay(formulaV, m.unit, system).value.toFixed(1) : '—')}
+                          <span className="text-[10px] text-ink-300 ml-1">{displayUnit(m.unit, system)}</span>
+                        </div>
+                        {overrideDiverges && (
+                          <div className="text-[9px] font-mono text-ink-300 mt-1 leading-tight">
+                            <span className="neon-text-amber">manual</span>
+                            <span className="text-ink-400"> · formula says </span>
+                            <span className="text-ink-100">
+                              {convertForDisplay(formulaV, m.unit, system).value.toFixed(1)}
+                            </span>
+                          </div>
+                        )}
+                        {!overrideDiverges && stored?.source === 'FORMULA' && (
+                          <div className="text-[9px] font-mono text-ink-400 mt-1 uppercase tracking-widest">
+                            formula
+                          </div>
+                        )}
+                        {!overrideDiverges && stored?.source === 'MANUAL' && (
+                          <div className="text-[9px] font-mono text-ink-400 mt-1 uppercase tracking-widest">
+                            manual (matches formula)
+                          </div>
+                        )}
+                        {overrideDiverges && (
+                          <button
+                            type="button"
+                            onClick={() => resetMaxM.run(m.key)}
+                            disabled={resetMaxM.isPending}
+                            className="mt-1.5 text-[9px] font-mono uppercase tracking-widest border border-neon-amber/40 text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50 px-1.5 py-0.5"
+                            title="Discard your manual override and use the formula value"
+                          >
+                            {resetMaxM.isPending && resetMaxM.variables === m.key ? '…' : 'Reset to formula'}
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-[10px] text-ink-300 font-mono italic">
@@ -1318,7 +1431,7 @@ export function ProfilePage() {
           </div>
 
           <div className="mt-4 text-[10px] text-ink-400 font-mono leading-relaxed border-t border-neon-magenta/20 pt-3">
-            // change units in <Link to="/settings" className="neon-text-cyan hover:underline">Settings → Display</Link> · account actions (password, 2FA) coming in v0.5
+            // change units in <Link to="/settings" className="neon-text-cyan hover:underline">Settings → Display</Link> · 2FA setup lives in <Link to="/settings" className="neon-text-cyan hover:underline">Settings → Account</Link> · self-serve password change is not yet available (ask an admin to reset)
           </div>
         </Panel>
       </div>

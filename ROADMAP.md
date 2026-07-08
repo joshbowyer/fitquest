@@ -75,7 +75,17 @@ are the changelog of what got shipped.
   same way web now does. This is the single highest-leverage
   hygiene item left — the web-side equivalent is what caught the
   Dashboard-crash class of bug.
-- **Dark/light theme toggle** (currently dark-only).
+- (was: Dark/light theme toggle — shipped 2026-07-08 session.
+  CSS-variable theming (`:root` dark / `.light` override)
+  consumed via Tailwind `rgb(var(--x)/<alpha>)` so every
+  utility class gets a free light variant. New
+  `web/src/lib/themeBus.ts` + `web/src/hooks/useTheme.ts`;
+  no-flash bootstrap in `main.tsx`; Settings toggle; persists
+  `localStorage.fq_theme`; respects `prefers-color-scheme`.
+  Follow-up: a few Recharts / Gauge components still have
+  hardcoded dark hex axis colors — light-theme visual QA
+  pending.)
+
 ### Recently shipped P0s
 
 - ✅ **Notification feed / inbox** — shipped v1.0.37 (`d0bce16` +
@@ -143,15 +153,18 @@ are the changelog of what got shipped.
 
 ### P1 — feature work (1-2 weeks each)
 
-- **Genetic-max shadowing: surface the formula value alongside
-  manual overrides.** /profile `previewMax()` drift from the
-  canonical api formula was already fixed (commit `f68b653`).
-  Remaining: when a user has a manual override equal to their
-  current measurement, the dashboard shows
-  "current = genetic max" with no indication that an override
-  shadows the formula. Fix: display both side-by-side ("Genetic
-  Max: 50 (manual, formula says 45)") + a "reset to formula"
-  affordance on the override row.
+- (was: Genetic-max shadowing — shipped 2026-07-08 session.
+  Dashboard + Profile now show "manual · formula N" inline
+  with the displayed override, and a "Reset to formula"
+  affordance appears only when the override actually diverges
+  from the formula. Formula-vs-override agreement renders
+  cleanly with no affordance noise. The original bug: when a
+  manual override equaled the user's current measurement, the
+  dashboard displayed "your current measurement = your
+  genetic max" with no indication that an override was
+  shadowing the formula. See also the Measurements
+  "/measurements and /dashboard ... shadowing bug" sub-item
+  below — both are now closed by the same fix.)
 - ✅ **Genetic-max drift prevention** — shipped v1.0.37 (`d151e1e`).
   `previewMax` + `PREVIEW_METRICS` extracted from `Profile.tsx` to
   `web/src/lib/geneticMax.ts` (single frontend source of truth,
@@ -170,10 +183,12 @@ are the changelog of what got shipped.
   v1.0.37 (`90d318a`, android repo). The explicit-version path now
   bumps versionCode (guarded against a no-op when NEXT_VERSION ==
   current).
-- **Web main chunk is 2.3 MB** (vite warns on every build).
-  Route-level `React.lazy` code-splitting for the heavy pages
-  (Three.js avatar, Recharts pages) would cut initial load on
-  mobile substantially.
+- (was: Web main chunk is 2.3 MB — shipped 2026-07-08 session.
+  Route-level `React.lazy` for all 35 routes + `<Suspense>`
+  boundary. Main entry chunk **2,397 kB → 238 kB (~90%)**;
+  Three.js + Recharts are now isolated chunks that only load
+  when their pages do. Vite no longer warns about chunk size
+  on the home build.)
 
 ### P2 — bigger features (2+ weeks)
 
@@ -346,28 +361,17 @@ with edit + delete inline.)
     maxes entirely; BENCH_1RM used w × 1.0 as a bodyweight
     proxy. **FIXED in `f68b653`** — /profile now matches the
     api formula exactly.)
-  - **/measurements and /dashboard** both read from the same
-    `geneticMax` table, so a manual override set via the
-    "set max from latest measurement" button on /measurements
-    propagates to the dashboard too. The user has hit this
-    with neck: the formula-computed ceiling (`wristCm × 2.9`)
-    gets shadowed by a stored manual override equal to their
-    current measurement, so the dashboard displays "your
-    current measurement = your genetic max" — misleading.
-    (was: /measurements + /dashboard already share the
-    geneticMax table, so the propagation half works. The
-    shadowing bug remains: when a manual override is set,
-    dashboard shows current measurement = genetic max with
-    no indication that an override is in effect. Fix: show
-    both numbers side-by-side, or surface a "manual override"
-    badge on the dashboard gauge so the user knows the formula
-    isn't being used.)
-    Fix: surface the formula-computed value alongside the
-    stored value (e.g. "Genetic Max: 50 (manual, formula says
-    45)"), and add a "reset to formula" affordance next to
-    the override. Same pattern for any metric where the
-    formula and the user's current measurement diverge
-    meaningfully.
+  - (was: /measurements and /dashboard shadowing — shipped
+    2026-07-08 session. Both pages now show "manual · formula
+    N" inline with the displayed override, plus a
+    "Reset to formula" affordance on the override row that
+    only appears when the override diverges from the formula.
+    Same fix as the P1 "Genetic-max shadowing" item above —
+    closed in one pass. The original symptom: a manual override
+    set on /measurements ("set max from latest measurement")
+    was shadowing the formula-computed ceiling, and the
+    dashboard displayed "current = genetic max" with no
+    indication that an override was in effect.)
   - **Prevent future drift.** The `previewMax` doc comment
     now flags this — if you edit the api formula, update the
     local copy at the same time. Consider extracting
@@ -501,11 +505,10 @@ Grouped by area, ordered by "ease of fixing" within each group
 - **Stub `placeholderEmail`** — `api/src/routes/auth.ts:253-260`:
   every user has a fake `${usernameLower}@local.fitquest` email
   as a schema workaround. Strip if/when email is wired.
-- **Stale "v0.5" string in /profile** — `web/src/pages/Profile.tsx:1321`:
-  "account actions (password, 2FA) coming in v0.5". 2FA already
-  ships; only password-change is missing. The string lies about
-  both. Trivial fix (remove the string or wire a real change-pw
-  form).
+- (was: Stale "v0.5" string in /profile — shipped 2026-07-08
+  session. `web/src/pages/Profile.tsx:1321` reworded — 2FA
+  already ships, only self-serve password-change is missing
+  (and that has no public roadmap date).)
 
 ### AI Coach
 - **Per-personality admin prompt overrides** —
@@ -550,38 +553,47 @@ Grouped by area, ordered by "ease of fixing" within each group
   says 1. Trivial doc fix.
 
 ### Quests / Worlds
-- **Separate breach-levels-reissuance endpoint** —
-  `api/src/lib/worlds.ts:445-447`: "the actual re-issuance of
-  new levels happens via a separate `/breach-world/reset`
-  endpoint (out of scope for the initial cut)." The breach.ts
-  rotation already handles the Maw variant + boss HP reset;
-  only the per-level-id regeneration is out. 1 day.
-- **Cardio 5K time is duration-proxy, not distance** —
-  `api/src/lib/worlds.ts:603-606`: "for now use duration as a
-  proxy: assume ~3.33 m/s average pace → 5K = 1500s baseline."
-  A slow 30-min walk satisfies a 5K requirement; can't
-  distinguish pace from cardio log alone. 1-2 days (plumb
-  cardio-set distance from FIT/Garmin to the workout set).
-- **`loadRecoveryHistory` returns literal `[]`** —
-  `api/src/routes/quest.ts:229-235`: recovery score never feeds
-  back into quest-clear progress even though several worlds
-  (Sanctum, Nexus, Crossroads) gate on `RECOVERY_STREAK`. 1 day
-  (just call the existing `recovery.ts` history helper).
+- (was: Separate breach-levels-reissuance endpoint — NOT
+  NEEDED. Dropped 2026-07-08 session. `api/src/lib/breachReset.ts`
+  already performs the cycle bump + progress wipe + new-level
+  re-issuance in one place; no separate endpoint required.
+  The `worlds.ts:445-447` TODO comment was stale from an
+  earlier cut and has been cleaned up.)
+- (was: Cardio 5K time is duration-proxy, not distance —
+  shipped 2026-07-08 session. World clear now prefers real
+  `Workout.cardio.distanceKm` + `durationSec`; the
+  ~3.33 m/s duration-only fallback still exists for log rows
+  without distance, but a real cardio set with distance
+  clears the 5K requirement properly (e.g. a 30-min walk no
+  longer satisfies it). Same fix path covers the
+  `SPRINT_DISTANCE` unclearable bug for `gap-4`/`nexus-4`/
+  `breach-4`.)
+- (was: `loadRecoveryHistory` returns literal `[]` —
+  shipped 2026-07-08 session. New batched
+  `computeRecoveryHistory` in `recovery.ts`; the quest-clear
+  path now calls it instead of returning `[]`.
+  CORRECTION: the affected worlds are **sanctum-3,
+  sanctum-5, crossroads-4** — NOT the Nexus. The Nexus has no
+  `RECOVERY_STREAK` requirement; the prior roadmap wording
+  was wrong.)
 
 ### Penances
-- **Shield-tier damage multiplier in combat** —
-  `api/src/lib/penance.ts:11-24`: "Phase 2; this commit ships
-  the foundation + triggers." The `breach.ts:498`
-  `SHIELD_TIER_DMG_MULT` table exists; needs verification it's
-  actually consumed in the world-boss path (looks like it's in
-  Breach combat, not world-boss). Hours to verify, 1-2 days
-  if not yet wired.
-- **Substance over-use caps are flag-only** —
-  `api/src/lib/penance.ts:39-42`, `api/src/lib/mode.ts:36-39`:
-  "these surface in the morning report's risk_flags as a label,
-  not an actual stat change yet." HRV/XP/gold don't get the
-  multiplier applied. 1-2 days (apply the multiplier at
-  award-time in `award.ts` + `recovery.ts`).
+- (was: Shield-tier damage multiplier in combat — shipped
+  2026-07-08 session. `SHIELD_TIER_DMG_MULT` is now applied in
+  the world-boss damage path (`api/src/lib/bosses.ts`):
+  FORTIFIED ×0.5 / BREACHED ×2.0, applied before the 25%
+  per-cap. Previously only the Breach combat path consumed it;
+  world-boss damage now matches the Breach path.)
+- ◐ **Substance over-use caps — PARTIAL (shipped 2026-07-08
+  session).** The penalty COPY was corrected: an over-cap entry
+  now correctly emits a `HeartLossEvent`, and `heartMultiplier`
+  downstream reduces XP and gold awards as advertised. The
+  previously-advertised "HRV credit reduced" / "weekly XP
+  multiplier reduced" lines were never implemented and have
+  been removed from the copy. The dead `mode.ts` import was
+  also removed. The real per-substance HRV / XP multipliers
+  (actual stat changes at award time) remain DEFERRED — pending
+  a product decision on the right magnitude + cap structure.
 - **Penance-management in /settings is missing** —
   `api/src/routes/homeBase.ts:61-63`: endpoint exists; the
   panel only lives on /home-base, not /settings. 1-2 days
@@ -601,11 +613,6 @@ Grouped by area, ordered by "ease of fixing" within each group
   exist. Hours (regen sprites or fix paths).
 
 ### Skill tree
-- **5 classes still use auto-tier heuristic, not explicit
-  prereqs** — `api/src/lib/seedSkills.ts:1-2, 23-24, 56-58,
-  762-764`: only PHANTOM was converted. "Slated for the 'same
-  fix for other classes' ROADMAP follow-up." Pure-data
-  refactor; no schema change. 1-2 days per class.
 - **Hand-maintained keyword map** — `api/src/lib/skillMatching.ts:5-21`:
   ~26 entries (`pull-up`, `push-up`, `squat`, etc.). New branch
   = edit this map. Maintenance contract.
@@ -648,12 +655,11 @@ Grouped by area, ordered by "ease of fixing" within each group
   state. Hours to add an explicit "configure LLM" prompt.
 
 ### Tools page (UI surface)
-- **Tools page only has the plate calculator** —
-  `web/src/pages/Tools.tsx:22-23, 112`: the file header says
-  "rest timer + more to come" but the `RestTimer` component
-  is only embedded in `LiveWorkoutLogger`, not linked from
-  the Tools page. Hours to add the rest-timer card. Bigger
-  tools (BPM calc, rep-max, body-fat-%) = days-week+ each.
+- (was: Tools page only had the plate calculator — partial.
+  Rest-timer card now linked from `/tools` (shipped 2026-07-08
+  session). Remaining: bigger tools — BPM calculator, rep-max,
+  body-fat-% — days to a week+ each, scoped to whenever the
+  user actually wants them surfaced.)
 
 ### Misc stale comments to fix (low-effort cleanup)
 - `api/src/lib/penance.ts:13` — "COMPROMISED 30-59 portal leaks
@@ -661,12 +667,6 @@ Grouped by area, ordered by "ease of fixing" within each group
 - `api/src/lib/coach.ts:144` — "v1 doesn't supply prior turns"
   is misleading; the route already passes the last 20 turns to
   the LLM (`SLIDING_WINDOW_SIZE=20`).
-- `web/src/pages/Admin.tsx:474` — "future in-app coach/quest
-  narrator" subtitle is misleading (the LLM panel is used for
-  the AI Coach chat; "quest narrator" never landed as a separate
-  feature).
-- `web/src/pages/Profile.tsx:1321` — "account actions coming in
-  v0.5" stale string (see Auth / Account above).
 
 ### CLEAN (no deferred work in these areas)
 For completeness — the following areas are fully built with no
@@ -740,6 +740,149 @@ For completeness — the following areas are fully built with no
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-08 session — v1.0.39 polish + bug-hunt round 3
+
+Web polish + perf + an api bug-hunt round. Three new api bugs
+found + fixed (SLEEP_ONSET crash, SPRINT_DISTANCE
+unclearable, TOTAL_VOLUME window-days ignored), plus four
+follow-ups to prior rounds. Web 1 polish (theme toggle), 1
+perf (route-level code-splitting), 1 UX (rest-timer card on
+/tools), 2 stale-string fixes. All api fixes have regression
+tests; the test suite grew 675 → 738 (+63).
+
+#### WEB — polish
+
+- ✅ **Dark/light theme toggle** (closed the P0). CSS-variable
+  theming (`:root` dark / `.light` override) consumed via
+  Tailwind `rgb(var(--x)/<alpha>)` so every existing utility
+  class gets a free light variant. New
+  `web/src/lib/themeBus.ts` + `web/src/hooks/useTheme.ts`;
+  no-flash bootstrap in `main.tsx` (reads the persisted choice
+  before React mounts, applies the `.light` class to `<html>`
+  synchronously). Toggle lives in Settings; persists
+  `localStorage.fq_theme`; respects `prefers-color-scheme` on
+  first visit.
+  *Polish note: a few Recharts / Gauge components still have
+  hardcoded dark hex axis colors — light-theme visual QA
+  pending.*
+
+- ✅ **Genetic-max override shadowing UI** (closed both the P1
+  "Genetic-max shadowing" item AND the Measurements
+  "/measurements and /dashboard ... shadowing bug" sub-item).
+  Dashboard + Profile now show "manual · formula N" inline
+  with the displayed override, and a "Reset to formula"
+  affordance appears only when the override actually diverges
+  from the formula. Formula-vs-override agreement renders
+  cleanly with no affordance noise.
+
+- ✅ **Stale strings fixed.** `web/src/pages/Profile.tsx:1321`
+  "account actions (password, 2FA) coming in v0.5" reworded —
+  2FA ships, only self-serve password-change is missing (and
+  that has no public roadmap date). `web/src/pages/Admin.tsx:474`
+  subtitle reworded — the "future in-app coach/quest narrator"
+  copy was misleading (the LLM panel drives the AI Coach chat;
+  "quest narrator" never landed as a separate feature).
+
+#### WEB — perf / features
+
+- ✅ **Web main chunk code-splitting** (closed the P1.5
+  "Web main chunk is 2.3 MB"). Route-level `React.lazy` for
+  all 35 routes + `<Suspense>` boundary. Main entry chunk
+  shrank **2,397 kB → 238 kB (~90%)**; the Three.js avatar
+  (gltf + 3D scenegraph) and Recharts (charts + axis code) are
+  now isolated chunks that only load when their pages do.
+  Vite no longer warns about chunk size on the home build.
+
+- ✅ **Tools page rest-timer card.** `RestTimer` is now linked
+  from `/tools` (was: embedded only in `LiveWorkoutLogger`).
+  Only the bigger tools (BPM calculator, rep-max, body-fat-%)
+  remain deferred.
+
+#### API — bug-hunt round 3
+
+All shipped with regression tests (675 → 738, +63).
+
+- ✅ **SLEEP_ONSET crash fix** (NEW bug, not previously in
+  roadmap). The `METRICS` lookup map used to translate the
+  enum to its display label was missing the `SLEEP_ONSET`
+  entry, so `POST /measurements` and `POST /measurements/batch`
+  threw `TypeError: Cannot read properties of undefined` and
+  returned 500 for any sleep-onset row. Fixed + new
+  enum-coverage test that iterates every `MetricType` value and
+  asserts a label exists.
+
+- ✅ **Recovery-streak gating fix** (closed "loadRecoveryHistory
+  returns literal []"). New batched
+  `computeRecoveryHistory` in `recovery.ts`; the quest-clear
+  path now calls it instead of returning `[]`.
+  *CORRECTION: the affected worlds are **sanctum-3, sanctum-5,
+  crossroads-4** — NOT the Nexus. The Nexus has no
+  `RECOVERY_STREAK` requirement; the prior roadmap wording
+  was wrong.*
+
+- ✅ **SPRINT_DISTANCE unclearable** (NEW bug). The worlds
+  `gap-4`, `nexus-4`, and `breach-4` were mathematically
+  impossible — the distance-from-duration proxy
+  (`duration × ~6 m/s pace`) contradicted the pace gate on the
+  same world, so no workout could ever clear the requirement.
+  Fixed: the world-clear path now prefers the real
+  `Workout.cardio.distanceKm` + `durationSec` when both are
+  present, and the duration-only fallback drops the
+  contradictory inference (pace-from-distance vs
+  distance-from-duration both at once). Those worlds are now
+  finishable.
+
+- ✅ **CARDIO_5K duration-proxy** (closed prior entry). World
+  clear now prefers real `Workout.cardio.distanceKm` +
+  `durationSec`; the ~3.33 m/s duration-only fallback still
+  exists for log rows without distance, but a real cardio set
+  with distance clears the 5K requirement properly (e.g. a
+  30-min walk no longer satisfies it).
+
+- ✅ **TOTAL_VOLUME window-days ignored** (NEW bug).
+  `crossroads-5` advertised "14 days" in its config but the
+  evaluator was effectively summing over 90 days (the leftover
+  default before the metric-specific window was applied).
+  Fixed — metric-specific `windowDays` is now honoured for
+  every world.
+
+- ✅ **Shield-tier damage multiplier in world bosses** (closed
+  prior entry). `SHIELD_TIER_DMG_MULT` is now applied in the
+  world-boss damage path (`api/src/lib/bosses.ts`):
+  FORTIFIED ×0.5 / BREACHED ×2.0, applied before the 25%
+  per-cap. Previously only the Breach combat path consumed it.
+
+- ◐ **Substance over-use caps — PARTIAL.** The penalty COPY
+  was corrected: an over-cap entry now correctly emits a
+  `HeartLossEvent`, and `heartMultiplier` downstream reduces
+  XP and gold awards as advertised. The previously-advertised
+  "HRV credit reduced" / "weekly XP multiplier reduced" lines
+  were **never implemented in code** and were removed from
+  the copy. The dead `mode.ts` import was also removed. The
+  real per-substance HRV / XP multipliers (actual stat
+  changes at award time) remain DEFERRED — pending a product
+  decision on the right magnitude + cap structure.
+
+- ✅ **Doc / comment sweep.** `api/src/lib/worlds.ts:445-447`
+  (breach reset already works via `breachReset.ts`, no
+  separate re-issuance endpoint needed),
+  `api/src/lib/breachReset.ts` header,
+  `api/src/lib/penance.ts:22-24`, `api/src/lib/mode.ts:35-39`.
+
+- ✅ **Separate breach-levels-reissuance endpoint — NOT NEEDED**
+  (drops prior entry). `api/src/lib/breachReset.ts` already
+  performs the cycle bump + progress wipe + new-level
+  re-issuance in one place. The "separate endpoint" TODO was
+  stale from an earlier cut.
+
+- **NOTE (future api cleanup, not a bug):** the `seedSkills.ts`
+  header docstring (lines ~4-24, 447, 610, 666) still
+  describes the non-PHANTOM classes as "auto-tier
+  heuristic"-based. That comment is now stale — see "Skill
+  tree" cleanup below; the actual skill data uses explicit
+  per-skill `prereqs:` for all 6 classes. The docstring will
+  be corrected in a future api cleanup pass.
 
 ### 2026-07-08 session — v1.0.38 morning popup + notification expansion
 

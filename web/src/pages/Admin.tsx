@@ -471,7 +471,7 @@ export function AdminPage() {
         {/* -------- LLM config -------- */}
         <Panel
           title="LLM Configuration"
-          subtitle="Provider + key. Powers the AI Coach (per /coach chat) and any other LLM-backed surface."
+          subtitle="Provider + key. Powers the AI Coach chat (/coach), the daily morning report, food Ask-AI, spiritual director, AI activity insight, and the per-metric deep-dive on /insights/metrics."
           className="sm:col-span-2 lg:col-span-2"
         >
           {llmQ.isLoading || !llmForm ? (

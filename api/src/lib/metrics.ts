@@ -518,6 +518,33 @@ STEPS: {
     format: (v) => `${v.toFixed(1)} brpm`,
     description: 'Breaths per minute, averaged from Gadgetbridge MONITOR files.',
   },
+  // Local fractional hour the user fell asleep the previous
+  // night. 22.5 = 10:30 PM. Stored as a `Measurement` row
+  // alongside SLEEP_HOURS / SLEEP_QUALITY so sleepCorrelation can
+  // join substance + supplement timing against a real onset
+  // instead of guessing. Unit is the "hours since local midnight"
+  // slot used by api/src/lib/sleepCorrelation.ts (which reads it
+  // as `r.value` and combines with loggedAt for the per-log
+  // hoursBeforeOnset calculation).
+  SLEEP_ONSET: {
+    type: 'SLEEP_ONSET',
+    category: 'SLEEP',
+    label: 'Sleep Onset',
+    shortLabel: 'Onset',
+    unit: 'h',
+    inverted: false,
+    defaultMin: 21,
+    format: (v) => {
+      // Render fractional hours as a 12-hour clock time so the
+      // dashboard doesn't expose raw "22.5" to users.
+      const hh = Math.floor(v) % 24;
+      const mm = Math.round((v - Math.floor(v)) * 60);
+      const hour12 = ((hh + 11) % 12) + 1;
+      const ampm = hh < 12 ? 'AM' : 'PM';
+      return `${hour12}:${mm.toString().padStart(2, '0')} ${ampm}`;
+    },
+    description: 'Fractional hour (24h clock) of sleep onset. 22.5 = 10:30 PM.',
+  },
 };
 
 export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
@@ -526,7 +553,7 @@ export const METRICS_BY_CATEGORY: Record<MetricCategory, MetricType[]> = {
   BODY_COMP: ['BODY_FAT_PCT', 'LEAN_MASS', 'FFMI', 'WEIGHT', 'WAIST'],
   CARDIO: ['VO2_MAX', 'RESTING_HR', 'HRV', 'FIVE_K_TIME', 'ONE_MILE_TIME'],
   CALISTHENICS: ['PLANK_HOLD', 'L_SIT_HOLD', 'DEAD_HANG', 'PUSHUP_MAX', 'PULLUP_MAX'],
-  SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY'],
+  SLEEP: ['SLEEP_HOURS', 'SLEEP_QUALITY', 'SLEEP_ONSET'],
   NUTRITION: ['CALORIES', 'PROTEIN_G', 'WATER_ML'],
   WELLNESS: ['MOOD', 'ENERGY', 'SORENESS', 'STRESS', 'BODY_BATTERY', 'STEPS', 'RESPIRATION_RATE'],
 };

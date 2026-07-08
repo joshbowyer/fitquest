@@ -2,16 +2,17 @@
  * Breach world reset + Maw variant rotation.
  *
  * When the user kills The Maw (the world boss), the Breach world
- * regenerates: 5 new level IDs (with a cycle suffix so old
- * `UserWorldProgress` rows are preserved as history), a new
- * Maw variant name, and the same world boss with full HP.
+ * regenerates: the existing `WorldBoss` row is updated to a new
+ * cycle, a fresh Maw variant is picked, and the same world boss
+ * is restored to full HP. `UserWorldProgress` rows for the old
+ * cycle are NOT preserved as history — they're deleted in bulk
+ * by `resetBreachIfDefeated` (see below) so the UI doesn't show
+ * stale "completed" ticks from prior cycles.
  *
- * Cycle counter on `WorldBoss` and `UserWorldProgress` lets the
- * UI surface "you're on cycle 3 of the Maw" without confusing it
- * with the previous kills.
- *
- * Other worlds (spire, glade, etc.) never trigger a reset — they
- * use the default cycle=1 forever.
+ * Cycle counter on `WorldBoss` lets the UI surface "you're on
+ * cycle 3 of the Maw" without confusing it with the previous
+ * kills. Static worlds (spire, glade, etc.) never trigger a
+ * reset — they use the default cycle=1 forever.
  */
 
 import { prisma } from './prisma.js';

@@ -31,6 +31,7 @@ import {
   type Achievement,
   type Raid,
   type Skill,
+  type MetricType,
 } from '@/lib/types';
 import { formatRelative, formatSeconds } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
@@ -38,6 +39,7 @@ import { WORLD_COLOR_HEX as CLASS_COLOR_HEX } from '@/lib/quest';
 import { idealBandsFor, monotonicBandsFor, SHO_WAIST_RATIO } from '@/lib/metricBands';
 import { BetterGauge } from '@/components/BetterGauge';
 import { MetricTrendChart } from '@/components/MetricTrendChart';
+import { previewMax } from '@/lib/geneticMax';
 import { Link } from 'react-router-dom';
 
 // Metrics that use the IdealGauge (top-center = elite, fan-out bands).
@@ -347,6 +349,35 @@ export function DashboardPage() {
   }
   const maxByMetric = new Map<string, GeneticMax>();
   for (const g of geneticQ.data?.items || []) maxByMetric.set(g.metric, g);
+
+  // Reset a manual override back to the formula value. Same pattern
+  // as the Profile page (PUT /genetic-max with source='FORMULA' and
+  // the locally-computed previewMax() result), kept inline rather
+  // than factored into a shared hook because the call site here and
+  // on Profile both invalidate ['genetic-max'] — coalescing into
+  // one helper would save a few lines but obscure the per-page
+  // mutation wiring. Inlined once keeps the dashboard self-contained.
+  const resetMaxM = useMutation<{ ok: boolean }, Error, MetricType>({
+    mutationFn: async (metric: MetricType) => {
+      const formulaValue = previewMax(
+        metric,
+        user?.wristCm ?? null,
+        user?.ankleCm ?? null,
+        user?.heightCm ?? null,
+        user?.weightKg ?? null,
+      );
+      if (formulaValue == null) {
+        throw new Error('Formula requires height + wrist + ankle (and weight for strength).');
+      }
+      return api('/genetic-max', {
+        method: 'PUT',
+        body: { items: [{ metric, value: formulaValue, source: 'FORMULA' }] },
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['genetic-max'] });
+    },
+  });
 
   // Calisthenics skill-tree progress for the dashboard radial.
   // Reports against the PHANTOM tree (the calisthenics class) —
@@ -775,37 +806,91 @@ export function DashboardPage() {
                   );
                 }
                 return (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setDetailMetric(m)}
-                    className="cursor-pointer hover:brightness-125 transition-all"
-                    title="Click for details"
-                  >
-                    <Gauge
-                      metric={m}
-                      subtitle={
-                        m === 'POWERLIFT_TOTAL' ? 'Squat + Bench + Deadlift' :
-                        m === 'BENCH_1RM' ? 'Bench press 1-rep max' :
-                        m === 'SQUAT_1RM' ? 'Back squat 1-rep max' :
-                        m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
-                        m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
-                        m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
-                        undefined
-                      }
-                      value={value}
-                      min={min}
-                      // Fallback max grows with the user's actual logged
-                      // performance: at minimum defaultMin × 1.5, but
-                      // bumped to value × 1.5 when the user has logged
-                      // anything higher. Stops L-Sit (defaultMin=5,
-                      // defaultMax=7.5) from clamping every realistic
-                      // value into the "X% OVER" zone.
-                      max={max?.value ?? Math.max(value != null ? value * 1.5 : 0, meta.defaultMin * 1.5)}
-                      color={cfg.color}
-                      size={170}
-                    />
-                  </button>
+                  <div key={m} className="flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => setDetailMetric(m)}
+                      className="cursor-pointer hover:brightness-125 transition-all"
+                      title="Click for details"
+                    >
+                      <Gauge
+                        metric={m}
+                        subtitle={
+                          m === 'POWERLIFT_TOTAL' ? 'Squat + Bench + Deadlift' :
+                          m === 'BENCH_1RM' ? 'Bench press 1-rep max' :
+                          m === 'SQUAT_1RM' ? 'Back squat 1-rep max' :
+                          m === 'DEADLIFT_1RM' ? 'Conventional deadlift 1RM' :
+                          m === 'OHP_1RM' ? 'Standing overhead press 1RM' :
+                          m === 'PULLUP_1RM' ? 'Heaviest weighted pull-up' :
+                          undefined
+                        }
+                        value={value}
+                        min={min}
+                        // Fallback max grows with the user's actual logged
+                        // performance: at minimum defaultMin × 1.5, but
+                        // bumped to value × 1.5 when the user has logged
+                        // anything higher. Stops L-Sit (defaultMin=5,
+                        // defaultMax=7.5) from clamping every realistic
+                        // value into the "X% OVER" zone.
+                        max={max?.value ?? Math.max(value != null ? value * 1.5 : 0, meta.defaultMin * 1.5)}
+                        color={cfg.color}
+                        size={170}
+                      />
+                    </button>
+                    {/* Genetic-max override annotation. Only shown when
+                        there's a stored row AND it diverges from the
+                        formula. The override is what the gauge scales
+                        against, so labelling it with the formula value
+                        tells the user "your ceiling is X, the natural
+                        ceiling would be Y" — important for "why is my
+                        gauge so generous / harsh?". Reset button writes
+                        source='FORMULA' with the computed formula
+                        value, so the stored row flips back to the
+                        formula without losing the gauge's max
+                        reference. */}
+                    {(() => {
+                      if (!max) return null;
+                      const formulaValue = previewMax(
+                        m,
+                        user?.wristCm ?? null,
+                        user?.ankleCm ?? null,
+                        user?.heightCm ?? null,
+                        user?.weightKg ?? null,
+                      );
+                      if (formulaValue == null) return null;
+                      const diverges =
+                        max.source === 'MANUAL' &&
+                        Math.abs(max.value - formulaValue) > 0.05;
+                      if (!diverges) return null;
+                      const conv = convertForDisplay(formulaValue, meta.unit, system);
+                      return (
+                        <div className="mt-1 text-center">
+                          <div className="text-[9px] font-mono leading-tight">
+                            <span className="neon-text-amber">manual</span>
+                            <span className="text-ink-400"> · formula </span>
+                            <span className="text-ink-100">
+                              {conv.value.toFixed(1)}
+                              <span className="text-ink-400 ml-0.5">{conv.unit}</span>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resetMaxM.mutate(m);
+                            }}
+                            disabled={resetMaxM.isPending}
+                            className="mt-1 text-[9px] font-mono uppercase tracking-widest border border-neon-amber/40 text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50 px-1.5 py-0.5"
+                            title="Discard your manual override and use the formula value"
+                          >
+                            {resetMaxM.isPending && resetMaxM.variables === m
+                              ? '…'
+                              : 'Reset to formula'}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 );
               })}
             </div>

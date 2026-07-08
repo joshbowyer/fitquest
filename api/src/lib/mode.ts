@@ -32,11 +32,17 @@
  *    In Casual, the streak would just sit frozen at the last value
  *    (the existing "no penalty for missing a week" behaviour).
  *
- *  - **Substance over-use caps** (Hardcore only): >3 espressos / day
- *    flags a caffeine cap that reduces HRV credit the next morning.
- *    >5 alcoholic drinks / week reduces the weekly XP multiplier.
- *    These surfaces in the morning report's risk_flags as a label,
- *    not an actual stat change yet (see `applyHardcoreCaps`).
+ *  - **Substance over-use caps** (Hardcore only): any overage
+ *    (espresso / day, drinks / week, nicotine logs / week) drops a
+ *    heart the next morning via the `HeartLossEvent` machinery
+ *    driven by the morning-report sweep. Because `heartMultiplier`
+ *    is what scales XP / gold / raid damage, that heart drop is
+ *    the actual consequence — the morning report's risk_flags
+ *    link the overage to the heart drop and the resulting
+ *    multiplier reduction. Per-substance-per-stat multipliers
+ *    (a "caffeine HRV credit", an "alcohol weekly XP multiplier")
+ *    are NOT implemented; the original plan described them but
+ *    shipping them would require separate product decisions.
  *
  *  - **Casino limits** are already engine-enforced (raid attempts/day
  *    etc.) — Hardcore mode just exposes them more prominently in the

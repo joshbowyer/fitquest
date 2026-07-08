@@ -18,6 +18,25 @@ import {
   getDeployedCombatPet,
   PET_XP_PER_QUEST_LEVEL_CLEAR,
 } from '../lib/petStats.js';
+import { computeRecoveryHistory } from '../lib/recovery.js';
+
+// Coerce the Prisma `cardio` JSONB column (typed as `JsonValue`
+// when selected) into the narrow `{distanceKm?, durationSec?}`
+// shape `computeRequirementProgress` expects. The Prisma JSON
+// type is `string | number | boolean | null | JsonObject |
+// JsonArray` for any read field — we know at the call sites that
+// `cardio` is always either `null` or our own write shape. The
+// function defensively `typeof`-checks each numeric field before
+// using it, so a bad value just falls through to the duration
+// proxy rather than throwing.
+function cardioShape(cardio: unknown): { distanceKm?: number | null; durationSec?: number | null } | null {
+  if (cardio == null) return null;
+  if (typeof cardio !== 'object') return null;
+  const o = cardio as Record<string, unknown>;
+  const dk = typeof o.distanceKm === 'number' ? o.distanceKm : null;
+  const ds = typeof o.durationSec === 'number' ? o.durationSec : null;
+  return { distanceKm: dk, durationSec: ds };
+}
 
 export async function questRoutes(app: FastifyInstance) {
   // GET /worlds — list all worlds with the user's progress attached
@@ -26,7 +45,17 @@ export async function questRoutes(app: FastifyInstance) {
     const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const recentWorkouts = await prisma.workout.findMany({
       where: { userId: me.id, performedAt: { gte: sinceDate } },
-      include: { exercises: { include: { sets: true } } },
+      // `cardio` is the workout-level JSONB block (distanceKm /
+      // durationSec). The sprint / 5K / distance scans in
+      // computeRequirementProgress prefer it over the per-set
+      // duration proxy when present. Selecting it explicitly
+      // here keeps the field on the row the function consumes.
+      select: {
+        id: true,
+        performedAt: true,
+        cardio: true,
+        exercises: { select: { name: true, sets: true } },
+      },
       orderBy: { performedAt: 'desc' },
     });
     const sleepHistory = await loadSleepHistory(me.id);
@@ -44,7 +73,10 @@ export async function questRoutes(app: FastifyInstance) {
       w,
       cycleByWorld.get(w.id) ?? 1,
       me,
-      recentWorkouts,
+      // Narrow `cardio` (Prisma JSONB column → `JsonValue`) into
+      // the {distanceKm, durationSec} shape the progress computer
+      // expects. Keeps the rest of the file type-clean.
+      recentWorkouts.map((rw: any) => ({ ...rw, cardio: cardioShape(rw.cardio) })),
       sleepHistory,
       recoveryHistory,
       progress,
@@ -61,7 +93,17 @@ export async function questRoutes(app: FastifyInstance) {
     const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const recentWorkouts = await prisma.workout.findMany({
       where: { userId: me.id, performedAt: { gte: sinceDate } },
-      include: { exercises: { include: { sets: true } } },
+      // Mirror the /worlds findMany: select the workout-level
+      // `cardio` JSONB plus the lightweight exercise/set fields
+      // the quest computation actually reads. (A full
+      // `include` would also drag validity flags / trackJson /
+      // postNotes through the wire for no reason.)
+      select: {
+        id: true,
+        performedAt: true,
+        cardio: true,
+        exercises: { select: { name: true, sets: true } },
+      },
       orderBy: { performedAt: 'desc' },
     });
     const sleepHistory = await loadSleepHistory(me.id);
@@ -73,11 +115,18 @@ export async function questRoutes(app: FastifyInstance) {
       where: { userId_worldId: { userId: me.id, worldId: id } },
       select: { cycle: true },
     });
+    // Narrow the Prisma `cardio` JSONB column to the shape the
+    // progress computer expects. Done at the route boundary so
+    // the rest of the file deals in the narrow type.
+    const workoutsForQuest = recentWorkouts.map((w: any) => ({
+      ...w,
+      cardio: cardioShape(w.cardio),
+    }));
     return attachProgress(
       world,
       bossRow?.cycle ?? 1,
       me,
-      recentWorkouts,
+      workoutsForQuest,
       sleepHistory,
       recoveryHistory,
       progress,
@@ -91,9 +140,21 @@ export async function questRoutes(app: FastifyInstance) {
     const sinceDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const recentWorkouts = await prisma.workout.findMany({
       where: { userId: me.id, performedAt: { gte: sinceDate } },
-      include: { exercises: { include: { sets: true } } },
+      // Mirror /worlds + /worlds/:id: select `cardio` + the
+      // lightweight exercise/set fields. The full include drags
+      // validity flags / trackJson for no reason here.
+      select: {
+        id: true,
+        performedAt: true,
+        cardio: true,
+        exercises: { select: { name: true, sets: true } },
+      },
       orderBy: { performedAt: 'desc' },
     });
+    const workoutsForCheck = recentWorkouts.map((rw: any) => ({
+      ...rw,
+      cardio: cardioShape(rw.cardio),
+    }));
     const sleepHistory = await loadSleepHistory(me.id);
     const recoveryHistory = await loadRecoveryHistory(me.id);
 
@@ -119,7 +180,7 @@ export async function questRoutes(app: FastifyInstance) {
         const progress = computeRequirementProgress(
           lvl.requirement,
           me.weightKg,
-          recentWorkouts,
+          workoutsForCheck,
           sleepHistory,
           recoveryHistory,
         );
@@ -226,13 +287,15 @@ async function loadSleepHistory(userId: string) {
   }));
 }
 
-// Helper: load recovery score history. Compute the same way as
-// api/src/lib/recovery.ts but for past dates.
+// Helper: load recovery score history. Delegates to the batched
+// single-query implementation in `recovery.ts`. Previously this
+// returned `[]` so the RECOVERY_STREAK scan in
+// `computeRequirementProgress` always saw an empty history —
+// making sanctum-3, sanctum-5, and crossroads-4 (and their
+// bosses) mathematically uncleareable. Now scores are computed
+// from real measurements for each of the last 90 days.
 async function loadRecoveryHistory(userId: string) {
-  // For now just return empty — recovery score computation requires
-  // multiple metrics; we can expand this later when the user has
-  // enough history.
-  return [];
+  return computeRecoveryHistory(userId, 90, null);
 }
 
 // Helper: attach user progress to a world. `cycle` is the current
@@ -244,10 +307,14 @@ function attachProgress(
   cycle: number,
   user: { id: string; level: number; weightKg: number | null; bodyweightKg?: number | null },
   recentWorkouts: Array<{
+    /** Workout timestamp; needed for TOTAL_VOLUME cutoff. */
+    performedAt?: Date | string | null;
     exercises: Array<{
       name: string;
       sets: Array<{ weight: number | null; reps: number; duration: number | null }>;
     }>;
+    /** Optional workout-level cardio block (JSONB on Workout). */
+    cardio?: { distanceKm?: number | null; durationSec?: number | null } | null;
   }>,
   sleepHistory: Array<{ date: string; hours: number }>,
   recoveryHistory: Array<{ date: string; score: number }>,

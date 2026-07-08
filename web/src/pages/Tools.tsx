@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { PlateCalculator } from '@/components/PlateCalculator';
+import { RestTimer, REST_PRESETS } from '@/components/RestTimer';
 import { useAuth } from '@/lib/auth';
 import { classNames } from '@/lib/format';
 import { calcPlates, formatPlates } from '@/lib/plateCalc';
@@ -19,8 +20,10 @@ type HistoryEntry = {
 
 /**
  * Tools page. Hosts stand-alone utilities that don't have a natural
- * home elsewhere. Currently just the plate calculator; future tools
- * (rest timer, BPM calculator, etc.) will join here.
+ * home elsewhere. Today: plate calculator, 1RM quick-pick, recent
+ * calculations, and a rest timer (the same component the live
+ * workout logger embeds, with the shared REST_PRESETS driving it).
+ * Future tools (BPM calculator, etc.) will join here.
  *
  * The plate calculator supports an in-place unit override so the user
  * can compute lb breakdowns even when their default is kg — useful
@@ -109,7 +112,7 @@ export function ToolsPage() {
       <div className="px-4 py-4 md:px-8 md:py-6 max-w-3xl mx-auto pb-24 md:pb-6">
         <PageHeader
           title="Tools"
-          subtitle="Stand-alone utilities. Plate calculator for now; rest timer + more to come."
+          subtitle="Stand-alone utilities. Plate calculator, 1RM quick-pick, and a stand-alone rest timer."
         />
 
       <Panel
@@ -291,6 +294,39 @@ export function ToolsPage() {
             Enter a baseline to see percentage presets.
           </div>
         )}
+      </Panel>
+
+      {/* Rest timer. Reuses the same self-contained `RestTimer`
+          component that the live workout logger embeds — it has no
+          workout-context coupling (just optional onTick/onComplete
+          callbacks and a `set-rest` window event for preset
+          selection), so we can drop it in here unchanged. The
+          preset buttons drive it via window.dispatchEvent so the
+          visual style matches the workout logger exactly. */}
+      <Panel
+        variant="lime"
+        title="Rest timer"
+        className="border-neon-lime/30 mt-4"
+      >
+        <div className="text-xs text-ink-300 font-mono mb-3">
+          Tap a preset to load it, then hit play. The timer keeps
+          running if you navigate away and uses the same audio cue +
+          haptic feedback as the workout logger when it ends.
+        </div>
+        <RestTimer />
+        <div className="flex flex-wrap gap-1 mt-2">
+          {REST_PRESETS.map((p) => (
+            <button
+              key={p.seconds}
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('set-rest', { detail: p.seconds }))}
+              className="px-2 h-8 text-[10px] font-mono border border-ink-500/40 text-ink-300 hover:border-ink-300"
+              title={`Set timer to ${p.label}`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
       </Panel>
 
       {/* Recent calculations. Useful when you've just been clicking

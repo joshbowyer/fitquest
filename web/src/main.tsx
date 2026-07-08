@@ -8,12 +8,18 @@ import { RewardOverlay } from './components/RewardOverlay';
 import { FirstRunApiUrl } from './components/FirstRunApiUrl';
 import './index.css';
 import { scheduleMorningReminder } from './lib/morningReminder';
+import { applyStoredTheme } from './lib/themeBus';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { refetchOnWindowFocus: false, retry: 1, staleTime: 30_000 },
   },
 });
+
+// Apply the stored theme (or OS preference on first load) to <html>
+// BEFORE React mounts so the first paint matches the user's
+// preference and there's no dark→light flash on toggle. Idempotent.
+applyStoredTheme();
 
 // Schedule the daily 8 AM local-time notification on app launch.
 // No-op in browser dev (the plugin's web implementation is a

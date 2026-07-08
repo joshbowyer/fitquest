@@ -51,7 +51,12 @@ export const DAILY_DAMAGE_CAP_RATIO = 1.5;
 //   COMPROMISED  1.25× slight bump
 //   BREACHED     2.0×  the leak is already in; the breach escalates
 // Heals aren't scaled (the mismatched-heal math doesn't amplify).
-const SHIELD_TIER_DMG_MULT: Record<string, number> = {
+// EXPORTED so the manual world-boss damage endpoint
+// (routes/bosses.ts:POST /:worldId/damage) can apply the same
+// per-tier scaling the workout-driven Breach path uses — without
+// it, the manual tap ignores the user's home-base shield tier
+// and the two endpoints disagree on effective damage.
+export const SHIELD_TIER_DMG_MULT: Record<string, number> = {
   FORTIFIED: 0.5,
   STABLE: 1.0,
   COMPROMISED: 1.25,

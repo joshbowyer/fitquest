@@ -30,7 +30,7 @@
 import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
-import { tickHearts, hardcoreSubstanceCapReason, heartMultiplier, HARDCORE_SUBSTANCE_CAPS, MAX_HEARTS } from './mode.js';
+import { tickHearts, heartMultiplier, HARDCORE_SUBSTANCE_CAPS, MAX_HEARTS } from './mode.js';
 import { setVolumeKg } from './exerciseVolume.js';
 import { firePenance } from './penance.js';
 import { detectPlateaus, type Plateau } from './plateau.js';
@@ -705,12 +705,23 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
   }
 
   const { caffeineLast24h, alcoholLast7d, nicotineLast7d } = payload.substanceCounts;
+  // Substance-cap penalty notes. The literal "HRV credit reduced" /
+  // "Weekly XP multiplier reduced" copy used to ship here, but
+  // those systems are NOT implemented yet — the morning report
+  // would lie to the user if we kept the strings. What actually
+  // happens on a cap overage (see api/src/lib/mode.ts:
+  // `tickHardcoreHeartPenalties` in morningReport's sweep)
+  // is that the next morning a `HeartLossEvent` row is written
+  // and `User.hearts` is decremented; `heartMultiplier(hearts)`
+  // then reduces all XP / gold / raid damage going forward.
+  // The note below describes THAT consequence — not the
+  // fictional per-stat penalties the old wording implied.
   if (caffeineLast24h > HARDCORE_SUBSTANCE_CAPS.caffeinePerDay) {
     const overshoot = caffeineLast24h - HARDCORE_SUBSTANCE_CAPS.caffeinePerDay;
     out.push({
       label: 'Caffeine',
       severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.caffeinePerDay ? 'scold' : 'warn',
-      note: `${caffeineLast24h} espressos in the last 24h (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}). HRV credit reduced.`,
+      note: `${caffeineLast24h} espressos in the last 24h (cap ${HARDCORE_SUBSTANCE_CAPS.caffeinePerDay}). A heart will drop tomorrow morning and reduce your XP/gold multipliers until you recover it.`,
     });
   }
   if (alcoholLast7d > HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek) {
@@ -718,7 +729,7 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     out.push({
       label: 'Alcohol',
       severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek ? 'scold' : 'warn',
-      note: `${alcoholLast7d} drinks in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}). Weekly XP multiplier reduced.`,
+      note: `${alcoholLast7d} drinks in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek}). A heart will drop tomorrow morning and reduce your XP/gold multipliers until you recover it.`,
     });
   }
   if (nicotineLast7d > HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek) {
@@ -726,7 +737,7 @@ export function buildPenalties(payload: ReportPayload): Penalty[] {
     out.push({
       label: 'Nicotine',
       severity: overshoot >= HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek ? 'scold' : 'warn',
-      note: `${nicotineLast7d} nicotine logs in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}). Nicotine carries the highest hard-cap penalty.`,
+      note: `${nicotineLast7d} nicotine logs in the last 7 days (cap ${HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek}). A heart will drop tomorrow morning and reduce your XP/gold multipliers until you recover it.`,
     });
   }
 

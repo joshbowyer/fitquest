@@ -13,6 +13,7 @@ import {
   RECENT_BOSS_MEMORY,
   BREACH_UNLOCK_LEVEL,
   XP_PER_MATCHED_DAMAGE_UNIT,
+  SHIELD_TIER_DMG_MULT,
 } from '../lib/breach';
 
 describe('bossHpForDifficulty', () => {
@@ -144,5 +145,135 @@ describe('breach constants', () => {
   it('XP per damage unit is reasonable', () => {
     expect(XP_PER_MATCHED_DAMAGE_UNIT).toBeGreaterThan(0);
     expect(XP_PER_MATCHED_DAMAGE_UNIT).toBeLessThan(1);
+  });
+});
+
+describe('SHIELD_TIER_DMG_MULT — world-boss damage scaling (item 6)', () => {
+  // Item 6: lift the home-base shield-tier damage multiplier out
+  // of breach.ts so the manual world-boss endpoint can apply the
+  // same scaling the workout-driven path uses. Without it the
+  // manual endpoint and the workout path disagreed on effective
+  // damage for any non-STABLE tier — a BREACHED user tapping
+  // a boss got the workout path's 2× but the manual endpoint's
+  // 1×. The multipliers below are the contract.
+
+  it('is exported (so routes/bosses.ts can import it without re-deriving)', () => {
+    expect(typeof SHIELD_TIER_DMG_MULT).toBe('object');
+    expect(SHIELD_TIER_DMG_MULT).not.toBeNull();
+  });
+
+  it('FORTIFIED halves damage', () => {
+    expect(SHIELD_TIER_DMG_MULT.FORTIFIED).toBe(0.5);
+  });
+
+  it('STABLE is the 1.0× baseline', () => {
+    expect(SHIELD_TIER_DMG_MULT.STABLE).toBe(1.0);
+  });
+
+  it('BREACHED doubles damage', () => {
+    expect(SHIELD_TIER_DMG_MULT.BREACHED).toBe(2.0);
+  });
+
+  it('COMPROMISED bumps slightly (1.25×)', () => {
+    expect(SHIELD_TIER_DMG_MULT.COMPROMISED).toBe(1.25);
+  });
+
+  it('the full {FORTIFIED, STABLE, COMPROMISED, BREACHED} set is defined', () => {
+    // Lock the complete set so a future tier rename can't
+    // silently lose a multiplier — the manual endpoint falls
+    // back to 1.0 when the lookup misses, so a missing tier
+    // would silently flatten damage.
+    const keys = Object.keys(SHIELD_TIER_DMG_MULT).sort();
+    expect(keys).toEqual(['BREACHED', 'COMPROMISED', 'FORTIFIED', 'STABLE']);
+  });
+});
+
+describe('manual world-boss damage — shield-tier scaling applied before the 25% per-request cap', () => {
+  // Item 6 regression: a BREACHED user with a 2× multiplier
+  // tapping a boss for a number that would normally sit below
+  // the 25% cap must see exactly 2× the post-class-mult damage,
+  // THEN clamp to the 25% ceiling. FORTIFIED (0.5×) cuts in
+  // half but NEVER produces a negative hit. A non-shield user
+  // (no HomeBase row) defaults to STABLE 1.0× — same as the
+  // pre-fix behaviour for the common case.
+  //
+  // The endpoint drives these via `routes/bosses.ts`. We exercise
+  // the math directly (the same multiplication + cap sequence
+  // the route uses) to keep the test free of fastify wiring +
+  // prisma transactions.
+
+  function applyShieldAndCap(opts: {
+    bodyDamage: number;
+    classMult: number;
+    shieldMult: number;
+    bossMaxHp: number;
+  }): { scaledDamage: number; cappedDamage: number } {
+    const scaledDamage = Math.floor(opts.bodyDamage * opts.classMult * opts.shieldMult);
+    const maxPerRequest = Math.max(1, Math.floor(opts.bossMaxHp * 0.25));
+    return { scaledDamage, cappedDamage: Math.min(scaledDamage, maxPerRequest) };
+  }
+
+  it('FORTIFIED (0.5×) halves damage; 25% cap still applies', () => {
+    // 200 dmg × 1.0 class × 0.5 shield = 100 scaled
+    // 1000 maxHp × 0.25 = 250 cap → cap not triggered → 100
+    const shieldMult = SHIELD_TIER_DMG_MULT.FORTIFIED ?? 1.0;
+    const r = applyShieldAndCap({
+      bodyDamage: 200, classMult: 1.0, shieldMult, bossMaxHp: 1000,
+    });
+    expect(r.scaledDamage).toBe(100);
+    expect(r.cappedDamage).toBe(100);
+  });
+
+  it('BREACHED (2.0×) doubles damage, but the 25% per-request cap still applies AFTER the multiplier', () => {
+    // 5000 dmg × 1.0 class × 2.0 shield = 10000 scaled
+    // 1000 maxHp × 0.25 = 250 cap → applied post-mult → 250
+    // (This is the precise regression the audit was worried
+    //  about — a BREACHED user could otherwise dump >10000 dmg
+    //  on one tap if the order were wrong.)
+    const shieldMult = SHIELD_TIER_DMG_MULT.BREACHED ?? 1.0;
+    const r = applyShieldAndCap({
+      bodyDamage: 5000, classMult: 1.0, shieldMult, bossMaxHp: 1000,
+    });
+    expect(r.scaledDamage).toBe(10000);
+    expect(r.cappedDamage).toBe(250);
+  });
+
+  it('STABLE (no HomeBase row → 1.0×) acts as the baseline and matches pre-fix behaviour', () => {
+    const r = applyShieldAndCap({
+      bodyDamage: 200, classMult: 1.2, shieldMult: 1.0, bossMaxHp: 1000,
+    });
+    // 200 × 1.2 = 240; cap is 250; 240 < 250 → 240 not capped
+    expect(r.scaledDamage).toBe(240);
+    expect(r.cappedDamage).toBe(240);
+  });
+
+  it('shield-mult combines multiplicatively with class-mult (BREACHED × Juggernaut)', () => {
+    // Juggernaut × 1.2 + BREACHED × 2.0 = × 2.4
+    const r = applyShieldAndCap({
+      bodyDamage: 100, classMult: 1.2, shieldMult: 2.0, bossMaxHp: 10000,
+    });
+    expect(r.scaledDamage).toBe(240);
+    // 10000 × 0.25 = 2500 cap → not triggered
+    expect(r.cappedDamage).toBe(240);
+  });
+
+  it('shield-mult ROUNDS DOWN with Math.floor (consistent with int damage column)', () => {
+    // 100 × 1.25 = 125 (clean); 101 × 1.25 = 126.25 → 126 after floor
+    const a = applyShieldAndCap({
+      bodyDamage: 100, classMult: 1.0, shieldMult: 1.25, bossMaxHp: 10000,
+    });
+    const b = applyShieldAndCap({
+      bodyDamage: 101, classMult: 1.0, shieldMult: 1.25, bossMaxHp: 10000,
+    });
+    expect(a.scaledDamage).toBe(125);
+    expect(b.scaledDamage).toBe(126);
+  });
+
+  it('floor of 1 HP for tiny boss (cap formula `max(1, floor(maxHp * 0.25))`) so bosses never go uncapped to 0', () => {
+    // bossMaxHp = 4 → floor(4 * 0.25) = 1; max(1, 1) = 1 → no over-capping
+    const r = applyShieldAndCap({
+      bodyDamage: 5, classMult: 1.0, shieldMult: 1.0, bossMaxHp: 4,
+    });
+    expect(r.cappedDamage).toBe(1);
   });
 });

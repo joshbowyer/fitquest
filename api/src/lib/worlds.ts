@@ -442,9 +442,12 @@ export const WORLDS: World[] = [
   // the user clears it again. Cycle: defeat The Maw → reset world →
   // new Maw variant → fresh level IDs.
   //
-  // For now the reset is metadata-only — the actual re-issuance of
-  // new levels happens via a separate /breach-world/reset endpoint
-  // (out of scope for the initial cut).
+  // The reset itself (deleting old breach- cycle progress rows,
+  // picking a new Maw variant, restoring the WorldBoss row to
+  // full HP) lives in api/src/lib/breachReset.ts and is wired
+  // up to the damage endpoint in api/src/routes/bosses.ts. No
+  // separate /breach-world/reset endpoint is needed — reset
+  // happens automatically when the user kills the Maw.
   {
     id: 'breach',
     name: 'The Breach',
@@ -536,6 +539,14 @@ export function getLevel(id: string): { world: World; level: WorldLevel } | unde
 //   - workoutHistory: array of recent workouts with exercises+sets
 //   - sleepHistory: array of {date, hours} entries
 //   - recoveryHistory: array of {date, score} entries
+//
+// Shape note: each `recentWorkouts` entry carries an optional
+// workout-level `cardio` block (the JSONB column
+// `Workout.cardio` — see schema.prisma:608-620). When present,
+// it overrides the per-set duration proxy for distance-and-time
+// tests, since real `Workout.cardio.distanceKm` + `.durationSec`
+// are the authoritative values from the cardio entry the user
+// logged or the FIT parser populated.
 export function computeRequirementProgress(
   req: LevelRequirement,
   bodyweightKg: number | null | undefined,
@@ -544,6 +555,10 @@ export function computeRequirementProgress(
       name: string;
       sets: Array<{ weight: number | null; reps: number; duration: number | null }>;
     }>;
+    /** Optional workout-level cardio block (JSONB column on
+     *  Workout). When present, distance/duration tests prefer
+     *  these values over the per-set duration proxy. */
+    cardio?: { distanceKm?: number | null; durationSec?: number | null } | null;
   }>,
   sleepHistory: Array<{ date: string; hours: number }>,
   recoveryHistory: Array<{ date: string; score: number }>,
@@ -594,10 +609,32 @@ export function computeRequirementProgress(
       };
     }
     case 'CARDIO_5K': {
-      // Find best 5K time (in seconds). Sum consecutive cardio sets
-      // until reaching 5000m, use total time as the result.
+      // Find best 5K time (in seconds). Two paths:
+      //   1) Workout carries a real `cardio` block with
+      //      `distanceKm >= 5` AND `durationSec` — use that 5K
+      //      time directly. (This is the authoritative path for
+      //      cardio-only workouts logged with the route's
+      //      `cardio` field, or via the FIT importer.)
+      //   2) Fallback — scan per-set cardio durations and treat
+      //      any set with `duration` between 20 min and
+      //      `req.maxSeconds * 1.5` as a 5K effort. The legacy
+      //      proxy; semantically "any cardio set between 20 and
+      //      1.5× the pace cap is treated as a 5K attempt".
       let bestSeconds: number | null = null;
       for (const w of recentWorkouts) {
+        // Path 1: real cardio block. Only count it as a 5K when
+        // distance is ≥ 5km AND a duration is present. Anything
+        // shorter is below the 5K threshold and shouldn't compete
+        // with full-distance attempts.
+        if (w.cardio && typeof w.cardio.distanceKm === 'number' && typeof w.cardio.durationSec === 'number') {
+          const distMeters = w.cardio.distanceKm * 1000;
+          const secs = w.cardio.durationSec;
+          if (distMeters >= 5000 && secs > 0) {
+            if (bestSeconds === null || secs < bestSeconds) bestSeconds = secs;
+          }
+        }
+        // Path 2: per-set proxy (older workouts without the cardio
+        // block).
         for (const ex of w.exercises) {
           // Cardio exercises have a duration and weight=0. We need
           // distance too, but for now use duration as a proxy:
@@ -628,9 +665,21 @@ export function computeRequirementProgress(
       };
     }
     case 'CARDIO_DISTANCE': {
-      // Sum cardio durations, treat each second as ~3.33m at easy pace
+      // Sum cardio distance. Two paths, mirrored with CARDIO_5K:
+      //   1) Workout cardio block — `distanceKm * 1000` is the
+      //      authoritative distance for this session.
+      //   2) Per-set duration × 3.33 proxy for older workouts.
+      // We track the max (not the sum) so a 10K session doesn't
+      // outpace a 5K session even though the SUM says otherwise —
+      // CARDIO_DISTANCE is "cover X meters in a single session".
       let maxDistance = 0;
       for (const w of recentWorkouts) {
+        // Path 1: real cardio block.
+        if (w.cardio && typeof w.cardio.distanceKm === 'number') {
+          const meters = w.cardio.distanceKm * 1000;
+          if (meters > maxDistance) maxDistance = meters;
+        }
+        // Path 2: per-set duration proxy.
         for (const ex of w.exercises) {
           if (!/run|jog|sprint|treadmill|5k|10k|marathon|bike|cycle|walk|hike|ruck|swim|stair|skip|jump|erg|rowing/i.test(ex.name)) continue;
           for (const s of ex.sets) {
@@ -651,30 +700,96 @@ export function computeRequirementProgress(
     }
     case 'SPRINT_DISTANCE': {
       // Sprint test: a single continuous effort covering at least
-      // `minMeters` in `maxSeconds` or less. Looks at single sets in
-      // cardio exercises, same name regex as CARDIO_DISTANCE. A set
-      // qualifies only if BOTH distance ≥ min AND time ≤ max.
-      let maxDistance = 0;
-      let qualifyingTime: number | null = null;
+      // `minMeters` in `maxSeconds` or less.
+      //
+      // Historical bug (2026-07 audit, fixed here): the old code
+      // synthesized a `distance = duration × 3.33` from each set's
+      // duration and required BOTH that synthetic distance ≥
+      // minMeters AND the raw duration ≤ maxSeconds. Those two
+      // constraints collapse into each other for any reasonable
+      // sprint effort — a single-breath sprint is, by definition,
+      // short enough that a 5:00/km pace would put the distance
+      // BELOW the per-level minimum, making gap-4 / nexus-4 /
+      // breach-4 (400m/90s, 400m/75s, 800m/180s) mathematically
+      // uncleareable: `distance >= 400m` requires `duration >=
+      // 120s`, but `duration <= 90s` forces `distance < 300m`.
+      // They can't both hold simultaneously.
+      //
+      // The fix mirrors CARDIO_5K / CARDIO_DISTANCE:
+      //   1) Real path: if the workout has `cardio.distanceKm`
+      //      and `cardio.durationSec`, use the real distance /
+      //      duration. A `cardio` block is the authoritative
+      //      single continuous effort — it qualifies if
+      //      `distanceKm * 1000 >= minMeters` AND `durationSec <=
+      //      maxSeconds`. No proxy, no contradiction.
+      //   2) Legacy fallback: per-set cardio with the sprint
+      //      regex, qualifying a set only on `duration <=
+      //      maxSeconds`. We deliberately DROP the synthetic
+      //      `distance = duration × 3.33` requirement — without
+      //      real distance data, we can't verify the meter
+      //      threshold and silently failing the requirement is
+      //      worse than letting the user pass on a clearly-short
+      //      anaerobic effort. (The CARDIO_DISTANCE / CARDIO_5K
+      //      levels still measure pace-gated effort, so this
+      //      only impacts the SPRINT_DISTANCE levels.)
+      //
+      // Progress: best evidence of distance we've seen (real or
+      // proxy) → reports partial progress without lying about a
+      // hard "you covered 400m" when we don't actually know.
+      let maxDistance = 0; // best real-or-proxy distance seen (meters)
+      let qualifying: boolean = false;
+      let bestEvidence: 'real' | 'proxy' | null = null;
+
       for (const w of recentWorkouts) {
+        // Path 1: real cardio block on the workout.
+        if (
+          w.cardio
+          && typeof w.cardio.distanceKm === 'number'
+          && typeof w.cardio.durationSec === 'number'
+        ) {
+          const meters = w.cardio.distanceKm * 1000;
+          if (meters > maxDistance) {
+            maxDistance = meters;
+            bestEvidence = 'real';
+          }
+          // A real cardio block is the authoritative single
+          // effort — qualify when BOTH constraints hold.
+          if (meters >= req.minMeters && w.cardio.durationSec <= req.maxSeconds) {
+            qualifying = true;
+          }
+        }
+
+        // Path 2: per-set duration proxy. Only used when no
+        // workout cardio block matches. We accept a set as
+        // qualifying on `duration <= maxSeconds` only — without
+        // a real distance, we can't confirm the meter floor. If
+        // the user already has a real cardio block above that
+        // also qualifies, that takes priority for the cleared
+        // flag.
         for (const ex of w.exercises) {
           if (!/run|jog|sprint|interval|treadmill|track|400m|100m|200m|800m|1500m|mile|bike|cycle|swim|erg|rowing/i.test(ex.name)) continue;
           for (const s of ex.sets) {
-            if (!s.duration) continue;
-            const distance = s.duration * 3.33; // ~5:00/km baseline; sprint
-                                                // efforts will exceed this
-                                                // ratio since they're faster
-            if (distance > maxDistance) maxDistance = distance;
-            if (distance >= req.minMeters && s.duration <= req.maxSeconds) {
-              qualifyingTime = s.duration;
+            if (!s.duration || s.duration <= 0) continue;
+            // Use duration as the "distance-equivalent" for the
+            // partial-progress bar. The 3.33 m/s factor stays as
+            // a soft estimate so the bar still moves when the
+            // user only has set-duration data.
+            const estMeters = s.duration * 3.33;
+            if (estMeters > maxDistance && bestEvidence !== 'real') {
+              // Don't downgrade a real reading with a proxy.
+              maxDistance = estMeters;
+              bestEvidence = 'proxy';
+            }
+            if (s.duration <= req.maxSeconds) {
+              qualifying = true;
             }
           }
         }
       }
-      const cleared = qualifyingTime !== null;
-      // Progress: best distance covered vs target. Once cleared, full bar.
+
+      const cleared = qualifying;
       const target = req.minMeters;
-      const pct = cleared ? 1 : Math.min(1, maxDistance / target);
+      const pct = cleared ? 1 : maxDistance > 0 ? Math.min(1, maxDistance / target) : 0;
       return {
         current: maxDistance > 0 ? Math.round(maxDistance) : null,
         target,
@@ -796,10 +911,31 @@ export function computeRequirementProgress(
       };
     }
     case 'TOTAL_VOLUME': {
-      // Sum weight × reps for all sets in the last N days
+      // Sum weight × reps for all sets in the last N days.
+      //
+      // Historical bug (2026-07 audit, fixed here): the cutoff
+      // was computed but never read. Every workout in the user's
+      // history contributed, so a workout 30 days ago still
+      // counted toward a 14-day window. The fix compares each
+      // workout's `performedAt` against the cutoff and excludes
+      // anything older.
+      //
+      // `performedAt` is part of the workout shape (see the
+      // `recentWorkouts` parameter doc on
+      // `computeRequirementProgress`) — `routes/quest.ts`
+      // already includes it in the three `prisma.workout.findMany`
+      // calls that feed this function.
       const cutoff = Date.now() - req.windowDays * 24 * 60 * 60 * 1000;
       let total = 0;
       for (const w of recentWorkouts) {
+        // Each workout entry exposes `performedAt` as either a
+        // Date (from Prisma) or a string-ish value the route
+        // shapes. Normalize to a millisecond epoch for the
+        // comparison so the type doesn't matter at the call site.
+        const ts = (w as any).performedAt
+          ? new Date((w as any).performedAt as Date | string).getTime()
+          : Number.POSITIVE_INFINITY;
+        if (ts < cutoff) continue;
         for (const ex of w.exercises) {
           for (const s of ex.sets) {
             if (s.weight && s.reps) total += s.weight * s.reps;

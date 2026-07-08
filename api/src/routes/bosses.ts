@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { WORLDS, getWorld, classForWorld } from '../lib/worlds.js';
 import { rollLootRarity, pickItemOfRarity } from '../lib/portalLeaks.js';
+import { SHIELD_TIER_DMG_MULT } from '../lib/breach.js';
 
 const damageSchema = z.object({
   damage: z.number().int().min(1).max(10000),
@@ -153,20 +154,28 @@ export async function bossRoutes(app: FastifyInstance) {
 
       // Apply class multiplier
       const classMult = me.class ? (CLASS_BOSS_MULT[me.class] ?? 1.0) : 1.0;
-      const actualDamage = Math.floor(body.damage * classMult);
+      // Apply home-base shield-tier multiplier. Default to STABLE
+      // (×1.0) when no HomeBase row exists yet — the user's
+      // shield state hasn't been initialised. Source:
+      // api/src/lib/breach.ts (same multipliers the workout-
+      // driven path uses, just lifted out so both endpoints
+      // agree). Applied BEFORE the 25%-per-request cap so the
+      // cap applies to the final, already-shield-adjusted
+      // damage — a BREACHED (2×) hit still gets capped by 25%
+      // of maxHp, just like any other hit.
+      const homeBase = await prisma.homeBase.findUnique({ where: { userId: me.id } });
+      const shieldTier = (homeBase?.tier ?? 'STABLE') as keyof typeof SHIELD_TIER_DMG_MULT;
+      const shieldMult = SHIELD_TIER_DMG_MULT[shieldTier] ?? 1.0;
+      const scaledDamage = Math.floor(body.damage * classMult * shieldMult);
       // Cap a single request at 25% of boss maxHp. The schema
       // already rejects damage > 10000, but a 1.3× Juggernaut
-      // mult would still let a malicious client one-shot a boss
-      // by sending the cap (10000 × 1.3 = 13000 vs typical
-      // boss.maxHp of 500-2500). The workout-driven damage path
-      // (applyWorldBossDamage in the workout commit hook) is the
-      // authoritative path for "real" damage from a real workout;
-      // this endpoint is the manual tap that lets the user chip
-      // away between workouts. A 25% ceiling on taps means it
-      // takes at least 4 real attacks to kill any boss — fine for
-      // the current UX, immune to one-shot exploits.
+      // × 2× BREACHED mult would still let a malicious client
+      // one-shot a boss by sending the cap (10000 × 1.3 × 2 =
+      // 26000 vs typical boss.maxHp of 500-2500). The 25% cap
+      // on the final scaled value keeps the one-shot exploit
+      // closed regardless of the tier.
       const maxPerRequest = Math.max(1, Math.floor(boss.bossMaxHp * 0.25));
-      const cappedDamage = Math.min(actualDamage, maxPerRequest);
+      const cappedDamage = Math.min(scaledDamage, maxPerRequest);
       const newHp = Math.max(0, boss.bossHp - cappedDamage);
       const defeated = newHp <= 0;
 
@@ -303,7 +312,14 @@ export async function bossRoutes(app: FastifyInstance) {
 
       return {
         boss: updated,
-actualDamage: cappedDamage,
+        // `actualDamage` is the final post-cap damage applied.
+        // `scaledDamage` (pre-cap) and the effective `shieldMult`
+        // are returned alongside so the client can show "you
+        // hit for X (×Y shield tier)" in the UI.
+        actualDamage: cappedDamage,
+        scaledDamage,
+        shieldMult,
+        shieldTier,
         rewards,
         breachReset: breachReset && breachReset.reset
           ? { cycle: breachReset.cycle, variant: breachReset.variant }

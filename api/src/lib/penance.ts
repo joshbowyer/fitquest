@@ -18,10 +18,11 @@ import type { ShieldTier } from './prisma.js';
  * each adjustment the value is clamped to [0, 100] and the tier
  * is re-derived.
  *
- * The Breach (level-10 unlock) will multiply boss damage by tier
- * — FORTIFIED halves incoming damage, BREACHED doubles it. That
- * integration is Phase 2; this commit ships the foundation +
- * triggers so the dashboard widget + home-base page can render.
+ * The Breach (level-10 unlock) multiplies boss damage by shield
+ * tier — FORTIFIED halves, BREACHED doubles. Implemented in
+ * `breach.ts:applyWorkoutDamage`, exported via
+ * `SHIELD_TIER_DMG_MULT`, and also applied to the manual world-
+ * boss tap endpoint (`routes/bosses.ts:POST /:worldId/damage`).
  */
 
 export type PenanceKey =

@@ -182,6 +182,57 @@ describe('buildPenalties', () => {
       expect(p.find((x) => x.label === 'Caffeine')).toBeUndefined();
       expect(p.find((x) => x.label === 'Alcohol')).toBeUndefined();
     });
+
+    it('caffeine note describes the REAL consequence (heart-drop → heartMultiplier reduces XP/gold), not a fictional HRV-credit reduction', () => {
+      // Item 7 regression. The old note string claimed "HRV
+      // credit reduced" — that system was never wired up, so the
+      // morning report was promising a consequence the codebase
+      // didn't deliver. The real consequence of a substance cap
+      // overage is a HeartLossEvent next morning + heartMultiplier
+      // reduction. The new note explicitly mentions that, and the
+      // old HRV wording is gone.
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          caffeineLast24h: HARDCORE_SUBSTANCE_CAPS.caffeinePerDay + 1,
+        }),
+      );
+      const note = p.find((x) => x.label === 'Caffeine')?.note ?? '';
+      expect(note.toLowerCase()).toContain('heart');
+      expect(note).not.toMatch(/hrv credit reduced/i);
+      expect(note).not.toMatch(/hrv credit/i);
+    });
+
+    it('alcohol note describes the REAL consequence, not a fictional weekly-XP-multiplier reduction', () => {
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          alcoholLast7d: HARDCORE_SUBSTANCE_CAPS.alcoholPerWeek + 1,
+        }),
+      );
+      const note = p.find((x) => x.label === 'Alcohol')?.note ?? '';
+      expect(note.toLowerCase()).toContain('heart');
+      expect(note).not.toMatch(/weekly xp multiplier reduced/i);
+      expect(note).not.toMatch(/xp multiplier/i);
+    });
+
+    it('nicotine note (the third category) follows the same heart-drop wording as caffeine / alcohol', () => {
+      // Item 7 spec: rewrite BOTH the caffeine and alcohol
+      // penalty notes to describe the real consequence
+      // (heart-drop → heartMultiplier). The nicotine note is
+      // the third row in the same block — make it consistent
+      // with the caffeine / alcohol lines so all three cap
+      // categories describe the same real consequence, none
+      // claiming a fictional per-stat multiplier.
+      const p = buildPenalties(
+        makePayload({
+          mode: 'HARDCORE',
+          nicotineLast7d: HARDCORE_SUBSTANCE_CAPS.nicotinePerWeek + 1,
+        }),
+      );
+      const note = p.find((x) => x.label === 'Nicotine')?.note ?? '';
+      expect(note.toLowerCase()).toContain('heart');
+    });
   });
 
   describe('streak break', () => {

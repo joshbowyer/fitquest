@@ -23,6 +23,8 @@ import {
   emitNotification,
   type NotifyEvent,
 } from '@/lib/notifyBus';
+import { currentTheme, setTheme, type Theme } from '@/lib/themeBus';
+import { useTheme } from '@/hooks/useTheme';
 import type { GeneticMax, Measurement, MetricType, CoachPersonality, CoachPersonalityMeta } from '@/lib/types';
 import { METRICS, METRICS_BY_CATEGORY } from '@/lib/types';
 
@@ -52,6 +54,63 @@ type Change = { metric: string; from: number | null; to: number };
 // breach progress, etc.) to a JSON file or a ZIP of CSVs, and
 // re-import from a previously-exported JSON. Round-trip safe.
 // ============================================================
+
+/**
+ * Theme section — Dark / Light picker. Mirrors the markup + class
+ * palette of SoundSection (muted/on button, identical border / hover
+ * tokens) so the two toggles read as siblings in the Settings list.
+ * The actual theme application + persistence is delegated to
+ * themeBus.ts; this component just calls setTheme() and reflects
+ * the current value via useTheme() so the active option highlights.
+ */
+function ThemeSection() {
+  const theme = useTheme();
+  const onPick = (next: Theme) => setTheme(next);
+  const options: Array<{ value: Theme; label: string; glyph: string }> = [
+    { value: 'dark', label: 'Dark', glyph: '☾' },
+    { value: 'light', label: 'Light', glyph: '☀' },
+  ];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-mono text-ink-200">
+            App-wide theme. Dark keeps the neon look; Light uses a
+            matching off-white surface with the same neon identity,
+            just darkened for contrast.
+          </div>
+          <div className="text-[10px] font-mono text-ink-400 mt-1">
+            Persists across sessions. Defaults to your OS preference
+            (prefers-color-scheme) on first load.
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {options.map((o) => {
+            const active = theme === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => onPick(o.value)}
+                className={classNames(
+                  'px-3 h-9 text-[10px] font-mono uppercase tracking-widest border min-w-[80px] inline-flex items-center justify-center gap-1.5',
+                  active
+                    ? 'border-neon-lime text-neon-lime bg-neon-lime/5 hover:bg-neon-lime/15'
+                    : 'border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan',
+                )}
+                title={active ? `${o.label} theme is on` : `Switch to ${o.label}`}
+              >
+                <span aria-hidden>{o.glyph}</span>
+                <span>{o.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SoundSection() {
   // useState (not just isMuted()) so the button label + panel
   // action slot re-render on toggle. The module-level isMuted()
@@ -932,6 +991,29 @@ export function SettingsPage() {
               </div>
             </div>
           </div>
+        </Panel>
+
+        {/* THEME — Dark / Light picker. Persists in localStorage and
+            defaults to the OS prefers-color-scheme on first load.
+            Visual restyle happens via CSS variables in index.css (see
+            :root vs .light) so no component class rewrites are
+            needed. Action slot mirrors the Sound panel's muted/on
+            pattern. */}
+        <Panel
+          title="Theme"
+          variant="cyan"
+          action={
+            <span
+              className={classNames(
+                'text-[10px] font-mono',
+                currentTheme() === 'light' ? 'text-neon-lime' : 'text-ink-400',
+              )}
+            >
+              {currentTheme() === 'light' ? 'light' : 'dark'}
+            </span>
+          }
+        >
+          <ThemeSection />
         </Panel>
 
         {/* GOAL & TARGETS — drives the calorie / protein / water
