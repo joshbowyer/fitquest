@@ -25,6 +25,7 @@ import {
   type FrameArchetype,
   type HeightCategory,
 } from '@/lib/frame';
+import { previewMax, PREVIEW_METRICS } from '@/lib/geneticMax';
 
 const CLASS_OPTIONS: ClassName[] = ['JUGGERNAUT', 'PHANTOM', 'SCOUT', 'BERSERKER', 'TRACER', 'ORACLE'];
 
@@ -46,62 +47,8 @@ type GeocodeResult = {
   feature_code?: string;
 };
 
-// Casey Butt–calibrated preview formulas (must mirror api/src/lib/geneticMax.ts).
-// Three bugs were drifted from the API:
-//   1. NECK was returning the user's current neckCircCm (a mirror of
-//      the latest measurement) instead of the ceiling from wrist/height.
-//      Neck can grow (traps), so the genetic max must be a ceiling,
-//      not a snapshot — same logic as the api formula.
-//   2. WAIST had a formula (h × 0.161 or w × 1.9) but the API dropped
-//      waist from genetic maxes entirely (it's a "lean minimum", not
-//      a "growth ceiling" — belongs in Measurements, not Genetic Maxes).
-//   3. BENCH_1RM was using w × 1.0 as a bodyweight proxy; the API
-//      uses weightKg × 1.5 as a 1.5× bw strength ceiling.
-//
-// All three are now corrected to match the api exactly. If you edit
-// one of these formulas, edit the api/src/lib/geneticMax.ts version
-// at the same time and update the comment block above.
-function previewMax(
-  metric: string,
-  wristCm: number | null,
-  ankleCm: number | null,
-  heightCm: number | null,
-  weightKg: number | null,
-  // neckCircCm intentionally NOT used — see comment above.
-): number | null {
-  const w = wristCm;
-  const a = ankleCm;
-  const h = heightCm;
-  const weight = weightKg;
-  switch (metric) {
-    case 'BICEP':
-    case 'BICEP_FLEXED': return w ? w * 2.7 : (h ? h * 0.228 : null);
-    case 'BICEP_RELAXED': return w ? w * 2.7 * 0.92 : (h ? h * 0.228 * 0.92 : null);
-    case 'FOREARM':    return w ? w * 2.3 : (h ? h * 0.195 : null);
-    case 'CHEST':      return w ? w * 7.5 : (h ? h * 0.634 : null);
-    case 'SHOULDER':   return w ? w * 8.5 : (h ? h * 0.718 : null);
-    case 'NECK':       return w ? w * 2.9 : (h ? h * 0.245 : null);
-    case 'QUAD':       return a ? a * 2.85 : (h ? h * 0.352 : null);
-    case 'CALF':       return a ? a * 1.9 : (h ? h * 0.234 : null);
-    case 'WAIST':      return null;
-    case 'BENCH_1RM':  return weight ? weight * 1.5 : null;
-    default: return null;
-  }
-}
-
-const PREVIEW_METRICS = [
-  // Bicep split into flexed + relaxed after 2026-07-06. Flexed is
-  // the canonical "show off" measurement (matches Casey Butt
-  // formula); relaxed is for tracking arm size without pump.
-  { key: 'BICEP_FLEXED', label: 'Bicep (Flexed)', unit: 'cm' },
-  { key: 'BICEP_RELAXED', label: 'Bicep (Relaxed)', unit: 'cm' },
-  { key: 'FOREARM', label: 'Forearm', unit: 'cm' },
-  { key: 'CHEST', label: 'Chest', unit: 'cm' },
-  { key: 'SHOULDER', label: 'Shoulders', unit: 'cm' },
-  { key: 'NECK', label: 'Neck', unit: 'cm' },
-  { key: 'QUAD', label: 'Quad', unit: 'cm' },
-  { key: 'CALF', label: 'Calf', unit: 'cm' },
-] as const;
+// previewMax + PREVIEW_METRICS moved to @/lib/geneticMax (shared
+// single source of truth; mirrors api/src/lib/geneticMax.ts).
 
 function storageUnitForKey(key: string): string {
   if (key === 'heightCm') return 'cm';
