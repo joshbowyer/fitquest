@@ -176,15 +176,21 @@ app.post('/unlock', async (req, reply) => {
         data: { status: 'DISMISSED', resolvedAt: new Date() },
       });
     }
-    // Bonus XP + gold for unlocking. Tier-scaled so T3 god-tier
-    // skills reward more than T1 entry skills. Modest amounts —
-    // skills are a side path, workouts should still be the main
-    // XP source. (Pre-v1 skills without a test get the T1 reward.)
-    const tierBonus = skill.tier === 'TIER_3'
-      ? { xp: 50, gold: 25 }
-      : skill.tier === 'TIER_2'
-        ? { xp: 30, gold: 15 }
-        : { xp: 20, gold: 10 };
+    // Bonus XP + gold for unlocking. Tier-scaled so harder skills
+    // reward more than entry skills. Modest amounts — skills are a
+    // side path, workouts should still be the main XP source. The
+    // super-tiers (T4-T6) are the per-branch god-tier feats (one-arm
+    // pull-up, iron cross, full planche, etc.) and scale up further.
+    // (Pre-v1 skills without a test get the T1 reward.)
+    const TIER_BONUS: Record<string, { xp: number; gold: number }> = {
+      TIER_1: { xp: 20, gold: 10 },
+      TIER_2: { xp: 30, gold: 15 },
+      TIER_3: { xp: 50, gold: 25 },
+      TIER_4: { xp: 70, gold: 35 },
+      TIER_5: { xp: 95, gold: 50 },
+      TIER_6: { xp: 125, gold: 65 },
+    };
+    const tierBonus = TIER_BONUS[skill.tier] ?? { xp: 20, gold: 10 };
     // v1 skills (with a test) get the tier bonus; pre-v1 skills get
     // a slightly smaller flat reward since they're "free" unlocks
     // (no test validation).

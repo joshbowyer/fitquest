@@ -640,7 +640,7 @@ export type GeneticMax = {
 export type Skill = {
   id: string;
   className: string;
-  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  tier: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'TIER_4' | 'TIER_5' | 'TIER_6';
   name: string;
   description: string;
   cost: number;

@@ -68,7 +68,7 @@ type PendingUnlock = {
   skillId: string;
   skillName: string;
   branch: string | null;
-  tier: 'TIER_1' | 'TIER_2' | 'TIER_3';
+  tier: 'TIER_1' | 'TIER_2' | 'TIER_3' | 'TIER_4' | 'TIER_5' | 'TIER_6';
   blurb: string | null;
   test: SkillTest | null;
   matchedSet: {
@@ -119,22 +119,52 @@ type Branch = {
 };
 
 // Per-branch max tier override (mirrors api/src/lib/seedSkills.ts
-// BRANCH_MAX_TIER). Most branches top out at TIER_3; these four
-// have super-god-tier skills that need their own level above
-// the standard T3 cap. The SkillTree page uses this map to
-// decide which nodes get the god-tier glow treatment — any skill
-// whose `tier` matches its branch's `maxTier` is rendered with
-// the god-tier styling (regardless of what number that tier is).
+// BRANCH_MAX_TIER). Every branch's hardest skill sits well past the
+// rest of its progression, so each branch tops out at its own
+// super-tier (T4-T6) rather than the historical T3 cap. The SkillTree
+// page uses this map to decide which nodes get the god-tier glow — a
+// skill whose `tier` matches its branch's `maxTier` (and is last in
+// the chain) is rendered with the god-tier styling, regardless of
+// what number that tier is.
 //
-//   Holds:    V-Sit T4, Front Lever T4, Back Lever T5
-//   Strongman: Atlas 200ft @ 1×BW T4
-//   Sandbag:   30-reps @ 70kg T4
-//   Mobility:  Pancake+Splits combo T4
+// IMPORTANT: keep this map in sync with BRANCH_MAX_TIER in
+// api/src/lib/seedSkills.ts — they must agree or the glow misfires.
 const BRANCH_MAX_TIER: Record<string, Skill['tier']> = {
-  Holds: 'TIER_5',
+  // JUGGERNAUT
+  Squat: 'TIER_5',
+  Press: 'TIER_4',
+  Deadlift: 'TIER_4',
   Strongman: 'TIER_4',
+  Sled: 'TIER_5',
+  // PHANTOM (calisthenics)
+  Push: 'TIER_6',
+  Pull: 'TIER_5',
+  Holds: 'TIER_5',
+  Rings: 'TIER_5',
+  Handstand: 'TIER_5',
+  Planche: 'TIER_6',
+  Legs: 'TIER_5',
+  // SCOUT
+  Run: 'TIER_6',
+  Ruck: 'TIER_5',
+  Triathlon: 'TIER_5',
+  // BERSERKER
+  Kettlebell: 'TIER_4',
+  Capacity: 'TIER_4',
+  Boxing: 'TIER_4',
+  'Mace / Indian Club': 'TIER_4',
   Sandbag: 'TIER_4',
-  Mobility: 'TIER_4',
+  // TRACER
+  Sprint: 'TIER_5',
+  Plyo: 'TIER_5',
+  Parkour: 'TIER_5',
+  Agility: 'TIER_4',
+  // ORACLE
+  Mobility: 'TIER_5',
+  Breath: 'TIER_4',
+  Balance: 'TIER_5',
+  'Ignatian Meditation': 'TIER_4',
+  Yoga: 'TIER_4',
 };
 function maxTierFor(branchName: string): Skill['tier'] {
   return BRANCH_MAX_TIER[branchName] ?? 'TIER_3';
