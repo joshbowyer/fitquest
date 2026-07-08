@@ -360,26 +360,37 @@ export async function firePenance(
   // Persist a notification so the shield change survives a dismissed
   // modal. Only when a penance actually applied (non-null; null =
   // idempotency skip / new-user grace / no template). Fire-and-forget.
+  //
+  // Per-event: only DAMAGE emits a notification. Repairs are too
+  // noisy (a single workout commit can fire 2-3 repairs in a row,
+  // and a day with several meal logs / water checks / prayers
+  // stacks them up further). The signal-to-noise on a per-repair
+  // notification is poor — the user can't act on "+1 from a meal"
+  // any differently than on "+8 from mobility". Repairs are
+  // surfaced as a single daily rollup instead (see
+  // `runShieldDigestForUser` in `shieldDigest.ts`); the per-event
+  // `PenanceEvent` audit row is still written so /homebase shows
+  // the full breakdown and the rollup query has its data source.
   if (result) {
     const dmg = tpl.shieldDelta < 0;
-    const { emitNotification } = await import('./notify.js');
-    await emitNotification({
-      userId,
-      category: 'PENANCE',
-      kind: dmg ? 'shield_damage' : 'shield_repair',
-      title: dmg
-        ? `Shield damage: ${result.label} (${tpl.shieldDelta})`
-        : `Shield repaired: ${result.label} (+${tpl.shieldDelta})`,
-      body: `Shield ${result.shieldBefore} → ${result.shieldAfter} (${result.tierAfter}).`,
-      link: '/homebase',
-      payload: {
-        penanceKey: key,
-        source,
-        shieldDelta: tpl.shieldDelta,
-        shieldAfter: result.shieldAfter,
-        tierAfter: result.tierAfter,
-      },
-    });
+    if (dmg) {
+      const { emitNotification } = await import('./notify.js');
+      await emitNotification({
+        userId,
+        category: 'PENANCE',
+        kind: 'shield_damage',
+        title: `Shield damage: ${result.label} (${tpl.shieldDelta})`,
+        body: `Shield ${result.shieldBefore} → ${result.shieldAfter} (${result.tierAfter}).`,
+        link: '/homebase',
+        payload: {
+          penanceKey: key,
+          source,
+          shieldDelta: tpl.shieldDelta,
+          shieldAfter: result.shieldAfter,
+          tierAfter: result.tierAfter,
+        },
+      });
+    }
   }
   return result;
 }

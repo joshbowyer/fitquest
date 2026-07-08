@@ -386,6 +386,28 @@ async function main() {
     }
   }, 15 * 60 * 1000);
 
+  // Shield-repair daily digest. Per-event repair notifications
+  // were silenced in `firePenance` (they were too noisy — one
+  // workout can fire 2-3 repairs, and a day with several meal
+  // logs / water checks / prayers stacks them up). The signal-
+  // to-noise on "+1 from a meal" is poor; a single "Shield +N
+  // yesterday" notification per user per day is much higher
+  // signal. Runs hourly (cheap: one dedup findFirst per user
+  // that has nothing to process; one aggregate query + one emit
+  // for the one user whose local day just rolled over).
+  // See `lib/shieldDigest.ts` for the per-user logic.
+  setInterval(async () => {
+    try {
+      const { runShieldDigestForAllUsers } = await import('./lib/shieldDigest.js');
+      const r = await runShieldDigestForAllUsers();
+      if (r.emitted > 0 || r.errors > 0) {
+        app.log.info(r, 'shield repair daily digest');
+      }
+    } catch (err: any) {
+      app.log.warn({ err: String(err?.message ?? err) }, 'shield repair digest failed');
+    }
+  }, 60 * 60 * 1000); // 1h
+
   const shutdown = async () => {
     app.log.info('shutting down');
     await app.close();
