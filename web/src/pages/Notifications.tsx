@@ -1,13 +1,20 @@
 /**
  * Notification inbox. Aggregates the persistent Notification rows the
  * server writes for skill unlocks, level-ups, penance events, shop
- * purchases, etc. — events that previously only fired as ephemeral
- * modals and could be missed.
+ * purchases, achievement unlocks, party lifecycle, raid lifecycle,
+ * world/breach boss kills, and portal leak events — anything that
+ * previously only fired as an ephemeral modal and could be missed.
  *
  * Supports: category filter tabs, per-row mark-read + dismiss,
  * mark-all-read, and clear-all. Clicking a row marks it read and
  * (if it has a link) navigates there. The unread-count badge in the
  * top bar reads the same /notifications/unread-count endpoint.
+ *
+ * New kinds landed in v1.0.38 (per the user-feedback round that
+ * wanted shield-repair noise rolled up + boss/raid/party/leak
+ * events surfaced). The per-kind glyph column on the right of
+ * each row gives the inbox a quick visual scan for "what kind
+ * of thing is this" without the user having to read the title.
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -55,6 +62,38 @@ const FILTERS: { key: NotificationCategory | 'ALL'; label: string }[] = [
   { key: 'ACHIEVEMENT', label: 'Achieve' },
   { key: 'SYSTEM', label: 'System' },
 ];
+
+// Small per-kind glyph rendered on the right of each row so the
+// inbox is scannable: "oh, three boss kills + a leak, no need to
+// read every title". Unknown kinds fall through to the category
+// icon (already shown on the left) so a future-emit with a new
+// kind still renders cleanly.
+const KIND_GLYPH: Record<string, { glyph: string; title: string; color: string }> = {
+  // SKILL / LEVEL
+  skill_unlock:    { glyph: '✦', title: 'skill unlock',  color: 'text-neon-cyan' },
+  level_up:        { glyph: '▲', title: 'level up',      color: 'text-neon-amber' },
+  // SHOP
+  shop_purchase:   { glyph: '⚞', title: 'shop purchase', color: 'text-neon-lime' },
+  // ACHIEVEMENT (incl. the funnel + boss/raid victories)
+  achievement_unlocked: { glyph: '◆', title: 'achievement', color: 'text-neon-amber' },
+  world_boss_unlocked:  { glyph: '☗', title: 'boss unlocked', color: 'text-neon-cyan' },
+  world_boss_kill:      { glyph: '☗', title: 'world boss kill', color: 'text-neon-amber' },
+  breach_unlocked:      { glyph: '✷', title: 'breach unlocked', color: 'text-neon-violet' },
+  breach_boss_kill:     { glyph: '✷', title: 'breach boss kill', color: 'text-neon-violet' },
+  raid_victory:         { glyph: '⚔', title: 'raid victory', color: 'text-neon-amber' },
+  // PENANCE
+  shield_damage:        { glyph: '▼', title: 'shield damage',  color: 'text-rose-300' },
+  shield_repair_daily:  { glyph: '▲', title: 'shield repaired (daily)', color: 'text-neon-lime' },
+  leak_spawn:           { glyph: '✦', title: 'leak spawned', color: 'text-rose-300' },
+  leak_defeated:        { glyph: '✓', title: 'leak defeated', color: 'text-neon-lime' },
+  leak_overwhelmed:     { glyph: '✕', title: 'leak overwhelmed', color: 'text-rose-300' },
+  // SYSTEM
+  raid_started:              { glyph: '⚔', title: 'raid started', color: 'text-neon-cyan' },
+  party_invite_received:     { glyph: '✉', title: 'party invite', color: 'text-neon-cyan' },
+  party_member_joined:       { glyph: '+', title: 'party member joined', color: 'text-neon-lime' },
+  party_member_left:         { glyph: '−', title: 'party member left', color: 'text-ink-400' },
+  party_invite_declined:     { glyph: '✕', title: 'invite declined', color: 'text-ink-400' },
+};
 
 function relTime(iso: string): string {
   const d = new Date(iso).getTime();
@@ -116,7 +155,7 @@ export default function NotificationsPage() {
     <Layout>
       <PageHeader
         title="// Notifications"
-        subtitle="Skill unlocks, level-ups, penance events, and shop purchases — all in one place."
+        subtitle="Skill unlocks, level-ups, achievements, boss + raid + party events, and shield/penance changes — all in one place."
       />
 
       <Panel
@@ -176,6 +215,7 @@ export default function NotificationsPage() {
           <ul className="space-y-1">
             {items.map((n) => {
               const meta = CATEGORY_META[n.category];
+              const kindMeta = KIND_GLYPH[n.kind];
               const unread = n.readAt == null;
               return (
                 <li
@@ -204,6 +244,18 @@ export default function NotificationsPage() {
                       >
                         {n.title}
                       </span>
+                      {kindMeta && (
+                        <span
+                          className={classNames(
+                            'ml-auto text-[11px] leading-none shrink-0',
+                            kindMeta.color,
+                          )}
+                          title={kindMeta.title}
+                          aria-label={kindMeta.title}
+                        >
+                          {kindMeta.glyph}
+                        </span>
+                      )}
                     </div>
                     {n.body && (
                       <p className="text-[10px] font-mono text-ink-400 mt-0.5 line-clamp-2">{n.body}</p>
