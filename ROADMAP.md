@@ -14,12 +14,12 @@
   Measurement rows from old FIT re-imports; if it does, run the
   dedup query in the migration's comment and then
   `npx prisma migrate resolve --applied 20260701090000_measurement_unique_user_metric_date`.
-- **Android release: v1.0.25 published.** [v1.0.25 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.25)
-  — "the bug-squash release" (~30 fixes from the 2026-07-07 tsc
-  triage + logic audit; see Recently Fixed below). APK signed with
+- **Android release: v1.0.36 published.** [v1.0.36 on GitHub](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.36)
+  — nutrition/substance trend charts + full skill-tier rebalance
+  (see Recently Fixed below). APK signed with
   debug keystore, ~44.8 MB (the ML Kit + camera AARs are heavy but
-  unavoidable with the native barcode plugin). 22 prior versions
-  published (v1.0.3 → v1.0.24). The SDK upgrade in v1.0.14
+  unavoidable with the native barcode plugin). 33 prior versions
+  published (v1.0.3 → v1.0.35). The SDK upgrade in v1.0.14
   (minSdk 22→26, compileSdk 34→36, AGP 8.13, Gradle 8.13)
   unblocked the native `@capacitor/barcode-scanner` plugin.
 - **Docker images.** Auto-built and pushed to
@@ -545,6 +545,38 @@ with edit + delete inline.)
   in this app. Dropped per user direction.
 
 ## Recently Fixed / Resolved
+
+### 2026-07-07 session — v1.0.36 nutrition trends + skill tier rebalance
+
+Commits `2e3e6f8` (trend endpoints), `ab1126f` (trend charts),
+`ea4fcf2` (skill tier rebalance).
+
+- ✅ **Nutrition + substance trend charts on `/nutrition`.** The
+  `/meals/trend?days=N` and `/substances/trend?days=N` per-day rollup
+  endpoints (timezone-aware, zero-filled contiguous days; meals merges
+  WATER_ML so the water line matches the daily bar) were built + tested
+  but had no UI consumer. Added two recharts components:
+  `NutritionTrendChart` (area chart, metric toggle
+  calories/protein/carbs/fat/water + 7/14/30d range, water converted to
+  the user's units) and `SubstanceTrendChart` (multi-line per-category
+  count with toggleable series). Both wrapped in ErrorBoundary. 8 trend
+  tests in `trend.test.ts`.
+- ✅ **Removed the T3 skill-tier cap — full per-branch rebalance.** The
+  cap removal was previously half-done (only Holds + 3 branches got
+  super-tiers); every other branch still crammed its entire advanced
+  progression at T3, so e.g. a knee one-arm push-up sat at the same tier
+  as a 50%BW weighted one-arm push-up, and 5 ring muscle-ups equalled a
+  3s iron cross. All 6 classes now spread T3-T6 by real difficulty,
+  contiguous (no skipped tiers), each branch's god-tier feat last and
+  equal to its `BRANCH_MAX_TIER` (so the glow lands right). Fixed a
+  latent bug where the unlock XP/gold bonus was a TIER_3-only ternary
+  that silently dropped T4+ skills to the T1 reward — now a T1-T6 map.
+  `BRANCH_MAX_TIER` kept in sync across `seedSkills.ts` + `SkillTree.tsx`;
+  stale `TIER_1|2|3` type annotations widened. Validated: no tier gaps,
+  no backwards prereqs, all 621 api tests pass.
+- ✅ **Cleaned up hallucinated seed-file artifacts** — an orphaned
+  duplicate comment block in `meals.ts` and a stale `Nutrition.bak.tsx`
+  comment reference.
 
 ### 2026-07-07 session — v1.0.35 todos + /vitals + GB_FITQUEST_SYNC design doc
 
