@@ -22,12 +22,14 @@ import {
 // Two views stacked: a month grid on top (clickable days, with a
 // tiny indicator dot on days that have any data) and a "selected
 // day" detail panel below (workouts, weigh-in, sleep, recovery,
-// dailies, meals, pain, substances, heart-loss events).
+// calories, protein, dailies, meals, pain, substances, heart-loss
+// events).
 //
 // Data sources (existing endpoints, all tz-aware):
 //   GET /dailies/morning-popup?date=YYYY-MM-DD  — core payload
 //     (workouts, sleep, weigh-in, recovery, heartLoss, dailies, mode, level, xp, hearts)
 //   GET /meals/today?date=YYYY-MM-DD             — meals for that day
+//     (dayTotals carries calories + macros for the day-block BLUF)
 //   GET /pain-logs?since=...                     — pain for the day
 //     (client-side filtered by date)
 //   GET /substances?days=60                     — substances for the
@@ -36,7 +38,9 @@ import {
 // No new api endpoint — reuses the morning-popup pipeline which
 // already takes a date param (the calendar view is the natural
 // generalization of the morning popup from "yesterday recap" to
-// "any day recap").
+// "any day recap"). The weigh-in check is now a direct day-windowed
+// query (see api/src/routes/dailies.ts) so the calendar can render
+// a non-empty weight for every day the user has a measurement.
 
 type TodayMealsResponse = {
   date: string;
@@ -381,10 +385,16 @@ function DayDetail({
   meals: TodayMealsResponse | undefined;
   pain: PainLog[];
   substances: SubstanceLog[];
-  isToday: boolean;
   isFuture: boolean;
+  isToday: boolean;
 }) {
   const r = detail.recap;
+  // Calories + protein for the day-block BLUF. Source: meals.dayTotals
+  // (the per-day rollup the /meals/today endpoint returns, scoped to
+  // the selected date). null when the user hasn't logged any meals
+  // for the day — the Stat cells render an em-dash.
+  const calories = meals?.dayTotals?.calories;
+  const proteinG = meals?.dayTotals?.proteinG;
   // Future dates are placeholder days — show an empty state for
   // every section. We deliberately don't render "all dailies
   // marked as missed" because that would look like the user
@@ -399,8 +409,14 @@ function DayDetail({
   }
   return (
     <div className="space-y-3">
-      {/* Headline row — workout, sleep, weigh-in, recovery score */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] font-mono">
+      {/* Headline row — workout, sleep, weigh-in, recovery, calories,
+          protein. The "BLUF" of each pillar of the day at a glance.
+          Calories + protein come from `meals.dayTotals` (the same
+          /meals/today endpoint the dashboard's daily totals bar
+          uses, just scoped to the selected date). Empty values
+          render as em-dash so the grid stays aligned. The 6-col
+          row collapses to 3-col on tablet and 2-col on mobile. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono">
         <Stat
           label="Workout"
           value={r.workoutLogged ? `${r.workoutCount}×` : '—'}
@@ -422,6 +438,18 @@ function DayDetail({
           value={r.recoveryScore != null ? `${r.recoveryScore}` : '—'}
           color={r.recoveryScore != null ? 'text-neon-lime' : 'text-ink-500'}
           detail={r.recoveryScore != null && r.recoveryScore >= 80 ? 'good' : r.recoveryScore != null ? 'low' : ''}
+        />
+        <Stat
+          label="Calories"
+          value={calories != null ? `${Math.round(calories)}` : '—'}
+          unit="kcal"
+          color={calories != null ? 'text-neon-amber' : 'text-ink-500'}
+        />
+        <Stat
+          label="Protein"
+          value={proteinG != null ? `${Math.round(proteinG)}` : '—'}
+          unit="g"
+          color={proteinG != null ? 'text-neon-magenta' : 'text-ink-500'}
         />
       </div>
 
@@ -503,11 +531,14 @@ function WorkoutsSection({ workouts }: { workouts: NonNullable<DayPayload['worko
   );
 }
 
-function Stat({ label, value, color, detail }: { label: string; value: string; color: string; detail?: string }) {
+function Stat({ label, value, color, detail, unit }: { label: string; value: string; color: string; detail?: string; unit?: string }) {
   return (
     <div>
       <div className="text-[9px] uppercase tracking-widest text-ink-500">{label}</div>
-      <div className={classNames('text-lg font-display tabular-nums', color)}>{value}</div>
+      <div className={classNames('text-lg font-display tabular-nums', color)}>
+        {value}
+        {unit && <span className="text-[10px] text-ink-400 ml-1 font-mono">{unit}</span>}
+      </div>
       {detail && <div className="text-[9px] text-ink-500">{detail}</div>}
     </div>
   );
