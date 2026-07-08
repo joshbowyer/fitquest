@@ -8,8 +8,8 @@ import { WorkoutLogger } from './WorkoutLogger';
 import { QuickLogModal as CheckInsQuickLogModal } from './CheckInsPanel';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
-import { classNames } from '@/lib/format';
-import { convertForDisplay, type UnitSystem } from '@/lib/units';
+import { classNames, formatRelative } from '@/lib/format';
+import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { getLocalHour, localTodayStartUtc } from '@/lib/timezone';
 import { type MealEntry } from '@/lib/types';
 
@@ -154,7 +154,7 @@ function inferMealType(userTz: string | null): MealType {
 
 export function TodayActions() {
   const qc = useQueryClient();
-  const [openModal, setOpenModal] = useState<null | 'food' | 'supplements' | 'probiotics' | 'electrolytes' | 'caffeine' | 'alcohol' | 'nicotine' | 'activity' | 'prayer' | 'checkIns'>(null);
+  const [openModal, setOpenModal] = useState<null | 'food' | 'supplements' | 'probiotics' | 'electrolytes' | 'caffeine' | 'alcohol' | 'nicotine' | 'activity' | 'prayer' | 'checkIns' | 'weighIn'>(null);
   const [prayerType, setPrayerType] = useState<keyof typeof PRAYER_LABELS | null>(null);
 
   // Listen for the global "open Activity modal" event so other
@@ -182,6 +182,7 @@ export function TodayActions() {
     <>
       <QuickActionGrid>
         <WaterTile />
+        <WeighInTile onOpen={() => setOpenModal('weighIn')} />
         <ActionTile
           glyph="◉"
           label="Food"
@@ -276,6 +277,9 @@ export function TodayActions() {
       )}
       {openModal === 'prayer' && prayerType && (
         <PrayerLogModal open onClose={close} prayerType={prayerType} onSwitch={() => setPrayerType(null)} />
+      )}
+      {openModal === 'weighIn' && (
+        <WeighInModal open onClose={close} />
       )}
     </>
   );
@@ -434,6 +438,217 @@ function WaterTile() {
         </div>
       </Modal>
     </>
+  );
+}
+
+/**
+ * Daily weigh-in tile + modal. The /today quick-action grid hosts
+ * it; clicking opens a focused log modal (same shape as the
+ * WaterTile's modal). On the dashboard the same weigh-in form
+ * lives inside the full-size <WeighInPanel />, which also
+ * renders the today/streak stats and a 7-day trend chart. On
+ * /today we just want the quick-log entry point — the dashboard
+ * remains the place to see the trend.
+ */
+function WeighInTile({ onOpen }: { onOpen: () => void }) {
+  const { user } = useAuth();
+  const system: UnitSystem = (user?.units ?? 'METRIC') as UnitSystem;
+  const statusQ = useQuery({
+    queryKey: ['weigh-in', 'status'],
+    queryFn: () =>
+      api<{
+        today: { logged: boolean; value: number | null; recordedAt: string | null; unit: string };
+        streak: { current: number; longest: number; lastDate: string | null };
+      }>('/measurements/weigh-in/status'),
+    refetchOnMount: 'always',
+  });
+  const today = statusQ.data?.today;
+  const streak = statusQ.data?.streak?.current ?? 0;
+  const logged = !!today?.logged;
+  const weightUnit = displayUnit('kg', system);
+  const summary = logged && today?.value != null ? (
+    <span>
+      <span className="text-neon-lime">✓ </span>
+      {(() => {
+        const disp = convertForDisplay(today.value, 'kg', system);
+        return `${disp.value.toFixed(1)} ${disp.unit}`;
+      })()}
+      {streak > 0 && <span className="text-ink-500"> · {streak}d</span>}
+    </span>
+  ) : (
+    <span className="text-ink-500">not logged</span>
+  );
+  return (
+    <ActionTile
+      glyph="⚖"
+      label="Weigh-in"
+      accent="amber"
+      onClick={onOpen}
+      summary={summary}
+    />
+  );
+}
+
+function WeighInModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const system: UnitSystem = (user?.units ?? 'METRIC') as UnitSystem;
+  const weightUnit = displayUnit('kg', system);
+
+  // Today / streak status. Same endpoint the dashboard tile hits,
+  // so the two surfaces stay in sync.
+  const statusQ = useQuery({
+    queryKey: ['weigh-in', 'status'],
+    queryFn: () =>
+      api<{
+        today: { logged: boolean; value: number | null; recordedAt: string | null; unit: string };
+        streak: { current: number; longest: number; lastDate: string | null };
+      }>('/measurements/weigh-in/status'),
+    refetchOnMount: 'always',
+  });
+  const today = statusQ.data?.today;
+  const streak = statusQ.data?.streak?.current ?? 0;
+  const logged = !!today?.logged;
+
+  // Prefill the input with today's value (in display unit) so the
+  // user can just adjust + log; falls back to "" for first-time
+  // weigh-ins. Same UX as the dashboard's <WeighInPanel /> input
+  // placeholder.
+  const [draft, setDraft] = useState('');
+  const [unlocked, setUnlocked] = useState<string[] | null>(null);
+  const [logErr, setLogErr] = useState<string | null>(null);
+
+  // Reset draft when the modal opens / re-opens so a stale value
+  // from a previous session doesn't stick around. Also prefill from
+  // today's value when status lands.
+  useEffect(() => {
+    if (!open) return;
+    setUnlocked(null);
+    setLogErr(null);
+    if (today?.value != null) {
+      const disp = convertForDisplay(today.value, 'kg', system);
+      setDraft(disp.value.toFixed(1));
+    } else {
+      setDraft('');
+    }
+  }, [open, today?.value, system]);
+
+  const logM = useMutation({
+    mutationFn: () => {
+      const inputValue = Number(draft);
+      // Convert input from display unit back to kg for storage.
+      const stored = convertForStorage(inputValue, weightUnit, system);
+      return api<{ unlocked?: string[] }>('/measurements/weigh-in', {
+        method: 'POST',
+        body: { value: stored.value },
+      });
+    },
+    onSuccess: (r) => {
+      setDraft('');
+      // Same invalidation set as the dashboard's <WeighInPanel />,
+      // so a weigh-in from /today propagates everywhere: the
+      // dashboard tile, /measurements history, achievements,
+      // check-ins, and the morning popup's "Weigh-in" recap cell.
+      qc.invalidateQueries({ queryKey: ['weigh-in'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+      qc.invalidateQueries({ queryKey: ['achievements'] });
+      qc.invalidateQueries({ queryKey: ['check-ins'] });
+      if (r.unlocked && r.unlocked.length > 0) {
+        setUnlocked(r.unlocked);
+        setTimeout(() => setUnlocked(null), 4000);
+      }
+    },
+    onError: (e: any) => setLogErr(e?.message ?? 'Log failed'),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Daily weigh-in" width="max-w-sm">
+      <div className="space-y-3">
+        {logErr && (
+          <div className="text-[10px] font-mono text-rose-300 border border-rose-500/40 bg-rose-500/10 px-2 py-1 rounded">
+            {logErr}
+          </div>
+        )}
+
+        {/* Today + streak status. Mirrors the read-out at the top
+            of the dashboard's <WeighInPanel /> so the user can
+            confirm "yep, today's logged" before they tap anything. */}
+        <div className="border border-ink-700/40 bg-bg-900/40 px-3 py-2 flex items-baseline justify-between">
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">Today</div>
+            {logged && today?.value != null ? (
+              <div className="font-display text-2xl neon-text-amber leading-none mt-0.5">
+                {(() => {
+                  const disp = convertForDisplay(today.value, 'kg', system);
+                  return disp.value.toFixed(1);
+                })()}
+                <span className="text-sm text-ink-300 ml-1.5 font-mono">{weightUnit}</span>
+              </div>
+            ) : (
+              <div className="text-sm text-rose-300 font-mono mt-0.5">not logged yet</div>
+            )}
+            {logged && today?.recordedAt && (
+              <div className="text-[10px] font-mono text-ink-300 mt-1">
+                ✓ {formatRelative(today.recordedAt)}
+              </div>
+            )}
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">Streak</div>
+            <div
+              className={classNames(
+                'font-display text-2xl leading-none mt-0.5',
+                streak > 0 ? 'neon-text-amber' : 'text-ink-300',
+              )}
+            >
+              {streak}
+              <span className="text-sm text-ink-300 ml-1.5 font-mono">d</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Log form. Prefilled with today's value when logged so
+            the user just adjusts + taps "Log" to update. */}
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            step="0.1"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && draft && !logM.isPending) {
+                logM.mutate();
+              }
+            }}
+            placeholder={weightUnit}
+            autoFocus
+            className="flex-1 bg-bg-900 border border-neon-amber/40 px-2 py-1.5 text-sm font-mono text-neon-amber rounded"
+          />
+          <span className="text-[10px] font-mono text-ink-400">{weightUnit}</span>
+          <NeonButton
+            variant="amber"
+            size="sm"
+            disabled={!draft || logM.isPending}
+            onClick={() => logM.mutate()}
+          >
+            {logM.isPending ? '…' : logged ? '⚡ Update' : '⚡ Log'}
+          </NeonButton>
+        </div>
+
+        {/* Inline achievement unlock toast — same UX as the
+            dashboard's <WeighInPanel /> so the user doesn't have
+            to bounce back to /dashboard to see what they earned. */}
+        {unlocked && unlocked.length > 0 && (
+          <div className="text-[10px] font-mono neon-text-amber text-center border border-neon-amber/30 bg-neon-amber/5 p-1.5">
+            ✦ Unlocked: {unlocked.join(', ')}
+          </div>
+        )}
+
+        <div className="text-[10px] font-mono text-ink-500">
+          Logs as WEIGHT (kg). {logged ? 'Re-logs overwrite today\'s value.' : 'Streak starts on your first log.'}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
