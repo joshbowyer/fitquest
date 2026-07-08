@@ -29,6 +29,7 @@ const NAV: NavItem[] = [
   { to: '/spiritual',    label: 'Spiritual',  icon: '☩', mobile: false },
   { to: '/coach',        label: 'AI Coach',   icon: '✺', mobile: false },
   { to: '/todos',        label: 'Todos',      icon: '☐', mobile: false },
+  { to: '/notifications', label: 'Notifications', icon: '☖', mobile: false },
   { to: '/recovery',     label: 'Recovery',   icon: '☾', mobile: false },
   { to: '/forecast',     label: 'Forecast',   icon: '☀', mobile: true },
   { to: '/calendar',     label: 'Calendar',   icon: '◷', mobile: false },
@@ -70,6 +71,17 @@ export function Layout({ children }: Props) {
     refetchInterval: 30 * 60 * 1000,
     staleTime: 5 * 60 * 1000,
   });
+  // Unread notification count — drives the bell badge in the top bar.
+  // Polls every 60s; also invalidated by the /notifications page's
+  // mutations (shared ['notifications'] query key prefix).
+  const unreadQ = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => api<{ count: number }>('/notifications/unread-count'),
+    enabled: !!user,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const unreadCount = unreadQ.data?.count ?? 0;
   /// Mobile menu overlay. Single boolean — when true, the
   /// hamburger morphs into an X and a full-screen menu renders.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -185,6 +197,21 @@ export function Layout({ children }: Props) {
                   {user.classDisplay ?? cls?.label ?? 'No class'}
                 </span>
               </div>
+              {/* Notification bell + unread badge */}
+              <button
+                type="button"
+                onClick={() => navigate('/notifications')}
+                className="relative w-8 h-8 flex items-center justify-center text-neon-cyan hover:bg-bg-700/60 rounded transition-colors"
+                aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
+                title="Notifications"
+              >
+                <span className="text-base leading-none">☖</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-neon-magenta text-bg-900 text-[9px] font-bold tabular-nums">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
               <button onClick={handleLogout} className="btn-ghost text-[10px]">
                 Logout
               </button>
@@ -196,6 +223,19 @@ export function Layout({ children }: Props) {
               magenta) with the same red pulse at ≤3. */}
           {user && (
             <div className="flex md:hidden items-center gap-2 text-xs font-mono ml-auto">
+              <button
+                type="button"
+                onClick={() => navigate('/notifications')}
+                className="relative w-7 h-7 flex items-center justify-center text-neon-cyan"
+                aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : 'Notifications'}
+              >
+                <span className="text-sm leading-none">☖</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 flex items-center justify-center rounded-full bg-neon-magenta text-bg-900 text-[8px] font-bold tabular-nums">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
               <span className="neon-text-cyan font-bold">L{user.level}</span>
               <span className="neon-text-amber">{user.gold}G</span>
               <div
