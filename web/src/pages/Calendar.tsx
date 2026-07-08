@@ -9,6 +9,7 @@ import { Modal } from '@/components/Modal';
 import { NeonButton } from '@/components/NeonButton';
 import { classNames, formatRelative } from '@/lib/format';
 import { todayInTz, localTodayStartUtc } from '@/lib/timezone';
+import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import {
   BODY_PARTS,
   intensityLabel,
@@ -163,6 +164,7 @@ const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function CalendarPage() {
   const { user } = useAuth();
   const userTz = user?.timezone ?? null;
+  const system: UnitSystem = user?.units ?? 'METRIC';
   const today = todayInTz(userTz);
 
   // The currently displayed month (0-indexed month). Defaults to
@@ -362,6 +364,7 @@ export function CalendarPage() {
               substances={daySubs}
               isFuture={selectedDate > today}
               isToday={selectedDate === today}
+              system={system}
             />
           )}
         </Panel>
@@ -380,6 +383,7 @@ function DayDetail({
   substances,
   isFuture,
   isToday,
+  system,
 }: {
   detail: DayPayload;
   meals: TodayMealsResponse | undefined;
@@ -387,14 +391,20 @@ function DayDetail({
   substances: SubstanceLog[];
   isFuture: boolean;
   isToday: boolean;
+  system: UnitSystem;
 }) {
   const r = detail.recap;
   // Calories + protein for the day-block BLUF. Source: meals.dayTotals
   // (the per-day rollup the /meals/today endpoint returns, scoped to
-  // the selected date). null when the user hasn't logged any meals
-  // for the day — the Stat cells render an em-dash.
-  const calories = meals?.dayTotals?.calories;
-  const proteinG = meals?.dayTotals?.proteinG;
+  // the selected date). `meals` is undefined while the query is
+  // loading; null calories/protein mean the user logged no meals
+  // for the day. The Stat cells render "no meals" (not just a
+  // dim em-dash) so the field reads as "empty for a reason" rather
+  // than "this stat is missing".
+  const dayTotals = meals?.dayTotals;
+  const hasMeals = (dayTotals?.calories ?? 0) > 0;
+  const calories = dayTotals?.calories;
+  const proteinG = dayTotals?.proteinG;
   // Future dates are placeholder days — show an empty state for
   // every section. We deliberately don't render "all dailies
   // marked as missed" because that would look like the user
@@ -413,9 +423,14 @@ function DayDetail({
           protein. The "BLUF" of each pillar of the day at a glance.
           Calories + protein come from `meals.dayTotals` (the same
           /meals/today endpoint the dashboard's daily totals bar
-          uses, just scoped to the selected date). Empty values
-          render as em-dash so the grid stays aligned. The 6-col
-          row collapses to 3-col on tablet and 2-col on mobile. */}
+          uses, just scoped to the selected date). When the user
+          hasn't logged meals for the day, both cells render "no
+          meals" rather than just an em-dash — the field reads as
+          "empty for a reason" instead of looking missing.
+          Weigh-in converts to the user's unit system (kg ↔ lb)
+          via the same helper the dashboard's weigh-in panel uses.
+          The 6-col row collapses to 3-col on tablet and 2-col
+          on mobile. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-[10px] font-mono">
         <Stat
           label="Workout"
@@ -430,7 +445,14 @@ function DayDetail({
         />
         <Stat
           label="Weigh-in"
-          value={r.weighInLogged ? `${r.latestWeightKg?.toFixed(1)}kg` : '—'}
+          value={
+            r.weighInLogged && r.latestWeightKg != null
+              ? (() => {
+                  const disp = convertForDisplay(r.latestWeightKg, 'kg', system);
+                  return `${disp.value.toFixed(1)} ${disp.unit}`;
+                })()
+              : '—'
+          }
           color={r.weighInLogged ? 'text-neon-cyan' : 'text-ink-500'}
         />
         <Stat
@@ -441,15 +463,23 @@ function DayDetail({
         />
         <Stat
           label="Calories"
-          value={calories != null ? `${Math.round(calories)}` : '—'}
-          unit="kcal"
-          color={calories != null ? 'text-neon-amber' : 'text-ink-500'}
+          value={
+            hasMeals && calories != null
+              ? `${Math.round(calories)}`
+              : 'no meals'
+          }
+          unit={hasMeals ? 'kcal' : undefined}
+          color={hasMeals ? 'text-neon-amber' : 'text-ink-500'}
         />
         <Stat
           label="Protein"
-          value={proteinG != null ? `${Math.round(proteinG)}` : '—'}
-          unit="g"
-          color={proteinG != null ? 'text-neon-magenta' : 'text-ink-500'}
+          value={
+            hasMeals && proteinG != null
+              ? `${Math.round(proteinG)}`
+              : 'no meals'
+          }
+          unit={hasMeals ? 'g' : undefined}
+          color={hasMeals ? 'text-neon-magenta' : 'text-ink-500'}
         />
       </div>
 
