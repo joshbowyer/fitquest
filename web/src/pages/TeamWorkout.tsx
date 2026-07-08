@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -54,6 +54,7 @@ export function TeamWorkoutPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   // Poll every 4s so the leader sees invites flip to accepted in
   // real time and confirmations roll in as members wrap up.
@@ -72,7 +73,14 @@ export function TeamWorkoutPage() {
 
   const joinM = useDelayedMutation<{ ok: boolean }, void>({
     mutationFn: () => api(`/team-workouts/${id}/join`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-workout', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['team-workout', id] });
+      // Prefix invalidation — Party.tsx polls `['team-workouts','active']`
+      // every 5s, but a fresh invalidate shortens the window where a
+      // returning leader sees a stale "session exists" banner after
+      // the join flips the session into ACTIVE state.
+      qc.invalidateQueries({ queryKey: ['team-workouts'] });
+    },
   }, 600);
 
   /// Confirm path: the user already has a workout id (either
@@ -91,7 +99,19 @@ export function TeamWorkoutPage() {
 
   const abandonM = useDelayedMutation<{ ok: boolean }, void>({
     mutationFn: () => api(`/team-workouts/${id}/abandon`, { method: 'POST' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['team-workout', id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['team-workout', id] });
+      // Prefix invalidation — without this the launcher's
+      // `['team-workouts','active']` cache stays warm after abandon
+      // and the leader can't start a new session until the 5s poll
+      // refreshes it. Prefix covers both the active list and any
+      // future list-style keys without us hard-coding each one.
+      qc.invalidateQueries({ queryKey: ['team-workouts'] });
+      // Bounce back to the launcher (Party.tsx surfaces the active
+      // banner + the "Start Team Workout" modal) — matches the
+      // existing ← /party navigation pattern in the page header.
+      navigate('/party');
+    },
   }, 800);
 
   // Promote the page title once data arrives.

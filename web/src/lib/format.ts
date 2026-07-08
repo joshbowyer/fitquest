@@ -116,6 +116,7 @@ export function formatMetricValue(value: number, unit: string): string {
 export function formatMetricWithUnit(value: number, unit: string): string {
   if (!Number.isFinite(value)) return '—';
   if (unit === '/10') return `${Math.round(value)}/10`;
+  if (unit === '%') return `${value.toFixed(1)} ${unit}`;
   if (unit === 's') return formatSeconds(value);
   if (unit === 'h') return `${value.toFixed(1)} h`;
   if (unit === 'kg' || unit === 'cm') return `${value.toFixed(1)} ${unit}`;

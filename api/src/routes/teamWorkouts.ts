@@ -202,6 +202,17 @@ export async function teamWorkoutRoutes(app: FastifyInstance) {
       include: { participants: true, party: true },
     });
     if (!session) return reply.code(404).send({ error: 'not found' });
+    if (session.status === 'COMPLETED' || session.status === 'ABANDONED') {
+      // Mirror the /respond handler's guard. Without this, a late
+      // /confirm POST against an already-finalized session would
+      // re-run the additive side effects (camaraderie +5, party buff
+      // refresh, side_by_side achievement re-emit) — the same
+      // double-finalize risk the maybeCompleteTeamWorkout status guard
+      // prevents on the cleanup path. Failing closed with 400 keeps
+      // the API contract honest: a confirmed workout can't be
+      // "re-confirmed" against a closed session.
+      return reply.code(400).send({ error: 'session already finalized' });
+    }
     const me_part = session.participants.find((p) => p.userId === me.id);
     if (!me_part) return reply.code(403).send({ error: 'not in session' });
     if (me_part.status === 'DECLINED') {
@@ -220,51 +231,13 @@ export async function teamWorkoutRoutes(app: FastifyInstance) {
       },
     });
 
-    // Check completion: every participant CONFIRMED OR DECLINED
-    // means the session can wrap up. DECLINED counts as "out"
-    // for the confirmation gate per roadmap §30 (otherwise one
-    // ghost invite would block forever).
-    const refreshed = await prisma.teamParticipant.findMany({ where: { teamWorkoutId: id } });
-    const allDone = refreshed.every((p) =>
-      p.status === 'CONFIRMED' || p.status === 'DECLINED' || p.status === 'NO_SHOW',
-    );
-    if (allDone) {
-      const confirmed = refreshed.filter((p) => p.status === 'CONFIRMED');
-      await prisma.teamWorkout.update({
-        where: { id },
-        data: {
-          status: 'COMPLETED',
-          completedAt: new Date(),
-          endedAt: new Date(),
-        },
-      });
-      // Side effects from roadmap §30:
-      //   - +5 party camaraderie
-      //   - +10% raid damage for the party for 24h (handled by
-      //     the raid-damage calculator reading party buff rows)
-      //   - "Side by Side" achievement on the leader
-      if (confirmed.length >= 2) {
-        await adjustCamaraderie(session.partyId, 5, `team workout completed (${confirmed.length} members)`);
-        await prisma.partyBuff.upsert({
-          where: { partyId: session.partyId },
-          create: {
-            partyId: session.partyId,
-            raidDmgBonusPct: 10,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            reason: 'team workout',
-          },
-          update: {
-            raidDmgBonusPct: 10,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            reason: 'team workout',
-          },
-        });
-        // Side by Side achievement for everyone who confirmed.
-        for (const p of confirmed) {
-          await unlockAchievement(p.userId, 'side_by_side');
-        }
-      }
-    }
+    // Reuse the shared finalize path (also called from cleanupStaleTeamWorkouts
+    // after a 30-min NO_SHOW sweep). The function reloads participants,
+    // checks `allDone = every status ∈ {CONFIRMED, DECLINED, NO_SHOW}`, and
+    // if so sets status=COMPLETED + completedAt + endedAt. Side effects
+    // (camaraderie +5, party buff upsert, side_by_side achievement) are
+    // gated on ≥2 confirmed — preserves the pre-refactor behavior of /confirm.
+    await maybeCompleteTeamWorkout(id);
     return { ok: true };
   });
 
@@ -305,35 +278,220 @@ export async function teamWorkoutRoutes(app: FastifyInstance) {
   });
 }
 
-/// Mark no-shows (invited/accepted >30min ago, never joined) and
-/// abandon stale sessions (started >1h ago, still PENDING/ACTIVE).
-/// Called by the /cleanup route above AND the index.ts interval
-/// cron — the "cron" the header comment always promised but which
-/// never actually existed, so stale sessions lingered forever
-/// unless someone manually POSTed the endpoint.
+/// Shared finalize path for the team-workout completion gate. Called
+/// from POST /:id/confirm (replacing the inline finalize that used to
+/// live there) AND from cleanupStaleTeamWorkouts when the 30-min NO_SHOW
+/// sweep turns the last non-confirmed participant of an otherwise-
+/// complete session into NO_SHOW.
+///
+/// Logic:
+///   - Load the session + participants.
+///   - `allDone` = every participant's status ∈ {CONFIRMED, DECLINED,
+///     NO_SHOW}. DECLINED counts as "out" per roadmap §30 (otherwise
+///     one ghost invite would block forever).
+///   - If allDone: set status=COMPLETED + completedAt + endedAt.
+///   - Side effects (gated on ≥2 confirmed, preserved from the
+///     pre-refactor /confirm behavior):
+///       +5 party camaraderie
+///       +10% raid-damage party buff for 24h (read by the raid-damage
+///         calculator from the party buff row)
+///       "Side by Side" achievement for every confirmed participant
+///       (the leader gets one too — the original code unlocked for
+///       every confirmed participant, not just the leader)
+///
+/// Returns nothing; side effects bubble as exceptions (which the
+/// caller in /confirm propagates to the HTTP response). The cleanup
+/// cron is best-effort and swallows its own errors at the call site
+/// in index.ts.
+export async function maybeCompleteTeamWorkout(id: string): Promise<void> {
+  const session = await prisma.teamWorkout.findUnique({
+    where: { id },
+    include: { participants: true },
+  });
+  if (!session) return;
+  // Guard: never finalize a session that's already finalized. Without this,
+  // a re-call (e.g. the cleanup cron running again, or a /confirm racing
+  // with the cron) would re-run the additive side effects:
+  //   - adjustCamaraderie(+5) is additive — double-credits the party
+  //   - side_by_side re-emits an achievement notification (the user
+  //     sees "Achievement unlocked" again, even though UserAchievement
+  //     is correctly idempotent)
+  //   - status could be flipped from ABANDONED → COMPLETED, resurrecting
+  //     a session the leader deliberately cancelled or that the 1h sweep
+  //     marked ABANDONED
+  if (session.status !== 'PENDING' && session.status !== 'ACTIVE') return;
+  const allDone = session.participants.every((p) =>
+    p.status === 'CONFIRMED' || p.status === 'DECLINED' || p.status === 'NO_SHOW',
+  );
+  if (!allDone) return;
+  const confirmed = session.participants.filter((p) => p.status === 'CONFIRMED');
+  await prisma.teamWorkout.update({
+    where: { id },
+    data: {
+      status: 'COMPLETED',
+      completedAt: new Date(),
+      endedAt: new Date(),
+    },
+  });
+  if (confirmed.length >= 2) {
+    await adjustCamaraderie(
+      session.partyId,
+      5,
+      `team workout completed (${confirmed.length} members)`,
+    );
+    await prisma.partyBuff.upsert({
+      where: { partyId: session.partyId },
+      create: {
+        partyId: session.partyId,
+        raidDmgBonusPct: 10,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        reason: 'team workout',
+      },
+      update: {
+        raidDmgBonusPct: 10,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        reason: 'team workout',
+      },
+    });
+    for (const p of confirmed) {
+      await unlockAchievement(p.userId, 'side_by_side');
+    }
+  }
+}
+
+/// Mark no-shows (INVITED-never-responded >30min) and finalize stale
+/// sessions (started >1h ago, still PENDING/ACTIVE). Called by the
+/// /cleanup route above AND the index.ts interval cron — the "cron"
+/// the header comment always promised but which never actually
+/// existed, so stale sessions lingered forever unless someone manually
+/// POSTed the endpoint.
+///
+/// Phase A fixes:
+///   - NO_SHOW sweep now keys off `status='INVITED'` + a relation filter
+///     on the parent teamWorkout (non-finalized AND stale). The old
+///     filter keyed off `respondedAt < now-30min`, but INVITED rows are
+///     created without `respondedAt` (null) — so it NEVER matched real
+///     non-responders, and instead ate the leader's ACCEPTED row (the
+///     only kind with a non-null respondedAt). INVITED-only already
+///     excludes the leader and ACCEPTED/JOINED participants.
+///   - After the sweep, each affected still-live session is re-checked
+///     via maybeCompleteTeamWorkout. A session where everyone else
+///     already CONFIRMED + the last non-confirmed participant just
+///     became NO_SHOW now finalizes properly instead of hanging.
+///   - The 1h sweep no longer blindly converts stale sessions to
+///     ABANDONED. It first marks the remaining non-terminal participants
+///     (INVITED/ACCEPTED/JOINED) NO_SHOW, then finalizes via the shared
+///     path (COMPLETED if ≥1 CONFIRMED — side effects still ≥2 — else
+///     ABANDONED). Sessions with confirmed work are never converted.
+///
+/// Return shape preserved for index.ts:372-381 (`noShowsMarked` +
+/// `sessionsAbandoned`). A new `sessionsCompletedBySweep` counter is
+/// exposed so observability dashboards / future tests can split the
+/// two finalization outcomes.
 export async function cleanupStaleTeamWorkouts(): Promise<{
   noShowsMarked: number;
   sessionsAbandoned: number;
+  sessionsCompletedBySweep: number;
 }> {
   const now = Date.now();
   const noShowBefore = new Date(now - NO_SHOW_AFTER_MS);
   const abandonBefore = new Date(now - ABANDON_AFTER_MS);
+
+  // ----- 30-min NO_SHOW sweep -----
+  // Collect the affected live sessions up front so we can re-check them
+  // for completion after the bulk update. updateMany returns just the
+  // count, not the rows, so we need this separate findMany.
+  const affectedByNoShow = await prisma.teamWorkout.findMany({
+    where: {
+      status: { in: ['PENDING', 'ACTIVE'] },
+      startedAt: { lt: noShowBefore },
+      participants: { some: { status: 'INVITED' } },
+    },
+    select: { id: true },
+  });
   const noShows = await prisma.teamParticipant.updateMany({
     where: {
-      status: { in: ['INVITED', 'ACCEPTED'] },
-      respondedAt: { lt: noShowBefore },
-      // also require no join — i.e. status field still INVITED/ACCEPTED
+      status: 'INVITED',
+      // Relation filter on the parent teamWorkout — must be a
+      // non-finalized session past the 30-min threshold. This
+      // replaces the old `respondedAt: { lt: noShowBefore }` clause
+      // (which was unreachable for INVITED rows since they have
+      // null respondedAt) AND keeps finalized sessions untouched
+      // (a defensive guarantee the relation filter buys us).
+      teamWorkout: {
+        is: {
+          status: { in: ['PENDING', 'ACTIVE'] },
+          startedAt: { lt: noShowBefore },
+        },
+      },
     },
     data: { status: 'NO_SHOW' },
   });
-  const abandoned = await prisma.teamWorkout.updateMany({
+  // Re-check each affected still-live session. A session where every
+  // participant is now CONFIRMED | DECLINED | NO_SHOW finalizes via
+  // the shared path; everything else stays as-is (e.g. one CONFIRMED
+  // + one NO_SHOW + several ACCEPTED still needs the ACCEPTED folks
+  // to confirm or get swept later).
+  let sessionsCompletedBySweep = 0;
+  for (const s of affectedByNoShow) {
+    await maybeCompleteTeamWorkout(s.id);
+    // Track transitions. affectedByNoShow is filtered to PENDING/ACTIVE
+    // sessions, so a status=COMPLETED post-call means the finalize
+    // fired (no double-count risk from re-calling on already-finalized
+    // sessions). One extra findUnique per affected session — minor
+    // overhead in a 15-min cron that affects at most a handful of rows.
+    const after = await prisma.teamWorkout.findUnique({
+      where: { id: s.id },
+      select: { status: true },
+    });
+    if (after?.status === 'COMPLETED') sessionsCompletedBySweep++;
+  }
+
+  // ----- 1h ABANDON sweep -----
+  // For each stale live session, mark remaining non-terminal
+  // participants NO_SHOW, then decide COMPLETED vs ABANDONED on
+  // fresh state. The shared finalize path handles side effects
+  // (still gated on ≥2 confirmed) when COMPLETED wins.
+  const staleSessions = await prisma.teamWorkout.findMany({
     where: {
       status: { in: ['PENDING', 'ACTIVE'] },
       startedAt: { lt: abandonBefore },
     },
-    data: { status: 'ABANDONED', endedAt: new Date() },
+    select: { id: true },
   });
-  return { noShowsMarked: noShows.count, sessionsAbandoned: abandoned.count };
+  let noShowsMarked = noShows.count;
+  let sessionsAbandoned = 0;
+  for (const s of staleSessions) {
+    const u = await prisma.teamParticipant.updateMany({
+      where: {
+        teamWorkoutId: s.id,
+        status: { in: ['INVITED', 'ACCEPTED', 'JOINED'] },
+      },
+      data: { status: 'NO_SHOW' },
+    });
+    noShowsMarked += u.count;
+    // Re-load participants on fresh state — the race window between
+    // the findMany above and the updateMany here is tiny but checking
+    // fresh state honors "NEVER convert a session with confirmed work
+    // into ABANDONED". If a /confirm landed between findMany and now,
+    // we'll see the new CONFIRMED participant and finalize properly.
+    const refreshed = await prisma.teamParticipant.findMany({
+      where: { teamWorkoutId: s.id },
+      select: { status: true },
+    });
+    const hasConfirmed = refreshed.some((p) => p.status === 'CONFIRMED');
+    if (hasConfirmed) {
+      await maybeCompleteTeamWorkout(s.id);
+      sessionsCompletedBySweep++;
+    } else {
+      await prisma.teamWorkout.update({
+        where: { id: s.id },
+        data: { status: 'ABANDONED', endedAt: new Date() },
+      });
+      sessionsAbandoned++;
+    }
+  }
+  return { noShowsMarked, sessionsAbandoned, sessionsCompletedBySweep };
 }
 
 async function unlockAchievement(userId: string, key: string): Promise<void> {
