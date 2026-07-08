@@ -249,7 +249,7 @@ app.get('/today', async (req) => {
       // take down the whole popup — the UI surfaces the field as
       // "n/a" instead. Better than a 500 that blocks the user from
       // seeing their dailies (the actionable part of the popup).
-      const [workouts, sleep, latestWeight, recovery, heartLoss] = await Promise.all([
+      const [workouts, sleep, weightOnTargetDay, weightMostRecent, recovery, heartLoss] = await Promise.all([
         prisma.workout.findMany({
           where: { userId: me.id, performedAt: { gte: startOfDay, lt: endOfDay } },
           select: { id: true, name: true, type: true, duration: true, performedAt: true },
@@ -257,6 +257,22 @@ app.get('/today', async (req) => {
         }).catch(() => []),
         prisma.measurement.findFirst({
           where: { userId: me.id, metric: 'SLEEP_HOURS', recordedAt: { gte: startOfDay, lt: endOfDay } },
+          orderBy: { recordedAt: 'desc' },
+          select: { value: true, recordedAt: true },
+        }).catch(() => null),
+        // WEIGHT is queried twice: once filtered to the target day
+        // (for the "did they weigh in today?" boolean) and once
+        // unfiltered (for the "latest known weight" fallback
+        // display). The previous implementation only fetched the
+        // single most recent WEIGHT and then tested whether its
+        // recordedAt was in the target day — which was wrong:
+        // a user who weighed in on day X-1 (most recent) plus on
+        // day X-2 (older) would show weighInLogged=false for X-2
+        // even though they had a measurement that day. The fix is
+        // a direct day-windowed query for the boolean + an
+        // unfiltered query for the display value.
+        prisma.measurement.findFirst({
+          where: { userId: me.id, metric: 'WEIGHT', recordedAt: { gte: startOfDay, lt: endOfDay } },
           orderBy: { recordedAt: 'desc' },
           select: { value: true, recordedAt: true },
         }).catch(() => null),
@@ -272,6 +288,11 @@ app.get('/today', async (req) => {
           select: { id: true, kind: true, details: true, sourceDate: true },
         }).catch(() => []),
       ]);
+      // Display value: prefer the target-day measurement (if any),
+      // fall back to the most recent measurement across all time so
+      // the "Weigh-in" recap cell always shows a useful number
+      // ("you didn't log today, but your last known was X kg").
+      const latestWeight = weightOnTargetDay ?? weightMostRecent;
 
       // Levels: read-only from user. XP-to-next-level uses the same
       // formula as the rest of the app.
@@ -321,10 +342,7 @@ app.get('/today', async (req) => {
           workoutCount: workouts.length,
           workoutNames: workouts.map((w) => w.name ?? w.type).slice(0, 3),
           sleepHours: sleep?.value ?? null,
-          weighInLogged: latestWeight
-            ? latestWeight.recordedAt.getTime() >= startOfDay.getTime()
-              && latestWeight.recordedAt.getTime() < endOfDay.getTime()
-            : false,
+          weighInLogged: !!weightOnTargetDay,
           latestWeightKg: latestWeight?.value ?? null,
           recoveryScore: recovery?.score ?? null,
         },
