@@ -331,6 +331,90 @@ export async function mealRoutes(app: FastifyInstance) {
     });
     return { item: updated };
   });
+
+// ============================================================================
+// GET /meals/trend?days=N — per-day totals for trend charts.
+// Returns [{ day: 'YYYY-MM-DD', calories, proteinG, carbG, fatG,
+// mealCount, waterMl }] sorted oldest-first. Days with zero meals
+// are still emitted (zeros), so the chart x-axis is contiguous
+// even if the user skipped a day. The food sources for the totals
+// are the same scaled sums that /meals/today returns — single
+// source of truth.
+// ============================================================================
+app.get('/trend', async (req) => {
+  const me = await requireUser(req);
+  const q = z
+    .object({ days: z.coerce.number().int().min(1).max(90).default(14) })
+    .parse(req.query);
+  const tz = me.timezone ?? 'UTC';
+
+  // Per-day key array (oldest-first), so the response is contiguous
+  // even on days with zero meals.
+  const today = new Date();
+  const dayKeys: string[] = [];
+  for (let i = q.days - 1; i >= 0; i--) {
+    const d = new Date(today.getTime() - i * 86_400_000);
+    dayKeys.push(todayInTz(tz, d));
+  }
+  const first = dayKeys[0]!;
+  const firstMidnight = localMidnightUtc(first, tz);
+  // Pull a small superset of meal entries covering the window.
+  // We bound by a +1d buffer to avoid tz-off-by-one at the edges.
+  const entries = await prisma.mealEntry.findMany({
+    where: {
+      userId: me.id,
+      loggedAt: { gte: new Date(firstMidnight.getTime() - 86_400_000) },
+    },
+    include: { food: true },
+  });
+  type Bucket = {
+    calories: number;
+    proteinG: number;
+    carbG: number;
+    fatG: number;
+    waterMl: number;
+    mealCount: number;
+  };
+  const empty = (): Bucket => ({ calories: 0, proteinG: 0, carbG: 0, fatG: 0, waterMl: 0, mealCount: 0 });
+  const buckets = new Map<string, Bucket>(dayKeys.map((k) => [k, empty()]));
+  for (const e of entries) {
+    const day = todayInTz(tz, e.loggedAt);
+    if (!buckets.has(day)) continue; // edge: loggedAt in a tz-ahead day
+    const b = buckets.get(day)!;
+    const s = e.servings ?? 1;
+    b.calories += e.food.calories * s;
+    b.proteinG += e.food.proteinG * s;
+    b.carbG += e.food.carbG * s;
+    b.fatG += e.food.fatG * s;
+    b.mealCount += 1;
+  }
+  // Merge in actual WATER_ML measurements for the same window so
+  // the nutrition chart's water line matches what the daily bar
+  // shows.
+  const waterRows = await prisma.measurement.findMany({
+    where: { userId: me.id, metric: 'WATER_ML' as any, recordedAt: { gte: firstMidnight } },
+    select: { value: true, recordedAt: true },
+  });
+  for (const w of waterRows) {
+    const day = todayInTz(tz, w.recordedAt);
+    if (!buckets.has(day)) continue;
+    buckets.get(day)!.waterMl += w.value;
+  }
+  return {
+    days: dayKeys.map((day) => {
+      const b = buckets.get(day)!;
+      return {
+        day,
+        calories: Math.round(b.calories),
+        proteinG: Math.round(b.proteinG * 10) / 10,
+        carbG: Math.round(b.carbG * 10) / 10,
+        fatG: Math.round(b.fatG * 10) / 10,
+        waterMl: Math.round(b.waterMl),
+        mealCount: b.mealCount,
+      };
+    }),
+  };
+});
 }
 
 // ============================================================================
@@ -383,3 +467,4 @@ function addTotals(a: Totals, b: Totals): void {
   a.sugarG += b.sugarG;
   a.sodiumMg += b.sodiumMg;
 }
+

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SubstanceCategory } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
-import { lastSundayMidnightUtc } from '../lib/timezone.js';
+import { lastSundayMidnightUtc, todayInTz } from '../lib/timezone.js';
 
 // ============================================================================
 // Substance log — one-shot events (NOT a daily checklist).
@@ -157,4 +157,51 @@ export async function substanceRoutes(app: FastifyInstance) {
     await prisma.substanceLog.delete({ where: { id } });
     return { ok: true };
   });
+
+// ============================================================================
+// GET /substances/trend?days=N — per-day count per category for
+// the line chart. Returns [{ day, caffeine, alcohol, nicotine,
+// electrolyte }] sorted oldest-first, one row per day (zeros for
+// "didn't consume" days). Each line is a count of logs, not
+// weighted by amount — the chart's purpose is "did I / how many
+// times" rather than "what dose" (the units differ across
+// categories: drinks vs mg vs puffs, so a single shared y-axis
+// unit would be misleading).
+// ============================================================================
+app.get('/trend', async (req) => {
+  const me = await requireUser(req);
+  const q = z
+    .object({ days: z.coerce.number().int().min(1).max(90).default(14) })
+    .parse(req.query);
+  const tz = me.timezone ?? 'UTC';
+  const today = new Date();
+  const dayKeys: string[] = [];
+  for (let i = q.days - 1; i >= 0; i--) {
+    const d = new Date(today.getTime() - i * 86_400_000);
+    dayKeys.push(todayInTz(tz, d));
+  }
+  // Pull the rows for the window. Use the older of (i=days-1 ago) as
+  // the lower bound; for safety add 1d buffer.
+  const since = new Date(today.getTime() - (q.days + 1) * 86_400_000);
+  const logs = await prisma.substanceLog.findMany({
+    where: { userId: me.id, loggedAt: { gte: since } },
+    select: { category: true, loggedAt: true },
+  });
+  type Cat = 'CAFFEINE' | 'ALCOHOL' | 'NICOTINE' | 'ELECTROLYTE';
+  const empty = (): Record<Cat, number> => ({
+    CAFFEINE: 0, ALCOHOL: 0, NICOTINE: 0, ELECTROLYTE: 0,
+  });
+  const buckets = new Map<string, Record<Cat, number>>(
+    dayKeys.map((k) => [k, empty()]),
+  );
+  for (const l of logs) {
+    const day = todayInTz(tz, l.loggedAt);
+    if (!buckets.has(day)) continue;
+    const cat = l.category as Cat;
+    buckets.get(day)![cat] += 1;
+  }
+  return {
+    days: dayKeys.map((day) => ({ day, ...buckets.get(day)! })),
+  };
+});
 }
