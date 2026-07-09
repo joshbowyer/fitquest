@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { classNames } from '@/lib/format';
 
@@ -243,11 +244,37 @@ export function RoutinesPage() {
 
   const isEditorOpen = editingId !== null;
 
+  // Pull-to-refresh: invalidate the saved-routines list. The
+  // editor panel is local draft state and doesn't need a
+  // server refresh, but the left-hand list (and the "deleted"
+  // status of any routine the user just removed elsewhere)
+  // picks up changes from this gesture.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['workout-templates'] });
+    },
+  });
+
   return (
     <Layout>
       <PageHeader
         title="// Routines"
         subtitle="Saved workout patterns. Pick one on /activities to prefill exercises + reps."
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
+        }
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 items-start">

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { useAuth } from '@/lib/auth';
@@ -7,6 +7,7 @@ import { METRICS, METRICS_BY_CATEGORY, type Measurement, type MetricType } from 
 import { displayUnit, displayValue, type UnitSystem } from '@/lib/units';
 import { classNames } from '@/lib/format';
 import { MetricDetailModal } from '@/components/MetricDetailModal';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // Metrics that are derived from other data and shouldn't be
 // user-enterable. LEAN_MASS = weight × (1 - bf%). FFMI is computed
@@ -50,6 +51,7 @@ const CAT_ACCENT: Record<string, 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet
 export function MeasurementsPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
+  const qc = useQueryClient();
 
   // Which metric is currently open in the modal. null = closed.
   const [openMetric, setOpenMetric] = useState<MetricType | null>(null);
@@ -70,11 +72,37 @@ export function MeasurementsPage() {
     if (!latestByMetric.has(m.metric)) latestByMetric.set(m.metric, m);
   }
 
+  // Pull-to-refresh: invalidate the "latest one per metric"
+  // tile-grid query so every tile re-renders with the freshest
+  // logged value. The MetricDetailModal opens its own per-metric
+  // /measurements?metric=X query on demand — those refetch on
+  // their own staleTime.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['measurements', 'all'] });
+    },
+  });
+
   return (
     <Layout>
       <PageHeader
         title="// Measurements"
         subtitle="Pick a metric to log, view history, or override its genetic max."
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
+        }
       />
 
       {/* Category sections. 2-col on md+, single col on smaller.

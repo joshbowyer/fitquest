@@ -10,6 +10,7 @@ import { classNames, formatRelative } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { METRICS_BY_CATEGORY, METRICS, type MetricType } from '@/lib/types';
 
 type Factor = {
@@ -172,6 +173,20 @@ export function InsightsMetricsPage() {
     return gaps;
   }, [baselinesQ.data]);
 
+  // Pull-to-refresh: invalidate the same two top-level queries
+  // the CategorySection `onRefresh` callback already targets
+  // (`['metric-baselines-all', 'metric-baselines']` and
+  // `['metric-insights', 'cached']`). Doing it here means a
+  // pull gesture refreshes the page without threading state
+  // through CategorySection.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['metric-insights', 'cached'] });
+      qc.invalidateQueries({ queryKey: ['metric-baselines-all'] });
+    },
+  });
+
   return (
     <Layout>
       <div className="px-4 py-4 md:px-8 md:py-6 max-w-5xl mx-auto pb-24 md:pb-6">
@@ -179,12 +194,26 @@ export function InsightsMetricsPage() {
           title="Insights — metrics"
           subtitle="Per-metric deep-dive. Windowed averages, deltas, and an LLM-written narrative for every measurable metric. Click 'Generate' on any metric to write its insight (cached for 7 days)."
           action={
-            <Link
-              to="/insights"
-              className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
-            >
-              ← correlations
-            </Link>
+            <div className="flex items-center gap-3">
+              {pulledPx > 4 && (
+                <span
+                  aria-hidden
+                  className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+                >
+                  {refreshing
+                    ? 'Refreshing…'
+                    : pulledPx > 0
+                      ? `Release to refresh (${Math.round(pulledPx)}px)`
+                      : 'Pull to refresh'}
+                </span>
+              )}
+              <Link
+                to="/insights"
+                className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
+              >
+                ← correlations
+              </Link>
+            </div>
           }
         />
 

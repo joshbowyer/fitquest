@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
 import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
@@ -115,6 +116,19 @@ export function TodayPage() {
     mutationFn: (id) => api(`/dailies/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['dailies'] }),
   }, 400);
+
+  // Pull-to-refresh: invalidate the dailies tree so the built-in
+  // WORKOUT/SPIRITUAL rows, user-defined dailies, and the
+  // completion counter all reload. Placed before the wall-mode
+  // early return below so the hooks order stays stable across
+  // renders — wall mode also runs through the same invalidate
+  // path, so this keeps both layouts consistent.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['dailies'] });
+    },
+  });
 
   const { counts } = data ?? { counts: { total: 0, completed: 0, isWorkoutDay: false } };
   const isWorkoutDay = counts.isWorkoutDay;
@@ -326,6 +340,18 @@ export function TodayPage() {
         subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
         action={
           <div className="flex items-center gap-3">
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
             <Link
               to="/calendar"
               className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1"

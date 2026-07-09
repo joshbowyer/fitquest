@@ -10,6 +10,7 @@ import { EquippedAvatar as Avatar } from '@/components/EquippedAvatar';
 import { ConstellationMap } from '@/components/ConstellationMap';
 import { HomeBasePage } from '@/components/HomeBaseCard';
 import { ShopModal } from '@/components/ShopModal';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import type { HomeBase as HomeBaseData } from '@/lib/types';
 import {
   type World,
@@ -23,6 +24,7 @@ import { classNames } from '@/lib/format';
 export function QuestPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   // Home-base modal state. Opens when the user clicks the home-base
   // panel on the right OR the home-base node on the constellation
   // map. Closes on backdrop click or Escape.
@@ -50,6 +52,20 @@ export function QuestPage() {
     enabled: !!user && user.level >= 8,
     staleTime: 60_000,
   });
+
+  // Pull-to-refresh: same pattern as Dashboard. The <main> wrapper
+  // in Layout is the scrollable element; pulling down invalidates
+  // the three queries the constellation map reads (worlds, home-
+  // base, breach) so the overworld + shield tier + black-hole
+  // overlay all reload in parallel.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+      qc.invalidateQueries({ queryKey: ['home-base'] });
+      qc.invalidateQueries({ queryKey: ['breach'] });
+    },
+  });
   const breachUnlocked = breach?.progress.status !== 'LOCKED' && breach?.boss != null;
   // The Breach world is gated by player level 12 (its levelRequired).
   // The raid node on the constellation links to the world (not the
@@ -67,6 +83,20 @@ export function QuestPage() {
       <PageHeader
         title="Quest"
         subtitle="From the home base, paths reach out to other worlds. Each portal, a different test."
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
+        }
       />
 
       {isLoading || !user ? (

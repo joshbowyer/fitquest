@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth';
 import { convertForDisplay, formatInUnits } from '@/lib/units';
 import { classNames } from '@/lib/format';
 import { METRICS, type MetricType } from '@/lib/types';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 type Window = 30 | 90 | 180 | 365;
 
@@ -78,7 +79,24 @@ const CIRCUMFERENCE_GROUP: Array<{
 export function BodyCompPage() {
   const { user } = useAuth();
   const units = user?.units === 'IMPERIAL' ? 'IMPERIAL' : 'METRIC';
+  const qc = useQueryClient();
   const [win, setWin] = useState<Window>(90);
+
+  // Pull-to-refresh: invalidate the body-comp window query so the
+  // user can drag from the top to reload charts + cards after a
+  // fresh measurement entry. Single query key (scoped by window),
+  // so invalidate that one prefix.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      // The body-comp query key is ['body-comp', win, allMetrics.join(',')]
+      // — invalidate the ['body-comp'] prefix so whichever window
+      // is active re-fetches. The underlying /measurements query
+      // is bundled into a single useQuery call here, so we only
+      // need to hit that one cache entry.
+      qc.invalidateQueries({ queryKey: ['body-comp'] });
+    },
+  });
 
   // Fetch the union of all body-comp metrics in a single query.
   // The /measurements endpoint supports `metric` filter, but doing
@@ -179,12 +197,26 @@ export function BodyCompPage() {
             </>
           }
           action={
-            <Link
-              to="/check-ins"
-              className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
-            >
-              check-ins →
-            </Link>
+            <>
+              {pulledPx > 4 && (
+                <span
+                  aria-hidden
+                  className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+                >
+                  {refreshing
+                    ? 'Refreshing…'
+                    : pulledPx > 0
+                      ? `Release to refresh (${Math.round(pulledPx)}px)`
+                      : 'Pull to refresh'}
+                </span>
+              )}
+              <Link
+                to="/check-ins"
+                className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
+              >
+                check-ins →
+              </Link>
+            </>
           }
         />
 

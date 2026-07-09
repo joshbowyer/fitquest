@@ -6,6 +6,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { useAuth } from '@/lib/auth';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { classNames } from '@/lib/format';
 import { OverlayTrendChart, type Series } from '@/components/OverlayTrendChart';
 import { WeeklyVolumeChart } from '@/components/WeeklyVolumeChart';
@@ -160,18 +161,49 @@ export function InsightsPage() {
     },
   ];
 
+  // Pull-to-refresh: invalidate the entire insights tree
+  // (summary, correlations, weekly volume, anti-staleness,
+  // overlay histories). Prefix match catches the per-lag and
+  // per-window sub-keys without enumerating them. The
+  // per-row correlation-history sparkline queries live under
+  // ['correlation-history', ...] and refetch on their own
+  // staleTime when their query keys are invalidated via
+  // remount — the page-level invalidate here is sufficient
+  // since react-query will rehydrate them on the next render
+  // when the rows read them.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['insights'] });
+    },
+  });
+
   return (
     <Layout>
       <PageHeader
         title="// Insights"
         subtitle="Deep-dive trends, correlations, anti-staleness diagnostics."
         action={
-          <Link
-            to="/insights/metrics"
-            className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
-          >
-            per-metric deep-dive →
-          </Link>
+          <div className="flex items-center gap-3">
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
+            <Link
+              to="/insights/metrics"
+              className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"
+            >
+              per-metric deep-dive →
+            </Link>
+          </div>
         }
       />
 

@@ -18,6 +18,7 @@ import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
 import type { TodoItem, TodoPriority, TodoStatus } from '@/lib/types';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 type ListResp = { items?: TodoItem[]; created?: TodoItem } | TodoItem[];
 type PatchResp = { todo: TodoItem; award: { xp: number; gold: number; leveledUp: boolean; newLevel: number } | null };
@@ -57,6 +58,13 @@ function TodoPageInner() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TodoItem | null>(null);
   const [toast, setToast] = useState<{ text: string; tone: 'lime' | 'magenta' } | null>(null);
+
+  // Pull-to-refresh: the todo page has a single source of truth
+  // (the ['todos'] query key), so one invalidate covers it.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => qc.invalidateQueries({ queryKey: ['todos'] }),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['todos'],
@@ -101,6 +109,18 @@ function TodoPageInner() {
       <PageHeader
         title="Todos"
         subtitle="One-shot tasks — finish them, earn XP"
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

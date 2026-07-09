@@ -15,6 +15,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { NeonButton } from '@/components/NeonButton';
 import { Link } from 'react-router-dom';
 import { useLongPress } from '@/hooks/useLongPress';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 function kgToLb(kg: number): number { return kg * 2.20462; }
 function weightUnitLabel(units: UnitSystem): string {
@@ -154,9 +155,40 @@ export function ActivitiesPage() {
     return true;
   });
 
+  // Pull-to-refresh: invalidate the workouts list (history
+  // panel) + the workout-templates list (quick-start chips).
+  // The two conditional queries (selectedTemplate detail + the
+  // ?copyFrom=<id> prefill) refetch naturally because they
+  // share the same queryKey prefix when their `enabled` flips
+  // after a stale-while-revalidate window.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['workouts'] });
+      qc.invalidateQueries({ queryKey: ['workout-templates'] });
+    },
+  });
+
   return (
     <Layout>
-      <PageHeader title="// Activities" subtitle="Log a session. Auto-detect PRs. Gain XP." />
+      <PageHeader
+        title="// Activities"
+        subtitle="Log a session. Auto-detect PRs. Gain XP."
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
+        }
+      />
 
       {/* Side-by-side layout: Log Session (left, ~66%) + History (right, ~33%).
           Stacks vertically below the lg breakpoint so phone users get a

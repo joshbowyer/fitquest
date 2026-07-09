@@ -12,6 +12,7 @@ import { METRICS, type MetricType } from '@/lib/types';
 import { classNames, formatMetricWithUnit, formatRelative } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // Recovery-oriented metrics. Sleep (hours + quality) and HRV live here
 // instead of on the generic measurements picker, so the page is
@@ -76,17 +77,43 @@ export function RecoveryPage() {
 
   const completedMetrics = RECOVERY_METRICS.filter((m) => status[m]?.logged).length;
 
+  // Pull-to-refresh: invalidate the recovery tree so today's
+  // status checkmark + the 200-row 7-day history used by the
+  // sparklines both reload. Prefix match catches the two
+  // variants (`['recovery', 'today']` and `['recovery', 'all']`)
+  // without enumerating them.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['recovery'] });
+    },
+  });
+
   return (
     <Layout>
       <PageHeader
         title="// Recovery"
         subtitle="Sleep, HRV, restoration. The opposite of training stress — and the engine of adaptation."
         action={
-          <div className="font-mono text-sm">
-            <span className="text-ink-300 text-xs uppercase tracking-widest">Today: </span>
-            <span className={`text-xl ml-1 ${completedMetrics === RECOVERY_METRICS.length ? 'neon-text-lime' : 'neon-text-cyan'}`}>
-              {completedMetrics}/{RECOVERY_METRICS.length}
-            </span>
+          <div className="flex items-center gap-3">
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
+            <div className="font-mono text-sm">
+              <span className="text-ink-300 text-xs uppercase tracking-widest">Today: </span>
+              <span className={`text-xl ml-1 ${completedMetrics === RECOVERY_METRICS.length ? 'neon-text-lime' : 'neon-text-cyan'}`}>
+                {completedMetrics}/{RECOVERY_METRICS.length}
+              </span>
+            </div>
           </div>
         }
       />

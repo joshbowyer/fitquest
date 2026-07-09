@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { classNames } from '@/lib/format';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 type Component = {
   metric: string;
@@ -354,6 +355,15 @@ export function ForecastPage() {
   // the next visit re-fetches.
   const invalidate = () => qc.invalidateQueries({ queryKey: ['forecast'] });
 
+  // Pull-to-refresh: the forecast endpoint is a single coalesced
+  // response (readiness + weather + air quality), so a single
+  // invalidate is sufficient. The "refresh" button + this hook
+  // both target the same ['forecast'] key.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: invalidate,
+  });
+
   const data = q.data;
   const readiness = data?.readiness;
   const score = readiness?.score ?? null;
@@ -367,13 +377,27 @@ export function ForecastPage() {
         title="Forecast"
         subtitle="Outdoor conditions + today's readiness, in one glance."
         action={
-          <button
-            onClick={() => q.refetch()}
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-neon-cyan border border-ink-500/30 px-2 py-1"
-            disabled={q.isFetching}
-          >
-            {q.isFetching ? '…' : '↻ refresh'}
-          </button>
+          <>
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
+            <button
+              onClick={() => q.refetch()}
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-neon-cyan border border-ink-500/30 px-2 py-1"
+              disabled={q.isFetching}
+            >
+              {q.isFetching ? '…' : '↻ refresh'}
+            </button>
+          </>
         }
       />
 

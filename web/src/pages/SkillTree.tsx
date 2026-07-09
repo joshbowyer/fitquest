@@ -11,6 +11,7 @@ import { branchIcon, calitreeIconFor, skillCalitreeIconFor, SKILL_ICONS } from '
 import { CLASS_META } from '@/lib/types';
 import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 import { playSoundAndNotify } from '@/lib/soundBus';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // Tailwind text-neon-* class for the user's class accent. Used by
 // the calitree PNG icons (via mask-image + background-color:
@@ -830,6 +831,21 @@ export function SkillTreePage() {
   const [pendingQueue, setPendingQueue] = useState<PendingUnlock[] | null>(null);
   const [activePending, setActivePending] = useState<PendingUnlock | null>(null);
 
+  // Pull-to-refresh: invalidate the tree + the pending-unlock
+  // inbox so newly-eligible skills (which the matching pass adds
+  // server-side after each workout commit) show up without a
+  // full page reload. Declared before the early-return state
+  // branches (no class / loading / error) so hook ordering is
+  // stable across renders; the visual indicator only renders on
+  // the main return branch where the PageHeader actually appears.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['skills', 'tree'] });
+      qc.invalidateQueries({ queryKey: ['skills', 'pending-unlocks'] });
+    },
+  });
+
   const treeQ = useQuery({
     queryKey: ['skills', 'tree'],
     queryFn: () => api<TreeResponse>('/skills/tree'),
@@ -995,6 +1011,18 @@ export function SkillTreePage() {
       <PageHeader
         title="// Skill Tree"
         subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · pass the test to unlock`}
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
 
       {/* Tree view — all 7 branches visible AT ONCE on the left,

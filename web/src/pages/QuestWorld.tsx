@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { BossCard } from '@/components/BossCard';
 import { BossUnlockModal, useBossUnlock } from '@/components/BossUnlockModal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import {
   type World,
   type WorldLevel,
@@ -56,6 +57,20 @@ export function QuestWorldPage() {
     !!world && world.levels.length > 0 && world.levels.every((l) => l.completed);
   const unlock = useBossUnlock(worldId ?? '', allLevelsCompleted);
 
+  // Pull-to-refresh: invalidate the world detail + the worlds list
+  // (in case another world's thresholds changed) + the user record
+  // (in case XP/gold/level shifted since the last visit). Same
+  // set of keys the "re-check thresholds" mutation invalidates on
+  // success, so the user has a consistent refresh story.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['quest-world'] });
+      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
+    },
+  });
+
   if (isLoading || !user || !world) {
     return (
       <Layout>
@@ -88,6 +103,20 @@ export function QuestWorldPage() {
               {recheck.isPending ? '⟳ checking…' : '⟳ re-check thresholds'}
             </button>
           </span>
+        }
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
         }
       />
 

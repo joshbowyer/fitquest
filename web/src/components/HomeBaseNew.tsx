@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from './Layout';
@@ -12,6 +12,7 @@ import { PortalLeakCard, PortalLeakBody } from './PortalLeakCard';
 import { PenanceTemplatesPanel } from './HomeBaseCard';
 import type { PenanceEvent } from '@/lib/types';
 import type { World } from '@/lib/quest';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 type HomeBaseData = {
   shield: number;
@@ -275,11 +276,38 @@ export function HomeBasePage() {
 }
 
 export function HomeBaseFullPage() {
+  const qc = useQueryClient();
+  // Pull-to-refresh: invalidate every query the HomeBase inner
+  // tree reads so a single gesture refreshes the shield panel,
+  // worlds list, breach progress, and active portal leak
+  // together. The leak query has its own 60s poll — invalidating
+  // it just shortens the wait.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['home-base'] });
+      qc.invalidateQueries({ queryKey: ['quest-worlds'] });
+      qc.invalidateQueries({ queryKey: ['breach'] });
+      qc.invalidateQueries({ queryKey: ['portal-leak'] });
+    },
+  });
   return (
     <Layout>
       <PageHeader
         title="// Home base"
         subtitle="The shield that protects your engagement. Compromise it and the breach escalates."
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
       <HomeBasePage />
     </Layout>

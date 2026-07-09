@@ -11,6 +11,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { DeleteButton } from '@/components/DeleteButton';
 import { formatWeight, formatNum } from '@/lib/format';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import {
   BodyModel,
   BODY_PARTS_UI,
@@ -125,6 +126,19 @@ export function StatusPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['status'] }),
   }, 400);
 
+  // Pull-to-refresh: invalidate the status payload (recovery +
+  // worked muscles + pain logs), the forecast recommendation
+  // card, and today's weigh-in tile. Placed before the `if
+  // (!user)` early return so the hooks order stays stable.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['status'] });
+      qc.invalidateQueries({ queryKey: ['forecast', 'recommendation'] });
+      qc.invalidateQueries({ queryKey: ['weigh-in', 'status'] });
+    },
+  });
+
   if (!user) return null;
 
   const archetype = getFrameArchetype(user.heightCm, user.weightKg, user.bodyFatPct) ?? 'SPRITE';
@@ -172,6 +186,20 @@ export function StatusPage() {
       <PageHeader
         title="Status"
         subtitle="Holographic readout of your body. Click to log pain. Color = recovery status."
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
+        }
       />
 
       {/* Top row — Recovery + Recommended side-by-side, ABOVE the

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // =============================================================
 // Pet shop API types. /shop/pet-stock returns the breed list;
@@ -70,6 +71,20 @@ export function ShopPage() {
   const [name, setName] = useState('');
   const [variant, setVariant] = useState<string | null>(null);
   const [busyFoodId, setBusyFoodId] = useState<string | null>(null);
+
+  // Pull-to-refresh: refresh the breed stock + item catalog so
+  // newly-released pets / consumables appear without a full
+  // page reload. Also refetch the user's roster (gold/level
+  // come from auth context, but a pull can follow one of those
+  // mutations with stale data otherwise).
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['shop', 'pet-stock'] });
+      qc.invalidateQueries({ queryKey: ['shop', 'items'] });
+      qc.invalidateQueries({ queryKey: ['pet'] });
+    },
+  });
 
   const stockQ = useQuery({
     queryKey: ['shop', 'pet-stock'],
@@ -171,6 +186,18 @@ export function ShopPage() {
       <PageHeader
         title="Pet Shop"
         subtitle="Adopt a loyal companion. They grow with you."
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
 
       {/* === BREEDS === */}

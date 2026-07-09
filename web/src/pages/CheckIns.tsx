@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { classNames } from '@/lib/format';
 import { METRICS } from '@/lib/types';
 import { useAuth } from '@/lib/auth';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import {
   CADENCE_LABEL,
   CADENCE_VARIANT,
@@ -48,6 +49,19 @@ export function CheckInsPage() {
 
   const [openMetric, setOpenMetric] = useState<DueMetricDto | null>(null);
 
+  // Pull-to-refresh: tap the top of the page and drag down past
+  // the threshold to refetch the check-in schedule. Mirrors the
+  // Dashboard pattern — uses the shared <main> scroll container
+  // (resolved via selector), invalidates the page's primary query
+  // key, and surfaces a small "Release to refresh" hint in the
+  // page header.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['check-ins'] });
+    },
+  });
+
   function closeModal() {
     setOpenMetric(null);
     qc.invalidateQueries({ queryKey: ['check-ins'] });
@@ -61,6 +75,18 @@ export function CheckInsPage() {
         <PageHeader
           title="Check-ins"
           subtitle="Time-aware prompts for the measurements that change at different rates. AM for post-wakeup signals, PM for end-of-day reflection, WEEKLY for body comp + PRs."
+          action={pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null}
         />
 
         {/* Note: the dashboard's CheckInsPanel is the at-a-glance

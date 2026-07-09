@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import type { Raid } from '@/lib/types';
 import { formatRelative } from '@/lib/format';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // Raid bosses are loaded from the API via /raids/bosses.
 
@@ -37,6 +38,22 @@ export function PartyPage() {
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [teamParticipantIds, setTeamParticipantIds] = useState<string[]>([]);
   const [teamRoutineName, setTeamRoutineName] = useState('');
+
+  // Pull-to-refresh: invalidate every party/raid/pet/invite query
+  // the page reads so a single gesture refreshes the whole
+  // dashboard-like view. Some of these are polled (active team
+  // workouts, raid active) but the pull is the manual equivalent
+  // for the slower-refetching queries.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['party'] });
+      qc.invalidateQueries({ queryKey: ['raid'] });
+      qc.invalidateQueries({ queryKey: ['pet'] });
+      qc.invalidateQueries({ queryKey: ['party-invites'] });
+      qc.invalidateQueries({ queryKey: ['team-workouts'] });
+    },
+  });
 
   // Always poll for active team workouts so the banner can show
   // when the user has an invite waiting or a session in progress.
@@ -202,7 +219,22 @@ export function PartyPage() {
 
   return (
     <Layout>
-      <PageHeader title="// Party" subtitle="Co-op raids. Pool your gains." />
+      <PageHeader
+        title="// Party"
+        subtitle="Co-op raids. Pool your gains."
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
+      />
 
       {err && (
         <div className="mb-4 text-xs font-mono text-neon-magenta border border-neon-magenta/30 bg-neon-magenta/5 p-2">

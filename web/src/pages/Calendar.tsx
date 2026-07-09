@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -10,6 +10,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { classNames, formatRelative } from '@/lib/format';
 import { todayInTz, localTodayStartUtc } from '@/lib/timezone';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import {
   BODY_PARTS,
   intensityLabel,
@@ -166,6 +167,7 @@ export function CalendarPage() {
   const userTz = user?.timezone ?? null;
   const system: UnitSystem = user?.units ?? 'METRIC';
   const today = todayInTz(userTz);
+  const qc = useQueryClient();
 
   // The currently displayed month (0-indexed month). Defaults to
   // today's month. "Today" button resets to today's month.
@@ -258,6 +260,21 @@ export function CalendarPage() {
     setSelectedDate(today);
   }
 
+  // Pull-to-refresh: invalidate by queryKey prefix so the calendar
+  // grid dots (pain-logs + substances windowed queries), the
+  // morning-popup for the currently selected date, and today's
+  // meals all reload. Prefix invalidation catches the per-date
+  // variants (e.g. ['dailies', 'morning-popup', '2026-07-09']).
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['dailies', 'morning-popup'] });
+      qc.invalidateQueries({ queryKey: ['meals', 'today'] });
+      qc.invalidateQueries({ queryKey: ['pain-logs'] });
+      qc.invalidateQueries({ queryKey: ['substances'] });
+    },
+  });
+
   const detail = morningQ.data;
   const meals = mealsQ.data;
   const dayPain = (painQ.data?.logs ?? []).filter((l) => localDateStr(new Date(l.loggedAt), userTz) === selectedDate);
@@ -269,13 +286,27 @@ export function CalendarPage() {
         title="// Calendar"
         subtitle={`Pick a date — see everything you logged that day. Times in ${userTz ?? 'UTC'}.`}
         action={
-          <button
-            type="button"
-            onClick={goToday}
-            className="text-[10px] font-mono uppercase tracking-widest border border-neon-cyan/40 text-neon-cyan px-2 py-1 hover:bg-neon-cyan/10"
-          >
-            Today
-          </button>
+          <div className="flex items-center gap-3">
+            {pulledPx > 4 && (
+              <span
+                aria-hidden
+                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+              >
+                {refreshing
+                  ? 'Refreshing…'
+                  : pulledPx > 0
+                    ? `Release to refresh (${Math.round(pulledPx)}px)`
+                    : 'Pull to refresh'}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={goToday}
+              className="text-[10px] font-mono uppercase tracking-widest border border-neon-cyan/40 text-neon-cyan px-2 py-1 hover:bg-neon-cyan/10"
+            >
+              Today
+            </button>
+          </div>
         }
       />
 

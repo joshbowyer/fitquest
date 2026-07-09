@@ -7,6 +7,7 @@ import { Layout, PageHeader } from '@/components/Layout';
 import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { classNames } from '@/lib/format';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 // =============================================================
 // Pet API types (mirror of api/src/lib/petStats.ts +
@@ -98,6 +99,19 @@ function expectedFoodEffectKey(species: string): string {
 export function PetPage() {
   const { user, refresh } = useAuth();
   const qc = useQueryClient();
+
+  // Pull-to-refresh: refresh the user's pet roster + shop catalog
+  // (used to populate the food selector). Declared before the
+  // early returns below so React's hook order stays consistent
+  // across renders — the visual indicator only renders on the
+  // main return branch where the header actually appears.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['pet'] });
+      qc.invalidateQueries({ queryKey: ['shop', 'items'] });
+    },
+  });
 
   const rosterQ = useQuery({
     queryKey: ['pet'],
@@ -324,6 +338,18 @@ export function PetPage() {
             'Your loyal companion'
           )
         }
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
 
       {/* Roster selector — one card per pet. Click to inspect. The

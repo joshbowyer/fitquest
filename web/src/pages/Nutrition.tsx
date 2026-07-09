@@ -8,6 +8,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { DeleteButton } from '@/components/DeleteButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import type { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
@@ -40,6 +41,23 @@ export function NutritionPage() {
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
   const t = user?.targets;
+  const qc = useQueryClient();
+
+  // Pull-to-refresh: invalidate by queryKey prefix so every
+  // surface on the page reloads — meals (today / recent /
+  // trend), saved + searched foods, substances (recent / trend /
+  // per-category), tracked supplements/probiotics, and any
+  // measurements-based panels (water totals).
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['meals'] });
+      qc.invalidateQueries({ queryKey: ['foods'] });
+      qc.invalidateQueries({ queryKey: ['substances'] });
+      qc.invalidateQueries({ queryKey: ['supplements'] });
+      qc.invalidateQueries({ queryKey: ['measurements'] });
+    },
+  });
 
   return (
     <Layout>
@@ -52,6 +70,20 @@ export function NutritionPage() {
                 return `Goal: ${t.goal.toLowerCase()} · ${Math.round(t.calorieGoal)} cal (${user?.calorieSource === 'BMR' ? 'BMR' : user?.calorieSource === 'BMR_NEAT' ? 'BMR+NEAT' : 'maintenance'} ${Math.round(user?.calorieBaseline ?? 2200)}) · ${Math.round(t.proteinGoalG)}g protein · ${w.value.toFixed(0)} ${w.unit} water (35 ml/kg)`;
               })()
             : 'Track your food and water. Daily targets are in /settings.'
+        }
+        action={
+          pulledPx > 4 ? (
+            <span
+              aria-hidden
+              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+            >
+              {refreshing
+                ? 'Refreshing…'
+                : pulledPx > 0
+                  ? `Release to refresh (${Math.round(pulledPx)}px)`
+                  : 'Pull to refresh'}
+            </span>
+          ) : null
         }
       />
 

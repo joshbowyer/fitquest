@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Layout, PageHeader } from '@/components/Layout';
@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import type { Achievement } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { playSoundAndNotify } from '@/lib/soundBus';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
   CONSISTENCY:   { label: 'Consistency', color: '#ffc34d' },
@@ -20,8 +21,21 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
 
 export function AchievementsPage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const [filter, setFilter] = useState<'ALL' | 'UNLOCKED' | 'LOCKED'>('ALL');
   const [category, setCategory] = useState<string>('ALL');
+
+  // Pull-to-refresh: only one source of truth for this page — the
+  // achievement catalog. The unlock-chime side-effect fires from
+  // a useEffect below that diffs prev vs current unlocked IDs;
+  // a fresh fetch therefore naturally retriggers the chime for
+  // any unlocks landed server-side since last visit.
+  const { pulledPx, refreshing } = usePullToRefresh<HTMLDivElement>({
+    scrollSelector: 'main',
+    onRefresh: () => {
+      qc.invalidateQueries({ queryKey: ['achievements'] });
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['achievements'],
@@ -95,6 +109,18 @@ export function AchievementsPage() {
       <PageHeader
         title="// Achievements"
         subtitle="Witty callouts for showing up, doing the work, and being a person."
+        action={pulledPx > 4 ? (
+          <span
+            aria-hidden
+            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
+          >
+            {refreshing
+              ? 'Refreshing…'
+              : pulledPx > 0
+                ? `Release to refresh (${Math.round(pulledPx)}px)`
+                : 'Pull to refresh'}
+          </span>
+        ) : null}
       />
 
       {/* Stats */}
