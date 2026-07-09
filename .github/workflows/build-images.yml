@@ -92,6 +92,8 @@ jobs:
           flavor: latest=false
 
       - name: Build + push ${{ matrix.service }} (${{ matrix.arch }})
+        id: build
+        continue-on-error: true
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -104,6 +106,28 @@ jobs:
             ROLLUP_PKG=${{ matrix.rollup_pkg }}
           # Cache scoped per (service, arch) so an arm64 rebuild
           # doesn't pull amd64 layers.
+          cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.arch }}
+
+      # arm64 builds cross-compile via QEMU (no free native arm64
+      # runner). QEMU user-mode emulation occasionally SIGILLs
+      # ("qemu: uncaught target signal 4 - Illegal instruction")
+      # mid-way through npm's native postinstall/JIT-heavy steps —
+      # a transient emulator crash, not a real build/code failure.
+      # If the first attempt failed, retry once before giving up so
+      # a flaky QEMU crash doesn't require manual re-run intervention.
+      - name: Retry build + push ${{ matrix.service }} (${{ matrix.arch }}) on transient failure
+        if: steps.build.outcome == 'failure'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.service }}/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ROLLUP_PKG=${{ matrix.rollup_pkg }}
           cache-from: type=gha,scope=${{ matrix.service }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}-${{ matrix.arch }}
 
