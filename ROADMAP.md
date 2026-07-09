@@ -3,6 +3,12 @@
 > Audited against the actual codebase — every "done" item has
 > working code reachable via a URL. "Outstanding" items are sized
 > + scoped for the next session.
+>
+> **Reconciled and deduplicated on 2026-07-09.** "Outstanding"
+> below is the single source of truth — section + tier ordering
+> reflects priorities as of this audit, file:line hints are the
+> entry points for sizing, and no re-derivation is needed on
+> the next pass.
 
 ## Operations
 
@@ -57,440 +63,171 @@
 ## Outstanding (prioritized)
 
 A single-screen view of what's left, in rough priority order.
-Each item has a one-line scope. Detailed notes + history live
-in the "Backlog" section below; the (was: ...) entries there
-are the changelog of what got shipped.
+Each item has a one-line scope + a file/line hint. Detailed
+notes + history live in "Stopped Short / Partial
+Implementations" below; the "(was: ...)" entries there and
+in "Recently Fixed / Resolved" are the changelog of what got
+shipped.
 
-### P0 — quick wins (1-2 days each)
+### P0 — quick wins
 
 - **API type-error backlog → 0, then flip the api Dockerfile
-  typecheck gate.** The 2026-07-07 bug hunt fixed lib/prisma.ts
-  typing (PrismaClient + all 25 enums now real types — this alone
-  surfaced 4 runtime-crash bugs) and drove api tsc errors
-  550 → 167. The remaining 167 are verified annotation noise
-  (import.ts ~42, sleepCorrelation, impossibleValues,
-  supersetRoundRobin, homeBase/skills/workouts routes, ~42 in
-  tests). Once at zero, remove the `|| true` from
-  `api/Dockerfile:48` so the api build enforces typecheck the
-  same way web now does. This is the single highest-leverage
-  hygiene item left — the web-side equivalent is what caught the
+  typecheck gate.** `api/Dockerfile:48` — remove the `|| true`
+  from the `tsc -b` step. ~167 tsc errors remaining (verified
+  annotation noise: import.ts ~42, sleepCorrelation,
+  impossibleValues, supersetRoundRobin, homeBase / skills /
+  workouts routes, ~42 in tests). Highest-leverage hygiene
+  item left — the web-side equivalent is what caught the
   Dashboard-crash class of bug.
-- (was: Dark/light theme toggle — shipped 2026-07-08 session.
-  CSS-variable theming (`:root` dark / `.light` override)
-  consumed via Tailwind `rgb(var(--x)/<alpha>)` so every
-  utility class gets a free light variant. New
-  `web/src/lib/themeBus.ts` + `web/src/hooks/useTheme.ts`;
-  no-flash bootstrap in `main.tsx`; Settings toggle; persists
-  `localStorage.fq_theme`; respects `prefers-color-scheme`.
-  Follow-up shipped 2026-07-09: ~280 hardcoded `slate-*`
-  Tailwind classes across ~30 files (never theme-aware) remapped
-  to var-backed `ink-*`/`bg-*` tokens — this was the real cause
-  of most "light mode looks muddy/unreadable" reports. Light
-  palette retuned (white cards, brighter neon accents, opaque
-  white top-bar/sidebar, darker gray page canvas for genuine
-  elevation vs. cards). ~130 hardcoded hex literals across 12
-  Recharts/Gauge components (the light-theme visual QA item
-  below) also fixed via new `web/src/hooks/useChartColors.ts`,
-  which reads the live CSS vars so chart colors always track the
-  active theme + palette tuning.)
+- **Trivial stale-comment fixes:**
+  - `api/src/lib/penance.ts:13` — "COMPROMISED 30-59 portal
+    leaks possible (Phase 2)" actually shipped (in
+    `portalLeaks.ts:310-330`).
+  - `api/src/lib/coach.ts:144` — "v1 doesn't supply prior
+    turns" is misleading; the route already passes the last
+    20 turns via `SLIDING_WINDOW_SIZE=20`.
+  - `api/src/routes/shop.ts:262` — pet cap comment says 1,
+    actual cap is `MAX_PETS_PER_USER = 6`.
+- **Delete dead `LEAK_TTL_MS` constant.** `api/src/routes/
+  portalLeaks.ts:771-774` — kept as a UI-copy hint but no
+  longer drives any logic. Trivial.
 
-### Recently shipped P0s
-
-- ✅ **Notification feed / inbox** — shipped v1.0.37 (`d0bce16` +
-  `567c4be`). Persistent `Notification` table + `/notifications`
-  inbox (filter tabs, mark-read/dismiss/read-all/clear-all,
-  deep-links) + top-bar bell & unread badge. Emitted from skill
-  unlock, level-up, penance (shield damage/repair), and shop
-  purchase via the fire-and-forget `emitNotification` funnel.
-  Follow-ups if desired: also emit from achievement pops + the
-  daily-digest / morning-report sweep (the funnel is in place,
-  just needs the call sites).
-
-- ✅ **Skill tree: horizontal layout for mobile** — shipped in
-  `e1bab61` + `2be45e8` (calitree-style: one horizontal
-  scrollable chain per branch, branches stacked vertically),
-  connector/width tuning in `fa47907`/`bf91e44`, and the icon
-  Y-alignment root-cause fix in `59b4289` (v1.0.24): 1-line vs
-  2-line skill names made button heights differ and the
-  `items-center` chain wrapper pushed short buttons ~4px down —
-  nodes are now top-anchored with a fixed 2-line name box, and
-  the connector is pinned at the icon center measured from the
-  top. Also normalized hand-coded SVG icons to 28px matching the
-  calitree PNG masks.
-
-- ✅ **FitQuestBridge: drop the 60-min freshness window.**
-  Removed the `find -mmin -60` filter from the Kotlin
-  watcher's FIT file enumeration. The persisted known-paths
-  dedup set is the source of truth (persists across restarts
-  + periodic-prune pass bounds it). Backstop: api's
-  `(userId, performedAt)` UNIQUE constraint on Workout
-  rejects duplicate uploads. Touched
-  `fitquest-bridge` `FitFileObserver.kt`; web/api unchanged.
-- ✅ **Re-examine neck circumference genetic-max logic.** The
-  production code already uses the wrist×2.9 / height×0.245
-  Casey Butt ceiling (correct — a genetic max is a ceiling,
-  not a mirror of the current measurement). The bug was
-  elsewhere: the unit test `geneticMax.test.ts` was asserting
-  the old buggy behavior ('NECK uses measured neckCircCm when
-  available' — `expect(...).toBeCloseTo(40, 0)` against
-  a passed `neckCircCm: 40`). The test was failing on
-  every run, masking the bug it was meant to prevent. Rewrote
-  the assertion to lock in the ceiling behavior + a comment
-  explaining why a future 'just use the measurement'
-  optimization would silently break the Profile's 'grow into
-  the ceiling' UX. All 31 geneticMax tests now pass.
-- ✅ **Restructure the penance templates panel** (Homebase).
-  `HomeBaseCard.tsx` `PenanceTemplatesPanel`: split into two
-  collapsed-by-default sub-blocks — 'Shield damage' (negative
-  shieldDelta) + 'Shield repair' (positive). Each block
-  has a compact header (label + total + active count + active
-  net delta) and expands on click. Per-row checkbox-toggle
-  dropped (the old checkbox read as a 'click to enable'
-  affordance — it was a server-tracked flag, not a local
-  pref). Replaced with click-anywhere-on-the-row toggle +
-  a clear 'active now' pill on enabled rows. The whole panel
-  is now collapsed by default so it doesn't drown the
-  actual shield status.
-- (was: v-taper `SHOULDER_WAIST_RATIO` from /measurements
-  sidebar — already shipped. The /measurements page filters
-  out DERIVED_METRICS (LEAN_MASS, FFMI, SHOULDER_WAIST_RATIO)
-  from the sidebar tile grid; MetricDetailModal blocks logging
-  derived metrics; the dashboard body-comp radials auto-derive
-  v-taper from SHOULDER × WAIST as a gauge (read-only output).
-  No code change needed — roadmap entry was stale.)
-
-### P1 — feature work (1-2 weeks each)
-
-- (was: Genetic-max shadowing — shipped 2026-07-08 session.
-  Dashboard + Profile now show "manual · formula N" inline
-  with the displayed override, and a "Reset to formula"
-  affordance appears only when the override actually diverges
-  from the formula. Formula-vs-override agreement renders
-  cleanly with no affordance noise. The original bug: when a
-  manual override equaled the user's current measurement, the
-  dashboard displayed "your current measurement = your
-  genetic max" with no indication that an override was
-  shadowing the formula. See also the Measurements
-  "/measurements and /dashboard ... shadowing bug" sub-item
-  below — both are now closed by the same fix.)
-- ✅ **Genetic-max drift prevention** — shipped v1.0.37 (`d151e1e`).
-  `previewMax` + `PREVIEW_METRICS` extracted from `Profile.tsx` to
-  `web/src/lib/geneticMax.ts` (single frontend source of truth,
-  mirrors `api/src/lib/geneticMax.ts`).
-- **Medical metrics UI.** Schema has resting HR / sleep / stress
-  data but no medical-themed UI (no "history of resting HR"
-  chart, no BP log form). Existing /measurements tiles + the
-  new overlays would be a good starting point.
-- **Personal records aggregated page.** /prs/WorkoutDetail
-  shows individual PRs but no "all my PRs over time" view
-  with charts.
-
-### P1.5 — small follow-ups from the 2026-07-07 bug hunt (hours each, low urgency)
-
-- ✅ **`sync-android.sh` NEXT_VERSION versionCode bump** — fixed
-  v1.0.37 (`90d318a`, android repo). The explicit-version path now
-  bumps versionCode (guarded against a no-op when NEXT_VERSION ==
-  current).
-- (was: Web main chunk is 2.3 MB — shipped 2026-07-08 session.
-  Route-level `React.lazy` for all 35 routes + `<Suspense>`
-  boundary. Main entry chunk **2,397 kB → 238 kB (~90%)**;
-  Three.js + Recharts are now isolated chunks that only load
-  when their pages do. Vite no longer warns about chunk size
-  on the home build.)
-
-### P2 — bigger features (2+ weeks)
-
-- **Stuff to spend gold on.** Gold is currently a passive
-  counter. Themed weapons / armor sets (equippable, cosmetic,
-  with set bonuses), holiday / seasonal items, UI themes
-  (color palettes for the neon glow). All cosmetic unless we
-  design a real prestige system.
-- **3D avatar polish (rendering + shape).** Scale the avatar
-  to user measurements (height / shoulder-waist v-taper /
-  arm circumference) + replace the disjointed 3D rectangles
-  with anatomical meshes (tapered cylinders for limbs, real
-  torso, head sphere) so the silhouette reads as a person.
-  `User.heightCm` + `User.shoulderCm` + `User.waistCm` are
-  already on the model.
-- **Body measurement photos with diff.** Upload a photo
-  alongside a measurement and have a side-by-side view
-  (overlay diff or fade slider) vs. the previous photo. Needs
-  a new migration for `MeasurementPhoto` rows + storage
-  (S3-compatible or local disk).
-- (was: AI coach / HUD with selectable personalities — v1
-  shipped in `cd46826` (release [v1.0.27](https://github.com/joshbowyer/fitquest-android/releases/tag/v1.0.27)).
-  /coach page with 5 personality presets + system-prompt
-  seeding + persistence on `User.coachPersonality`. Uses the
-  system default LLM (`minimax-m3`). Remaining work, all
-  scoped to "polish the v1": per-personality admin prompt
-  overrides on `LlmConfig.coachSystemPromptOverrides`; server-
-  side conversation history (CoachMessage table); streaming
-  responses; richer per-message personality override.)
-
-
-### P3 — stretch
-
-- **Gadgetbridge rebuild-reminder.** When GB's FIT-export API
-  changes (rare), surface a "rebuild & install" reminder in
-  the bridge's foreground-service notification.
-
-## Backlog (from user notes, in priority order)
-
-Detailed scope + history for each outstanding item. Shipped
-items are demoted below the wave (see "Recently Fixed / Resolved"
-at the bottom for the full changelog).
-
-### Polish
+### P1 — feature work
 
 - **Medical metrics UI.** Surface existing RHR / sleep / stress
-  for medical history. Schema has the data but no medical-themed
-  UI (no "history of resting HR" chart, no BP log form, etc).
-- **Personal records page** — all PRs in one view with charts
-  over time. Currently /prs/WorkoutDetail shows individual PRs
-  but no aggregated "all my PRs over time" view.
-- (was: Mobile polish small wins — shipped in `e1bab61`:
-  long-press multi-select + bulk-delete on workout history,
-  pull-to-refresh on Dashboard, haptic feedback on rest-timer
-  completion. The Dashboard pull-to-refresh hook's missing
-  import — which white-screened the whole tab — was fixed in
-  the 2026-07-07 bug hunt.)
-- **3D avatar polish** — animations on level completion. The
-  recently-worked indicator already brightens recently-trained
-  parts (static, not animated) so the user can see at a glance
-  what was worked; the level-up animation already fires via
-  RewardOverlay. What's left is making the level-up animation
-  more cinematic and a stronger workout-logged effect.
+  for medical history. Schema has the data but no medical-
+  themed UI (no "history of resting HR" chart, no BP log
+  form). Starting point: the existing /measurements tiles.
+- **Personal records aggregated page.** `/prs/WorkoutDetail`
+  shows individual PRs only — no "all my PRs over time"
+  chart view.
+- **AI Coach streaming (SSE).** Fixes 502s on long calls
+  (`web/src/pages/Coach.tsx:18-26`). Real fix needs server
+  SSE + client EventSource + abort-on-navigate. ~2-3 days.
+- **Email verification / self-serve password reset.**
+  `api/src/routes/auth.ts:95-96` — currently admin-only reset
+  path; users who forget passwords are stuck, and there's no
+  self-serve password change in /profile. Depends on a mail
+  provider.
+- **OpenFoodFacts v2 search upgrade.** `api/src/lib/
+  openfoodfacts.ts:187-212` — current search via the legacy
+  cgi endpoint is capped at 5 items (rate-limited as a
+  result). Hours to test v2, a day if the API shape diff
+  needs handling.
+- **Sprite fallback for missing item art.** `web/src/pages/
+  Inventory.tsx:334-335` — a few legacy items still use
+  `gear/<class>/<slot>.png` paths that don't all exist.
+  Hours (regen sprites or fix paths).
+- ◐ **Substance over-use caps (PARTIAL).** Penalty COPY
+  shipped (over-cap entries correctly emit
+  `HeartLossEvent`; `heartMultiplier` downstream reduces XP
+  + gold). Actual per-substance HRV / XP multipliers at
+  award time remain DEFERRED — pending a product decision on
+  magnitude + cap structure.
 
-### Identity / auth
+### P2 — bigger features
 
-(was: Capacitor APK session persistence — was actually collateral
-of the data-loading bug, NOT a separate CookieManager flush
-issue. Once `setSessionCookie` got the matching `domain` +
-`sameSite: 'none'` fix, cookies set during login were stored with
-a parent-domain scope that survives the WebView's normal cookie
-write cycle, so a fresh app launch with the same APK installed
-re-authenticates via `GET /auth/me` against the persisted cookie
-without prompting for credentials. The CookieManager flush
-override turned out not to be needed. Diagnostic: `docker
-compose logs -f api | grep '"msg":"req"'` while force-closing +
-reopening the APK showed a single `GET /auth/me` carrying the
-`fitquest_session` cookie returning 200, no MainActivity change
-required.)
+- **Gold economy / "stuff to spend gold on."** Cosmetic
+  weapons / armor sets (equippable, with set bonuses),
+  holiday / seasonal items, UI themes (color palettes for
+  the neon glow). All cosmetic unless we design a real
+  prestige system.
+- **Body measurement photos with diff.** Side-by-side /
+  overlay / fade-slider vs the previous photo. Needs a
+  `MeasurementPhoto` migration + storage (S3-compatible or
+  local disk).
+- **Pets: breed stock rotation.** `api/prisma/seed-pets.ts:7`,
+  `api/src/routes/shop.ts:210-218` — schema has
+  `availableFrom` / `availableTo` columns
+  (`schema.prisma:2980-2981`); the API doesn't consume them
+  yet. Only 3 breeds seeded today; rotation matters once the
+  pool is bigger.
+- **Pets: "PC box" for off-roster pets.** `web/src/pages/
+  Pet.tsx:700` — release = hard delete. With the 6-pet cap
+  this is small. ~1-2 days (PC model + storage UI).
+- **Strip `placeholderEmail` workaround.** `api/src/routes/
+  auth.ts:253-260` — every user has a fake
+  `${usernameLower}@local.fitquest` email as a schema
+  workaround. Depends on email verification (P1 above)
+  landing first.
+- **Penance management panel missing from /settings.**
+  `api/src/routes/homeBase.ts:61-63` — endpoint exists; the
+  panel only lives on /home-base. ~1-2 days to port it.
+- **AI Coach: incremental compaction.** `api/src/lib/
+  coachStore.ts:248-274` — current "replace oldest batch"
+  is wasteful. Append-style summary builder. ~1-2 days.
+- **AI Coach: cost dashboard.** `api/src/routes/coach.ts:
+  355-357` — chars/4 is "close enough" for the model-time
+  badge; a real dashboard would track token usage per
+  session. ~1-2 days if/when users hit rate limits
+  regularly.
+- **Workout template `groupIndex` type-safety debt.**
+  `api/src/routes/workoutTemplates.ts:45-47` — `as any` cast
+  pending migration-applied version tracking. Hours.
+- **Dead `BICEP` enum value in schema.** `api/prisma/
+  schema.prisma:53` — legacy alias, nothing in client code
+  emits it. Postgres can't drop enum values without
+  recreating the type, so this is a migration that swaps
+  the type out. Hours.
+- **Full synthwave synth pass.** `web/src/lib/soundBus.ts:
+  7-15` — current audio mixes Kenney CC0 MP3s with an
+  older, less-polished synth for ~4 of ~10 events. ~1-2
+  days (art / audio design).
+- **Gadgetbridge auto-sync (5am cron).** `api/src/lib/
+  morningReport.ts:10-11` — hook exists, trigger is a stub
+  only. ~1-2 days to wire the 5am cron; week+ for the
+  Gadgetbridge auto-pull.
+- **LLM-disabled stub rows.** `api/src/lib/
+  spiritualDirector.ts:268-287`, `api/src/lib/
+  morningReport.ts:990-1032` — empty `reflection: ''`,
+  `patronSuggestion: ''`, `model: null` when LLM is disabled.
+  The page renders a "no reflection yet" state instead of
+  an explicit "configure LLM" prompt. Hours.
+- **3D avatar level-up animation polish.** More cinematic
+  level-up + a stronger workout-logged visual effect.
+  **Distinct from the avatar's shape / mesh (which is OUT
+  OF SCOPE)** — see the "no 3D avatar shape work" note at
+  the bottom of this section. The recently-worked
+  indicator already brightens trained parts (static, not
+  animated); the level-up animation already fires via
+  `RewardOverlay`.
 
-(was: admin reset-items button — shipped in commit 4c18a0f.
-Admin → Inventory panel has a typed-confirm 'Wipe ALL items'
-button + per-user 'Wipe items' buttons. 5 unit tests cover the
-scopes + the equip-state-wiped-with-row assertion.)
+### P3 / stretch
 
-(was: admin reset-skills endpoint — shipped in `7a8a194`. POST
-`/admin/users/:id/reset-skills` wipes both UserSkill and
-PendingSkillUnlock rows in one transaction. Use case: an
-admin can reset a user's skill state to debug prereq /
-matching issues, then the user re-runs /check-eligible (or the
-next workout commit) to re-trigger the matching pass from a
-clean slate.)
+- **Gadgetbridge rebuild-reminder notification.** When
+  GB's FIT-export API changes (rare), surface a "rebuild &
+  install" reminder in the bridge's foreground-service
+  notification.
+- **AI Coach: chat edit / branch from message X.** Message
+  IDs are echoed in the response (`api/src/routes/coach.ts:
+  276-279`) but no UI consumes them yet. ID plumbing is
+  here for when a future feature wants it.
 
-### Nutrition & Food
+> **Note on 3D avatar scope.** Scale-to-measurements work
+> (avatar Y-scale by height, X / V-taper by shoulder / waist
+> ratio, limb width by arm circumference) and anatomical-mesh
+> work (replacing disjointed 3D rectangles with tapered
+> cylinders / torso / head sphere) are explicitly OUT OF
+> SCOPE — this was killed by the user as not worth pursuing
+> without a real 3D model. The only avatar work on this
+> roadmap is the animation polish item above.
 
-(was: unify /today + /nutrition food entry modals — shipped in
-`46f647e`. Both modals now share the recent-foods strip and the
-saved-foods quick-log. /today treats food entries as snacks,
-/nutrition as meals — the modal's submit handler reads from
-context.)
+## Backlog — maintenance contracts
 
-(was: auto-link substances to food entries — shipped in `53be4e4`
-on the api side. If the food name contains "coffee", "kombucha",
-"matcha", "espresso", etc., the matching caffeine substance log
-row is auto-ticked. Server-side keyword match runs on
-FoodItem.create. UI checkbox can still be toggled manually. Same
-mechanism available for alcohol/wine/beer and nicotine; the
-shipped v1 only does caffeine.)
+These aren't blocking work — clean up next time the surrounding
+code is touched. The deep-scope companion for every
+"Outstanding" item is in "Stopped Short / Partial
+Implementations" below; the changelog of what shipped is in
+"Recently Fixed / Resolved" at the bottom.
 
-(was: saved-foods row + logged-meal item yellow capsule chrome
-— shipped in `46f647e`. Both use the same yellow capsule now,
-with edit + delete inline.)
-
-### Mobile & UX
-
-- (was: Reorganize nav menu items on mobile — shipped in
-  `0cdbc8c`. Mobile menu overlay now supports drag-to-reorder
-  via the same `useNavOrder` hook the desktop sidebar uses.
-  Toggle button + drag-handle glyph + Done/reset buttons mirror
-  the desktop pattern. Order syncs across devices via the
-  shared localStorage key.)
-- (was: Galaxy map on mobile — shipped in `7d21db2`. Was
-  showing too small + mis-aligned because of the redundant
-  below-SVG legend block taking ~30px of vertical space + the
-  right-side label stack not fitting at narrow widths. Fixed by
-  dropping the bottom legend (each class is already labelled on
-  its portal disc inside the SVG) + tightening wrapper padding
-  + flex-1 on mobile so the SVG claims the available space.)
-- (was: Remove the "⚙ Settings" button from the top of
-  /dashboard — shipped in `0cdbc8c`. /dashboard's PageHeader
-  action now only shows the Calendar quick-link; Settings lives
-  in the sidebar where it always belonged.)
-- (was: wire up web notifications — shipped in `6cbe0c2`. Use
-  the Notification API on homebase shield drops, breach
-  defeat, boss kill, streak-break, etc. Has to be opt-in
-  — request permission on first trigger. The page calls
-  `Notification.requestPermission()` lazily.)
-
-### Gamification & Economy
-
-- **Stuff to spend gold on.** Right now gold is a passive
-  counter. Ideas: themed weapons + armor sets (equippable,
-  cosmetic, with set bonuses), holiday / seasonal items
-  (Halloween pumpkins, Christmas lights, etc.), UI themes
-  (color palettes for the neon glow). All cosmetic unless
-  we want to design a real prestige system around them.
-- (was: Calendar view — shipped in `cd16301` + `2309089` +
-  `26d95a7`. `/calendar` is a month grid + per-day recap that
-  shows workouts, weigh-ins, pain, habits, dailies, and the
-  morning popup / recovery score for the chosen day. Day cells
-  have color-coded X/Y boxes, future dates render as empty
-  gray. Strikethrough-strikethrough on done items.)
-
-### Measurements
-
-- (was: Skill tree explicit per-skill prereqs for all 6 classes —
-  shipped across `75f62a6`/`dbcadbe`/`88425cb` (SCOUT, BERSERKER,
-  JUGGERNAUT/TRACER/ORACLE). Every class is a clean linear DAG
-  with 1-3 weaving merge points; the auto-T1-all-tier heuristic
-  is gone.)
-- **Genetic-max consistency between /profile, /measurements,
-  and /dashboard.** All three pages need to surface the same
-  value for the same metric, but three independent code paths
-  each had a divergence bug:
-  - (was: /profile `previewMax()` function drift from
-    canonical formula in api/src/lib/geneticMax.ts. Three
-    formulas were wrong — NECK returned the user's current
-    `neckCircCm` instead of the ceiling from wrist/height;
-    WAIST had a formula but the api dropped waist from genetic
-    maxes entirely; BENCH_1RM used w × 1.0 as a bodyweight
-    proxy. **FIXED in `f68b653`** — /profile now matches the
-    api formula exactly.)
-  - (was: /measurements and /dashboard shadowing — shipped
-    2026-07-08 session. Both pages now show "manual · formula
-    N" inline with the displayed override, plus a
-    "Reset to formula" affordance on the override row that
-    only appears when the override diverges from the formula.
-    Same fix as the P1 "Genetic-max shadowing" item above —
-    closed in one pass. The original symptom: a manual override
-    set on /measurements ("set max from latest measurement")
-    was shadowing the formula-computed ceiling, and the
-    dashboard displayed "current = genetic max" with no
-    indication that an override was in effect.)
-  - **Prevent future drift.** The `previewMax` doc comment
-    now flags this — if you edit the api formula, update the
-    local copy at the same time. Consider extracting
-    `previewMax` to a shared `web/src/lib/geneticMax.ts`
-    imported by all three pages (Profile, Measurements,
-    Dashboard's preview helpers) so there's only one source
-    of truth. Low-priority refactor — the current drift is
-    fixed, and the doc comment is the safety net.
-- (was: Remove v-taper from the /measurements sidebar — stale
-  entry; already shipped. The page filters DERIVED_METRICS
-  (LEAN_MASS, FFMI, SHOULDER_WAIST_RATIO) from the tile grid
-  and MetricDetailModal blocks logging derived metrics. See the
-  note under "Recently shipped P0s".)
-- (was: Split /measurements into category cards (2 per row) —
-  shipped in `ff107df`, refined in `b6316e7`. First version had
-  2-col collapsible cards — desktop layout was awkward (one
-  card expanded but the next sat at full height collapsed,
-  with no visual cue that it was collapsed vs empty).
-  Replaced with a flat grid of metric tiles grouped by category,
-  each tile showing the latest value + unit. Tiles are always
-  visible — no collapsing, no ambiguity. Click a tile →
-  MetricDetailModal opens with the full stack: top stats → log
-  form (moved up from after history per user feedback) →
-  history (sparkline + all logs) → Override Genetic Max
-  (lifted from the old inline panel) → About. Page shrunk
-  from 483 → 159 lines.)
-- (was: Resting HR radial — shipped in two parts: IdealGauge
-  routing + bands already in place; genetic-max returned 70
-  instead of 45 in the api. The 1 remaining loose end — the
-  basic Gauge's `lessIsBetter` prop was declared but never
-  wired into the "X% OVER" warning gate — is now wired in
-  `ff107df`. In practice every "less is better" metric
-  routes through IdealGauge today, so this is dead-code
-  cleanup rather than a user-facing fix, but the doc comment
-  in Gauge.tsx now matches reality. Two new vitest assertions
-  pin the RHR genetic-max to 70 (universal — no age/sex
-  adjustment, since the unhealthy threshold doesn't shift
-  meaningfully).)
-- (was: L-Sit radial visual diff — shipped in `ff107df`. Was
-  falling through to the plain Gauge (no zones, no warn/elite
-  coloring) because it was in `monotonicMetricKeys` but
-  missing from `METRIC_MONOTONIC_BANDS`. Added bands entry
-  (elite ≥1:00, healthy ≥0:30, max 3:00) — now renders with
-  the same lime/cyan/amber zone backgrounds as plank/dead-hang.)
-- (was: Alternate bodyfat inputs (calipers/DEXA/BIA/Navy) —
-  shipped in `eb73bd5`. New `BodyfatMethodPicker` modal with
-  4 methods (DEXA / BIA / Calipers 3-site Jackson-Pollock /
-  Navy tape). JP3 + Navy are sex-aware (men: chest/abdomen/
-  thigh, women: triceps/suprailium/thigh; Navy needs hip for
-  women). Formulas mirrored in `web/src/lib/bodyfat.ts` and
-  `api/src/lib/bodyfat.ts` (14 vitest assertions, all pass).
-  Submit goes to POST /measurements with the chosen `source`
-  field (CALIPERS / BIA / DEXA / NAVY_TAPE) so the morning
-  report's confidence weighting applies. Hooked into
-  MetricDetailModal (BODY_FAT_PCT row) and Profile.)
-- (was: Split `BICEP` into `BICEP_RELAXED` and `BICEP_FLEXED`
-  — shipped in `eb73bd5`. Migration
-  `20260706000000_bicep_split_flexed_relaxed` adds the two
-  new enum values and migrates existing Measurement +
-  GeneticMax rows to BICEP_FLEXED. Casey Butt formula gives
-  ~16.2cm ceiling for a 6" wrist; relaxed uses the same
-  formula × 0.92 (~14.9cm). bicep_40/bicep_45 achievements now
-  point at BICEP_FLEXED.)
-- (was: Body weight graph zoom (`yPad`) — shipped earlier;
-  `yPad` 20 → 10 in the /insights chart so the trend line is
-  more readable. Documented in Recently Fixed below.)
-- (was: Re-examine neck circumference genetic-max logic —
-  resolved. Production code already used the wrist×2.9 /
-  height×0.245 Casey Butt ceiling; the actual bug was a stale
-  unit test asserting the old behavior. See the ✅ note under
-  "Recently shipped P0s". This entry had also been truncated
-  mid-sentence by an earlier edit.)
-- **Body measurement photos with diff.** Upload a photo
-  alongside a measurement (or independently) and have a
-  side-by-side view that highlights the change vs. the
-  previous photo (overlay diff or just a slider to fade
-  between the two). Storage: S3-compatible or local disk;
-  probably needs a new migration for `MeasurementPhoto` rows
-  tied to the parent measurement.
-
-### Habits
-
-- (was: Habit tile visual state — shipped in `ff107df`.
-  /habits page tile now renders unchecked as neutral gray
-  (border-ink-500/30, no accent tint, no glow on the icon
-  box, no glow on the title text). When checked (todayCount
-  > 0), the whole tile lights up in the accent color: border
-  + background tint + glow on the icon and title. Same lime /
-  magenta split for POSITIVE / NEGATIVE — but only AFTER the
-  habit has actually been logged today. The HabitsWidget on
-  /dashboard was already correct (its unchecked state was
-  always neutral ink-500); only the /habits page needed the
-  fix.)
-
-### Homebase / Penance
-
-- (was: Restructure the penance templates panel — shipped; see
-  the ✅ note under "Recently shipped P0s": two collapsed
-  sub-blocks (Shield damage / Shield repair), checkbox
-  affordance replaced with row-toggle + "active now" pill.)
-
-### Portal Leaks
-
-- (was: Leaks should not expire — shipped in 7ca7b3d. Also added
-  MAX_ACTIVE_LEAKS = 3 cap with LEAK_RESUME_AT = 2 hysteresis:
-  new spawns gated when active count >= 3, resume when count
-  drops to 2. tickLeakGrowth no longer writes the EXPIRED
-  branch; LEAK_TTL_MS kept as a hint for UI copy. Breach leaks
-  also respect the cap now (previously blocked on ANY active
-   leak, which made Breach clears feel unrewarded). 8/8 stacking
-   tests pass.)
+- **Hand-maintained keyword map.** `api/src/lib/skillMatching.ts:
+  5-21` — ~26 exercise-type entries (`pull-up`, `push-up`,
+  `squat`, etc.). New branch = edit this map. Maintenance
+  contract.
+- **Hand-maintained switch for test metrics.** `api/src/lib/
+  skillTest.ts:191-195` — same fragility. Maintenance contract.
+- **More /tools page additions.** BPM calculator, rep-max calc,
+  body-fat-% calc. Rest-timer card already shipped on /tools.
 
 ## Stopped Short / Partial Implementations
 
@@ -715,32 +452,10 @@ For completeness — the following areas are fully built with no
 
 ## Stretch / Future
 
-- (was: AI coach / HUD — see P2 item above; v1 shipped in
-  v1.0.27. The "Pick a voice" brainstorming below is folded
-  into the v1 prompt library (`api/src/lib/coach.ts`); the
-  per-personality admin overrides remain the next milestone.)
-
-- **3D avatar polish (rendering + shape).** Two parts:
-  1. **Scale the avatar to user measurements.** Body height
-     sets the avatar's vertical scale; shoulder / waist
-     ratio sets the v-taper; arm circumference sets the
-     limb width. `User.heightCm` + `User.shoulderCm` +
-     `User.waistCm` already exist — wire them into the
-     Three.js render params so the avatar looks like *the
-     user*, not a generic figure.
-  2. **More contoured / humanoid muscle groups.** Current
-     avatar uses disjointed 3D rectangles for each muscle
-     group. Replace with anatomical meshes (or
-     parametric primitives like tapered cylinders for the
-     arms / legs, a real torso shape, a head sphere) so
-     the silhouette reads as a person rather than a stack
-     of boxes.
-- **Gadgetbridge rebuild-reminder.** The
-  `joshbowyer/fitquest-bridge` APK ships periodic background-
-  poll uploads via SAF-granted dir watching. Next step: when
-  GB's FIT-export API changes (rare), surface a "rebuild &
-  install" reminder in the bridge's foreground-service
-  notification so the user knows to grab a new APK.
+_(Empty as of 2026-07-09 — every prior stretch item is
+either shipped or duplicated in "Outstanding" above. Note
+the explicit out-of-scope ruling on 3D avatar shape / mesh
+work captured in the "Outstanding" note above.)_
 
 ## Dropped (moved here to keep them out of the active lists)
 
@@ -753,7 +468,7 @@ For completeness — the following areas are fully built with no
 - ~~Gadgetbridge live push/pull~~ — shipped as
   [`joshbowyer/fitquest-bridge`](https://github.com/joshbowyer/fitquest-bridge).
   v1.0.0 released. Only the rebuild-reminder follow-up
-  remains (in Stretch / Future above).
+  remains (Outstanding P3).
 - ~~Sound / audio system~~ — shipped. Web Audio API synth
   tones (oscillator + ADSR envelope) wired into Workouts
   onSuccess → workoutComplete, SkillTree level-up →
@@ -764,8 +479,10 @@ For completeness — the following areas are fully built with no
   for future MP3 swaps — drop files in `web/public/sounds/`
   and add the path to `SOUND_FILES` in
   `web/src/lib/soundBus.ts`.
-- ~~Email verification + password reset.~~ No email integration
-  in this app. Dropped per user direction.
+- ~~Email verification + password reset — was previously
+  dropped~~, **rescoped to Outstanding P1** on 2026-07-09
+  (admin-only reset path remains as the workaround until a
+  mail provider is wired).
 
 ## Recently Fixed / Resolved
 
@@ -2088,9 +1805,11 @@ Commits `59b4289` → `a410a86`; releases
 - ✅ Dark/light theme toggle (CSS-var palette via themeBus +
   Settings picker; light-mode surface polish in progress)
 
-## Nice-to-haves (backlog)
+## Nice-to-haves
 
 (was: sound/audio system — shipped, see Dropped section.)
-(was: web push notifications — moved to Backlog → Mobile & UX
-as a real, scoped item with the Notification API + Web Push
-detail.)
+(was: web push notifications — previously parked in a Backlog
+→ Mobile & UX sub-section that no longer exists; not on the
+reconciled 2026-07-09 roadmap, so effectively dropped. The
+in-app notification feed / inbox that did ship is in
+"Recently Fixed / Resolved".)
