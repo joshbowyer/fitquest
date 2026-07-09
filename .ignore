@@ -1,0 +1,4 @@
+# Keep .slim/deepwork/ git-ignored but readable to OpenCode tooling
+# (ripgrep/opencode honor .ignore; these negations re-include the files).
+!.slim/deepwork/
+!.slim/deepwork/**

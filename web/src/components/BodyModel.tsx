@@ -317,10 +317,15 @@ export function BodyModel({
         // belt-and-suspenders fallback for the renderer startup
         // before the scene mounts.
         gl={{ antialias: true, alpha: false }}
-        style={{ background: '#0e1a2b' }}
+        // Hardcoded light blue for both themes — was previously a
+        // dark-navy hardcode that never adapted to the light theme
+        // toggle; a theme-aware attempt via useChartColors() didn't
+        // behave correctly in practice, so this is a deliberate
+        // fixed value rather than chasing that down further.
+        style={{ background: '#bfe3f5' }}
         dpr={[1, 2]}
       >
-        <color attach="background" args={['#0e1a2b']} />
+        <color attach="background" args={['#bfe3f5']} />
         <ambientLight intensity={0.3} />
         <pointLight position={[3, 3, 3]} intensity={0.6} color="#14d6e8" />
         <pointLight position={[-3, -2, 2]} intensity={0.4} color="#f55cc4" />

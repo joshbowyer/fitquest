@@ -19,6 +19,9 @@ out/
 .vscode/
 .idea/
 
+# deepwork session state (local only; readable by OpenCode via .ignore)
+.slim/
+
 # env
 .env
 .env.local
