@@ -82,9 +82,17 @@ are the changelog of what got shipped.
   `web/src/lib/themeBus.ts` + `web/src/hooks/useTheme.ts`;
   no-flash bootstrap in `main.tsx`; Settings toggle; persists
   `localStorage.fq_theme`; respects `prefers-color-scheme`.
-  Follow-up: a few Recharts / Gauge components still have
-  hardcoded dark hex axis colors — light-theme visual QA
-  pending.)
+  Follow-up shipped 2026-07-09: ~280 hardcoded `slate-*`
+  Tailwind classes across ~30 files (never theme-aware) remapped
+  to var-backed `ink-*`/`bg-*` tokens — this was the real cause
+  of most "light mode looks muddy/unreadable" reports. Light
+  palette retuned (white cards, brighter neon accents, opaque
+  white top-bar/sidebar, darker gray page canvas for genuine
+  elevation vs. cards). ~130 hardcoded hex literals across 12
+  Recharts/Gauge components (the light-theme visual QA item
+  below) also fixed via new `web/src/hooks/useChartColors.ts`,
+  which reads the live CSS vars so chart colors always track the
+  active theme + palette tuning.)
 
 ### Recently shipped P0s
 
