@@ -2057,10 +2057,10 @@ Commits `59b4289` → `a410a86`; releases
 - ✅ Nutrition tracker (Foods/Meals routes + Nutrition page)
 - ✅ Body composition timeline chart
   (BodyComp.tsx with 30d/90d/6mo/1yr windows)
+- ✅ Dark/light theme toggle (CSS-var palette via themeBus +
+  Settings picker; light-mode surface polish in progress)
 
 ## Nice-to-haves (backlog)
-
-- Dark/light theme toggle (currently only dark)
 
 (was: sound/audio system — shipped, see Dropped section.)
 (was: web push notifications — moved to Backlog → Mobile & UX
