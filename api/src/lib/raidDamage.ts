@@ -1,4 +1,5 @@
 import type { ClassName } from './prisma.js';
+import type { EquipBonus } from '../lib/equipment.js';
 
 /**
  * Compute raid damage dealt by a workout, given the user's class.
@@ -70,7 +71,7 @@ function classMeta(cls: ClassName | null) {
   return { mult: 0.75, ability: '+DMG', critChance: 0, evadeChance: 0, discBonus: 0, shieldFrac: 0 };
 }
 
-export function computeRaidDamage(workout: WorkoutInput, cls: ClassName | null): RaidDamageResult {
+export function computeRaidDamage(workout: WorkoutInput, cls: ClassName | null, equip?: EquipBonus): RaidDamageResult {
   const meta = classMeta(cls);
 
   // Flatten all completed sets; we'll run crit/evade per set.
@@ -82,10 +83,19 @@ export function computeRaidDamage(workout: WorkoutInput, cls: ClassName | null):
   let evade = 0;
   let damage = 0;
 
+  // Equip-driven crit/disc adjustments are pre-roll probability
+  // inputs (NOT post-hoc multipliers), so they must be applied
+  // BEFORE the per-set roll loop. The 0.5 cap on critChance is
+  // MANDATORY: a fully-geared Berserker + mythic ring's +CRIT
+  // would otherwise push critChance past 0.95, turning every
+  // set into a guaranteed crit. +DISC has no clamp per spec.
+  const critChance = Math.min(0.5, meta.critChance + (equip?.crit ?? 0));
+  const discBonus = meta.discBonus + (equip?.disc ?? 0);
+
   for (const set of completed) {
     const contrib = setContribution(set);
     if (contrib <= 0) continue;
-    const isCrit = Math.random() < meta.critChance;
+    const isCrit = Math.random() < critChance;
     const isEvade = Math.random() < meta.evadeChance;
     base += contrib;
     if (isEvade) {
@@ -98,15 +108,29 @@ export function computeRaidDamage(workout: WorkoutInput, cls: ClassName | null):
   }
 
   // SCOUT gets a discovery bonus from duration (long runs/hikes = more
-  // chance to find items / scout routes).
-  const discoveryBonus = Math.round(workout.durationMin * meta.discBonus);
+  // chance to find items / scout routes). Uses the equip-adjusted
+  // discBonus so equipped +DISC pieces contribute.
+  const discoveryBonus = Math.round(workout.durationMin * discBonus);
   damage += discoveryBonus;
 
   // Apply class multiplier to the whole damage pool.
   damage = Math.round(damage * meta.mult);
 
   // ORACLE generates party shield (25% of damage dealt, rounded).
+  // Computed pre-equip so the shield is the per-class share of the
+  // base damage, not the inflated equip-bonus value.
   const shield = Math.round(damage * meta.shieldFrac);
+
+  // Equip-driven flat-dmg bonus: added ONCE per workout (not per
+  // set), clamped to `base` to stop a strong flat-damage item (e.g.
+  // mythic ring +DMG:100) from dominating a trivial/junk workout
+  // (a 10-damage workout can't get +100 → capped to +10).
+  damage += Math.min(equip?.flatDmg ?? 0, base);
+
+  // Equip-driven set bonus %: applied pre-cap, multiplicative. A
+  // user with multiple distinct sets equipped gets the SUM of those
+  // sets' tier bonuses (within a set, only the highest tier wins).
+  damage = Math.round(damage * (1 + (equip?.setDmgPct ?? 0)));
 
   // Cap per-workout to keep boss economy sane.
   const total = Math.min(PER_WORKOUT_CAP, Math.max(0, damage));

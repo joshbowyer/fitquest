@@ -49,6 +49,26 @@ const SOURCE_LABEL: Record<ItemSource, string> = {
   STARTER_KIT:  'Starter kit',
 };
 
+// RAID-active stat keys — these currently drive raid damage.
+// Everything in DORMANT_RAID_STATS is computed/displayed but does
+// NOT yet affect gameplay; deferred to a future update.
+const ACTIVE_RAID_STATS = ['+DMG', '+CRIT', '+DISC'] as const;
+const DORMANT_RAID_STATS = ['+EVA', '+HEAL', '+BURST', '+DEF', '+HP', '+XP', '+GOLD'] as const;
+
+// Set-bonus thresholds. Only the highest tier reached is shown,
+// so 6+ pieces displays the +8% badge (not both).
+type SetBonusTier = { pieces: number; bonusPct: number };
+const SET_BONUS_TIERS: SetBonusTier[] = [
+  { pieces: 6, bonusPct: 8 },
+  { pieces: 3, bonusPct: 3 },
+];
+function setBonusFor(count: number): SetBonusTier | null {
+  for (const tier of SET_BONUS_TIERS) {
+    if (count >= tier.pieces) return tier;
+  }
+  return null;
+}
+
 function fmtStatValue(key: string, v: number): string {
   if (key === '+CRIT' || key === '+EVA' || key === '+HEAL' || key === '+BURST' || key === '+DISC' || key === '+XP' || key === '+GOLD') {
     return `${(v * 100).toFixed(0)}%`;
@@ -400,35 +420,109 @@ export function InventoryPage() {
               from the right column — sits between Equipped Loadout
               and Item Catalogue so the user sees the cumulative
               effect of whatever was just equipped before browsing
-              for the next item. */}
+              for the next item.
+              Split into RAID-active (+DMG/+CRIT/+DISC + set bonuses)
+              and Dormant (everything else is displayed but currently
+              does nothing in combat). */}
           <Panel title="STATS FROM EQUIPMENT" variant="amber">
             <div className="space-y-2">
-              {Object.keys(totals).length === 0 ? (
+              {Object.keys(totals).length === 0 && Object.keys(setCounts).length === 0 ? (
                 <div className="text-[10px] font-mono text-ink-300 italic">
                   Equip items to see rolled combat stats here.
                 </div>
               ) : (
-                Object.entries(totals)
-                  .sort(([a], [b]) => (STAT_LABEL[a] ?? a).localeCompare(STAT_LABEL[b] ?? b))
-                  .map(([key, value]) => (
-                    <div key={key} className="flex items-center justify-between border-b border-ink-500/20 pb-1">
-                      <span className="text-[10px] font-mono text-ink-200">{STAT_LABEL[key] ?? key}</span>
-                      <span className="text-[11px] font-mono text-neon-cyan">{fmtStatValue(key, value)}</span>
+                <>
+                  {/* ⚔ Active in Raids — bright/cyan, matches the
+                      original flat list styling 1:1. */}
+                  <div>
+                    <div className="text-[9px] font-mono text-neon-cyan tracking-widest uppercase mb-1">
+                      ⚔ Active in Raids
                     </div>
-                  ))
-              )}
-              {Object.entries(setCounts).length > 0 && (
-                <div className="pt-2 border-t border-ink-500/30">
-                  <div className="text-[9px] font-mono text-ink-300 tracking-widest uppercase mb-1">
-                    Set pieces
+                    {ACTIVE_RAID_STATS
+                      .map((k) => [k, totals[k]] as const)
+                      .filter(([, v]) => v != null && v !== 0)
+                      .sort(([a], [b]) => (STAT_LABEL[a] ?? a).localeCompare(STAT_LABEL[b] ?? b))
+                      .map(([key, value]) => (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between border-b border-ink-500/20 pb-1"
+                        >
+                          <span className="text-[10px] font-mono text-ink-200">
+                            {STAT_LABEL[key] ?? key}
+                          </span>
+                          <span className="text-[11px] font-mono text-neon-cyan">
+                            {fmtStatValue(key, value)}
+                          </span>
+                        </div>
+                      ))}
                   </div>
-                  {Object.entries(setCounts).map(([setId, count]) => (
-                    <div key={setId} className="flex items-center justify-between text-[10px] font-mono">
-                      <span className="text-ink-200">{setId}</span>
-                      <span className="text-neon-magenta">{count}× worn</span>
+
+                  {/* Set pieces — magenta accents. A small bonus-tier
+                      chip is shown next to the set name when the
+                      worn count reaches a threshold (3pc / 6pc). The
+                      higher tier supersedes the lower. */}
+                  {Object.keys(setCounts).length > 0 && (
+                    <div className="pt-2 border-t border-ink-500/30">
+                      <div className="text-[9px] font-mono text-ink-300 tracking-widest uppercase mb-1">
+                        Set pieces
+                      </div>
+                      {Object.entries(setCounts).map(([setId, count]) => {
+                        const bonus = setBonusFor(count);
+                        return (
+                          <div
+                            key={setId}
+                            className="flex flex-col gap-0.5 text-[10px] font-mono py-0.5"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-ink-200">{setId}</span>
+                              <span className="text-neon-magenta">{count}× worn</span>
+                            </div>
+                            {bonus && (
+                              <span
+                                className="self-start text-[9px] font-mono uppercase tracking-widest px-1.5 py-px border border-neon-magenta/40 text-neon-magenta bg-neon-magenta/5"
+                                title={`${bonus.pieces}+ piece bonus`}
+                              >
+                                {bonus.pieces}pc: +{bonus.bonusPct}% dmg
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
+                  )}
+
+                  {/* Dormant — computed/displayed but currently
+                      does nothing in RAID damage. Muted ink + lower
+                      opacity so the user can tell at a glance these
+                      are not yet wired in. */}
+                  {DORMANT_RAID_STATS.some((k) => totals[k] != null && totals[k] !== 0) && (
+                    <div className="pt-2 border-t border-ink-500/30 opacity-60">
+                      <div className="text-[9px] font-mono text-ink-400 tracking-widest uppercase mb-1">
+                        Dormant (future update)
+                        <span className="ml-1 text-ink-500 normal-case tracking-normal italic">
+                          — coming soon
+                        </span>
+                      </div>
+                      {DORMANT_RAID_STATS
+                        .map((k) => [k, totals[k]] as const)
+                        .filter(([, v]) => v != null && v !== 0)
+                        .sort(([a], [b]) => (STAT_LABEL[a] ?? a).localeCompare(STAT_LABEL[b] ?? b))
+                        .map(([key, value]) => (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between border-b border-ink-500/10 pb-1"
+                          >
+                            <span className="text-[10px] font-mono text-ink-400">
+                              {STAT_LABEL[key] ?? key}
+                            </span>
+                            <span className="text-[11px] font-mono text-ink-500">
+                              {fmtStatValue(key, value)}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </Panel>

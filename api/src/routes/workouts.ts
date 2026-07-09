@@ -7,6 +7,7 @@ import { bestEstimatedOneRm, bestHoldDurationSec, isPrCandidate, isStaticHoldExe
 import { goldFromWorkout, levelFromXp, progressInLevel, xpFromWorkout } from '../lib/xp.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
+import { getEquippedBonus } from '../lib/equipment.js';
 import { checkRoutineProgress } from './routine.js';
 import { tickHearts, heartMultiplier } from '../lib/mode.js';
 import { setVolumeKg } from '../lib/exerciseVolume.js';
@@ -524,6 +525,13 @@ export async function workoutRoutes(app: FastifyInstance) {
     // to the active raid for the user's party (if any). Even if no raid is
     // active, we still return the computed damage so the UI can show what
     // *would* have been dealt.
+    //
+    // Equip bonus is fetched here (not inside computeRaidDamage) so the
+    // pre-class-mult discovery bonus, the post-mult flat-dmg clamp, and
+    // the pre-cap set% multiplier can all see the user's currently
+    // equipped gear at commit time. Gear has no cost/durability so
+    // there's no exploit risk in re-reading it on every workout.
+    const { equip } = await getEquippedBonus(me.id);
     const raidDamage = computeRaidDamage(
       {
         type: body.type,
@@ -534,6 +542,7 @@ export async function workoutRoutes(app: FastifyInstance) {
         })),
       },
       me.class,
+      equip,
     );
 
     let raidContribution: { id: string; damage: number; source: string; raidId: string } | null = null;

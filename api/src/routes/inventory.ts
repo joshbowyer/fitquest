@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { EquipSlot } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser, requireAdmin } from '../lib/auth.js';
+import { getEquippedBonus } from '../lib/equipment.js';
 
 /**
  * Inventory — equipment catalog + per-user ownership + equip/unequip.
@@ -57,27 +58,17 @@ export async function inventoryRoutes(app: FastifyInstance) {
   });
 
   // GET /inventory/stats — rolled combat stats from all equipped gear.
+  // Implementation now lives in `lib/equipment.ts` so the same totals
+  // (and set counts) can be reused for the raid-damage wiring in
+  // routes/workouts.ts without duplicating the Prisma query + loop.
+  // The response shape is UNCHANGED (`{ totals, setCounts }`); the
+  // helper returns the totals under the `statTotals` key and we
+  // alias it back to `totals` here to preserve the existing API
+  // contract that the Inventory.tsx frontend already depends on.
   app.get('/stats', async (req) => {
     const me = await requireUser(req);
-    const equipped = await prisma.inventoryItem.findMany({
-      where: { userId: me.id, equippedSlot: { not: null } },
-      include: { itemDef: true },
-    });
-    const totals: Record<string, number> = {};
-    for (const it of equipped) {
-      const stats = (it.itemDef.stats as Record<string, number>) ?? {};
-      for (const [k, v] of Object.entries(stats)) {
-        totals[k] = (totals[k] ?? 0) + v;
-      }
-    }
-    // Count set pieces
-    const setCounts: Record<string, number> = {};
-    for (const it of equipped) {
-      if (it.itemDef.setId) {
-        setCounts[it.itemDef.setId] = (setCounts[it.itemDef.setId] ?? 0) + 1;
-      }
-    }
-    return { totals, setCounts };
+    const { statTotals, setCounts } = await getEquippedBonus(me.id);
+    return { totals: statTotals, setCounts };
   });
 
   // POST /inventory/equip — set an owned item into a slot
