@@ -254,7 +254,7 @@ function PainLogModal({
   const partMeta = BODY_PARTS_UI.find((p) => p.id === bodyPart) ?? BODY_PARTS.find((p) => p.id === bodyPart);
   const color = intensityToColor(intensity);
   return (
-    <Modal open onClose={onClose} title={`Log pain · ${partMeta?.label ?? bodyPart}`} hideCloseButton>
+    <Modal open onClose={onClose} title={`Log pain · ${partMeta?.label ?? bodyPart}`}>
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">

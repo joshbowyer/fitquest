@@ -149,7 +149,6 @@ export function FirstRunApiUrl() {
       }}
       title="Connect to your FitQuest server"
       width="max-w-md"
-      hideCloseButton
     >
       <ApiUrlFormBody
         onSaved={() => {
@@ -191,7 +190,7 @@ function ApiUrlTrigger({ label = 'Change API url', buttonClass = '' }: { label?:
     );
   }
   return (
-    <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md" hideCloseButton>
+    <Modal open onClose={() => setOpen(false)} title="Connect to your FitQuest server" width="max-w-md">
       <ApiUrlFormBody
         onSaved={() => window.location.reload()}
         onClose={() => setOpen(false)}

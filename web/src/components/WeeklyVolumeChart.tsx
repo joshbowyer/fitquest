@@ -32,7 +32,7 @@ type Props = {
 export function WeeklyVolumeChart({ data, units }: Props) {
   if (!data.length) {
     return (
-      <div className="text-sm text-slate-400 font-mono py-6 text-center">
+      <div className="text-sm text-ink-300 font-mono py-6 text-center">
         Not enough data yet.
       </div>
     );

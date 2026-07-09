@@ -177,7 +177,7 @@ export function InsightsPage() {
 
       {/* Top row: 90-day overlays */}
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+        <span className="text-[10px] uppercase tracking-widest text-ink-400 font-mono">
           Overlay window
         </span>
         {DAYS_OPTIONS.map((d) => (
@@ -188,7 +188,7 @@ export function InsightsPage() {
               'text-[10px] px-2 py-0.5 rounded border font-mono',
               overlayDays === d
                 ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
-                : 'border-slate-700 text-slate-400 hover:border-slate-500',
+                : 'border-bg-700 text-ink-300 hover:border-ink-500',
             )}
           >
             {d}d
@@ -203,7 +203,7 @@ export function InsightsPage() {
             series={overlaySeries}
             history={history}
           />
-          <div className="text-[10px] font-mono text-slate-400 mt-1">
+          <div className="text-[10px] font-mono text-ink-300 mt-1">
             When HRV drops while sleep holds steady, training is likely
             the stressor. When both drop together, life-stress.
           </div>
@@ -216,7 +216,7 @@ export function InsightsPage() {
           history={history}
           yPad={10}
         />
-          <div className="text-[10px] font-mono text-slate-400 mt-1">
+          <div className="text-[10px] font-mono text-ink-300 mt-1">
             Daily weigh-ins reveal the trend beneath the noise.
           </div>
         </Panel>
@@ -227,7 +227,7 @@ export function InsightsPage() {
         <Panel variant="lime" title="Weekly volume + sessions (12w)">
           <WeeklyVolumeChart data={volumeQ.data?.items ?? []} units={system} />
           {volumeQ.data && volumeQ.data.items.length > 1 && (
-            <div className="mt-2 text-[10px] font-mono text-slate-400">
+            <div className="mt-2 text-[10px] font-mono text-ink-300">
               {(() => {
                 const items = volumeQ.data.items;
                 const last = items[items.length - 1];
@@ -257,9 +257,9 @@ export function InsightsPage() {
         className="mb-6"
       >
         {stalenessQ.isLoading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
+          <p className="text-sm text-ink-300">Loading…</p>
         ) : (stalenessQ.data?.flags ?? []).length === 0 ? (
-          <p className="text-sm text-slate-400 font-mono">
+          <p className="text-sm text-ink-300 font-mono">
             No issues detected. Keep training — your patterns look healthy.
           </p>
         ) : (
@@ -281,7 +281,7 @@ export function InsightsPage() {
                     <div className={`font-display tracking-widest text-xs uppercase neon-text-${color}`}>
                       {f.title}
                     </div>
-                    <div className="text-slate-200 leading-snug mt-1">
+                    <div className="text-ink-100 leading-snug mt-1">
                       {f.detail}
                     </div>
                   </div>
@@ -311,7 +311,7 @@ export function InsightsPage() {
                     <div className={`font-display tracking-widest text-xs uppercase neon-text-${color}`}>
                       {t.title}
                     </div>
-                    <div className="text-slate-100 leading-snug mt-1">
+                    <div className="text-ink-50 leading-snug mt-1">
                       {t.message}
                     </div>
                   </div>
@@ -338,10 +338,10 @@ export function InsightsPage() {
           </button>
         }
       >
-        <div className="text-[10px] font-mono text-slate-400 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <div className="text-[10px] font-mono text-ink-300 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>Pearson r between your habits and training outcomes (need ≥7 paired days).</span>
           <span className="inline-flex items-center gap-1">
-            <span className="text-slate-500">lag:</span>
+            <span className="text-ink-400">lag:</span>
             {([0, 1, 2] as const).map((l) => (
               <button
                 key={l}
@@ -351,7 +351,7 @@ export function InsightsPage() {
                   'px-1.5 py-0.5 border text-[10px] font-mono',
                   lag === l
                     ? 'border-lime-400 text-lime-300 bg-lime-400/10'
-                    : 'border-slate-700 text-slate-400 hover:border-slate-500',
+                    : 'border-bg-700 text-ink-300 hover:border-ink-500',
                 )}
                 title={
                   l === 0
@@ -366,7 +366,7 @@ export function InsightsPage() {
             ))}
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="text-slate-500">trend window:</span>
+            <span className="text-ink-400">trend window:</span>
             {([30, 60, 90] as const).map((w) => (
               <button
                 key={w}
@@ -376,7 +376,7 @@ export function InsightsPage() {
                   'px-1.5 py-0.5 border text-[10px] font-mono',
                   trendWindow === w
                     ? 'border-cyan-400 text-cyan-300 bg-cyan-400/10'
-                    : 'border-slate-700 text-slate-400 hover:border-slate-500',
+                    : 'border-bg-700 text-ink-300 hover:border-ink-500',
                 )}
               >
                 {w}d
@@ -385,7 +385,7 @@ export function InsightsPage() {
           </span>
         </div>
         {corrs.length === 0 ? (
-          <div className="text-sm text-slate-400 font-mono text-center py-6">
+          <div className="text-sm text-ink-300 font-mono text-center py-6">
             Not enough data yet. Log habits alongside workouts for a week to start seeing patterns.
           </div>
         ) : (
@@ -421,7 +421,7 @@ export function InsightsPage() {
  */
 function CorrelationSparkline({ points }: { points: CorrelationHistoryPoint[] }) {
   if (points.length === 0) {
-    return <div className="text-[9px] text-slate-600">no history</div>;
+    return <div className="text-[9px] text-ink-500">no history</div>;
   }
   const w = 90;
   const h = 22;
@@ -470,10 +470,10 @@ function CorrelationTable({
   return (
     <>
       {/* Desktop: 6-column table. */}
-      <div className="hidden md:block border border-slate-700/60">
+      <div className="hidden md:block border border-bg-700/60">
         <table className="w-full text-xs font-mono">
           <thead>
-            <tr className="text-[10px] uppercase tracking-widest text-slate-400 border-b border-slate-700/60">
+            <tr className="text-[10px] uppercase tracking-widest text-ink-300 border-b border-bg-700/60">
               <th className="text-left p-2">Habit</th>
               <th className="text-left p-2">Outcome</th>
               <th className="text-right p-2">r</th>
@@ -535,9 +535,9 @@ function CorrelationRow({
       ),
   });
   return (
-    <tr className="border-b border-slate-800 last:border-0">
-      <td className="p-2 text-slate-200">{c.habitLabel}</td>
-      <td className="p-2 text-slate-300">
+    <tr className="border-b border-bg-700 last:border-0">
+      <td className="p-2 text-ink-100">{c.habitLabel}</td>
+      <td className="p-2 text-ink-200">
         {c.outcomeLabel}
         {c.lagDays > 0 && (
           <span className="ml-1 text-[9px] text-amber-300/80">t-{c.lagDays}d</span>
@@ -546,9 +546,9 @@ function CorrelationRow({
       <td className={`p-2 text-right ${positive ? 'text-lime-300' : 'text-fuchsia-400'}`}>
         {c.r > 0 ? '+' : ''}{c.r.toFixed(2)}
       </td>
-      <td className="p-2 text-right text-slate-400">{c.n}</td>
+      <td className="p-2 text-right text-ink-300">{c.n}</td>
       <td className="p-2 pl-4 w-32">
-        <div className="h-1.5 bg-slate-800 border border-slate-700 overflow-hidden">
+        <div className="h-1.5 bg-bg-800 border border-bg-700 overflow-hidden">
           <div
             className={positive ? 'bg-lime-400' : 'bg-fuchsia-500'}
             style={{ width: `${width}%`, boxShadow: '0 0 4px currentColor' }}
@@ -557,7 +557,7 @@ function CorrelationRow({
       </td>
       <td className="p-2 pl-4">
         {historyQ.isLoading ? (
-          <div className="text-[9px] text-slate-600">…</div>
+          <div className="text-[9px] text-ink-500">…</div>
         ) : (
           <CorrelationSparkline points={historyQ.data?.points ?? []} />
         )}
@@ -596,11 +596,11 @@ function CorrelationCard({
       ),
   });
   return (
-    <div className="border border-slate-700/60 p-2.5 space-y-1.5">
+    <div className="border border-bg-700/60 p-2.5 space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-slate-200 truncate">{c.habitLabel}</div>
-          <div className="text-[10px] text-slate-400 truncate">
+          <div className="text-xs text-ink-100 truncate">{c.habitLabel}</div>
+          <div className="text-[10px] text-ink-300 truncate">
             → {c.outcomeLabel}
             {c.lagDays > 0 && (
               <span className="ml-1 text-amber-300/80">t-{c.lagDays}d</span>
@@ -612,19 +612,19 @@ function CorrelationCard({
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <div className="h-1.5 flex-1 bg-slate-800 border border-slate-700 overflow-hidden">
+        <div className="h-1.5 flex-1 bg-bg-800 border border-bg-700 overflow-hidden">
           <div
             className={positive ? 'bg-lime-400' : 'bg-fuchsia-500'}
             style={{ width: `${width}%`, boxShadow: '0 0 4px currentColor' }}
           />
         </div>
-        <span className="text-[10px] text-slate-500 font-mono shrink-0">n={c.n}</span>
+        <span className="text-[10px] text-ink-400 font-mono shrink-0">n={c.n}</span>
         {historyQ.data?.points?.length ? (
           <div className="shrink-0">
             <CorrelationSparkline points={historyQ.data.points} />
           </div>
         ) : (
-          <div className="text-[9px] text-slate-600 w-[90px] text-right">no history</div>
+          <div className="text-[9px] text-ink-500 w-[90px] text-right">no history</div>
         )}
       </div>
     </div>

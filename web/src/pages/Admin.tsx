@@ -269,7 +269,7 @@ export function AdminPage() {
     return (
       <Layout>
         <PageHeader title="Admin" subtitle="Sign in to access admin tools." />
-        <Panel><p className="text-sm text-slate-400">Not signed in.</p></Panel>
+        <Panel><p className="text-sm text-ink-300">Not signed in.</p></Panel>
       </Layout>
     );
   }
@@ -280,7 +280,7 @@ export function AdminPage() {
         <Panel>
           <p className="text-sm text-rose-300">
             This page is reserved for administrators. Your account is
-            <code className="mx-1 px-1 bg-slate-800 rounded text-xs">isAdmin: false</code>.
+            <code className="mx-1 px-1 bg-bg-800 rounded text-xs">isAdmin: false</code>.
             If you believe you should have access, ask the existing admin to promote you.
           </p>
         </Panel>
@@ -299,7 +299,7 @@ export function AdminPage() {
         {/* -------- Users -------- */}
         <Panel title="Users" className="sm:col-span-2 lg:col-span-2">
           {usersQ.isLoading ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <p className="text-sm text-ink-300">Loading…</p>
           ) : usersQ.isError ? (
             <p className="text-sm text-rose-300">Failed to load users.</p>
           ) : (
@@ -340,7 +340,7 @@ export function AdminPage() {
                   viewport is narrower than the natural width. */}
               <div className="hidden md:block overflow-x-auto -mx-2">
                 <table className="w-full text-sm">
-                  <thead className="text-xs uppercase text-slate-500 border-b border-slate-700">
+                  <thead className="text-xs uppercase text-ink-400 border-b border-bg-700">
                     <tr>
                       <th className="text-left py-2 px-2">Username</th>
                       <th className="text-left py-2 px-2">Class</th>
@@ -357,13 +357,13 @@ export function AdminPage() {
                     {usersQ.data?.users.map((u) => (
                       <tr
                         key={u.id}
-                        className="border-b border-slate-800 hover:bg-slate-800/30"
+                        className="border-b border-bg-700 hover:bg-bg-800/30"
                       >
 <td className="py-2 px-2">
-                        <div className="font-medium text-slate-100">{u.username}</div>
+                        <div className="font-medium text-ink-50">{u.username}</div>
                       </td>
-                      <td className="py-2 px-2 text-slate-300">
-                        {u.class ?? <span className="text-slate-600">—</span>}
+                      <td className="py-2 px-2 text-ink-200">
+                        {u.class ?? <span className="text-ink-500">—</span>}
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums">
                         {u.level}
@@ -378,17 +378,17 @@ export function AdminPage() {
                           {u.twoFactorEnabled ? (
                             <span className="text-emerald-400">●</span>
                           ) : (
-                            <span className="text-slate-600">○</span>
+                            <span className="text-ink-500">○</span>
                           )}
                         </td>
                         <td className="py-2 px-2 text-center">
                           {u.isAdmin ? (
                             <span className="text-violet-300 text-xs">★</span>
                           ) : (
-                            <span className="text-slate-600 text-xs">·</span>
+                            <span className="text-ink-500 text-xs">·</span>
                           )}
                         </td>
-                        <td className="py-2 px-2 text-right text-xs text-slate-500">
+                        <td className="py-2 px-2 text-right text-xs text-ink-400">
                           {formatRelative(u.createdAt)}
                         </td>
                         <td className="py-2 px-2 text-right">
@@ -475,14 +475,14 @@ export function AdminPage() {
           className="sm:col-span-2 lg:col-span-2"
         >
           {llmQ.isLoading || !llmForm ? (
-            <p className="text-sm text-slate-400">Loading…</p>
+            <p className="text-sm text-ink-300">Loading…</p>
           ) : (
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <label className="block">
-                <span className="text-xs uppercase text-slate-500">Provider</span>
+                <span className="text-xs uppercase text-ink-400">Provider</span>
                 <div className="flex gap-2 mt-1">
                   <select
-                    className="flex-1 min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                    className="flex-1 min-w-0 rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                     value={llmForm.provider}
                     onChange={(e) => {
                       const next = e.target.value as LlmConfig['provider'];
@@ -514,10 +514,10 @@ export function AdminPage() {
                 </div>
               </label>
               <label className="block">
-                <span className="text-xs uppercase text-slate-500">Model</span>
+                <span className="text-xs uppercase text-ink-400">Model</span>
                 <input
                   type="text"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                   value={llmForm.model}
                   onChange={(e) => setLlmForm({ ...llmForm, model: e.target.value })}
                   placeholder={
@@ -526,7 +526,7 @@ export function AdminPage() {
                 />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs uppercase text-slate-500 flex items-center gap-2 flex-wrap">
+                <span className="text-xs uppercase text-ink-400 flex items-center gap-2 flex-wrap">
                   API Key
                   {llmQ.data?.config.apiKey ? (
                     <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
@@ -540,7 +540,7 @@ export function AdminPage() {
                 </span>
                 <input
                   type="password"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                   value={llmForm.apiKey ?? ''}
                   onChange={(e) =>
                     setLlmForm({ ...llmForm, apiKey: e.target.value || null })
@@ -548,19 +548,19 @@ export function AdminPage() {
                   placeholder="sk-... (enter to save, blank to keep current)"
                 />
                 {llmQ.data?.config.apiKey && (
-                  <div className="mt-1 text-[10px] font-mono text-slate-500 break-all">
-                    Currently saved as <span className="text-slate-300">{llmQ.data.config.apiKey}</span>
-                    {' '}<span className="text-slate-600">— leave blank to keep</span>
+                  <div className="mt-1 text-[10px] font-mono text-ink-400 break-all">
+                    Currently saved as <span className="text-ink-200">{llmQ.data.config.apiKey}</span>
+                    {' '}<span className="text-ink-500">— leave blank to keep</span>
                   </div>
                 )}
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs uppercase text-slate-500">
-                  Base URL <span className="text-slate-600">(optional)</span>
+                <span className="text-xs uppercase text-ink-400">
+                  Base URL <span className="text-ink-500">(optional)</span>
                 </span>
                 <input
                   type="text"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                   value={llmForm.baseUrl ?? ''}
                   onChange={(e) =>
                     setLlmForm({ ...llmForm, baseUrl: e.target.value || null })
@@ -569,11 +569,11 @@ export function AdminPage() {
                 />
               </label>
               <label className="block sm:col-span-2">
-                <span className="text-xs uppercase text-slate-500">
+                <span className="text-xs uppercase text-ink-400">
                   System Prompt
                 </span>
                 <textarea
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                   rows={3}
                   value={llmForm.systemPrompt ?? ''}
                   onChange={(e) =>
@@ -594,7 +594,7 @@ export function AdminPage() {
                   }
                   className="rounded"
                 />
-                <span className="text-sm text-slate-300">
+                <span className="text-sm text-ink-200">
                   Enabled — use this config for AI features
                 </span>
               </label>
@@ -628,7 +628,7 @@ export function AdminPage() {
                     <div className="text-sm font-display tracking-widest text-ink-50">
                       Fallback (secondary) model
                     </div>
-                    <div className="text-[10px] font-mono text-slate-500">
+                    <div className="text-[10px] font-mono text-ink-400">
                       Used automatically when the primary fails (5xx, timeout,
                       network, 404 model-not-found, 429). Either side can
                       be set or unset — e.g. Ollama-only setups leave
@@ -644,15 +644,15 @@ export function AdminPage() {
                       }
                       className="rounded"
                     />
-                    <span className="text-sm text-slate-300">Enabled</span>
+                    <span className="text-sm text-ink-200">Enabled</span>
                   </label>
                 </div>
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                   <label className="block">
-                    <span className="text-xs uppercase text-slate-500">Provider</span>
+                    <span className="text-xs uppercase text-ink-400">Provider</span>
                     <div className="flex gap-2 mt-1">
                       <select
-                        className="flex-1 min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                        className="flex-1 min-w-0 rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                         value={llmForm.fallbackProvider ?? ''}
                         onChange={(e) => {
                           const next = (e.target.value || null) as LlmConfig['fallbackProvider'];
@@ -686,10 +686,10 @@ export function AdminPage() {
                     </div>
                   </label>
                   <label className="block">
-                    <span className="text-xs uppercase text-slate-500">Model</span>
+                    <span className="text-xs uppercase text-ink-400">Model</span>
                     <input
                       type="text"
-                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                      className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                       value={llmForm.fallbackModel ?? ''}
                       onChange={(e) =>
                         setLlmForm({ ...llmForm, fallbackModel: e.target.value || null })
@@ -702,7 +702,7 @@ export function AdminPage() {
                     />
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="text-xs uppercase text-slate-500 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs uppercase text-ink-400 flex items-center gap-2 flex-wrap">
                       API Key
                       {llmQ.data?.config.fallbackApiKey ? (
                         <span className="text-[10px] font-mono normal-case tracking-normal text-emerald-400">
@@ -716,7 +716,7 @@ export function AdminPage() {
                     </span>
                     <input
                       type="password"
-                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                      className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                       value={llmForm.fallbackApiKey ?? ''}
                       onChange={(e) =>
                         setLlmForm({ ...llmForm, fallbackApiKey: e.target.value || null })
@@ -724,18 +724,18 @@ export function AdminPage() {
                       placeholder="sk-... (blank = keep current)"
                     />
                     {llmQ.data?.config.fallbackApiKey && (
-                      <div className="mt-1 text-[10px] font-mono text-slate-500 break-all">
-                        Currently saved as <span className="text-slate-300">{llmQ.data.config.fallbackApiKey}</span>
+                      <div className="mt-1 text-[10px] font-mono text-ink-400 break-all">
+                        Currently saved as <span className="text-ink-200">{llmQ.data.config.fallbackApiKey}</span>
                       </div>
                     )}
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="text-xs uppercase text-slate-500">
-                      Base URL <span className="text-slate-600">(optional)</span>
+                    <span className="text-xs uppercase text-ink-400">
+                      Base URL <span className="text-ink-500">(optional)</span>
                     </span>
                     <input
                       type="text"
-                      className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                      className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                       value={llmForm.fallbackBaseUrl ?? ''}
                       onChange={(e) =>
                         setLlmForm({ ...llmForm, fallbackBaseUrl: e.target.value || null })
@@ -776,7 +776,7 @@ export function AdminPage() {
                     <span className="uppercase tracking-widest">
                       {testLlmM.data.which ?? 'primary'} test
                     </span>
-                    <span className="text-slate-400">
+                    <span className="text-ink-300">
                       {testLlmM.data.model} · {testLlmM.data.provider} · {testLlmM.data.latencyMs}ms
                     </span>
                     {testLlmM.data.attempt === 2 && (
@@ -784,12 +784,12 @@ export function AdminPage() {
                     )}
                   </div>
                   {testLlmM.data.ok ? (
-                    <div className="mt-1 text-slate-200">{testLlmM.data.text}</div>
+                    <div className="mt-1 text-ink-100">{testLlmM.data.text}</div>
                   ) : (
                     <div className="mt-1 text-rose-200">
                       {testLlmM.data.error}
                       {testLlmM.data.httpStatus && (
-                        <span className="ml-2 text-slate-500">HTTP {testLlmM.data.httpStatus}</span>
+                        <span className="ml-2 text-ink-400">HTTP {testLlmM.data.httpStatus}</span>
                       )}
                     </div>
                   )}
@@ -819,10 +819,10 @@ export function AdminPage() {
                       <div className="text-emerald-300 font-bold">
                         ✓ Connection successful ({testLlmM.data.latencyMs}ms)
                       </div>
-                      <div className="text-slate-300 mt-1">
+                      <div className="text-ink-200 mt-1">
                         model: <b>{testLlmM.data.model}</b> · provider: {testLlmM.data.provider}
                       </div>
-                      <div className="text-slate-200 mt-1 italic">
+                      <div className="text-ink-100 mt-1 italic">
                         "{testLlmM.data.text}"
                       </div>
                     </>
@@ -831,7 +831,7 @@ export function AdminPage() {
                       <div className="text-rose-300 font-bold">
                         ✗ Test failed {testLlmM.data.httpStatus ? `(${testLlmM.data.httpStatus})` : ''}
                       </div>
-                      <div className="text-slate-300 mt-1 break-all">
+                      <div className="text-ink-200 mt-1 break-all">
                         {testLlmM.data.error}
                       </div>
                     </>
@@ -918,7 +918,7 @@ export function AdminPage() {
                         {ov && (
                           <div className="space-y-1.5 pt-1">
                             <select
-                              className="w-full rounded border border-slate-700 bg-slate-900 px-1.5 py-1 text-xs font-mono"
+                              className="w-full rounded border border-bg-700 bg-bg-900 px-1.5 py-1 text-xs font-mono"
                               value={ov.provider}
                               onChange={(e) => {
                                 const nextProvider = e.target.value as LlmConfig['provider'];
@@ -947,7 +947,7 @@ export function AdminPage() {
                               <option value="MINIMAX">Minimax</option>
                             </select>
                             <input
-                              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-mono"
+                              className="w-full rounded border border-bg-700 bg-bg-900 px-2 py-1 text-xs font-mono"
                               type="text"
                               placeholder="model name (e.g. gemma3:12b)"
                               value={ov.model}
@@ -962,7 +962,7 @@ export function AdminPage() {
                               }}
                             />
                             <input
-                              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-mono"
+                              className="w-full rounded border border-bg-700 bg-bg-900 px-2 py-1 text-[10px] font-mono"
                               type="text"
                               placeholder={`baseUrl (optional, e.g. ${ov.provider === 'OLLAMA' ? 'http://localhost:11434/v1' : 'leave empty to reuse primary'})`}
                               value={ov.baseUrl ?? ''}
@@ -1039,7 +1039,6 @@ export function AdminPage() {
         open={!!resetTarget}
         onClose={() => setResetTarget(null)}
         title={resetTarget ? `Reset password for ${resetTarget.username}` : ''}
-        hideCloseButton
       >
         {resetTarget && (
           <form
@@ -1051,15 +1050,15 @@ export function AdminPage() {
               }
             }}
           >
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-ink-300">
               This invalidates all of their existing sessions. The user will need to log in
               again with the new password.
             </p>
             <label className="block">
-              <span className="text-xs uppercase text-slate-500">New password</span>
+              <span className="text-xs uppercase text-ink-400">New password</span>
               <input
                 type="text"
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="min 8 characters"
@@ -1122,7 +1121,7 @@ function UserCardMobile({
       {/* Identity strip */}
       <div className="flex items-baseline justify-between mb-2 gap-2">
         <div className="min-w-0">
-          <div className="font-display text-base text-slate-100 truncate">
+          <div className="font-display text-base text-ink-50 truncate">
             {user.username}
             {user.isAdmin && (
               <span className="text-violet-300 text-xs ml-1">★</span>
@@ -1234,7 +1233,6 @@ function DeleteUserModal({
       onClose={onCancel}
       title={`Delete ${target.username}?`}
       width="max-w-lg"
-      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
@@ -1364,7 +1362,6 @@ function ResetItemsModal({
       onClose={onCancel}
       title={isAll ? 'Wipe ALL items?' : `Wipe ${user!.username}'s items?`}
       width="max-w-lg"
-      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">
@@ -1450,7 +1447,6 @@ function ResetSkillsModal({
       onClose={onCancel}
       title={`Reset ${target.username}'s skill tree?`}
       width="max-w-lg"
-      hideCloseButton
     >
       <div className="space-y-3">
         <p className="text-sm text-ink-300">

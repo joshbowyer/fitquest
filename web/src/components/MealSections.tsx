@@ -127,11 +127,11 @@ function MealCard({
             <div className="text-[10px] font-mono text-ink-400 border-t border-ink-500/15 pt-1.5 flex items-baseline gap-2">
               <span className="text-ink-500">total</span>
               <span className="text-amber-300">{totals.calories.toFixed(0)} cal</span>
-              <span className="text-slate-400">·</span>
+              <span className="text-ink-300">·</span>
               <span>{totals.proteinG.toFixed(1)}p</span>
-              <span className="text-slate-400">·</span>
+              <span className="text-ink-300">·</span>
               <span>{totals.carbG.toFixed(1)}c</span>
-              <span className="text-slate-400">·</span>
+              <span className="text-ink-300">·</span>
               <span>{totals.fatG.toFixed(1)}f</span>
             </div>
           )}
@@ -163,10 +163,10 @@ function MealItemRow({
           }}
         />
       ) : (
-        <div className="w-6 h-6 rounded border border-ink-500/30 bg-slate-800/40 shrink-0" />
+        <div className="w-6 h-6 rounded border border-ink-500/30 bg-bg-800/40 shrink-0" />
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-slate-100 truncate">
+        <div className="text-xs text-ink-50 truncate">
           {entry.food.name}
           {entry.food.brand && (
             <span className="text-ink-400 ml-1 text-[10px]">· {entry.food.brand}</span>
@@ -253,9 +253,9 @@ function EditMealModal({
         </div>
         <div className="grid grid-cols-2 gap-2 mb-3">
           <label className="block">
-            <span className="text-[10px] uppercase text-slate-500">Meal</span>
+            <span className="text-[10px] uppercase text-ink-400">Meal</span>
             <select
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={meal}
               onChange={(e) => setMeal(e.target.value as MealType)}
             >
@@ -267,22 +267,22 @@ function EditMealModal({
             </select>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase text-slate-500">Servings (×100g)</span>
+            <span className="text-[10px] uppercase text-ink-400">Servings (×100g)</span>
             <input
               type="number"
               step="0.1"
               min="0.1"
               max="50"
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={servings}
               onChange={(e) => setServings(e.target.value)}
             />
           </label>
         </div>
         <label className="block mb-3">
-          <span className="text-[10px] uppercase text-slate-500">Note (optional)</span>
+          <span className="text-[10px] uppercase text-ink-400">Note (optional)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="post-workout, with rice, ..."

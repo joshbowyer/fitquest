@@ -152,7 +152,7 @@ function CadenceGroup({
               key={m.metric}
               className="py-2 flex items-center gap-3 text-xs font-mono"
             >
-              <span className="text-slate-200 truncate flex-1">
+              <span className="text-ink-100 truncate flex-1">
                 {meta.label}
                 <span className="text-ink-400 ml-1">· {meta.unit || '—'}</span>
               </span>

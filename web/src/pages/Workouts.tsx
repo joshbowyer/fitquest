@@ -315,11 +315,11 @@ function CardioBlock({
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">
+              <span className="text-[10px] uppercase text-ink-400">
                 Distance ({distanceUnit})
               </span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 type="number"
                 step="0.01"
                 min="0"
@@ -329,11 +329,11 @@ function CardioBlock({
               />
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">
+              <span className="text-[10px] uppercase text-ink-400">
                 Duration (mm:ss or hh:mm:ss)
               </span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                 type="text"
                 placeholder="32:14"
                 value={cardio.duration}
@@ -342,7 +342,7 @@ function CardioBlock({
             </label>
           </div>
           <div>
-            <div className="text-[10px] uppercase text-slate-500 mb-1">Pace</div>
+            <div className="text-[10px] uppercase text-ink-400 mb-1">Pace</div>
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
@@ -377,9 +377,9 @@ function CardioBlock({
           </div>
           <div className="grid grid-cols-3 gap-2">
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">Elev gain (m)</span>
+              <span className="text-[10px] uppercase text-ink-400">Elev gain (m)</span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 type="number"
                 min="0"
                 placeholder="120"
@@ -388,9 +388,9 @@ function CardioBlock({
               />
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">Avg HR</span>
+              <span className="text-[10px] uppercase text-ink-400">Avg HR</span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 type="number"
                 min="0"
                 placeholder="142"
@@ -399,9 +399,9 @@ function CardioBlock({
               />
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">Max HR</span>
+              <span className="text-[10px] uppercase text-ink-400">Max HR</span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 type="number"
                 min="0"
                 placeholder="171"
@@ -1012,14 +1012,14 @@ export function WorkoutsPage() {
                           under each set that was marked skipped. Stays
                           collapsed otherwise. */}
                       {ex.sets.some((s) => s.skipped) && (
-                        <div className="mt-1 text-[10px] font-mono text-slate-400 space-y-1">
+                        <div className="mt-1 text-[10px] font-mono text-ink-300 space-y-1">
                           {ex.sets.map((s, j) =>
                             s.skipped ? (
                               <div key={j} className="flex items-center gap-2 flex-wrap">
                                 <span className="text-amber-400">⊘ Set {j + 1} skipped</span>
-                                <span className="text-slate-500">reason:</span>
+                                <span className="text-ink-400">reason:</span>
                                 <select
-                                  className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-[10px]"
+                                  className="bg-bg-900 border border-bg-700 rounded px-1 py-0.5 text-[10px]"
                                   value={s.skipReason ?? 'OTHER'}
                                   onChange={(e) => {
                                     const copy = [...exercises];

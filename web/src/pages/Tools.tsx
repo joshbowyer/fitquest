@@ -145,7 +145,7 @@ export function ToolsPage() {
                   (e.target as HTMLInputElement).blur();
                 }
               }}
-              className="w-24 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm font-mono"
+              className="w-24 rounded border border-bg-700 bg-bg-900 px-2 py-1 text-sm font-mono"
               placeholder="0"
               aria-label="Target weight"
             />
@@ -164,7 +164,7 @@ export function ToolsPage() {
               min={0}
               value={bar}
               onChange={(e) => setBar(Number(e.target.value) || 0)}
-              className="w-20 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm font-mono"
+              className="w-20 rounded border border-bg-700 bg-bg-900 px-2 py-1 text-sm font-mono"
               aria-label="Bar weight"
             />
             <span className="text-ink-400 text-sm font-mono">
@@ -172,7 +172,7 @@ export function ToolsPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-1 border border-slate-700 rounded ml-auto">
+          <div className="flex items-center gap-1 border border-bg-700 rounded ml-auto">
             <button
               type="button"
               onClick={() => setUnit('METRIC')}
@@ -180,7 +180,7 @@ export function ToolsPage() {
                 'px-3 py-1 text-xs font-mono',
                 unit === 'METRIC'
                   ? 'bg-neon-cyan/20 text-neon-cyan'
-                  : 'text-slate-400 hover:text-slate-200',
+                  : 'text-ink-300 hover:text-ink-100',
               )}
               title="Kilograms"
             >
@@ -193,7 +193,7 @@ export function ToolsPage() {
                 'px-3 py-1 text-xs font-mono',
                 unit === 'IMPERIAL'
                   ? 'bg-neon-cyan/20 text-neon-cyan'
-                  : 'text-slate-400 hover:text-slate-200',
+                  : 'text-ink-300 hover:text-ink-100',
               )}
               title="Pounds"
             >
@@ -238,7 +238,7 @@ export function ToolsPage() {
               min={0}
               value={oneRm || ''}
               onChange={(e) => setOneRm(Number(e.target.value) || 0)}
-              className="w-24 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-sm font-mono"
+              className="w-24 rounded border border-bg-700 bg-bg-900 px-2 py-1 text-sm font-mono"
               placeholder="0"
               aria-label="One-rep max"
             />
@@ -360,10 +360,10 @@ export function ToolsPage() {
                     minute: '2-digit',
                   })}
                 </span>
-                <span className="text-slate-200 shrink-0">
+                <span className="text-ink-100 shrink-0">
                   {h.weight} {h.unit === 'IMPERIAL' ? 'lb' : 'kg'}
                 </span>
-                <span className="text-slate-500">→</span>
+                <span className="text-ink-400">→</span>
                 <span className="text-neon-cyan truncate flex-1" title={h.text}>
                   {h.text}
                 </span>

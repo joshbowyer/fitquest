@@ -75,7 +75,7 @@ export function HomeBaseCard() {
           >
             {data.tierLabel}
           </span>
-          <span className="text-2xl font-display tabular-nums text-slate-100">
+          <span className="text-2xl font-display tabular-nums text-ink-50">
             {data.shield}
             <span className="text-[10px] text-ink-500 ml-1">/ 100</span>
           </span>
@@ -130,7 +130,7 @@ function PenanceRow({ e }: { e: PenanceEvent }) {
           isDamage ? 'bg-rose-400' : 'bg-emerald-400',
         )}
       />
-      <span className="text-slate-200 truncate flex-1">{e.label}</span>
+      <span className="text-ink-100 truncate flex-1">{e.label}</span>
       <span className={classNames(
         'tabular-nums shrink-0',
         isDamage ? 'text-rose-300' : 'text-emerald-300',
@@ -221,7 +221,7 @@ function HomeBaseDetail({ data }: { data: HomeBaseData }) {
           <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">
             Shield
           </div>
-          <div className="text-2xl font-display tabular-nums text-slate-100">
+          <div className="text-2xl font-display tabular-nums text-ink-50">
             {data.shield}<span className="text-[10px] text-ink-500 ml-1">/ 100</span>
           </div>
         </div>
@@ -437,8 +437,8 @@ function PenanceTemplateRow({
         'w-full text-left flex items-start gap-2 py-1.5 px-2 text-[11px] font-mono rounded border transition-colors',
         row.enabled
           ? accent === 'rose'
-            ? 'border-rose-500/40 bg-rose-500/5 text-slate-100'
-            : 'border-emerald-500/40 bg-emerald-500/5 text-slate-100'
+            ? 'border-rose-500/40 bg-rose-500/5 text-ink-50'
+            : 'border-emerald-500/40 bg-emerald-500/5 text-ink-50'
           : 'border-ink-700/30 text-ink-300 hover:border-ink-500/50',
       )}
     >

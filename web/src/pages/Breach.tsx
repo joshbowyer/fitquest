@@ -168,7 +168,7 @@ export function BreachPage() {
     return (
       <Layout>
         <PageHeader title="The Breach" subtitle="Loading the seal…" />
-        <div className="text-center text-slate-400 font-mono text-xs py-12">PROBING THE EVENT HORIZON…</div>
+        <div className="text-center text-ink-300 font-mono text-xs py-12">PROBING THE EVENT HORIZON…</div>
       </Layout>
     );
   }
@@ -188,7 +188,7 @@ export function BreachPage() {
     return (
       <Layout>
         <PageHeader title="The Breach" />
-        <div className="text-center text-slate-400 font-mono text-xs py-12">NO DATA</div>
+        <div className="text-center text-ink-300 font-mono text-xs py-12">NO DATA</div>
       </Layout>
     );
   }
@@ -209,11 +209,11 @@ export function BreachPage() {
                 <BlackHoleSVG size={200} unlocked={false} hp={1} maxHp={1} tier={undefined} animated={false} />
               </ErrorBoundary>
               <div className="text-center space-y-2 max-w-md">
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-ink-200">
                   Somewhere beneath the Nexus, something breathes. You can almost hear it
                   through the floor of your routine.
                 </p>
-                <p className="text-xs text-slate-500 font-mono">
+                <p className="text-xs text-ink-400 font-mono">
                   Reach level {data.unlockLevel} to crack the seal. {remaining} level{remaining === 1 ? '' : 's'} to go.
                 </p>
               </div>
@@ -270,10 +270,10 @@ export function BreachPage() {
             {/* Boss info */}
             <div className="space-y-3">
               {boss.intro && (
-                <p className="text-sm text-slate-300 italic">"{boss.intro}"</p>
+                <p className="text-sm text-ink-200 italic">"{boss.intro}"</p>
               )}
               {boss.lore && (
-                <p className="text-xs text-slate-500">{boss.lore}</p>
+                <p className="text-xs text-ink-400">{boss.lore}</p>
               )}
               <div className="flex flex-wrap gap-2 text-[10px] font-mono uppercase tracking-widest">
                 <span
@@ -283,7 +283,7 @@ export function BreachPage() {
                   {boss.classAffinity}
                 </span>
                 {boss.preferredTags.map((tag) => (
-                  <span key={tag} className="px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                  <span key={tag} className="px-2 py-0.5 rounded bg-bg-800 text-ink-300 border border-bg-700">
                     {tag.replace(/_/g, ' ')}
                   </span>
                 ))}
@@ -303,13 +303,13 @@ export function BreachPage() {
 
               {/* HP bar */}
               <div>
-                <div className="flex items-baseline justify-between text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">
+                <div className="flex items-baseline justify-between text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">
                   <span>BOSS HP</span>
-                  <span className="text-slate-300">
+                  <span className="text-ink-200">
                     {progress.bossHp.toLocaleString()} / {progress.bossMaxHp.toLocaleString()}
                   </span>
                 </div>
-                <div className="h-3 bg-slate-800 rounded overflow-hidden border border-slate-700">
+                <div className="h-3 bg-bg-800 rounded overflow-hidden border border-bg-700">
                   <div
                     className="h-full transition-all duration-300"
                     style={{
@@ -320,7 +320,7 @@ export function BreachPage() {
                   />
                 </div>
                 {progress.damageToday > 0 && (
-                  <div className="text-[10px] font-mono text-slate-500 mt-1">
+                  <div className="text-[10px] font-mono text-ink-400 mt-1">
                     Damage today: {progress.damageToday.toLocaleString()} (cap {Math.round(progress.bossMaxHp * 1.5).toLocaleString()})
                   </div>
                 )}
@@ -329,7 +329,7 @@ export function BreachPage() {
               {/* Pet HP — the deployed pet in this fight. */}
               {deployedPet && (
                 <div>
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 mb-1">
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1">
                     Companion · {deployedPet.name}
                   </div>
                   <PetCombatCard pet={deployedPet} />
@@ -338,7 +338,7 @@ export function BreachPage() {
               {!deployedPet && petQ.data && petQ.data.pets.length > 0 && (
                 <Link
                   to="/pet"
-                  className="block text-[10px] font-mono uppercase tracking-widest text-slate-500 hover:text-slate-300"
+                  className="block text-[10px] font-mono uppercase tracking-widest text-ink-400 hover:text-ink-200"
                 >
                   No companion deployed. Visit /pet to deploy one →
                 </Link>
@@ -369,7 +369,7 @@ export function BreachPage() {
                     }
                   }}
                   disabled={skip.isPending || (user.gold ?? 0) < 10}
-                  className="px-4 py-2 rounded border border-slate-600 hover:border-amber-500 text-slate-300 hover:text-amber-400 font-mono text-xs uppercase tracking-widest disabled:opacity-50"
+                  className="px-4 py-2 rounded border border-bg-600 hover:border-amber-500 text-ink-200 hover:text-amber-400 font-mono text-xs uppercase tracking-widest disabled:opacity-50"
                 >
                   Skip · 10 gold
                 </button>
@@ -390,20 +390,20 @@ export function BreachPage() {
                   d.matchType === 'mismatched' ? 'text-rose-400' :
                   d.matchType === 'bonus' ? 'text-amber-300' :
                   d.matchType === 'matched' ? 'text-violet-300' :
-                  'text-slate-300';
+                  'text-ink-200';
                 return (
-                  <div key={d.id} className="flex items-baseline justify-between text-xs font-mono py-1 border-b border-slate-800">
+                  <div key={d.id} className="flex items-baseline justify-between text-xs font-mono py-1 border-b border-bg-700">
                     <div className="flex items-center gap-2">
                       <span style={{ color }}>{d.bossSprite || '◉'}</span>
-                      <span className="text-slate-500">
+                      <span className="text-ink-400">
                         {new Date(d.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      <span className="text-slate-600">·</span>
-                      <span className="text-slate-400 text-[10px] uppercase">{d.matchType}</span>
+                      <span className="text-ink-500">·</span>
+                      <span className="text-ink-300 text-[10px] uppercase">{d.matchType}</span>
                     </div>
                     <span className={cls}>
                       {sign}{Math.abs(d.damage).toLocaleString()}
-                      <span className="text-slate-600 text-[10px] ml-2">→ {d.bossHpAfter.toLocaleString()} HP</span>
+                      <span className="text-ink-500 text-[10px] ml-2">→ {d.bossHpAfter.toLocaleString()} HP</span>
                     </span>
                   </div>
                 );
@@ -417,27 +417,27 @@ export function BreachPage() {
       {claimDelayed.data && (
         <Modal open={true} onClose={() => { claimDelayed.reset(); }} title="VICTORY">
           <div className="space-y-4">
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-ink-200">
               <span style={{ color: affinityColor }}>{boss.name}</span> has been defeated.
             </p>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div className="space-y-1">
                 <div className="text-2xl font-mono text-amber-400">+{claimDelayed.data.reward.gold}</div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">gold</div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">gold</div>
               </div>
               <div className="space-y-1">
                 <div className="text-2xl font-mono text-violet-300">+{claimDelayed.data.reward.soulstones}</div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">soulstones</div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">soulstones</div>
               </div>
               <div className="space-y-1">
                 <div className="text-2xl font-mono text-emerald-400">+{claimDelayed.data.reward.xp}</div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500">XP</div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">XP</div>
               </div>
             </div>
             {claimDelayed.data.reward.itemTier && (
               <div className="text-center">
-                <div className="text-xs text-slate-400 mb-2">ITEM DROP</div>
-                <div className="inline-block px-3 py-1 rounded bg-slate-800 border border-slate-700 text-xs font-mono uppercase">
+                <div className="text-xs text-ink-300 mb-2">ITEM DROP</div>
+                <div className="inline-block px-3 py-1 rounded bg-bg-800 border border-bg-700 text-xs font-mono uppercase">
                   {claimDelayed.data.reward.itemTier} item
                 </div>
               </div>

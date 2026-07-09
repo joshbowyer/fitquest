@@ -97,7 +97,7 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
   if (q.isLoading) {
     return (
       <Panel title="Spiritual director" variant="violet" className="border-neon-violet/30">
-        <div className="text-sm text-slate-400 font-mono py-2">⏳ Preparing today's reflection…</div>
+        <div className="text-sm text-ink-300 font-mono py-2">⏳ Preparing today's reflection…</div>
       </Panel>
     );
   }
@@ -158,7 +158,7 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
     return (
       <Panel title="Spiritual director" variant="violet">
         <div className="space-y-2 py-1">
-          <div className="text-sm text-slate-300 font-mono">
+          <div className="text-sm text-ink-200 font-mono">
             No readings available right now.
           </div>
           <div className="text-[11px] font-mono text-ink-400 leading-relaxed">
@@ -228,7 +228,7 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
           </div>
         </div>
         {r.reflection && (
-          <div className="text-sm text-slate-100 leading-relaxed">
+          <div className="text-sm text-ink-50 leading-relaxed">
             <span className="text-violet-300 font-display tracking-widest text-[10px] uppercase mr-2 align-baseline">
               // reflection
             </span>
@@ -236,7 +236,7 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
           </div>
         )}
         {!r.reflection && (
-          <div className="text-sm text-slate-400 font-mono">
+          <div className="text-sm text-ink-300 font-mono">
             The reading is here, but the LLM reflection is empty (LLM not configured or disabled — see /admin).
           </div>
         )}
@@ -247,15 +247,15 @@ export function SpiritualDirectorCard({ hidePatron, collapseGospel, hideRegenera
         )}
         {!collapseGospel && r.gospelText && (
           <details className="text-xs">
-            <summary className="cursor-pointer text-slate-400 font-mono select-none hover:text-slate-200">
+            <summary className="cursor-pointer text-ink-300 font-mono select-none hover:text-ink-100">
               {`▸ Today's Gospel (${r.gospelRef})`}
             </summary>
-            <div className="mt-2 text-slate-300 leading-relaxed whitespace-pre-wrap font-mono pl-3 border-l border-neon-violet/20">
+            <div className="mt-2 text-ink-200 leading-relaxed whitespace-pre-wrap font-mono pl-3 border-l border-neon-violet/20">
               {r.gospelText}
             </div>
           </details>
         )}
-        <div className="text-[10px] font-mono text-slate-500">
+        <div className="text-[10px] font-mono text-ink-400">
           {r.cached ? 'cached' : 'fresh'} · {r.model ?? '—'} · {r.latencyMs != null ? `${r.latencyMs}ms` : ''} · {new Date(r.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
         </div>
       </div>

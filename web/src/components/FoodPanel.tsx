@@ -354,21 +354,21 @@ export function FoodPanel() {
             {recentQ.data.items.slice(0, 8).map((m) => (
               <div
                 key={m.id}
-                className="text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 flex items-baseline gap-2"
+                className="text-[11px] font-mono py-1 px-1 hover:bg-bg-800/40 flex items-baseline gap-2"
               >
-                <span className="text-slate-400 shrink-0">
+                <span className="text-ink-300 shrink-0">
                   {new Date(m.loggedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
                 </span>
                 <span className="text-violet-300 shrink-0 text-[10px]">
                   {m.meal.toLowerCase()}
                 </span>
-                <span className="text-slate-200 truncate flex-1">
+                <span className="text-ink-100 truncate flex-1">
                   {m.food.name}
                 </span>
                 <span className="text-amber-300 text-[10px] shrink-0">
                   ×{m.servings.toFixed(2)}
                 </span>
-                <span className="text-slate-400 text-[10px] shrink-0">
+                <span className="text-ink-300 text-[10px] shrink-0">
                   {m.served.calories.toFixed(0)} cal
                 </span>
               </div>
@@ -529,7 +529,7 @@ function FoodResultRow({ food, onLog }: { food: FoodMatch; onLog: (f: FoodMatch)
     onSuccess: () => qc.invalidateQueries({ queryKey: ['foods', 'saved'] }),
   }, 600);
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-800/30">
+    <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-bg-800/30">
       {food.imageUrl ? (
         <img
           src={food.imageUrl}
@@ -541,12 +541,12 @@ function FoodResultRow({ food, onLog }: { food: FoodMatch; onLog: (f: FoodMatch)
           }}
         />
       ) : (
-        <div className="w-8 h-8 bg-slate-800/60 rounded border border-ink-500/30 shrink-0 flex items-center justify-center text-[10px] text-ink-500">
+        <div className="w-8 h-8 bg-bg-800/60 rounded border border-ink-500/30 shrink-0 flex items-center justify-center text-[10px] text-ink-500">
           {food.source === 'OPENFOODFACTS' ? 'OFF' : 'USDA'}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-slate-100 truncate">{food.name}</div>
+        <div className="text-sm text-ink-50 truncate">{food.name}</div>
         <div className="text-[10px] font-mono text-ink-400 truncate">
           {food.brand && <span className="text-ink-300">{food.brand} · </span>}
           {food.calories.toFixed(0)} cal · {food.proteinG.toFixed(1)}p ·{' '}
@@ -670,7 +670,7 @@ function AskAiModal({
               OFF/USDA.
             </div>
             <textarea
-              className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               rows={3}
               autoFocus
               placeholder="e.g. 1 cup kefir, 1 cup almond milk, 1 scoop ON Gold Standard whey vanilla, 6 strawberries, 1 scoop creatine"
@@ -707,7 +707,7 @@ function AskAiModal({
               be logged again with a fresh ID.
             </div>
             <div className="border border-neon-violet/40 rounded p-3 space-y-2 bg-neon-violet/5">
-              <div className="text-sm font-display tracking-wider text-slate-100">
+              <div className="text-sm font-display tracking-wider text-ink-50">
                 {result.name}
               </div>
               {result.reason && (
@@ -718,36 +718,36 @@ function AskAiModal({
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-1 text-[11px] font-mono">
                 <div className="flex justify-between">
                   <span className="text-ink-400">Calories</span>
-                  <span className="text-slate-100">{result.calories} kcal</span>
+                  <span className="text-ink-50">{result.calories} kcal</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ink-400">Protein</span>
-                  <span className="text-slate-100">{result.proteinG} g</span>
+                  <span className="text-ink-50">{result.proteinG} g</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ink-400">Carbs</span>
-                  <span className="text-slate-100">{result.carbG} g</span>
+                  <span className="text-ink-50">{result.carbG} g</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-ink-400">Fat</span>
-                  <span className="text-slate-100">{result.fatG} g</span>
+                  <span className="text-ink-50">{result.fatG} g</span>
                 </div>
                 {result.fiberG != null && (
                   <div className="flex justify-between">
                     <span className="text-ink-400">Fiber</span>
-                    <span className="text-slate-100">{result.fiberG} g</span>
+                    <span className="text-ink-50">{result.fiberG} g</span>
                   </div>
                 )}
                 {result.sugarG != null && (
                   <div className="flex justify-between">
                     <span className="text-ink-400">Sugar</span>
-                    <span className="text-slate-100">{result.sugarG} g</span>
+                    <span className="text-ink-50">{result.sugarG} g</span>
                   </div>
                 )}
                 {result.sodiumMg != null && (
                   <div className="flex justify-between">
                     <span className="text-ink-400">Sodium</span>
-                    <span className="text-slate-100">{result.sodiumMg} mg</span>
+                    <span className="text-ink-50">{result.sodiumMg} mg</span>
                   </div>
                 )}
               </div>
@@ -968,9 +968,9 @@ function RecentFoodsModal({
                   {filtered.slice(0, 50).map((m) => (
                     <div
                       key={m.id}
-                      className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
+                      className="text-[11px] font-mono py-1 px-2 hover:bg-bg-800/40 flex items-center gap-2 border border-ink-500/20"
                     >
-                      <span className="text-slate-200 truncate flex-1">
+                      <span className="text-ink-100 truncate flex-1">
                         {m.food.name}
                         {m.food.brand && (
                           <span className="text-ink-400 ml-1">· {m.food.brand}</span>
@@ -1027,9 +1027,9 @@ function RecentFoodsModal({
                   {filtered.slice(0, 30).map((s) => (
                     <div
                       key={s.id}
-                      className="text-[11px] font-mono py-1 px-2 hover:bg-slate-800/40 flex items-center gap-2 border border-ink-500/20"
+                      className="text-[11px] font-mono py-1 px-2 hover:bg-bg-800/40 flex items-center gap-2 border border-ink-500/20"
                     >
-                      <span className="text-slate-200 truncate flex-1">{s.name}</span>
+                      <span className="text-ink-100 truncate flex-1">{s.name}</span>
                       <span className="text-amber-300 text-[10px] shrink-0">
                         {s.calories.toFixed(0)} cal
                       </span>
@@ -1124,7 +1124,7 @@ function ManageSavedFoodsModal({
                     className="border border-ink-500/30 p-2 text-xs font-mono flex items-center gap-2"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-slate-100 truncate">{s.name}</div>
+                      <div className="text-ink-50 truncate">{s.name}</div>
                       <div className="text-[10px] text-ink-400">
                         {s.calories.toFixed(0)} cal · {s.proteinG.toFixed(0)}p ·{' '}
                         {s.carbG.toFixed(0)}c · {s.fatG.toFixed(0)}f
@@ -1281,28 +1281,28 @@ function SavedFoodEditor({
     <div className="border border-neon-violet/30 p-3 space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <label className="block col-span-2">
-          <span className="text-[10px] uppercase text-slate-500">Name</span>
+          <span className="text-[10px] uppercase text-ink-400">Name</span>
           <input
             autoFocus
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Daily Shake"
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Brand (optional)</span>
+          <span className="text-[10px] uppercase text-ink-400">Brand (optional)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             value={brand}
             onChange={(e) => setBrand(e.target.value)}
             placeholder="Trader Joe's"
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Serving size (g)</span>
+          <span className="text-[10px] uppercase text-ink-400">Serving size (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={servingSize}
@@ -1315,7 +1315,7 @@ function SavedFoodEditor({
         <label className="block">
           <span className="text-[10px] uppercase text-amber-400">Calories</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={cal}
@@ -1326,7 +1326,7 @@ function SavedFoodEditor({
         <label className="block">
           <span className="text-[10px] uppercase text-lime-400">Protein (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={protein}
@@ -1337,7 +1337,7 @@ function SavedFoodEditor({
         <label className="block">
           <span className="text-[10px] uppercase text-cyan-400">Carbs (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={carb}
@@ -1348,7 +1348,7 @@ function SavedFoodEditor({
         <label className="block">
           <span className="text-[10px] uppercase text-violet-400">Fat (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={fat}
@@ -1357,9 +1357,9 @@ function SavedFoodEditor({
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Fiber (g)</span>
+          <span className="text-[10px] uppercase text-ink-400">Fiber (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={fiber}
@@ -1368,9 +1368,9 @@ function SavedFoodEditor({
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Sugar (g)</span>
+          <span className="text-[10px] uppercase text-ink-400">Sugar (g)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={sugar}
@@ -1379,9 +1379,9 @@ function SavedFoodEditor({
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Sodium (mg)</span>
+          <span className="text-[10px] uppercase text-ink-400">Sodium (mg)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             type="number"
             min="0"
             value={sodium}
@@ -1390,9 +1390,9 @@ function SavedFoodEditor({
           />
         </label>
         <label className="block">
-          <span className="text-[10px] uppercase text-slate-500">Servings</span>
+          <span className="text-[10px] uppercase text-ink-400">Servings</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm bg-slate-800/40 cursor-not-allowed"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm bg-bg-800/40 cursor-not-allowed"
             disabled
             value="1"
             title="Always 1 serving per row. Log it N times via quick-log × N."
@@ -1400,9 +1400,9 @@ function SavedFoodEditor({
         </label>
       </div>
       <label className="block">
-        <span className="text-[10px] uppercase text-slate-500">Recipe / notes (optional)</span>
+        <span className="text-[10px] uppercase text-ink-400">Recipe / notes (optional)</span>
         <textarea
-          className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
           rows={2}
           value={recipe}
           onChange={(e) => setRecipe(e.target.value)}
@@ -1531,7 +1531,7 @@ function AskAiSavedFoodModal({
           You review before saving.
         </div>
         <textarea
-          className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+          className="w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
           rows={5}
           autoFocus
           placeholder="e.g. 1 cup reduced sugar almond milk, 1/2 cup maple hill organic kefir, 1 scoop whey isolate, 1 tbsp peanut butter, 1/2 cup frozen berries"
@@ -1670,10 +1670,10 @@ function SavedFoodRow({
 
   return (
     <div
-      className="text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 flex items-center gap-2"
+      className="text-[11px] font-mono py-1 px-1 hover:bg-bg-800/40 flex items-center gap-2"
       title={saved.recipe ?? saved.name}
     >
-      <span className="text-slate-200 truncate flex-1">{saved.name}</span>
+      <span className="text-ink-100 truncate flex-1">{saved.name}</span>
       <span className="text-amber-300 text-[10px] shrink-0">
         {saved.calories.toFixed(0)} cal
       </span>
@@ -1736,7 +1736,7 @@ function SavedFoodRow({
                   role="menuitem"
                   onClick={() => commit(m)}
                   disabled={logging}
-                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] font-mono text-left text-slate-200 hover:bg-neon-amber/10 disabled:opacity-50"
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] font-mono text-left text-ink-100 hover:bg-neon-amber/10 disabled:opacity-50"
                 >
                   <span className="flex items-center gap-1.5">
                     {MEAL_TYPE_LABEL[m]}
@@ -1886,7 +1886,7 @@ function LogMealModal({
           <div className="font-display tracking-widest text-sm text-ink-50">Log meal</div>
           <button onClick={onClose} className="text-ink-300 hover:text-ink-100">✕</button>
         </div>
-        <div className="text-sm text-slate-100 mb-1">
+        <div className="text-sm text-ink-50 mb-1">
           {food.name}
           {food.brand && <span className="text-ink-400 text-xs ml-1">· {food.brand}</span>}
         </div>
@@ -1902,9 +1902,9 @@ function LogMealModal({
 
         <div className="grid grid-cols-2 gap-2 mb-3">
           <label className="block">
-            <span className="text-[10px] uppercase text-slate-500">Meal</span>
+            <span className="text-[10px] uppercase text-ink-400">Meal</span>
             <select
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={meal}
               onChange={(e) => setMeal(e.target.value as MealType)}
             >
@@ -1916,7 +1916,7 @@ function LogMealModal({
             </select>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase text-slate-500 flex items-center justify-between">
+            <span className="text-[10px] uppercase text-ink-400 flex items-center justify-between">
               <span>
                 Quantity (
                 {unit === 'x100g'   && '×100g'}
@@ -1944,16 +1944,16 @@ function LogMealModal({
               step="0.1"
               min="0.1"
               max={unit === 'oz' ? Math.round(50 * 100 / 28.3495) : 50}
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={servings}
               onChange={(e) => setServings(e.target.value)}
             />
           </label>
         </div>
         <label className="block mb-3">
-          <span className="text-[10px] uppercase text-slate-500">Note (optional)</span>
+          <span className="text-[10px] uppercase text-ink-400">Note (optional)</span>
           <input
-            className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+            className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="post-workout, with rice, ..."

@@ -45,7 +45,7 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
         variant="cyan"
         className="border-neon-cyan/30"
       >
-        <div className="text-sm text-slate-400 font-mono py-2">
+        <div className="text-sm text-ink-300 font-mono py-2">
           ⏳ Generating your briefing…
         </div>
       </Panel>
@@ -68,7 +68,7 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
   if (!hasContent && r.riskFlags.length === 0 && !hasDeterministic) {
     return (
       <Panel title="Morning briefing" variant="cyan">
-        <div className="text-sm text-slate-400 font-mono py-1">
+        <div className="text-sm text-ink-300 font-mono py-1">
           Log a few days of sleep, workouts, or supplements to unlock your daily briefing.
         </div>
         {!hideRegenerate && (
@@ -107,7 +107,7 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
       }
     >
       {r.general && (
-        <div className="text-sm text-slate-100 leading-relaxed">
+        <div className="text-sm text-ink-50 leading-relaxed">
           <span className="text-cyan-300 font-display tracking-widest text-[10px] uppercase mr-2">
             // today
           </span>
@@ -209,7 +209,7 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate">
-                  <span className="text-slate-400">{f.exercise}</span>
+                  <span className="text-ink-300">{f.exercise}</span>
                   <span className="text-ink-500"> · set {f.setIndex + 1}</span>
                 </div>
                 <div className="text-[10px] text-ink-400 truncate">
@@ -251,7 +251,7 @@ export function MorningReportCard({ withMetricInsights, hideRegenerate }: Props)
           ))}
         </div>
       )}
-      <div className="mt-2 text-[10px] font-mono text-slate-500">
+      <div className="mt-2 text-[10px] font-mono text-ink-400">
         {r.cached ? 'cached' : 'fresh'} · {r.model ?? '—'} · {r.latencyMs != null ? `${r.latencyMs}ms` : ''} · {new Date(r.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
       </div>
     </Panel>
@@ -281,7 +281,7 @@ function MetricRow({
       <span className={`text-[10px] font-display tracking-widest uppercase neon-text-${color} mr-2`}>
         {label}
       </span>
-      <span className="text-slate-200">{text}</span>
+      <span className="text-ink-100">{text}</span>
     </div>
   );
 }

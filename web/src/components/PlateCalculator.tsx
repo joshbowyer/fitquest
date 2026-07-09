@@ -105,7 +105,7 @@ export function PlateCalculator({
     // One-line readout: "60.0 kg = 20 + 5 + 2.5 kg per side"
     if (!target || target <= 0) return null;
     return (
-      <div className="text-xs text-slate-400 font-mono flex items-center gap-2">
+      <div className="text-xs text-ink-300 font-mono flex items-center gap-2">
         <span>⚖ {formatPlates(result)}</span>
         {result.status === 'infeasible' && result.plates.length > 0 && (
           <span className="text-amber-400">
@@ -128,14 +128,14 @@ export function PlateCalculator({
   }
 
   return (
-    <div className="rounded border border-slate-700/60 bg-slate-900/40 p-3 mt-2">
+    <div className="rounded border border-bg-700/60 bg-bg-900/40 p-3 mt-2">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-        <span className="text-xs uppercase tracking-widest text-slate-400">
+        <span className="text-xs uppercase tracking-widest text-ink-300">
           Plate breakdown
         </span>
         <div className="flex items-center gap-2 text-xs flex-wrap">
           {unitOverride && (
-            <div className="flex items-center gap-1 border border-slate-700 rounded">
+            <div className="flex items-center gap-1 border border-bg-700 rounded">
               <button
                 type="button"
                 onClick={() => onUnitChange?.('METRIC')}
@@ -143,7 +143,7 @@ export function PlateCalculator({
                   'px-2 py-0.5 text-[10px] font-mono',
                   units === 'METRIC'
                     ? 'bg-neon-cyan/20 text-neon-cyan'
-                    : 'text-slate-400 hover:text-slate-200',
+                    : 'text-ink-300 hover:text-ink-100',
                 )}
                 title="Calculate in kilograms"
               >
@@ -156,7 +156,7 @@ export function PlateCalculator({
                   'px-2 py-0.5 text-[10px] font-mono',
                   units === 'IMPERIAL'
                     ? 'bg-neon-cyan/20 text-neon-cyan'
-                    : 'text-slate-400 hover:text-slate-200',
+                    : 'text-ink-300 hover:text-ink-100',
                 )}
                 title="Calculate in pounds"
               >
@@ -166,31 +166,31 @@ export function PlateCalculator({
           )}
           {editable && (
             <div className="flex items-center gap-1">
-              <span className="text-slate-500">target</span>
+              <span className="text-ink-400">target</span>
               <input
                 type="number"
                 step={units === 'IMPERIAL' ? 5 : 2.5}
                 min={0}
                 value={target || ''}
                 onChange={(e) => setTarget(Number(e.target.value) || 0)}
-                className="w-20 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs font-mono"
+                className="w-20 rounded border border-bg-700 bg-bg-900 px-1.5 py-0.5 text-xs font-mono"
                 placeholder="0"
               />
-              <span className="text-slate-500">{units === 'IMPERIAL' ? 'lb' : 'kg'}</span>
+              <span className="text-ink-400">{units === 'IMPERIAL' ? 'lb' : 'kg'}</span>
             </div>
           )}
           {editableBar && (
             <div className="flex items-center gap-1">
-              <span className="text-slate-500">bar</span>
+              <span className="text-ink-400">bar</span>
               <input
                 type="number"
                 step={units === 'IMPERIAL' ? 5 : 2.5}
                 min={0}
                 value={bar}
                 onChange={(e) => setBar(Number(e.target.value) || 0)}
-                className="w-16 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs font-mono"
+                className="w-16 rounded border border-bg-700 bg-bg-900 px-1.5 py-0.5 text-xs font-mono"
               />
-              <span className="text-slate-500">{units === 'IMPERIAL' ? 'lb' : 'kg'}</span>
+              <span className="text-ink-400">{units === 'IMPERIAL' ? 'lb' : 'kg'}</span>
             </div>
           )}
         </div>
@@ -199,10 +199,10 @@ export function PlateCalculator({
       <div className="text-sm font-mono flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {target > 0 ? (
           <>
-            <span className="text-slate-200">
+            <span className="text-ink-100">
               {result.achieved.toFixed(2)} {result.unit}
             </span>
-            <span className="text-slate-500"> = </span>
+            <span className="text-ink-400"> = </span>
             <span className="text-neon-cyan">
               {formatPlates(result)}
             </span>
@@ -220,7 +220,7 @@ export function PlateCalculator({
                   'text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded border ml-1',
                   copied
                     ? 'border-neon-lime/60 text-neon-lime bg-neon-lime/10'
-                    : 'border-slate-600 text-slate-400 hover:text-neon-cyan hover:border-neon-cyan/60',
+                    : 'border-bg-600 text-ink-300 hover:text-neon-cyan hover:border-neon-cyan/60',
                 )}
                 title="Copy breakdown to clipboard"
               >
@@ -229,7 +229,7 @@ export function PlateCalculator({
             )}
           </>
         ) : (
-          <span className="text-slate-500">
+          <span className="text-ink-400">
             {editable ? 'enter a target weight to see plates' : 'no weight set'}
           </span>
         )}
@@ -240,7 +240,7 @@ export function PlateCalculator({
           crashed the layout for tiny 1.25kg plates). */}
       {target > 0 && result.plates.length > 0 && (
         <div className="mt-2 flex items-end gap-0.5 overflow-x-auto pb-1">
-          <span className="text-[10px] text-slate-500 mr-1 shrink-0">bar</span>
+          <span className="text-[10px] text-ink-400 mr-1 shrink-0">bar</span>
           {result.plates
             .slice()
             .reverse()
@@ -256,7 +256,7 @@ export function PlateCalculator({
               return (
                 <div
                   key={i}
-                  className="rounded-sm border border-slate-500 bg-slate-700/60 text-[9px] font-mono text-slate-200 text-center shrink-0"
+                  className="rounded-sm border border-ink-500 bg-bg-700/60 text-[9px] font-mono text-ink-100 text-center shrink-0"
                   style={{
                     width,
                     height,

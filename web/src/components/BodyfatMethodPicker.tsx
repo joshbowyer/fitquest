@@ -184,7 +184,7 @@ export function BodyfatMethodPicker({ open, onClose, onSubmit, initialSex }: Pro
   const siteLabels = userSex === 'FEMALE' ? femaleSiteLabels : maleSiteLabels;
 
   return (
-    <Modal open={open} onClose={onClose} title="Log Body Fat" width="max-w-lg" hideCloseButton>
+    <Modal open={open} onClose={onClose} title="Log Body Fat" width="max-w-lg">
       <div className="space-y-4">
         {/* Method picker — 4 radio chips in a 2x2 grid */}
         <div className="grid grid-cols-2 gap-2">

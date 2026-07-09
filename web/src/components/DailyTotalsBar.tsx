@@ -119,7 +119,7 @@ function Stat({
         )}
       </div>
       {target != null && (
-        <div className="h-1.5 bg-slate-800 border border-ink-500/30 overflow-hidden">
+        <div className="h-1.5 bg-bg-800 border border-ink-500/30 overflow-hidden">
           <div
             className="h-full transition-all duration-500"
             style={{

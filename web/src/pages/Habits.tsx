@@ -326,7 +326,7 @@ function HabitEditor({
   const iconChoices = direction === 'POSITIVE' ? ICONS_POS : ICONS_NEG;
 
   return (
-    <Modal open onClose={onClose} title={mode === 'create' ? 'New Habit' : 'Edit Habit'} hideCloseButton>
+    <Modal open onClose={onClose} title={mode === 'create' ? 'New Habit' : 'Edit Habit'}>
       <div className="space-y-4">
         {mode === 'create' && (
           <div className="grid grid-cols-2 gap-2">

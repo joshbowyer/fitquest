@@ -137,7 +137,7 @@ export function HomeBasePage() {
                     <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
                       Shield
                     </div>
-                    <div className="text-2xl font-display tabular-nums text-slate-100">
+                    <div className="text-2xl font-display tabular-nums text-ink-50">
                       {homeQ.data.shield}
                       <span className="text-[10px] text-ink-500 ml-1">/ 100</span>
                     </div>
@@ -244,7 +244,6 @@ export function HomeBasePage() {
             </div>
           }
           width="max-w-3xl"
-          hideCloseButton
         >
           <PortalLeakBody
             leak={{

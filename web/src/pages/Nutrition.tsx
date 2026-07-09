@@ -255,7 +255,7 @@ function TrackedItemsPanel({
           : 'No defaults — items appear as you add them. Resets at midnight; amounts usually do not vary.'}
       </div>
       {items.length === 0 ? (
-        <div className="text-sm text-slate-400 font-mono py-2 text-center">{emptyMessage}</div>
+        <div className="text-sm text-ink-300 font-mono py-2 text-center">{emptyMessage}</div>
       ) : (
         <div className="flex flex-wrap gap-2 mb-3">
           {items.map((item) => {
@@ -405,10 +405,10 @@ function AddTrackedItemModal({
         </div>
         <div className="space-y-3 text-sm">
           <label className="block">
-            <span className="text-xs uppercase text-slate-500">Name</span>
+            <span className="text-xs uppercase text-ink-400">Name</span>
             <input
               autoFocus
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Vitamin D3, Magnesium Glycinate, Culturelle, ..."
@@ -416,9 +416,9 @@ function AddTrackedItemModal({
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-xs uppercase text-slate-500">Category</span>
+              <span className="text-xs uppercase text-ink-400">Category</span>
               <select
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 value={category}
                 onChange={(e) => {
                   const next = e.target.value as TrackedItemCategory;
@@ -434,19 +434,19 @@ function AddTrackedItemModal({
             </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
-                <span className="text-xs uppercase text-slate-500">Dose</span>
+                <span className="text-xs uppercase text-ink-400">Dose</span>
                 <input
                   type="number" step="any" min="0"
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                   value={dose}
                   onChange={(e) => setDose(e.target.value)}
                   placeholder="2000"
                 />
               </label>
               <label className="block">
-                <span className="text-xs uppercase text-slate-500">Unit</span>
+                <span className="text-xs uppercase text-ink-400">Unit</span>
                 <select
-                  className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value as TrackedItemUnit)}
                 >
@@ -458,9 +458,9 @@ function AddTrackedItemModal({
             </div>
           </div>
           <label className="block">
-            <span className="text-xs uppercase text-slate-500">Notes (optional)</span>
+            <span className="text-xs uppercase text-ink-400">Notes (optional)</span>
             <input
-              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="with breakfast, before bed, ..."
@@ -570,7 +570,7 @@ function SubstancesPanel() {
       </div>
       {(['NICOTINE', 'CAFFEINE', 'ALCOHOL', 'ELECTROLYTE'] as const).map((cat) => (
         <div key={cat} className="mb-3">
-          <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1">
+          <div className="text-[10px] font-display tracking-widest uppercase text-ink-300 mb-1">
             {SUBSTANCE_CATEGORY_LABEL[cat]}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -600,22 +600,22 @@ function SubstancesPanel() {
       ))}
       {(recentQ.data?.items ?? []).length > 0 && (
         <div className="mt-3 pt-2 border-t border-ink-500/15">
-          <div className="text-[10px] font-display tracking-widest uppercase text-slate-400 mb-1.5">Recent</div>
+          <div className="text-[10px] font-display tracking-widest uppercase text-ink-300 mb-1.5">Recent</div>
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {(recentQ.data?.items ?? []).slice(0, 12).map((l) => (
-              <div key={l.id} className="flex items-center justify-between text-[11px] font-mono py-1 px-1 hover:bg-slate-800/40 group">
+              <div key={l.id} className="flex items-center justify-between text-[11px] font-mono py-1 px-1 hover:bg-bg-800/40 group">
                 <div className="flex items-center gap-2 truncate">
-                  <span className="text-slate-400 shrink-0">
+                  <span className="text-ink-300 shrink-0">
                     {new Date(l.loggedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
                   </span>
                   <span className={classNames('shrink-0', `neon-text-${SUBSTANCE_VARIANT[l.category]}`)}>
                     {l.category.toLowerCase()}
                   </span>
-                  <span className="text-slate-200 truncate">
+                  <span className="text-ink-100 truncate">
                     {l.form.replace(/_/g, ' ')}
                     {l.amount != null ? ` · ${l.amount}${l.unit ?? ''}` : ''}
                   </span>
-                  {l.context && <span className="text-slate-500 text-[10px] italic truncate">— {l.context}</span>}
+                  {l.context && <span className="text-ink-400 text-[10px] italic truncate">— {l.context}</span>}
                 </div>
                 <DeleteButton
                   onClick={() => delM.run({ id: l.id })}

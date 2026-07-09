@@ -55,37 +55,91 @@
 .light {
   color-scheme: light;
   /* bg-* — light gray ramp. */
-  --bg-900: 247 248 250; /* #f7f8fa page bg */
-  --bg-800: 255 255 255; /* #ffffff panel/card */
-  --bg-700: 226 230 236; /* #e2e6ec border / raised */
-  --bg-600: 226 230 236;
-  --bg-500: 200 206 214;
+  --bg-900: 238 241 244; /* EXPERIMENT: real light-gray canvas (Material-style elevation vs pure-white cards) — was 255 255 255 */
+  --bg-800: 255 255 255; /* white cards/panels — separation via neon border + shadow */
+  --bg-700: 235 238 242; /* raised / hover / hairline */
+  --bg-600: 222 227 233;
+  --bg-500: 198 205 214;
   /* ink-* — dark text on light bg, scaled legibly. */
-  --ink-50:  15 20 32;   /* #0f1420 primary text */
-  --ink-100: 30 35 50;
-  --ink-200: 50 56 70;
-  --ink-300: 91 100 114; /* #5b6472 muted text */
-  --ink-400: 110 120 134;
-  --ink-500: 140 148 160;
+  --ink-50:   9 12 20;   /* near-black primary text */
+  --ink-100: 22 27 38;
+  --ink-200: 42 49 63;   /* body text — clearly readable on white */
+  --ink-300: 74 84 99;   /* muted but legible */
+  --ink-400: 100 110 124;
+  --ink-500: 132 141 154;
   /* neon-* — darkened to keep contrast on the light background.
      Same hue family as dark, just less luminous so they don't
      blow out at full saturation. Cyan #0891b2, magenta #c026d3,
      lime #65a30d per the task spec; red/orange/amber/goldenrod/
      periwinkle/violet get analogous darkenings. */
-  --neon-red:        185 28 28;
-  --neon-orange:     217 95 0;
-  --neon-cyan:       8 145 178;     /* #0891b2 */
-  --neon-magenta:    192 38 211;    /* #c026d3 */
-  --neon-lime:       101 163 13;    /* #65a30d */
-  --neon-amber:      184 110 0;
-  --neon-goldenrod:  165 124 20;
-  --neon-periwinkle: 88 86 220;
-  --neon-violet:     124 70 220;
-  --bg-gradient-top:    247 248 250;
-  --bg-gradient-mid-1:  244 246 250;
-  --bg-gradient-mid-2:  240 243 248;
-  --bg-gradient-bottom: 234 238 244;
+  --neon-red:        240 40 40;     /* brighter, more neon on white */
+  --neon-orange:     250 100 15;
+  --neon-cyan:       8 205 232;     /* #08cde8 */
+  --neon-magenta:    236 40 206;    /* #ec28ce */
+  --neon-lime:       92 206 28;     /* #5cce1c */
+  --neon-amber:      242 152 6;
+  --neon-goldenrod:  212 162 20;
+  --neon-periwinkle: 112 102 255;
+  --neon-violet:     156 96 255;
+  --bg-gradient-top:    240 243 246;
+  --bg-gradient-mid-1:  236 239 242;
+  --bg-gradient-mid-2:  232 235 239;
+  --bg-gradient-bottom: 226 230 235;
   --scrollbar-track: 226 230 236;
+}
+
+/* -------------------------------------------------------------------------
+   Light-theme surface treatment. Plain selectors (outside @layer) so they
+   override the layered .panel / .neon-text-* component rules regardless of
+   specificity. The dark theme separates cards with a translucent fill + a
+   neon *glow* shadow; on white that glow is invisible and the translucent
+   fill reads as muddy gray-on-gray. In light mode we instead use crisp
+   solid-white cards lifted by a real (neutral) elevation shadow + a clean
+   tinted hairline — Google-Material-style separation with a neon accent.
+   ------------------------------------------------------------------------- */
+.light .panel {
+  background-color: rgb(var(--bg-800));
+  border-color: rgb(var(--neon-cyan) / 0.55);
+  backdrop-filter: none;
+  box-shadow: 0 1px 2px rgb(15 20 32 / 0.06), 0 6px 16px rgb(15 20 32 / 0.07);
+}
+.light .panel-magenta {
+  border-color: rgb(var(--neon-magenta) / 0.55);
+  box-shadow: 0 1px 2px rgb(15 20 32 / 0.06), 0 6px 16px rgb(15 20 32 / 0.07);
+}
+.light .panel-lime {
+  border-color: rgb(var(--neon-lime) / 0.55);
+  box-shadow: 0 1px 2px rgb(15 20 32 / 0.06), 0 6px 16px rgb(15 20 32 / 0.07);
+}
+/* Neon text-glow blurs into a muddy halo on white — drop the shadow and let
+   the (vivid) fill carry the accent color. */
+.light .neon-text-cyan,
+.light .neon-text-red,
+.light .neon-text-orange,
+.light .neon-text-magenta,
+.light .neon-text-lime,
+.light .neon-text-amber { text-shadow: none; }
+
+/* Light-mode chrome (per user): pure-white top bar + sidebar with a
+   dark-neon-cyan text accent. Scoped to .light so dark mode is untouched.
+   Marker classes .app-topbar / .app-sidebar are set in Layout.tsx. */
+.light { --nav-accent: 10 156 184; } /* dark neon cyan */
+.light .app-topbar,
+.light .app-sidebar {
+  background: #ffffff !important;     /* solid white; kills grid + blur wash */
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.light .app-topbar { color: rgb(var(--nav-accent)); }
+.light .app-sidebar a { color: rgb(var(--nav-accent)); }
+
+/* Whiter main-window wash — trim the neon radials so it reads white with
+   just a whisper of blue (per user). */
+.light #root {
+  background-image:
+    radial-gradient(circle at 20% 8%, rgb(var(--neon-cyan) / 0.035), transparent 45%),
+    radial-gradient(circle at 80% 75%, rgb(var(--neon-magenta) / 0.028), transparent 45%),
+    linear-gradient(180deg, rgb(var(--bg-gradient-top)) 0%, rgb(var(--bg-gradient-bottom)) 100%);
 }
 
 /* Body / root use the CSS-variable driven values so theme flipping

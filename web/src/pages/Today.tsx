@@ -450,7 +450,7 @@ function WallModeShell({
   const needsRotateHint = lockAttempted && !lockSucceeded && !isLandscape;
 
   return (
-    <div className="min-h-screen bg-bg-900 text-slate-100 px-4 py-4 md:px-6 md:py-5 pb-16 overflow-x-hidden">
+    <div className="min-h-screen bg-bg-900 text-ink-50 px-4 py-4 md:px-6 md:py-5 pb-16 overflow-x-hidden">
       {/* Exit pill — top-right corner */}
       <button
         type="button"
@@ -510,7 +510,7 @@ function WallModeShell({
               with ml-auto. The row has an explicit w-72 / w-80 so
               the right anchor is stable across ticks — the AM/PM
               stays put whether seconds are 09, 14, or 17. */}
-          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-slate-100 mb-2 whitespace-nowrap flex items-baseline w-72 landscape:w-80">
+          <div className="font-display text-4xl landscape:text-5xl tracking-tight leading-none text-ink-50 mb-2 whitespace-nowrap flex items-baseline w-72 landscape:w-80">
             <span className="tabular-nums">{hh}:{mm}:{ss}</span>
             <span className="ml-auto tabular-nums">{ampm}</span>
           </div>
@@ -683,7 +683,7 @@ function DailyEditor({
   }, 400);
 
   return (
-    <Modal open onClose={onClose} title={mode === 'create' ? 'New Daily' : 'Edit Daily'} hideCloseButton>
+    <Modal open onClose={onClose} title={mode === 'create' ? 'New Daily' : 'Edit Daily'}>
       <div className="space-y-4">
         <div>
           <label className="text-[10px] font-mono uppercase tracking-widest text-ink-300 block mb-1">

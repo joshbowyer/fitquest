@@ -674,18 +674,18 @@ function CardioBlockInline({
         <div className="mt-2 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">Distance ({distanceUnit(units)})</span>
+              <span className="text-[10px] uppercase text-ink-400">Distance ({distanceUnit(units)})</span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm"
                 type="number" step="0.01" min="0"
                 value={cardio.distanceKm}
                 onChange={(e) => setCardio({ ...cardio, distanceKm: e.target.value })}
               />
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase text-slate-500">Duration</span>
+              <span className="text-[10px] uppercase text-ink-400">Duration</span>
               <input
-                className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm font-mono"
+                className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm font-mono"
                 type="text" placeholder="32:14"
                 value={cardio.duration}
                 onChange={(e) => setCardio({ ...cardio, duration: e.target.value })}
@@ -695,7 +695,7 @@ function CardioBlockInline({
           {!compact && (
             <>
               <div>
-                <div className="text-[10px] uppercase text-slate-500 mb-1">Pace</div>
+                <div className="text-[10px] uppercase text-ink-400 mb-1">Pace</div>
                 <div className="flex flex-wrap gap-1">
                   <button
                     type="button"
@@ -724,16 +724,16 @@ function CardioBlockInline({
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <label className="block">
-                  <span className="text-[10px] uppercase text-slate-500">Elev gain (m)</span>
-                  <input className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.elevationGainM} onChange={(e) => setCardio({ ...cardio, elevationGainM: e.target.value })} />
+                  <span className="text-[10px] uppercase text-ink-400">Elev gain (m)</span>
+                  <input className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.elevationGainM} onChange={(e) => setCardio({ ...cardio, elevationGainM: e.target.value })} />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] uppercase text-slate-500">Avg HR</span>
-                  <input className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.avgHr} onChange={(e) => setCardio({ ...cardio, avgHr: e.target.value })} />
+                  <span className="text-[10px] uppercase text-ink-400">Avg HR</span>
+                  <input className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.avgHr} onChange={(e) => setCardio({ ...cardio, avgHr: e.target.value })} />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] uppercase text-slate-500">Max HR</span>
-                  <input className="mt-1 w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.maxHr} onChange={(e) => setCardio({ ...cardio, maxHr: e.target.value })} />
+                  <span className="text-[10px] uppercase text-ink-400">Max HR</span>
+                  <input className="mt-1 w-full rounded border border-bg-700 bg-bg-900 px-2 py-1.5 text-sm" type="number" min="0" value={cardio.maxHr} onChange={(e) => setCardio({ ...cardio, maxHr: e.target.value })} />
                 </label>
               </div>
             </>

@@ -117,7 +117,7 @@ export function Layout({ children }: Props) {
           right; mobile shows hamburger left, FIT//QUEST centered,
           and a condensed status pill on the right. */}
       <header
-        className="md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800/95 backdrop-blur-md z-30
+        className="app-topbar md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800 z-30
                    sticky top-0 border-b border-neon-cyan/15"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
@@ -289,7 +289,7 @@ export function Layout({ children }: Props) {
 
       {/* Sidebar — desktop only. Renders the same NavLink list as
           the mobile overlay so behaviour stays consistent. */}
-      <aside className="hidden md:block md:row-start-2 md:border-r md:border-neon-cyan/15 bg-bg-800/40 grid-bg p-3">
+      <aside className="app-sidebar hidden md:block md:row-start-2 md:border-r md:border-neon-cyan/15 bg-bg-800 p-3">
         <nav className="flex flex-col gap-1">
           {visibleNav.map((item, i) => (
             <NavLink

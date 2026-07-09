@@ -425,7 +425,7 @@ function UnlockModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg" hideCloseButton>
+    <Modal open onClose={onClose} title={`Unlock: ${skill.name}`} width="max-w-lg">
       <div className="space-y-3">
         {skill.blurb && (
           <div className="text-sm text-ink-200 italic">{skill.blurb}</div>

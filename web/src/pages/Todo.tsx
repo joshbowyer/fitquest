@@ -383,7 +383,6 @@ function TodoEditor({
       open={true}
       onClose={onClose}
       title={isEdit ? 'Edit todo' : 'New todo'}
-      hideCloseButton
     >
       <form
         onSubmit={(e) => { e.preventDefault(); submit(); }}
