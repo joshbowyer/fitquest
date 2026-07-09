@@ -538,3 +538,88 @@ body {
 .unlock-rise-1 { animation-delay: 1100ms; }
 .unlock-rise-2 { animation-delay: 1400ms; }
 .unlock-rise-3 { animation-delay: 1700ms; }
+
+/* =========================================================================
+   NATIVE-ANDROID BACKDROP-FILTER OVERRIDE
+   =========================================================================
+   Bug: Android WebView leaves stale compositor layers when fixed-position
+   overlays using `backdrop-filter` / Tailwind's `backdrop-blur-*` utilities
+   unmount. The visible artifact is a "ghost" backdrop that captures clicks
+   until the user long-presses some text — text selection forces a browser
+   recomposite that finally clears the stale node. Affects Modal.tsx,
+   RewardOverlay.tsx, FoodPanel.tsx, GalaxyMapOverlay.tsx,
+   BossUnlockModal.tsx, MealSections.tsx, QuickActionGrid.tsx, Layout.tsx
+   (mobile menu), and several /pages/* files (13+ overlay components).
+
+   Fix: when running as the native Android app (Capacitor), kill the
+   backdrop-filter entirely and bump the overlay background opacity
+   slightly so the lost blur is compensated for visually. Desktop / web
+   users keep the blur — only native Android is affected.
+
+   Applied via the `is-native-android` class on <html>, set at startup in
+   src/lib/nativePlatform.ts. The class is set BEFORE React mounts, so
+   the override is in effect from the first paint.
+
+   Selector strategy: we use `[class*="backdrop-blur"]` to match every
+   Tailwind backdrop-blur-* utility (sm, md, lg, xl, 2xl, 3xl, plus the
+   unprefixed `backdrop-blur`) in one rule instead of enumerating each
+   one. The two utilities actually used in this codebase are
+   `backdrop-blur-sm` (Modal overlays, GalaxyMap, BossUnlock, FoodPanel,
+   MealSections, Party, Today, QuickActionGrid) and `backdrop-blur-md`
+   (RewardOverlay notifications, Activities toast, Layout mobile menu),
+   but listing both explicitly below makes the override resilient to
+   future code using additional variants without needing a CSS edit.
+
+   The `[style*="backdrop-filter"]` selector catches the inline-style
+   case in Modal.tsx (`style={{backdropFilter: 'blur(4px)', ...}}`),
+   which doesn't carry a `backdrop-blur-*` class. The case-insensitive
+   `i` flag handles either camelCase or lowercase serialization of
+   the property name in the inline-style attribute.
+
+   Why override with `!important`: Tailwind's backdrop-blur utilities set
+   `backdrop-filter` directly on the element via the `--tw-backdrop-*`
+   variables, and the inline-style case in Modal.tsx sets the property
+   via the style attribute. Both win against normal cascade, so the
+   override needs `!important` to take effect on native Android. The
+   rule is scoped under `.is-native-android`, so it only fires inside
+   the native wrapper — web users are unaffected.
+
+   The `.panel` component class uses `@apply backdrop-blur-sm` (inlined
+   at build time into the .panel rule itself), so it doesn't carry
+   `backdrop-blur-sm` as a class and won't match `[class*="backdrop-blur"]`.
+   That blur blurs the solid overlay backdrop behind the panel (now
+   solid since we killed the overlay's blur), so it's effectively a
+   no-op visually — no need to override.
+   ========================================================================= */
+
+.is-native-android .backdrop-blur-sm,
+.is-native-android .backdrop-blur,
+.is-native-android .backdrop-blur-md,
+.is-native-android .backdrop-blur-lg,
+.is-native-android .backdrop-blur-xl,
+.is-native-android .backdrop-blur-2xl,
+.is-native-android .backdrop-blur-3xl,
+.is-native-android [style*="backdrop-filter" i] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Compensate visually for the lost blur: bump the overlay background
+   opacity from the typical /80 or /85 up to /95. Most overlays use
+   `bg-bg-900/80` or `bg-bg-900/85` with a blur; without the blur the
+   lower opacity reads as a translucent wash that lets the underlying
+   content bleed through. /95 reads as a near-solid scrim that hides
+   the page the same way the blur did.
+
+   Only applied to elements that actually had a backdrop-blur — the
+   `.panel` and `.app-topbar`/`.app-sidebar` classes use their own
+   opacity rules and are excluded by virtue of not matching the
+   `[class*="backdrop-blur"]` selector.
+
+   `!important` here too so it wins against the Tailwind `bg-bg-900/XX`
+   utility's specificity (single-class selector).
+*/
+.is-native-android [class*="backdrop-blur"],
+.is-native-android [style*="backdrop-filter" i] {
+  background-color: rgb(var(--bg-900) / 0.95) !important;
+}

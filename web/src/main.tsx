@@ -9,6 +9,7 @@ import { FirstRunApiUrl } from './components/FirstRunApiUrl';
 import './index.css';
 import { scheduleMorningReminder } from './lib/morningReminder';
 import { applyStoredTheme } from './lib/themeBus';
+import { applyNativePlatformClass } from './lib/nativePlatform';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,14 @@ const queryClient = new QueryClient({
 // BEFORE React mounts so the first paint matches the user's
 // preference and there's no dark→light flash on toggle. Idempotent.
 applyStoredTheme();
+
+// Tag <html> with `is-native-android` when we're running inside the
+// Capacitor Android wrapper, so the global CSS in index.css can
+// strip backdrop-filter off the 13+ overlay components. No-op in
+// browser dev and on non-Android platforms. Must run before React
+// mounts so the override is in effect from the first paint — see
+// lib/nativePlatform.ts for the full rationale.
+applyNativePlatformClass();
 
 // Schedule the daily 8 AM local-time notification on app launch.
 // No-op in browser dev (the plugin's web implementation is a
