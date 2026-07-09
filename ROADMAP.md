@@ -612,9 +612,29 @@ Grouped by area, ordered by "ease of fixing" within each group
   delete or actually use.
 
 ### Items / Equipment
-- **Set-bonus system not built** — `api/src/lib/seedItems.ts:130-132`:
-  items carry `setId`; no code consumes it for bonuses. 1-2 days
-  (read setId in damage calc + UI chip).
+- (was: Set-bonus system not built — shipped 2026-07-09 session
+  (`c0165c6`). v1 scope: equipped `+DMG`/`+CRIT`/`+DISC` +
+  set-piece bonuses (3pc +3% / 6pc +8% raid damage, generic
+  tier table, no per-set config needed) now wired into
+  `computeRaidDamage` via new `api/src/lib/equipment.ts`
+  `getEquippedBonus()`. Exploit-safe: crit chance hard-capped at
+  0.5 total, flat +DMG clamped to that workout's base damage
+  (can't farm a strong item via junk workouts), set% applied
+  pre-cap so the existing 5000 per-workout ceiling still holds.
+  Inventory.tsx now shows an "Active in Raids" group + set-bonus
+  tier chips, and a de-emphasized "Dormant (future update)"
+  group for the stats that don't do anything yet.
+  Deferred to v2 (oracle-reviewed decision, NOT arbitrary scope-
+  cutting): world-boss damage (`bosses.ts`, a separate
+  client-submitted-damage system with a different trust model);
+  `+EVA` (would be a self-nerf today — evaded sets deal zero
+  damage, so boosting evade chance is strictly worse for the
+  player); `+HEAL`/`+BURST` (no consumer mechanic exists yet —
+  ORACLE's shield output and TRACER's burst are both currently
+  discarded/unimplemented, so wiring these stats now would be
+  silently inert); `+DEF`/`+HP`/`+XP`/`+GOLD` (belong to
+  different systems — a "taking damage" mechanic and the reward-
+  grant calc respectively — not yet designed.)
 - **Sprite fallback for missing item art** —
   `web/src/pages/Inventory.tsx:334-335`: a few legacy items
   still use `gear/<class>/<slot>.png` paths that don't all
