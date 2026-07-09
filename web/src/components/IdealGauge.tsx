@@ -3,16 +3,9 @@ import { METRICS, type MetricType } from '@/lib/types';
 import { formatNumber } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
+import { useChartColors } from '@/hooks/useChartColors';
 
 export type GaugeColor = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
-
-const COLOR_HEX: Record<GaugeColor, string> = {
-  cyan: '#00f0ff',
-  magenta: '#ff2bd6',
-  lime: '#9bff5c',
-  amber: '#ffc34d',
-  violet: '#7c3aed',
-};
 
 const START_ANGLE = 135; // bottom-left
 const SWEEP = 270;
@@ -88,7 +81,8 @@ export function IdealGauge({
 }: Props) {
   const id = useId();
   const meta = METRICS[metric];
-  const colorHex = COLOR_HEX[color];
+  const colors = useChartColors();
+  const colorHex = colors[color];
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
 
@@ -165,10 +159,10 @@ export function IdealGauge({
 
   const statusColor = (() => {
     switch (status) {
-      case 'elite': return '#9bff5c';
-      case 'healthy': return '#14d6e8';
-      case 'warn': return '#ffc34d';
-      case 'far': return '#ff2bd6';
+      case 'elite': return colors.lime;
+      case 'healthy': return colors.cyan;
+      case 'warn': return colors.amber;
+      case 'far': return colors.magenta;
       default: return colorHex;
     }
   })();
@@ -271,7 +265,7 @@ export function IdealGauge({
         {/* Healthy band (wider) */}
         <path
           d={healthyArc}
-          stroke="#14d6e8"
+          stroke={colors.cyan}
           strokeOpacity="0.10"
           strokeWidth={rOuter - rInner - 2}
           fill="none"
@@ -280,7 +274,7 @@ export function IdealGauge({
         {/* Elite band (narrower, lime) */}
         <path
           d={eliteArc}
-          stroke="#9bff5c"
+          stroke={colors.lime}
           strokeOpacity="0.30"
           strokeWidth={rOuter - rInner - 4}
           fill="none"
@@ -323,19 +317,19 @@ export function IdealGauge({
                 y1={outer.y}
                 x2={inner.x}
                 y2={inner.y}
-                stroke={s.big ? '#9bff5c' : colorHex}
+                stroke={s.big ? colors.lime : colorHex}
                 strokeOpacity={s.big ? 0.55 : 0.18}
                 strokeWidth={s.big ? 1.2 : 0.7}
               />
             );
           });
-        }, [min, max, healthyMin, healthyMax, eliteMin, eliteMax, colorHex])}
+        }, [min, max, healthyMin, healthyMax, eliteMin, eliteMax, color])}
 
         {/* Indicator dot */}
         {indicatorPos && (
           <g>
             <circle cx={indicatorPos.x} cy={indicatorPos.y} r="6" fill={statusColor} filter={`url(#glow-${id})`} />
-            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="3" fill="#0a0a14" />
+            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="3" fill={colors.tooltipBg} />
           </g>
         )}
 

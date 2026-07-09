@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'recharts';
 import { api } from '@/lib/api';
+import { useChartColors } from '@/hooks/useChartColors';
 
 // One row per day from GET /substances/trend?days=N (oldest-first,
 // contiguous, zero-filled). Each category is a count of logs that day.
@@ -24,11 +25,15 @@ type TrendDay = {
 
 type Cat = 'CAFFEINE' | 'ALCOHOL' | 'NICOTINE' | 'ELECTROLYTE';
 
-const CATEGORIES: { key: Cat; label: string; color: string }[] = [
-  { key: 'CAFFEINE', label: 'Caffeine', color: '#ffaa3a' },
-  { key: 'ALCOHOL', label: 'Alcohol', color: '#f55cc4' },
-  { key: 'NICOTINE', label: 'Nicotine', color: '#9a6cf2' },
-  { key: 'ELECTROLYTE', label: 'Electrolyte', color: '#56e88e' },
+type CategoryMeta = { key: Cat; label: string; color: string; borderColor: string };
+
+// Static labels only — colors are resolved from useChartColors() below
+// so the chart adapts to the active light/dark theme.
+const CATEGORIES_STATIC: { key: Cat; label: string }[] = [
+  { key: 'CAFFEINE',    label: 'Caffeine'    },
+  { key: 'ALCOHOL',     label: 'Alcohol'     },
+  { key: 'NICOTINE',    label: 'Nicotine'    },
+  { key: 'ELECTROLYTE', label: 'Electrolyte' },
 ];
 
 const DAY_OPTIONS = [7, 14, 30] as const;
@@ -50,6 +55,13 @@ type Props = {
  * legend chips.
  */
 export function SubstanceTrendChart({ height = 180 }: Props) {
+  const colors = useChartColors();
+  const CATEGORIES: CategoryMeta[] = [
+    { ...CATEGORIES_STATIC[0], color: colors.amber, borderColor: colors.withAlpha('amber', 0.4) },
+    { ...CATEGORIES_STATIC[1], color: colors.magenta, borderColor: colors.withAlpha('magenta', 0.4) },
+    { ...CATEGORIES_STATIC[2], color: colors.violet, borderColor: colors.withAlpha('violet', 0.4) },
+    { ...CATEGORIES_STATIC[3], color: colors.lime, borderColor: colors.withAlpha('lime', 0.4) },
+  ];
   const [days, setDays] = useState<number>(14);
   const [hidden, setHidden] = useState<Set<Cat>>(new Set());
 
@@ -108,7 +120,7 @@ export function SubstanceTrendChart({ height = 180 }: Props) {
                     ? 'text-ink-500 border-ink-700/40 line-through'
                     : 'border-transparent')
                 }
-                style={off ? undefined : { color: c.color, borderColor: `${c.color}66` }}
+                style={off ? undefined : { color: c.color, borderColor: c.borderColor }}
               >
                 {c.label}
               </button>
@@ -165,20 +177,20 @@ export function SubstanceTrendChart({ height = 180 }: Props) {
               margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
             >
               <CartesianGrid
-                stroke="#3a3d4a"
+                stroke={colors.grid}
                 strokeDasharray="2 4"
                 vertical={false}
               />
               <XAxis
                 dataKey="ts"
                 tickFormatter={formatTick}
-                stroke="#787888"
+                stroke={colors.grid}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 interval="preserveStartEnd"
                 minTickGap={20}
               />
               <YAxis
-                stroke="#787888"
+                stroke={colors.grid}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 width={28}
                 allowDecimals={false}
@@ -186,8 +198,8 @@ export function SubstanceTrendChart({ height = 180 }: Props) {
               />
               <Tooltip
                 contentStyle={{
-                  background: '#0e0f1a',
-                  border: '1px solid #14d6e866',
+                  background: colors.tooltipBg,
+                  border: `1px solid ${colors.tooltipBorder}`,
                   fontFamily: 'monospace',
                   fontSize: 11,
                 }}

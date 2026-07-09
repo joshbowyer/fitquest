@@ -13,6 +13,7 @@ import {
 import { api } from '@/lib/api';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { classNames } from '@/lib/format';
+import { useChartColors } from '@/hooks/useChartColors';
 
 // One row per day from GET /meals/trend?days=N (oldest-first,
 // contiguous, zero-filled). Mirrors the API's response shape.
@@ -41,24 +42,24 @@ type MetricKey = 'calories' | 'proteinG' | 'carbG' | 'fatG' | 'waterMl';
 // value now (0-3000 vs macros 0-300); macros still show up as
 // a small line near the bottom but the per-day water variation
 // is the new headline.
-const METRICS: Record<
-  MetricKey,
-  {
-    label: string;
-    short: string;
-    unit: string | null;
-    color: string;
-    axis: 'left' | 'right';
-  }
-> = {
-  calories: { label: 'Calories', short: 'cal', unit: null, color: '#ffaa3a', axis: 'left' },
-  waterMl: { label: 'Water', short: 'ml', unit: 'ml', color: '#56e88e', axis: 'right' },
-  proteinG: { label: 'Protein', short: 'g', unit: null, color: '#f55cc4', axis: 'right' },
-  carbG: { label: 'Carbs', short: 'g', unit: null, color: '#14d6e8', axis: 'right' },
-  fatG: { label: 'Fat', short: 'g', unit: null, color: '#9a6cf2', axis: 'right' },
+type MetricMeta = {
+  label: string;
+  short: string;
+  unit: string | null;
+  color: string;
+  axis: 'left' | 'right';
 };
 
-const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
+// Static part of the metric metadata (label/unit/axis are constant);
+// the theme-aware `color` is filled in inside NutritionTrendChart.
+const METRICS_STATIC: Record<MetricKey, Omit<MetricMeta, 'color'>> = {
+  calories: { label: 'Calories', short: 'cal', unit: null, axis: 'left' },
+  waterMl:  { label: 'Water',    short: 'ml',  unit: 'ml', axis: 'right' },
+  proteinG: { label: 'Protein',  short: 'g',   unit: null, axis: 'right' },
+  carbG:    { label: 'Carbs',    short: 'g',   unit: null, axis: 'right' },
+  fatG:     { label: 'Fat',      short: 'g',   unit: null, axis: 'right' },
+};
+
 const DAY_OPTIONS = [7, 14, 30] as const;
 
 type Props = {
@@ -81,6 +82,15 @@ type Props = {
  * line. Water is converted to the user's unit system for display.
  */
 export function NutritionTrendChart({ system, height = 220 }: Props) {
+  const colors = useChartColors();
+  const METRICS: Record<MetricKey, MetricMeta> = {
+    calories: { ...METRICS_STATIC.calories, color: colors.amber },
+    waterMl:  { ...METRICS_STATIC.waterMl,  color: colors.lime },
+    proteinG: { ...METRICS_STATIC.proteinG, color: colors.magenta },
+    carbG:    { ...METRICS_STATIC.carbG,    color: colors.cyan },
+    fatG:     { ...METRICS_STATIC.fatG,     color: colors.violet },
+  };
+  const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
   const [active, setActive] = useState<Set<MetricKey>>(new Set(METRIC_KEYS));
   const [days, setDays] = useState<number>(14);
 
@@ -202,14 +212,14 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
               margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
             >
               <CartesianGrid
-                stroke="#3a3d4a"
+                stroke={colors.grid}
                 strokeDasharray="2 4"
                 vertical={false}
               />
               <XAxis
                 dataKey="ts"
                 tickFormatter={formatTick}
-                stroke="#787888"
+                stroke={colors.grid}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 interval="preserveStartEnd"
                 minTickGap={20}
@@ -217,7 +227,7 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
               {/* Left axis: calories (energy). */}
               <YAxis
                 yAxisId="left"
-                stroke="#787888"
+                stroke={colors.grid}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 width={40}
                 domain={[0, 'auto']}
@@ -231,15 +241,15 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
               <YAxis
                 yAxisId="right"
                 orientation="right"
-                stroke="#787888"
+                stroke={colors.grid}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 width={32}
                 domain={[0, 'auto']}
               />
               <Tooltip
                 contentStyle={{
-                  background: '#0e0f1a',
-                  border: '1px solid rgba(20,214,232,0.4)',
+                  background: colors.tooltipBg,
+                  border: `1px solid ${colors.tooltipBorder}`,
                   fontFamily: 'monospace',
                   fontSize: 11,
                 }}

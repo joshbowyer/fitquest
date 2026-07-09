@@ -7,6 +7,7 @@ import { NeonButton } from './NeonButton';
 import { formatRelative, classNames } from '@/lib/format';
 import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
+import { useChartColors } from '@/hooks/useChartColors';
 
 type Status = {
   today: { logged: boolean; value: number | null; recordedAt: string | null; unit: string };
@@ -18,6 +19,7 @@ type Trend = {
 };
 
 export function WeighInPanel() {
+  const colors = useChartColors();
   const qc = useQueryClient();
   const id = useId();
   const [draft, setDraft] = useState('');
@@ -130,7 +132,7 @@ export function WeighInPanel() {
                 )}
                 style={
                   (streak?.current ?? 0) > 0
-                    ? { textShadow: '0 0 8px rgba(255,184,0,0.7), 0 0 16px rgba(255,184,0,0.4)' }
+                    ? { textShadow: `0 0 8px ${colors.withAlpha('amber', 0.7)}, 0 0 16px ${colors.withAlpha('amber', 0.4)}` }
                     : undefined
                 }
               >
@@ -205,26 +207,26 @@ export function WeighInPanel() {
                 <LineChart data={chartData} margin={{ top: 8, right: 4, left: 4, bottom: 4 }}>
                   <YAxis domain={[yMin, yMax]} hide />
                   {values.length > 0 && (
-                    <ReferenceLine y={values[0]} stroke="rgba(255,184,0,0.3)" strokeDasharray="3 3" />
+                    <ReferenceLine y={values[0]} stroke={colors.withAlpha('amber', 0.3)} strokeDasharray="3 3" />
                   )}
                   <Line
                     type="monotone"
                     dataKey="_v"
-                    stroke="#ffb800"
+                    stroke={colors.amber}
                     strokeWidth={2}
                     dot={(props: any) => {
                       const { cx, cy, index, payload } = props;
                       if (payload.value == null) return <g key={index} />;
                       return (
                         <g key={index}>
-                          <circle cx={cx} cy={cy} r={6} fill="#ffb800" opacity={0.25} />
-                          <circle cx={cx} cy={cy} r={3} fill="#ffb800" />
+                          <circle cx={cx} cy={cy} r={6} fill={colors.amber} opacity={0.25} />
+                          <circle cx={cx} cy={cy} r={3} fill={colors.amber} />
                         </g>
                       );
                     }}
                     connectNulls
                     isAnimationActive
-                    style={{ filter: 'drop-shadow(0 0 4px #ffb800)' }}
+                    style={{ filter: colors.dropShadow('amber', 4) }}
                   />
                 </LineChart>
               </ResponsiveContainer>

@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { api } from '@/lib/api';
 import { formatAbsolute, formatDate } from '@/lib/format';
+import { useChartColors } from '@/hooks/useChartColors';
 
 type Measurement = {
   id: string;
@@ -159,6 +160,8 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
     (variant === 'quality' && qualityQ.isLoading) ||
     (variant === 'substances' && subQ.isLoading);
 
+  const colors = useChartColors();
+
   if (isLoading) {
     return <div className="text-[10px] font-mono text-ink-400">Loading body battery data…</div>;
   }
@@ -178,19 +181,19 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
     <div className="h-56">
       <ResponsiveContainer>
         <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#3a3a55" strokeDasharray="2 4" />
+          <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" />
           <XAxis
             dataKey="day"
             tickFormatter={(d) => formatDate(d)}
-            tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            stroke="#3a3a55"
+            tick={{ fill: colors.axisText, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            stroke={colors.grid}
           />
           <YAxis
             yAxisId="bb"
             orientation="left"
             domain={[0, 100]}
-            tick={{ fill: '#9bff5c', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            stroke="#9bff5c"
+            tick={{ fill: colors.lime, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            stroke={colors.lime}
             strokeOpacity={0.3}
             width={28}
           />
@@ -208,8 +211,8 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
                 const ampm = h < 12 ? 'a' : 'p';
                 return `${h12}${m ? `:${m.toString().padStart(2, '0')}` : ''}${ampm}`;
               }}
-              tick={{ fill: '#14d6e8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-              stroke="#14d6e8"
+              tick={{ fill: colors.cyan, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+              stroke={colors.cyan}
               strokeOpacity={0.3}
             />
           )}
@@ -218,8 +221,8 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               yAxisId="right"
               orientation="right"
               domain={[0, 12]}
-              tick={{ fill: '#14d6e8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-              stroke="#14d6e8"
+              tick={{ fill: colors.cyan, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+              stroke={colors.cyan}
               strokeOpacity={0.3}
             />
           )}
@@ -228,8 +231,8 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               yAxisId="right"
               orientation="right"
               domain={[0, 10]}
-              tick={{ fill: '#ffc34d', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-              stroke="#ffc34d"
+              tick={{ fill: colors.amber, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+              stroke={colors.amber}
               strokeOpacity={0.3}
             />
           )}
@@ -249,7 +252,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               yAxisId="bb"
               y1={0}
               y2={30}
-              fill="#ff5cff"
+              fill={colors.magenta}
               fillOpacity={0.04}
               stroke="none"
             />
@@ -257,12 +260,12 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
 
           <Tooltip
             contentStyle={{
-              background: '#0a0a14',
-              border: '1px solid rgba(0,240,255,0.3)',
+              background: colors.tooltipBg,
+              border: `1px solid ${colors.tooltipBorder}`,
               fontFamily: 'JetBrains Mono',
               fontSize: 12,
             }}
-            labelStyle={{ color: '#00f0ff' }}
+            labelStyle={{ color: colors.tooltipText }}
             labelFormatter={(d) => formatAbsolute(d as string)}
             // typed `number` (not `number | null`) to satisfy recharts' TValue constraint; runtime null guard below still applies
             formatter={(value: number, name: string) => {
@@ -284,7 +287,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
             verticalAlign="top"
             height={20}
             wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            formatter={(v) => <span style={{ color: '#8080a8' }}>{v}</span>}
+            formatter={(v) => <span style={{ color: colors.axisText }}>{v}</span>}
           />
 
           {/* BB line — always */}
@@ -293,11 +296,11 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
             type="monotone"
             dataKey="bb"
             name="BB"
-            stroke="#9bff5c"
+            stroke={colors.lime}
             strokeWidth={2}
-            dot={{ r: 2, fill: '#9bff5c' }}
+            dot={{ r: 2, fill: colors.lime }}
             connectNulls={false}
-            style={{ filter: 'drop-shadow(0 0 3px #9bff5c)' }}
+            style={{ filter: colors.dropShadow('lime', 3) }}
           />
 
           {/* Overlay line per variant */}
@@ -307,7 +310,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               type="monotone"
               dataKey="onset"
               name="Onset"
-              stroke="#14d6e8"
+              stroke={colors.cyan}
               strokeWidth={1.5}
               dot={false}
               strokeDasharray="4 2"
@@ -320,7 +323,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               type="monotone"
               dataKey="hours"
               name="Hours"
-              stroke="#14d6e8"
+              stroke={colors.cyan}
               strokeWidth={1.5}
               dot={false}
               strokeDasharray="4 2"
@@ -333,7 +336,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
               type="monotone"
               dataKey="quality"
               name="Quality"
-              stroke="#ffc34d"
+              stroke={colors.amber}
               strokeWidth={1.5}
               dot={false}
               strokeDasharray="4 2"
@@ -346,7 +349,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
                 yAxisId="right"
                 dataKey="alcoholDot"
                 name="Alcohol"
-                fill="#ff5cff"
+                fill={colors.magenta}
                 line={false}
                 shape="circle"
               />
@@ -354,7 +357,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
                 yAxisId="right"
                 dataKey="caffeineDot"
                 name="Caffeine"
-                fill="#00f0ff"
+                fill={colors.cyan}
                 line={false}
                 shape="triangle"
               />
@@ -362,7 +365,7 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
                 yAxisId="right"
                 dataKey="nicotineDot"
                 name="Nicotine"
-                fill="#ffc34d"
+                fill={colors.amber}
                 line={false}
                 shape="diamond"
               />

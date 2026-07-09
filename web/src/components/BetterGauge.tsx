@@ -3,16 +3,9 @@ import { METRICS, type MetricType } from '@/lib/types';
 import { formatNumber } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
+import { useChartColors } from '@/hooks/useChartColors';
 
 export type GaugeColor = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
-
-const COLOR_HEX: Record<GaugeColor, string> = {
-  cyan: '#00f0ff',
-  magenta: '#ff2bd6',
-  lime: '#9bff5c',
-  amber: '#ffc34d',
-  violet: '#7c3aed',
-};
 
 const START_ANGLE = 135; // bottom-left
 const SWEEP = 270;
@@ -78,7 +71,8 @@ export function BetterGauge({
 }: Props) {
   const id = useId();
   const meta = METRICS[metric];
-  const colorHex = COLOR_HEX[color];
+  const colors = useChartColors();
+  const colorHex = colors[color];
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
 
@@ -143,9 +137,9 @@ export function BetterGauge({
 
   const statusColor = (() => {
     switch (status) {
-      case 'elite': return '#9bff5c';
-      case 'healthy': return '#14d6e8';
-      case 'warn': return '#ffc34d';
+      case 'elite': return colors.lime;
+      case 'healthy': return colors.cyan;
+      case 'warn': return colors.amber;
       default: return colorHex;
     }
   })();
@@ -208,9 +202,9 @@ export function BetterGauge({
         </defs>
 
         {/* Zone tracks */}
-        <path d={warnArc} stroke="#ffc34d" strokeOpacity="0.10" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
-        <path d={healthyArc} stroke="#14d6e8" strokeOpacity="0.18" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
-        <path d={eliteArc} stroke="#9bff5c" strokeOpacity="0.30" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
+        <path d={warnArc} stroke={colors.amber} strokeOpacity="0.10" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
+        <path d={healthyArc} stroke={colors.cyan} strokeOpacity="0.18" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
+        <path d={eliteArc} stroke={colors.lime} strokeOpacity="0.30" strokeWidth={rOuter - rInner} fill="none" strokeLinecap="butt" />
 
         {/* Filled progress — same pattern as Gauge.tsx (weight). The
             gradient keeps the trailing edge soft so the stroke blob
@@ -244,7 +238,7 @@ export function BetterGauge({
               y1={outer.y}
               x2={inner.x}
               y2={inner.y}
-              stroke={s.big ? '#9bff5c' : colorHex}
+              stroke={s.big ? colors.lime : colorHex}
               strokeOpacity={s.big ? 0.55 : 0.18}
               strokeWidth={s.big ? 1.2 : 0.7}
             />
@@ -255,7 +249,7 @@ export function BetterGauge({
         {indicatorPos && (
           <g>
             <circle cx={indicatorPos.x} cy={indicatorPos.y} r="6" fill={statusColor} filter={`url(#glow-${id})`} />
-            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="3" fill="#0a0a14" />
+            <circle cx={indicatorPos.x} cy={indicatorPos.y} r="3" fill={colors.tooltipBg} />
           </g>
         )}
 

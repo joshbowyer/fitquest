@@ -10,6 +10,7 @@ import {
   Legend,
 } from 'recharts';
 import { classNames } from '@/lib/format';
+import { useChartColors } from '@/hooks/useChartColors';
 
 export type StreamPoint = {
   t: number;
@@ -32,12 +33,16 @@ type Props = {
   defaultSeries?: StreamKey;
 };
 
-const SERIES_META: Record<StreamKey, { label: string; color: string; unit: (s: 'METRIC' | 'IMPERIAL') => string; }> = {
-  pace: { label: 'Pace',     color: '#14d6e8', unit: () => 'min/mi' },
-  hr:   { label: 'Heart Rate', color: '#ff2bd6', unit: () => 'bpm' },
-  ele:  { label: 'Elevation', color: '#9bff5c', unit: (s) => s === 'IMPERIAL' ? 'ft' : 'm' },
-  cad:  { label: 'Cadence',  color: '#ffc34d', unit: () => 'spm' },
-  pwr:  { label: 'Power',    color: '#7d7bff', unit: () => 'W' },
+type SeriesMeta = { label: string; color: string; unit: (s: 'METRIC' | 'IMPERIAL') => string };
+
+// Series colors are resolved from the theme via useChartColors() below —
+// the static labels and units stay at module scope.
+const SERIES_META_STATIC: Record<StreamKey, Omit<SeriesMeta, 'color'>> = {
+  pace: { label: 'Pace',       unit: () => 'min/mi' },
+  hr:   { label: 'Heart Rate', unit: () => 'bpm' },
+  ele:  { label: 'Elevation',  unit: (s) => s === 'IMPERIAL' ? 'ft' : 'm' },
+  cad:  { label: 'Cadence',    unit: () => 'spm' },
+  pwr:  { label: 'Power',      unit: () => 'W' },
 };
 
 /**
@@ -49,6 +54,14 @@ const SERIES_META: Record<StreamKey, { label: string; color: string; unit: (s: '
  * For workouts without speed samples, pace falls back to "—".
  */
 export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
+  const colors = useChartColors();
+  const SERIES_META: Record<StreamKey, SeriesMeta> = {
+    pace: { ...SERIES_META_STATIC.pace, color: colors.cyan },
+    hr:   { ...SERIES_META_STATIC.hr,   color: colors.magenta },
+    ele:  { ...SERIES_META_STATIC.ele,  color: colors.lime },
+    cad:  { ...SERIES_META_STATIC.cad,  color: colors.amber },
+    pwr:  { ...SERIES_META_STATIC.pwr,  color: colors.periwinkle },
+  };
   // Default to all five streams turned on.
   const [active, setActive] = useState<Set<StreamKey>>(
     new Set(
@@ -141,18 +154,18 @@ export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
       <div style={{ width: '100%', height: 240 }}>
         <ResponsiveContainer>
           <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke="#3a3d4a" strokeDasharray="2 4" />
+            <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" />
             <XAxis
               dataKey="t"
               tickFormatter={fmtTimeLabel}
-              stroke="#787888"
+              stroke={colors.grid}
               tick={{ fontSize: 9, fontFamily: 'monospace' }}
-              label={{ value: 'time', position: 'insideBottom', offset: -2, fill: '#585868', fontSize: 9, fontFamily: 'monospace' }}
+              label={{ value: 'time', position: 'insideBottom', offset: -2, fill: colors.axisText, fontSize: 9, fontFamily: 'monospace' }}
             />
             {/* Left Y axis: HR / Cadence / Power (bpm, spm, W) */}
             <YAxis
               yAxisId="left"
-              stroke="#787888"
+              stroke={colors.grid}
               tick={{ fontSize: 9, fontFamily: 'monospace' }}
               width={36}
               domain={['auto', 'auto']}
@@ -161,7 +174,7 @@ export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
             <YAxis
               yAxisId="right"
               orientation="right"
-              stroke="#787888"
+              stroke={colors.grid}
               tick={{ fontSize: 9, fontFamily: 'monospace' }}
               width={42}
               domain={['auto', 'auto']}
@@ -172,8 +185,8 @@ export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
             />
             <Tooltip
               contentStyle={{
-                background: '#0e0f1a',
-                border: '1px solid rgba(20,214,232,0.4)',
+                background: colors.tooltipBg,
+                border: `1px solid ${colors.tooltipBorder}`,
                 fontFamily: 'monospace',
                 fontSize: 11,
               }}

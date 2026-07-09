@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { formatAbsolute } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
+import { useChartColors } from '@/hooks/useChartColors';
 
 type Measurement = {
   id: string;
@@ -52,11 +53,13 @@ export function MetricTrendChart({
   metric,
   days = 30,
   height = 140,
-  color = '#14d6e8',
+  color,
   area = true,
   system,
   showAxis = true,
 }: Props) {
+  const colors = useChartColors();
+  const lineColor = color || colors.cyan;
   const { user } = useAuth();
   const q = useQuery({
     queryKey: ['measurements', metric, days],
@@ -149,7 +152,7 @@ export function MetricTrendChart({
         <div className="text-[10px] font-mono text-ink-300 tracking-widest uppercase">
           {labelFor(metric)}
         </div>
-        <div className="text-[11px] font-mono" style={{ color }}>
+        <div className="text-[11px] font-mono" style={{ color: lineColor }}>
           {disp.value.toFixed(disp.value < 10 ? 1 : 0)} {disp.unit}
           <span className="text-[9px] text-ink-400 ml-1">
             · {formatAbsolute(latest.recordedAt, user?.timezone ?? null).slice(0, 10)}
@@ -162,16 +165,16 @@ export function MetricTrendChart({
             <AreaChart data={chart.data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id={`fill-${metric}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={0.5} />
-                  <stop offset="100%" stopColor={color} stopOpacity={0.05} />
+                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.5} />
+                  <stop offset="100%" stopColor={lineColor} stopOpacity={0.05} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#3a3d4a" strokeDasharray="2 4" vertical={false} />
+              <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" vertical={false} />
               {showAxis && (
                 <XAxis
                   dataKey="ts"
                   tickFormatter={formatTick}
-                  stroke="#787888"
+                  stroke={colors.grid}
                   tick={{ fontSize: 9, fontFamily: 'monospace' }}
                   interval="preserveStartEnd"
                   minTickGap={20}
@@ -179,7 +182,7 @@ export function MetricTrendChart({
               )}
               {showAxis && (
                 <YAxis
-                  stroke="#787888"
+                  stroke={colors.grid}
                   tick={{ fontSize: 9, fontFamily: 'monospace' }}
                   width={32}
                   domain={['auto', 'auto']}
@@ -187,8 +190,8 @@ export function MetricTrendChart({
               )}
               <Tooltip
                 contentStyle={{
-                  background: '#0e0f1a',
-                  border: `1px solid ${color}66`,
+                  background: colors.tooltipBg,
+                  border: `1px solid ${colors.tooltipBorder}`,
                   fontFamily: 'monospace',
                   fontSize: 11,
                 }}
@@ -198,7 +201,7 @@ export function MetricTrendChart({
               <Area
                 type="monotone"
                 dataKey="disp"
-                stroke={color}
+                stroke={lineColor}
                 strokeWidth={1.5}
                 fill={`url(#fill-${metric})`}
                 dot={false}
@@ -208,25 +211,25 @@ export function MetricTrendChart({
             </AreaChart>
           ) : (
             <LineChart data={chart.data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid stroke="#3a3d4a" strokeDasharray="2 4" vertical={false} />
+              <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" vertical={false} />
               {showAxis && (
                 <XAxis
                   dataKey="ts"
                   tickFormatter={formatTick}
-                  stroke="#787888"
+                  stroke={colors.grid}
                   tick={{ fontSize: 9, fontFamily: 'monospace' }}
                   interval="preserveStartEnd"
                   minTickGap={20}
                 />
               )}
               {showAxis && (
-                <YAxis stroke="#787888" tick={{ fontSize: 9, fontFamily: 'monospace' }} width={32} />
+                <YAxis stroke={colors.grid} tick={{ fontSize: 9, fontFamily: 'monospace' }} width={32} />
               )}
               <Tooltip
-                contentStyle={{ background: '#0e0f1a', border: `1px solid ${color}66`, fontFamily: 'monospace', fontSize: 11 }}
+                contentStyle={{ background: colors.tooltipBg, border: `1px solid ${colors.tooltipBorder}`, fontFamily: 'monospace', fontSize: 11 }}
                 labelFormatter={(ts) => new Date(Number(ts)).toISOString().slice(0, 10)}
               />
-              <Line type="monotone" dataKey="disp" stroke={color} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />
+              <Line type="monotone" dataKey="disp" stroke={lineColor} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />
             </LineChart>
           )}
         </ResponsiveContainer>

@@ -12,6 +12,7 @@ import {
 import { convertForDisplay, formatInUnits } from '@/lib/units';
 import type { UnitSystem } from '@/lib/units';
 import type { MetricType } from '@/lib/types';
+import { useChartColors } from '@/hooks/useChartColors';
 
 export type Series = {
   metric: MetricType;
@@ -98,6 +99,8 @@ export function OverlayTrendChart({ days, units, series, history, yPad = 0 }: Pr
   const leftSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'left');
   const rightSeries = seriesWithDisplayUnit.filter((s) => s.yAxis === 'right');
 
+  const colors = useChartColors();
+
   // Compute a per-side YAxis domain when yPad is set. Default
   // Recharts auto-scale uses padding around the data range; for a
   // single-series chart that only varies a few units, the default
@@ -129,17 +132,17 @@ export function OverlayTrendChart({ days, units, series, history, yPad = 0 }: Pr
   return (
     <ResponsiveContainer width="100%" height={220}>
       <ComposedChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-        <CartesianGrid stroke="#374151" strokeDasharray="3 3" />
+        <CartesianGrid stroke={colors.grid} strokeDasharray="3 3" />
         <XAxis
           dataKey="date"
-          tick={{ fontSize: 9, fill: '#94a3b8' }}
+          tick={{ fontSize: 9, fill: colors.axisText }}
           tickFormatter={(d) => d.slice(5)}
           interval={Math.max(1, Math.floor(days / 8))}
         />
         {leftSeries.length > 0 && (
           <YAxis
             yAxisId="left"
-            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            tick={{ fontSize: 9, fill: colors.axisText }}
             width={36}
             orientation="left"
             domain={domainFor(leftSeries)}
@@ -148,7 +151,7 @@ export function OverlayTrendChart({ days, units, series, history, yPad = 0 }: Pr
         {rightSeries.length > 0 && (
           <YAxis
             yAxisId="right"
-            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            tick={{ fontSize: 9, fill: colors.axisText }}
             width={36}
             orientation="right"
             domain={domainFor(rightSeries)}
@@ -156,11 +159,11 @@ export function OverlayTrendChart({ days, units, series, history, yPad = 0 }: Pr
         )}
         <Tooltip
           contentStyle={{
-            background: '#0f172a',
-            border: '1px solid #374151',
+            background: colors.tooltipBg,
+            border: `1px solid ${colors.tooltipBorder}`,
             fontSize: 11,
           }}
-          labelStyle={{ color: '#cbd5e1' }}
+          labelStyle={{ color: colors.tooltipText }}
           formatter={(value: number, name: string) => {
             // value is already in display units; format with the
             // series' display-unit label.

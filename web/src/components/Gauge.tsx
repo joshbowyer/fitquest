@@ -3,16 +3,9 @@ import { METRICS, type MetricType } from '@/lib/types';
 import { formatNumber } from '@/lib/format';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
+import { useChartColors } from '@/hooks/useChartColors';
 
 export type GaugeColor = 'cyan' | 'magenta' | 'lime' | 'amber' | 'violet';
-
-const COLOR_HEX: Record<GaugeColor, string> = {
-  cyan: '#00f0ff',
-  magenta: '#ff2bd6',
-  lime: '#00ff88',
-  amber: '#ffb800',
-  violet: '#7c3aed',
-};
 
 const BG_TRACK: Record<GaugeColor, string> = {
   cyan: 'rgba(0,240,255,0.08)',
@@ -80,7 +73,8 @@ export function Gauge({
 }: Props & { subtitle?: string }) {
   const id = useId();
   const meta = METRICS[metric];
-  const colorHex = COLOR_HEX[color];
+  const colors = useChartColors();
+  const colorHex = colors[color];
   const trackColor = BG_TRACK[color];
   const { user } = useAuth();
   const system: UnitSystem = user?.units ?? 'METRIC';
@@ -230,7 +224,7 @@ export function Gauge({
               cx={indicatorPos.x}
               cy={indicatorPos.y}
               r="3"
-              fill="#0a0a14"
+              fill={colors.tooltipBg}
             />
           </g>
         )}
@@ -244,7 +238,7 @@ export function Gauge({
           fontSize="28"
           fontWeight="700"
           fill={colorHex}
-          style={{ filter: `drop-shadow(0 0 4px ${colorHex})` }}
+          style={{ filter: colors.dropShadow(color, 4) }}
         >
           {noMax ? '—' : displayValue != null ? formatNumber(displayValue, displayUnitLabel === 's' || displayUnitLabel === '%' || displayUnitLabel === '/10' || displayUnitLabel === 'ms' || displayUnitLabel === 'bpm' ? 0 : 1) : '—'}
         </text>
@@ -297,9 +291,9 @@ export function Gauge({
             y={cy + 50}
             textAnchor="middle"
             fontSize="9"
-            fill="#ff2bd6"
+            fill={colors.magenta}
             className="font-mono"
-            style={{ filter: `drop-shadow(0 0 3px #ff2bd6)` }}
+            style={{ filter: colors.dropShadow('magenta', 3) }}
           >
             ! {(((value as number) / max) * 100 - 100).toFixed(0)}% OVER
           </text>

@@ -16,6 +16,7 @@ import {
 import { api } from '@/lib/api';
 import { formatSleepOnset } from '@/lib/units';
 import { formatAbsolute } from '@/lib/format';
+import { useChartColors } from '@/hooks/useChartColors';
 
 type Measurement = {
   id: string;
@@ -110,6 +111,8 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
 
   const isLoading = onsetsQ.isLoading || hoursQ.isLoading || qualityQ.isLoading;
 
+  const colors = useChartColors();
+
   if (isLoading) {
     return <div className="text-[10px] font-mono text-ink-400">Loading sleep data…</div>;
   }
@@ -118,15 +121,15 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
     <div className="h-56">
       <ResponsiveContainer>
         <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#3a3a55" strokeDasharray="2 4" />
+          <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" />
           <XAxis
             dataKey="day"
             tickFormatter={(d) => {
               const date = new Date(d);
               return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
             }}
-            tick={{ fill: '#8080a8', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            stroke="#3a3a55"
+            tick={{ fill: colors.axisText, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            stroke={colors.grid}
           />
           {/* Onset: continuous 18-36 scale so post-midnight onsets
               (wrapped to 24-36) plot chronologically after evening
@@ -146,8 +149,8 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
               const ampm = h < 12 ? 'a' : 'p';
               return `${h12}${m ? `:${m.toString().padStart(2, '0')}` : ''}${ampm}`;
             }}
-            tick={{ fill: '#9bff5c', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            stroke="#9bff5c"
+            tick={{ fill: colors.lime, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            stroke={colors.lime}
             strokeOpacity={0.3}
           />
           {/* Quality: 1-10 scale */}
@@ -155,8 +158,8 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
             yAxisId="quality"
             orientation="left"
             domain={[0, 10]}
-            tick={{ fill: '#ffc34d', fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            stroke="#ffc34d"
+            tick={{ fill: colors.amber, fontSize: 10, fontFamily: 'JetBrains Mono' }}
+            stroke={colors.amber}
             strokeOpacity={0.3}
             width={28}
           />
@@ -165,12 +168,12 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
               quality line. */}
           <Tooltip
             contentStyle={{
-              background: '#0a0a14',
-              border: '1px solid rgba(0,240,255,0.3)',
+              background: colors.tooltipBg,
+              border: `1px solid ${colors.tooltipBorder}`,
               fontFamily: 'JetBrains Mono',
               fontSize: 12,
             }}
-            labelStyle={{ color: '#00f0ff' }}
+            labelStyle={{ color: colors.tooltipText }}
             labelFormatter={(d) => formatAbsolute(d as string)}
             formatter={(value: number, name: string) => {
               if (value == null) return ['—', name];
@@ -183,15 +186,15 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
             verticalAlign="top"
             height={20}
             wrapperStyle={{ fontSize: 10, fontFamily: 'JetBrains Mono' }}
-            formatter={(v) => <span style={{ color: '#8080a8' }}>{v}</span>}
+            formatter={(v) => <span style={{ color: colors.axisText }}>{v}</span>}
           />
           <Bar
             yAxisId="quality"
             dataKey="hours"
             name="Duration"
-            fill="#00f0ff"
+            fill={colors.cyan}
             fillOpacity={0.18}
-            stroke="#00f0ff"
+            stroke={colors.cyan}
             strokeOpacity={0.6}
           />
           <Line
@@ -199,22 +202,22 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
             type="monotone"
             dataKey="onset"
             name="Onset"
-            stroke="#9bff5c"
+            stroke={colors.lime}
             strokeWidth={2}
-            dot={{ r: 2, fill: '#9bff5c' }}
+            dot={{ r: 2, fill: colors.lime }}
             connectNulls={false}
-            style={{ filter: 'drop-shadow(0 0 3px #9bff5c)' }}
+            style={{ filter: colors.dropShadow('lime', 3) }}
           />
           <Line
             yAxisId="quality"
             type="monotone"
             dataKey="quality"
             name="Quality"
-            stroke="#ffc34d"
+            stroke={colors.amber}
             strokeWidth={2}
-            dot={{ r: 2, fill: '#ffc34d' }}
+            dot={{ r: 2, fill: colors.amber }}
             connectNulls={false}
-            style={{ filter: 'drop-shadow(0 0 3px #ffc34d)' }}
+            style={{ filter: colors.dropShadow('amber', 3) }}
           />
         </ComposedChart>
       </ResponsiveContainer>
