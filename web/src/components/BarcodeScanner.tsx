@@ -115,7 +115,7 @@ function NativeScanner({
         if (cancelled) return;
         const code = stripNonDigits(result.ScanResult);
         if (code) onScanned(code);
-        else onCancel();
+        else setErr('No barcode detected — aim more directly and try again');
       } catch (e: any) {
         if (cancelled) return;
         setErr(e?.message ?? 'Scanner unavailable');
