@@ -289,8 +289,9 @@ export async function foodRoutes(app: FastifyInstance) {
     const match = normalizeOffProduct(product);
     if (!match) return reply.code(404).send({ error: 'Barcode data incomplete' });
 
-    const item = await prisma.foodItem.create({
-      data: {
+    const item = await prisma.foodItem.upsert({
+      where: { source_sourceId: { source: match.source, sourceId: match.sourceId } },
+      create: {
         source: match.source,
         sourceId: match.sourceId,
         name: match.name,
@@ -305,6 +306,21 @@ export async function foodRoutes(app: FastifyInstance) {
         sugarG: match.sugarG,
         sodiumMg: match.sodiumMg,
         sourceUrl: match.sourceUrl,
+      },
+      update: {
+        name: match.name,
+        brand: match.brand,
+        imageUrl: match.imageUrl,
+        servingSizeG: match.servingSizeG,
+        calories: match.calories,
+        proteinG: match.proteinG,
+        carbG: match.carbG,
+        fatG: match.fatG,
+        fiberG: match.fiberG,
+        sugarG: match.sugarG,
+        sodiumMg: match.sodiumMg,
+        sourceUrl: match.sourceUrl,
+        fetchedAt: new Date(),
       },
     });
     return { item };
