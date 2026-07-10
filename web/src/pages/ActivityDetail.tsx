@@ -38,7 +38,7 @@ type Workout = {
   userId: string;
   type: 'STRENGTH' | 'HYPERTROPHY' | 'CALISTHENICS' | 'CARDIO' | 'MOBILITY' | 'OTHER';
   name: string | null;
-  duration: number | null;
+  durationSec: number | null;
   notes: string | null;
   performedAt: string;
   createdAt: string;
@@ -123,14 +123,14 @@ function parseFitNotes(notes: string): {
 }
 
 /** Find PRs whose `achievedAt` falls within this workout's session window.
- *  window = [performedAt, performedAt + duration] (duration in minutes → ms). */
+ *  window = [performedAt, performedAt + durationSec] (durationSec in seconds → ms). */
 function prsInWindow(
   prs: PR[],
   performedAt: string,
-  durationMin: number | null,
+  durationSec: number | null,
 ): Set<string> {
   const start = new Date(performedAt).getTime();
-  const end = start + (durationMin ?? 60) * 60 * 1000;
+  const end = start + (durationSec ?? 3600) * 1000;
   const set = new Set<string>();
   for (const p of prs) {
     const t = new Date(p.achievedAt).getTime();
@@ -142,10 +142,10 @@ function prsInWindow(
 function achievementsInWindow(
   achievements: UserAchievement[],
   performedAt: string,
-  durationMin: number | null,
+  durationSec: number | null,
 ): UserAchievement[] {
   const start = new Date(performedAt).getTime();
-  const end = start + (durationMin ?? 60) * 60 * 1000;
+  const end = start + (durationSec ?? 3600) * 1000;
   return achievements.filter((a) => {
     const t = new Date(a.unlockedAt).getTime();
     return t >= start - 5_000 && t <= end + 5_000;
@@ -155,10 +155,10 @@ function achievementsInWindow(
 function levelsClearedInWindow(
   worlds: World[],
   performedAt: string,
-  durationMin: number | null,
+  durationSec: number | null,
 ): Array<{ world: World; level: LevelProgress }> {
   const start = new Date(performedAt).getTime();
-  const end = start + (durationMin ?? 60) * 60 * 1000;
+  const end = start + (durationSec ?? 3600) * 1000;
   const out: Array<{ world: World; level: LevelProgress }> = [];
   for (const w of worlds) {
     for (const lv of w.levels) {
@@ -214,19 +214,19 @@ export function ActivityDetailPage() {
   // PRs that were set in this session
   const prsSet = useMemo(() => {
     if (!workout || !prsQ.data) return new Set<string>();
-    return prsInWindow(prsQ.data.items, workout.performedAt, workout.duration);
+    return prsInWindow(prsQ.data.items, workout.performedAt, workout.durationSec);
   }, [workout, prsQ.data]);
 
   // Achievements unlocked during this session
   const sessionAchievements = useMemo(() => {
     if (!workout || !achQ.data) return [];
-    return achievementsInWindow(achQ.data.items, workout.performedAt, workout.duration);
+    return achievementsInWindow(achQ.data.items, workout.performedAt, workout.durationSec);
   }, [workout, achQ.data]);
 
   // Quest levels cleared during this session
   const sessionClears = useMemo(() => {
     if (!workout || !worldsQ.data) return [];
-    return levelsClearedInWindow(worldsQ.data, workout.performedAt, workout.duration);
+    return levelsClearedInWindow(worldsQ.data, workout.performedAt, workout.durationSec);
   }, [workout, worldsQ.data]);
 
   if (!user) return null;
@@ -275,7 +275,7 @@ export function ActivityDetailPage() {
   );
   // Training density: kg moved per minute. Useful for comparing effort
   // across sessions of different lengths.
-  const density = w.duration && w.duration > 0 ? totalVolumeKg / w.duration : 0;
+  const density = w.durationSec && w.durationSec > 0 ? totalVolumeKg / (w.durationSec / 60) : 0;
   const densityDisp = system === 'IMPERIAL'
     ? Math.round(convertForDisplay(density, 'kg', 'IMPERIAL').value)
     : Math.round(density);
@@ -311,7 +311,7 @@ export function ActivityDetailPage() {
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
         <Stat label="Type" value={w.type} accent="#14d6e8" />
-        <Stat label="Duration" value={w.duration ? formatSeconds(w.duration) : '—'} accent="#cba6ff" />
+        <Stat label="Duration" value={w.durationSec ? formatSeconds(w.durationSec) : '—'} accent="#cba6ff" />
         <Stat label="Exercises" value={String(w.exercises.length)} accent="#9bff5c" />
         <Stat
           label={system === 'IMPERIAL' ? 'Volume (lb)' : 'Volume (kg)'}
@@ -489,7 +489,7 @@ export function ActivityDetailPage() {
               />
               <Row
                 k="Density"
-                v={w.duration
+                v={w.durationSec
                   ? `${densityDisp} ${system === 'IMPERIAL' ? 'lb' : 'kg'}/min`
                   : '—'}
                 accent="cyan"

@@ -239,7 +239,7 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
     workout: {
       type: w.type,
       name: w.name,
-      durationMin: w.duration,
+      durationMin: w.durationSec != null ? Math.round(w.durationSec / 60) : null,
       performedAt: w.performedAt.toISOString(),
       exercises: w.exercises.map((ex) => ({
         name: ex.name,

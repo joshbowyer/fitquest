@@ -155,7 +155,7 @@ const CardioInput = z.object({
 const CreateWorkoutSchema = z.object({
   type: z.nativeEnum(WorkoutType),
   name: z.string().max(100).optional(),
-  duration: z.number().int().min(0).max(60 * 24).optional(),
+  durationSec: z.number().int().min(0).max(60 * 60 * 24).optional(),
   notes: z.string().max(2000).optional(),
   /// Post-session reflection. Distinct from `notes` (preflight).
   /// Captured on the Finish screen so the user can log how the
@@ -179,7 +179,7 @@ const CreateWorkoutSchema = z.object({
     || !!d.cardio
     || (d.type === 'MOBILITY' || d.type === 'OTHER')
         && (d.name?.trim().length ?? 0) > 0
-        && (d.duration ?? 0) > 0,
+        && (d.durationSec ?? 0) > 0,
   { message: 'Provide exercises, a cardio block, or (for freeform types) a name + duration.' },
 );
 
@@ -241,7 +241,7 @@ export async function workoutRoutes(app: FastifyInstance) {
         return s + setVolumeKg(set, ex.name, userWeightKg);
       }, 0);
     }, 0);
-    const duration = body.duration ?? 0;
+    const durationSec = body.durationSec ?? 0;
     const prs: Array<{ exercise: string; value: number; previousValue: number | null; type: 'ONE_RM' }> = [];
 
     // Heart multiplier is read once and reused both inside the
@@ -280,7 +280,7 @@ export async function workoutRoutes(app: FastifyInstance) {
       const sharedTopLevel = {
         type: body.type,
         name: body.name,
-        duration,
+        durationSec,
         notes: body.notes,
         postNotes: body.postNotes ?? null,
         cardio: body.cardio ?? null,
@@ -409,10 +409,10 @@ export async function workoutRoutes(app: FastifyInstance) {
         const baseXp = xpFromWorkout({
           type: workout.type,
           totalVolumeKg,
-          durationMin: duration,
+          durationMin: durationSec / 60,
           prCount: prs.length,
         });
-        const baseGold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: duration });
+        const baseGold = goldFromWorkout({ type: workout.type, prCount: prs.length, durationMin: durationSec / 60 });
         xp = Math.round(baseXp * mult);
         gold = Math.round(baseGold * mult);
         newXp = me.xp + xp;
@@ -503,7 +503,7 @@ export async function workoutRoutes(app: FastifyInstance) {
       if (body.type === 'MOBILITY') {
         fires.push({ key: 'logged_mobility', source: 'workout_commit' });
       }
-      if (body.type === 'CARDIO' && duration >= 30) {
+      if (body.type === 'CARDIO' && durationSec >= 30 * 60) {
         fires.push({ key: 'logged_cardio_30', source: 'workout_commit' });
       }
       // Stretch / yoga exercises are typically named explicitly
@@ -535,7 +535,7 @@ export async function workoutRoutes(app: FastifyInstance) {
     const raidDamage = computeRaidDamage(
       {
         type: body.type,
-        durationMin: duration,
+        durationMin: durationSec / 60,
         exercises: body.exercises.map((ex) => ({
           name: ex.name,
           sets: ex.sets,

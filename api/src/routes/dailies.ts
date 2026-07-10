@@ -252,7 +252,7 @@ app.get('/today', async (req) => {
       const [workouts, sleep, weightOnTargetDay, weightMostRecent, recovery, heartLoss] = await Promise.all([
         prisma.workout.findMany({
           where: { userId: me.id, performedAt: { gte: startOfDay, lt: endOfDay } },
-          select: { id: true, name: true, type: true, duration: true, performedAt: true },
+          select: { id: true, name: true, type: true, durationSec: true, performedAt: true },
           orderBy: { performedAt: 'asc' },
         }).catch(() => []),
         prisma.measurement.findFirst({
@@ -334,7 +334,7 @@ app.get('/today', async (req) => {
           id: w.id,
           name: w.name,
           type: w.type,
-          duration: w.duration,
+          durationSec: w.durationSec,
           performedAt: w.performedAt.toISOString(),
         })),
         recap: {

@@ -570,16 +570,13 @@ model Workout {
   user                   User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   type                   WorkoutType
   name                   String?
-  /// Total session duration in MINUTES (integer, rounded). Both the
-  /// manual /workouts POST path and the FIT importer converge on
-  /// this unit — the importer divides `totalTimerTime` (seconds) by
-  /// 60 before persisting. Downstream readers (insights, morning
-  /// report, correlations, xp.ts) all treat the value as minutes
-  /// and divide by 60 again if they need seconds. A pre-fix bug
-  /// stored FIT seconds verbatim; a one-time migration (see
-  /// prisma/migrations/<ts>_fix_fit_duration_units/) divides those
-  /// rows by 60.
-  duration               Int?
+  /// Total session duration in SECONDS (integer). Manual /workouts
+  /// POST sends seconds (web UI converts its minutes input); the FIT
+  /// importer stores parseActivity()'s durationSec verbatim (whole
+  /// seconds from total_timer_time). Historical note: prior to
+  /// migration workout_duration_minutes_to_seconds this column
+  /// stored whole MINUTES.
+  durationSec            Int?
   notes                  String?
   /// Post-session reflection. Distinct from `notes` which the live
   /// logger treats as preflight conditions logged before the first

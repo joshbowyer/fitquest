@@ -54,12 +54,11 @@ async function persist(
 
   if (fit.workouts && fit.workouts.length > 0) {
     for (const w of fit.workouts) {
-      // FIT totalTimerTime is seconds; Workout.duration is stored as
-      // minutes (matches the manual /workouts POST path which uses
-      // minutes and the schema doc). Round to the nearest minute so a
-      // 92m48s walk reads as 93m in the UI rather than 92.8m with a
-      // float showing up everywhere.
-      const duration = Math.round(w.durationSec / 60);
+      // FIT totalTimerTime is whole seconds; Workout.durationSec is
+      // stored as whole seconds (matches the manual /workouts POST
+      // path and the schema doc). Store seconds verbatim so a
+      // 3m23s jump-rope session is exactly 203s, not rounded to 3.
+      const durationSec = w.durationSec;
       const notes = [
         w.subSport ? `${w.sport}/${w.subSport}` : w.sport,
         w.distanceMeters ? `${(w.distanceMeters / 1000).toFixed(2)} km` : null,
@@ -90,7 +89,7 @@ async function persist(
       // the whole transaction. Use upsert so re-imports
       // dedupe cleanly. On update, only touch the mutable
       // fields (notes, name, trackJson, sourceFilename,
-      // duration). The user's other Workout fields (importSource,
+      // durationSec). The user's other Workout fields (importSource,
       // type) shouldn't change on re-import.
       const created_row = await prisma.workout.upsert({
         where: {
@@ -108,7 +107,7 @@ async function persist(
           // to 1-2 Nominatim calls when the activities cluster
           // in the same metro area.
           name: await activityTitle(w.sport, w.trackpoints),
-          duration,
+          durationSec,
           notes: `[FIT] ${notes}`,
           importSource,
           sourceFilename,
@@ -117,7 +116,7 @@ async function persist(
         },
         update: {
           name: await activityTitle(w.sport, w.trackpoints),
-          duration,
+          durationSec,
           notes: `[FIT] ${notes}`,
           sourceFilename,
           trackJson: (w.trackpoints ?? []) as any,
@@ -153,7 +152,7 @@ async function persist(
       created.push({
         kind: 'workout',
         id: created_row.id,
-        summary: `${w.sport} · ${duration}m`,
+        summary: `${w.sport} · ${Math.round(durationSec / 60)}m`,
       });
 
       // Infer standard race distances from CARDIO activities. We only
@@ -351,9 +350,9 @@ export async function importRoutes(app: FastifyInstance) {
       prisma.workout.findMany({
         where: { userId: me.id, notes: { startsWith: '[FIT]' } },
         orderBy: { performedAt: 'desc' },
-        take: 10,
-        select: { id: true, name: true, notes: true, performedAt: true, duration: true },
-      }),
+take: 10,
+      select: { id: true, name: true, notes: true, performedAt: true, durationSec: true },
+    }),
       prisma.measurement.findMany({
         where: { userId: me.id, metric: 'SLEEP_HOURS' },
         orderBy: { recordedAt: 'desc' },
@@ -407,7 +406,7 @@ export async function importRoutes(app: FastifyInstance) {
         name: true,
         notes: true,
         performedAt: true,
-        duration: true,
+        durationSec: true,
       },
     });
 
@@ -420,7 +419,7 @@ export async function importRoutes(app: FastifyInstance) {
       date: string;
       count: number;
       totalDurationMin: number;
-      items: Array<{ id: string; name: string | null; notes: string | null; performedAt: string; duration: number | null }>;
+      items: Array<{ id: string; name: string | null; notes: string | null; performedAt: string; durationSec: number | null }>;
     }>();
     for (const r of rows) {
       const date = fmt.format(r.performedAt); // YYYY-MM-DD in tz
@@ -431,13 +430,13 @@ export async function importRoutes(app: FastifyInstance) {
         items: [],
       };
       bucket.count += 1;
-      bucket.totalDurationMin += r.duration ?? 0;
+      bucket.totalDurationMin += Math.round((r.durationSec ?? 0) / 60);
       bucket.items.push({
         id: r.id,
         name: r.name,
         notes: r.notes,
         performedAt: r.performedAt.toISOString(),
-        duration: r.duration,
+        durationSec: r.durationSec,
       });
       byDate.set(date, bucket);
     }
@@ -508,7 +507,7 @@ export async function importRoutes(app: FastifyInstance) {
       prisma.workout.findMany({
         where: { userId, importSource: WorkoutSource.BRIDGE },
         orderBy: { performedAt: 'desc' },
-        select: { id: true, name: true, notes: true, performedAt: true, duration: true, sourceFilename: true },
+        select: { id: true, name: true, notes: true, performedAt: true, durationSec: true, sourceFilename: true },
       }),
       prisma.measurement.findMany({
         where: { userId, sourceFilename: { not: null } },
@@ -527,7 +526,7 @@ export async function importRoutes(app: FastifyInstance) {
     // that produced 1 workout + 3 measurements + 2 daily-logs
     // shows all 6 rows under the same filename.
     type Item =
-      | { kind: 'workout'; id: string; name: string | null; duration: number | null; performedAt: string; notes: string | null }
+      | { kind: 'workout'; id: string; name: string | null; durationSec: number | null; performedAt: string; notes: string | null }
       | { kind: 'measurement'; id: string; metric: string; value: number; unit: string; recordedAt: string; notes: string | null }
       | { kind: 'daily_log'; id: string; dailyKey: string; loggedAt: string; goldDelta: number; xpDelta: number };
     const all: Array<{ filename: string; ts: string; item: Item }> = [];
@@ -535,7 +534,7 @@ export async function importRoutes(app: FastifyInstance) {
       all.push({
         filename: w.sourceFilename ?? '(unknown)',
         ts: w.performedAt.toISOString(),
-        item: { kind: 'workout', id: w.id, name: w.name, duration: w.duration, performedAt: w.performedAt.toISOString(), notes: w.notes },
+        item: { kind: 'workout', id: w.id, name: w.name, durationSec: w.durationSec, performedAt: w.performedAt.toISOString(), notes: w.notes },
       });
     }
     for (const m of measurementRows) {

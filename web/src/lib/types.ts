@@ -454,7 +454,7 @@ export type Workout = {
   id: string;
   type: WorkoutType;
   name: string | null;
-  duration: number | null;
+  durationSec: number | null;
   notes: string | null;
   performedAt: string;
   exercises: Exercise[];

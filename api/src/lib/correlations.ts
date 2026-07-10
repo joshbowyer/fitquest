@@ -182,13 +182,13 @@ const OUTCOME_BUILDERS: Record<string, OutcomeBuilder> = {
   WORKOUT_DURATION: async (userId, from, to, tz) => {
     const workouts = await prisma.workout.findMany({
       where: { userId, performedAt: { gte: from, lt: to } },
-      select: { performedAt: true, duration: true },
+      select: { performedAt: true, durationSec: true },
     });
     const out: DailyMap = new Map();
     for (const w of workouts) {
-      if (w.duration == null) continue;
+      if (w.durationSec == null) continue;
       const k = dayKey(new Date(w.performedAt), tz);
-      out.set(k, (out.get(k) ?? 0) + w.duration);
+      out.set(k, (out.get(k) ?? 0) + w.durationSec / 60);
     }
     return out;
   },

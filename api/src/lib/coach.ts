@@ -202,7 +202,7 @@ export type CoachRecentWorkout = {
   id: string;
   performedAt: string;        // ISO
   type: string;               // WorkoutType enum value
-  duration: number | null;     // minutes
+  durationSec: number | null;  // seconds
   exerciseCount: number;
   totalSets: number;           // completed sets across all exercises
   topExercises: Array<{        // top 3 exercises by total volume
@@ -525,7 +525,7 @@ export async function gatherCoachContext(userId: string): Promise<CoachContext> 
       id: w.id,
       performedAt: w.performedAt.toISOString(),
       type: w.type,
-      duration: w.duration,
+      durationSec: w.durationSec,
       exerciseCount: w.exercises.length,
       totalSets,
       topExercises,
@@ -539,10 +539,10 @@ export async function gatherCoachContext(userId: string): Promise<CoachContext> 
   );
   const last7Days = {
     workoutCount: recent7dWorkouts.length,
-    workoutMinutes: recent7dWorkouts.reduce(
-      (s, w) => s + (w.duration ?? 0),
+    workoutMinutes: Math.round(recent7dWorkouts.reduce(
+      (s, w) => s + (w.durationSec ?? 0),
       0,
-    ),
+    ) / 60),
     workoutTypes: Array.from(new Set(recent7dWorkouts.map((w) => w.type))).sort(),
     prCount: prs.filter((p) => p.achievedAt >= sevenAgo).length,
     avgSleepHours: measurementsSleep.length > 0

@@ -96,7 +96,7 @@ type DayPayload = {
   date: string;
   mode: 'CASUAL' | 'HARDCORE';
   hearts: number;
-  workouts?: Array<{ id: string; name: string | null; type: string; duration: number | null; performedAt: string }>;
+  workouts?: Array<{ id: string; name: string | null; type: string; durationSec: number | null; performedAt: string }>;
   sleep: { value: number; recordedAt: string } | null;
   latestWeight: { value: number; recordedAt: string } | null;
   recovery: { score: number | null; components?: any[] } | null;
@@ -580,9 +580,9 @@ function WorkoutsSection({ workouts }: { workouts: NonNullable<DayPayload['worko
                 <span className="text-ink-500 ml-1">· {w.type.toLowerCase()}</span>
               )}
             </span>
-            {w.duration != null && (
+            {w.durationSec != null && (
               <span className="text-ink-500 shrink-0">
-                {Math.round(w.duration / 60)}m
+                {Math.round(w.durationSec / 60)}m
               </span>
             )}
           </div>

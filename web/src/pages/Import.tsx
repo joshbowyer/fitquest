@@ -22,7 +22,7 @@ type BridgeSummary = {
       name: string | null;
       notes: string | null;
       performedAt: string;
-      duration: number | null;
+      durationSec: number | null;
     }>;
   }>;
 };
@@ -32,7 +32,7 @@ type BridgeSummary = {
 // so a single file that produced 1 workout + 3 measurements +
 // 2 daily-logs shows all 6 rows under the same filename.
 type BridgeHistoryItem =
-  | { kind: 'workout'; id: string; name: string | null; duration: number | null; performedAt: string; notes: string | null }
+  | { kind: 'workout'; id: string; name: string | null; durationSec: number | null; performedAt: string; notes: string | null }
   | { kind: 'measurement'; id: string; metric: string; value: number; unit: string; recordedAt: string; notes: string | null }
   | { kind: 'daily_log'; id: string; dailyKey: string; loggedAt: string; goldDelta: number; xpDelta: number };
 type BridgeHistory = {
@@ -65,7 +65,7 @@ type FileResult = {
 type BatchResponse = { files: FileResult[] };
 
 type ImportSummary = {
-  recentWorkouts: Array<{ id: string; name: string | null; notes: string | null; performedAt: string; duration: number | null }>;
+  recentWorkouts: Array<{ id: string; name: string | null; notes: string | null; performedAt: string; durationSec: number | null }>;
   recentSleep: Array<{ id: string; value: number; recordedAt: string }>;
   recentHrv: Array<{ id: string; value: number; recordedAt: string; notes: string | null }>;
 };
@@ -348,8 +348,8 @@ export function ImportPage() {
                 {summaryQ.data.recentWorkouts.map((w) => (
                   <div key={w.id} className="text-[11px] font-mono">
                     <span className="text-neon-cyan">{w.name}</span>
-                    {w.duration ? (
-                      <span className="text-ink-400 ml-2">· {Math.round(w.duration / 60)}m</span>
+                    {w.durationSec ? (
+                      <span className="text-ink-400 ml-2">· {Math.round(w.durationSec / 60)}m</span>
                     ) : null}
                     <span className="text-ink-500 ml-2">{formatRelative(w.performedAt)}</span>
                   </div>
@@ -451,8 +451,8 @@ export function ImportPage() {
                   {g.items.map((it) => (
                     <div key={it.id} className="text-[11px] font-mono flex items-baseline gap-2">
                       <span className="neon-text-amber">{it.name ?? it.notes ?? '(unnamed)'}</span>
-                      {it.duration != null && (
-                        <span className="text-ink-400">{Math.round(it.duration)}m</span>
+                      {it.durationSec != null && (
+                        <span className="text-ink-400">{Math.round(it.durationSec / 60)}m</span>
                       )}
                       <span className="text-ink-500 ml-auto">{formatRelative(it.performedAt)}</span>
                     </div>
@@ -552,9 +552,9 @@ export function ImportPage() {
                               <span className="text-ink-200 truncate flex-1">
                                 {it.name ?? it.notes ?? '(unnamed workout)'}
                               </span>
-                              {it.duration != null && (
+                              {it.durationSec != null && (
                                 <span className="text-ink-400 shrink-0">
-                                  {Math.round(it.duration)}m
+                                  {Math.round(it.durationSec / 60)}m
                                 </span>
                               )}
                               <span className="text-ink-500 shrink-0 ml-auto">

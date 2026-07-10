@@ -86,7 +86,7 @@ export async function insightRoutes(app: FastifyInstance) {
       where: { userId: me.id, performedAt: { gte: since } },
       select: {
         performedAt: true,
-        duration: true,
+        durationSec: true,
         exercises: {
           select: {
             name: true,
@@ -131,7 +131,7 @@ export async function insightRoutes(app: FastifyInstance) {
       );
       buckets[key].volume += vol;
       buckets[key].sessions += 1;
-      buckets[key].minutes += Math.round((w.duration ?? 0) / 60);
+      buckets[key].minutes += Math.round((w.durationSec ?? 0) / 60);
     }
     const items = Object.entries(buckets)
       .map(([week, v]) => ({ week, ...v }))

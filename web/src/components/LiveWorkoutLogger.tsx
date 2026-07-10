@@ -462,22 +462,20 @@ export function LiveWorkoutLogger({
         ? buildLivePayload()
         : buildTimedPayload();
 
-      // Workout duration: for live mode, derive from captured
-      // timestamps; for timed mode, derive from the target durations.
+      // Workout duration: for live mode, use the elapsed seconds;
+      // for timed mode, derive seconds directly from the target durations.
       // The server uses this for XP / PR calculations only — actual
       // effort shows up in the set rows.
-      const duration = isStrength
-        ? Math.max(1, Math.round(workoutElapsedSec / 60))
-        : Math.max(1, Math.round(
-            exercises.reduce((acc, ex) => acc + (ex.sets[0]?.targetDuration ?? 0), 0) / 60,
-          ));
+      const durationSec = isStrength
+        ? Math.max(1, workoutElapsedSec)
+        : Math.max(1, exercises.reduce((acc, ex) => acc + (ex.sets[0]?.targetDuration ?? 0), 0));
 
       return api<any>('/workouts', {
         method: 'POST',
         body: {
           type,
           name: name || undefined,
-          duration,
+          durationSec,
           notes: notes || undefined,
           postNotes: postNotes.trim() || undefined,
           performedAt: localInputToIso(performedAt),

@@ -591,7 +591,7 @@ function ActivityCard({
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-ink-300 mb-2">
         <span>{w.type}</span>
-        <span>· {w.duration ?? 0}m</span>
+        <span>{`· ${Math.round((w.durationSec ?? 0) / 60)}m`}</span>
         {volDisplay > 0 && (
           <span className="text-neon-cyan">{volDisplay.toLocaleString()} {weightUnitLabel(units)} vol</span>
         )}

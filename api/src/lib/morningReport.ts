@@ -105,7 +105,7 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
     where: { userId, performedAt: { gte: since7 } },
     select: {
       type: true,
-      duration: true,
+      durationSec: true,
       exercises: {
         select: {
           name: true,
@@ -119,7 +119,7 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
   });
   const prior = await prisma.workout.findMany({
     where: { userId, performedAt: { gte: since14, lt: since7 } },
-    select: { type: true, duration: true, exercises: { select: { name: true, sets: { select: { weight: true, reps: true } } } } },
+    select: { type: true, durationSec: true, exercises: { select: { name: true, sets: { select: { weight: true, reps: true } } } } },
   });
   const sum = (xs: typeof last) => {
     const vol = xs.reduce(
@@ -127,7 +127,7 @@ async function workoutsDomain(userId: string, since7: Date, since14: Date) {
         s + w.exercises.reduce((ss, ex) => ss + ex.sets.reduce((sss, st) => sss + setVolumeKg(st, ex.name, userWeightKg), 0), 0),
       0,
     );
-    const min = xs.reduce((s, w) => s + (w.duration ?? 0), 0) / 60;
+    const min = xs.reduce((s, w) => s + (w.durationSec ?? 0), 0) / 60;
     const byType: Record<string, number> = {};
     for (const w of xs) byType[w.type] = (byType[w.type] ?? 0) + 1;
     return { count: xs.length, volume: vol, minutes: min, byType };

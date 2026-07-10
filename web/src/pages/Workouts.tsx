@@ -483,7 +483,7 @@ export function WorkoutsPage() {
     const last = list.data.items[0];
     setExercises(workoutToDraft(last, units));
     setName(last.name ? `${last.name} (copy)` : '');
-    setDuration(last.duration ?? 60);
+    setDuration(Math.round((last.durationSec ?? 3600) / 60));
     setNotes(last.notes ?? '');
     // Carry over the cardio block too if the previous session had one.
     if ((last as any).cardio) {
@@ -552,7 +552,7 @@ export function WorkoutsPage() {
         body: {
           type,
           name: name || undefined,
-          duration,
+          durationSec: duration * 60,
           notes: notes || undefined,
           performedAt: localInputToIso(performedAt),
           cardio: cardioBody ?? undefined,
@@ -1249,7 +1249,7 @@ export function WorkoutsPage() {
                         {c.avgHr && <span className="text-ink-400 ml-1">· HR {c.avgHr}</span>}
                       </span>
                     )}
-                    {w.exercises.length === 0 && !hasCardio && `${w.duration ?? 0}m`}
+                    {w.exercises.length === 0 && !hasCardio && `${Math.round((w.durationSec ?? 0) / 60)}m`}
                   </div>
                   {w.exercises.length > 0 && (
                     <div className="text-ink-500 text-[10px] mt-0.5 truncate">

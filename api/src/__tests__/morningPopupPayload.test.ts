@@ -21,7 +21,7 @@ const MorningPopupPayload = z.object({
     id: z.string(),
     name: z.string().nullable(),
     type: z.string(),
-    duration: z.number().nullable(),
+    durationSec: z.number().nullable(),
     performedAt: z.string(),
   })).optional(),
   recap: z.object({
@@ -58,8 +58,8 @@ describe('MorningPopupPayload schema', () => {
       hearts: 5,
       dailies: { date: '2026-06-29', counts: { total: 3, completed: 2 } },
       workouts: [
-        { id: 'w1', name: 'Push', type: 'STRENGTH', duration: 3600, performedAt: '2026-06-29T14:00:00.000Z' },
-        { id: 'w2', name: 'PM conditioning', type: 'CARDIO', duration: 1800, performedAt: '2026-06-29T18:00:00.000Z' },
+        { id: 'w1', name: 'Push', type: 'STRENGTH', durationSec: 3600, performedAt: '2026-06-29T14:00:00.000Z' },
+        { id: 'w2', name: 'PM conditioning', type: 'CARDIO', durationSec: 1800, performedAt: '2026-06-29T18:00:00.000Z' },
       ],
       recap: {
         workoutLogged: true,

@@ -123,7 +123,7 @@ export function WorkoutLogger({
     if (!copyFrom) return;
     setExercises(workoutToDraft(copyFrom, units));
     setName(copyFrom.name ? `${copyFrom.name} (copy)` : '');
-    setDuration(copyFrom.duration ?? 60);
+    setDuration(Math.round((copyFrom.durationSec ?? 3600) / 60));
     setNotes(copyFrom.notes ?? '');
     if (copyFrom.type === 'CARDIO') {
       setCardio((copyFrom as any).cardio ? cardioToDraft((copyFrom as any).cardio, units) : emptyCardio());
@@ -147,7 +147,7 @@ export function WorkoutLogger({
         body: {
           type,
           name: name || undefined,
-          duration,
+          durationSec: duration * 60,
           notes: compact ? undefined : (notes || undefined),
           postNotes: compact ? undefined : (postNotes.trim() || undefined),
           // Compact mode forces "now" so the team session timeline
