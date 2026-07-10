@@ -372,7 +372,7 @@ pg_dump $DATABASE_URL > backup.sql
 
 ## License
 
-MIT
+GPL-3.0-or-later. See [LICENSE](./LICENSE).
 
 ## Scripture Attribution
 
