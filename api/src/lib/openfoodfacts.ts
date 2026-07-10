@@ -20,6 +20,8 @@ export type OffProduct = {
   product_name: string;
   brands: string | null;
   image_front_url: string | null;
+  serving_size?: string;
+  serving_quantity?: number;
   nutriments: {
     'energy-kcal_100g'?: number;
     'proteins_100g'?: number;
@@ -62,7 +64,7 @@ export function normalizeOffProduct(p: OffProduct): FoodMatch | null {
     name,
     brand: p.brands || null,
     imageUrl: p.image_front_url || null,
-    servingSizeG: null,
+    servingSizeG: p.serving_quantity != null && p.serving_quantity > 0 ? p.serving_quantity : null,
     calories: cal,
     proteinG: n['proteins_100g'] ?? 0,
     carbG: n['carbohydrates_100g'] ?? 0,
@@ -196,7 +198,7 @@ export async function offSearch(query: string, pageSize = 10): Promise<OffProduc
   url.searchParams.set('page_size', String(pageSize));
   url.searchParams.set(
     'fields',
-    'code,product_name,brands,image_front_url,nutriments',
+    'code,product_name,brands,image_front_url,serving_size,serving_quantity,nutriments',
   );
   const res = await fetch(url, {
     headers: { 'User-Agent': 'FitQuest/1.0 (https://fitquest.local)' },

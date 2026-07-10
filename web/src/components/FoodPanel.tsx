@@ -1790,7 +1790,7 @@ function LogMealModal({
   //   oz    → /28.3495 × 100
   //   serving (when servingSizeG is known) → × servingSizeG / 100
   type Unit = 'x100g' | 'oz' | 'serving';
-  const [unit, setUnit] = useState<Unit>('x100g');
+  const [unit, setUnit] = useState<Unit>(hasServing ? 'serving' : 'x100g');
 
   // Display value: the number the user types. Always positive,
   // accepts decimals. We pre-fill it to the equivalent of 1.0

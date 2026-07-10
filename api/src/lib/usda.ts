@@ -21,6 +21,8 @@ export type UsdaSearchHit = {
   fdcId: number;
   description: string;
   brandName: string | null;
+  servingSize?: number;
+  servingSizeUnit?: string;
   foodNutrients: UsdaFoodNutrient[];
 };
 
@@ -72,7 +74,11 @@ export function normalizeUsdaFood(f: UsdaSearchHit): FoodMatch | null {
     name,
     brand: f.brandName || null,
     imageUrl: null,
-    servingSizeG: null,
+    servingSizeG:
+      f.servingSize != null && f.servingSize > 0 &&
+      (f.servingSizeUnit === 'g' || f.servingSizeUnit === 'ml')
+        ? f.servingSize
+        : null,
     calories: cal,
     proteinG: getNutrient(ns, NUTRIENT_ID.PROTEIN) ?? 0,
     carbG: getNutrient(ns, NUTRIENT_ID.CARB) ?? 0,
