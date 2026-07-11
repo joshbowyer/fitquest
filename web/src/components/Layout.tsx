@@ -628,7 +628,11 @@ function MobileMenuOverlay({
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-2 mb-4 md:mb-6 pb-3 border-b border-neon-cyan/15">
+    // data-page-header: lets usePullToRefresh scope its trigger zone
+    // to just the top-bar + page-title area (see that hook's
+    // triggerZoneSelector) instead of firing on any touch anywhere
+    // in the scrollable content.
+    <div data-page-header className="flex flex-wrap items-end justify-between gap-2 mb-4 md:mb-6 pb-3 border-b border-neon-cyan/15">
       <div className="min-w-0">
         <h1 className="text-xl md:text-2xl font-display tracking-widest neon-text-cyan uppercase truncate">{title}</h1>
         {subtitle && <div className="text-xs text-ink-300 font-mono mt-1">{subtitle}</div>}

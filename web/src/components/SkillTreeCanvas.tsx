@@ -62,6 +62,11 @@ const ZOOM_STEPS = [0.25, 0.4, 0.6, 0.8, 1];
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 1.5;
 const DRAG_THRESHOLD = 5; // px before treating move as pan vs tap/click
+// Softens raw pinch-distance-ratio -> zoom mapping so a fast pinch
+// motion doesn't blow through the whole zoom range in one frame.
+// 1.0 = no damping (old behavior); lower = finer control, needs
+// more physical finger travel per unit of zoom change.
+const PINCH_SENSITIVITY = 0.45;
 
 // Connector colors. Hex values match the inline hex codes already
 // used elsewhere in the SkillNode drop-shadow rules (see the
@@ -92,7 +97,17 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
    */
   unlockedNames: Set<string>;
 }) {
-  const [zoom, setZoom] = useState<number>(1);
+  // Default zoom: 50% on mobile for PHANTOM specifically (its tree
+  // is the densest right now — 158 skills across 7 branches — so a
+  // full-scale initial view is mostly off-screen on a phone). Other
+  // classes haven't been reviewed for this yet, so they keep the
+  // prior 100% default. `768` matches this codebase's existing
+  // Tailwind `md:` breakpoint convention used elsewhere (Layout.tsx).
+  const [zoom, setZoom] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1;
+    const isMobile = window.innerWidth < 768;
+    return isMobile && className === 'PHANTOM' ? 0.5 : 1;
+  });
   const { nodes, edges, width, height } = useMemo(
     () => computeLayout(items, className),
     [items, className],
@@ -205,6 +220,20 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
       // No setPointerCapture — WebView often drops the 2nd pointer when capture is active.
       pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+      // Single-pointer drag-pan only (mouse, or a lone finger).
+      // Pinch is handled EXCLUSIVELY by the parallel Touch Events
+      // block below now — see the comment there for why. This used
+      // to also have a 2-pointer pinch branch here, but since a
+      // physical two-finger touch dispatches BOTH Pointer Events
+      // AND Touch Events on Android WebView, having pinch logic in
+      // both places meant every pinch frame ran through two
+      // independent handlers computing zoom from the SAME shared
+      // lastPinchDistRef/lastPinchZoomRef refs, each calling
+      // setZoom() — redundant at best, and a real source of
+      // jittery/oversensitive zoom at worst (each handler's `zoom`
+      // closure could be one render behind the other's, so their
+      // ratio math didn't always agree). One authority, one set of
+      // refs actually driving zoom, is simpler and correct.
       if (pointersRef.current.size === 1) {
         dragStateRef.current = {
           startX: e.clientX,
@@ -213,12 +242,6 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
           startScrollTop: el.scrollTop,
           isDragging: false,
         };
-      } else if (pointersRef.current.size === 2) {
-        const pts = Array.from(pointersRef.current.values());
-        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        lastPinchDistRef.current = dist;
-        lastPinchZoomRef.current = zoom;
-        dragStateRef.current = null;
       }
     };
 
@@ -237,24 +260,6 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
           el.scrollLeft = ds.startScrollLeft - dx;
           el.scrollTop = ds.startScrollTop - dy;
         }
-      } else if (pointersRef.current.size === 2) {
-        const pts = Array.from(pointersRef.current.values());
-        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        if (lastPinchDistRef.current > 0) {
-          const scale = dist / lastPinchDistRef.current;
-          const targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, lastPinchZoomRef.current * scale));
-          const midX = (pts[0].x + pts[1].x) / 2;
-          const midY = (pts[0].y + pts[1].y) / 2;
-          const rect = el.getBoundingClientRect();
-          const cx = midX - rect.left + el.scrollLeft;
-          const cy = midY - rect.top + el.scrollTop;
-          const ratio = targetZoom / zoom;
-          const newLeft = cx * ratio - (midX - rect.left);
-          const newTop = cy * ratio - (midY - rect.top);
-          pendingScrollRef.current = { left: newLeft, top: newTop };
-          setZoom(targetZoom);
-          lastPinchZoomRef.current = targetZoom;
-        }
       }
     };
 
@@ -262,9 +267,6 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
       pointersRef.current.delete(e.pointerId);
       if (pointersRef.current.size === 0) {
         dragStateRef.current = null;
-        lastPinchDistRef.current = 0;
-      } else if (pointersRef.current.size === 1) {
-        lastPinchDistRef.current = 0;
       }
       try {
         el.releasePointerCapture(e.pointerId);
@@ -298,7 +300,20 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
-        const scale = dist / lastPinchDistRef.current;
+        const rawScale = dist / lastPinchDistRef.current;
+        // Damping: applying the raw finger-distance ratio 1:1 to
+        // zoom meant a small, fast pinch motion (very common —
+        // fingers naturally move quickly at gesture start) blew
+        // straight through the entire zoom range in one frame, so
+        // the user couldn't settle on any particular level.
+        // PINCH_SENSITIVITY < 1 softens the effective rate: only
+        // ~45% of the raw distance-ratio's deviation from 1.0
+        // actually gets applied, so the same finger movement now
+        // needs roughly 2x the physical pinch distance to reach
+        // the same zoom change — giving much finer, stoppable
+        // control without capping the eventual reachable range
+        // (MIN_ZOOM/MAX_ZOOM clamp still applies as before).
+        const scale = 1 + (rawScale - 1) * PINCH_SENSITIVITY;
         const targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, lastPinchZoomRef.current * scale));
 
         const midX = (t0.clientX + t1.clientX) / 2;

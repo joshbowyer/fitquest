@@ -153,11 +153,25 @@ export async function runShieldDigestForUser(
     .slice(0, 3)
     .map((c) => `${c.label} +${c.total}`);
 
+  // Show the actual date, not just "yesterday" — this digest fires
+  // legitimately once per calendar day, forever, as long as there's
+  // net-positive repair activity. With only relative wording every
+  // day's fresh, genuinely-new notification is visually identical
+  // to the previous day's (already-dismissed) one, which reads as
+  // "the same notification keeps coming back" even when it's
+  // actually a new one about a new day each time. A short absolute
+  // date lets the user tell them apart at a glance.
+  const shortDate = new Date(`${yesterdayDate}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+
   await emitNotification({
     userId,
     category: 'PENANCE',
     kind: 'shield_repair_daily',
-    title: `Shield +${netDelta} yesterday`,
+    title: `Shield +${netDelta} (${shortDate})`,
     body:
       top.length > 0
         ? `Top contributors: ${top.join(', ')} · ${events.length} action${events.length === 1 ? '' : 's'}`
