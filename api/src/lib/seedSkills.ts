@@ -275,6 +275,74 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'Horizontal pressing god-tier — 1-arm PU with bodyweight added.', description: '+20% push-up 1RM tracking',
     test: { description: '5 weighted one-arm push-ups on each side, with 50% bodyweight added.', safety: 'Strong unweighted 1-arm PU + 25% weighted first. Use a spotter for safety.', metric: 'weighted:reps:each', threshold: { reps: 5, weight_kg_mult_of_bw: 0.5, sides: 'each' } } },
 
+  // Push variants — width, angle, and explosive variations on the
+  // standard push-up. Wide-grip for chest width, diamond for triceps,
+  // decline/elevated feet for upper chest, Hindu/Spiderman/Dive
+  // Bomber for shoulder mobility + serratus, Clap/Superman/Aztec for
+  // explosive power.
+  { name: 'Wide Push-Up', branch: 'Push', tier: 'TIER_1', prereqs: ['Incline Push-Up Initiate'],
+    blurb: 'Wide-grip push-up — chest-width emphasis.', description: '+5% push-up XP',
+    test: { description: '5 wide-grip push-ups, hands ~1.5× shoulder-width, full ROM (chest within a fist of the floor).', safety: 'Don\'t shrug. Keep elbows tracked at ~45° (not flared to 90°).', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Diamond Push-Up', branch: 'Push', tier: 'TIER_2', prereqs: ['Standard Push-Up 20'],
+    blurb: 'Diamond push-up — triceps and inner-chest focus.', description: '+8% push-up XP',
+    test: { description: '5 diamond push-ups, hands together forming a diamond shape under the chest, full ROM, elbows tight to torso.', safety: 'Don\'t flare elbows. Warm up with regular push-ups first.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Decline Push-Up', branch: 'Push', tier: 'TIER_2', prereqs: ['Standard Push-Up 20'],
+    blurb: 'Decline push-up (feet elevated) — upper-chest emphasis.', description: '+8% push-up XP',
+    test: { description: '5 decline push-ups with feet on a 12-18" surface, hands on floor, full ROM, body rigid.', safety: 'Don\'t sag hips. Master regular push-ups first.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Hindu Push-Up', branch: 'Push', tier: 'TIER_2', prereqs: ['Standard Push-Up 20'],
+    blurb: 'Hindu push-up — flowing downward-dog into upward-dog. Serratus + shoulder mobility.', description: '+8% push-up XP',
+    test: { description: '5 Hindu push-ups in a row, full flowing motion (scoop down through downward dog, push up through upward dog).', safety: 'Master regular push-ups first. Don\'t yank the neck — lead with the chest.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Spiderman Push-Up', branch: 'Push', tier: 'TIER_2', prereqs: ['Standard Push-Up 20'],
+    blurb: 'Spiderman push-up — bring the knee to the elbow on each rep. Core + hip flexor.', description: '+8% push-up XP',
+    test: { description: '5 Spiderman push-ups on each side (knee to elbow as you descend, full ROM each rep).', safety: 'Master regular push-ups first. Keep hips level.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Typewriter Push-Up', branch: 'Push', tier: 'TIER_2', prereqs: ['Archer Push-Up'],
+    blurb: 'Typewriter push-up — at the top, shift side to side. Asymmetric pressing control.', description: '+8% push-up XP',
+    test: { description: '5 typewriter push-ups (push up to archer position, shift weight side to side, touch chest to each side).', safety: 'Strong archer PU first. Don\'t shrug. Have a wall for balance.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Clap Push-Up', branch: 'Push', tier: 'TIER_3', prereqs: ['Standard Push-Up 20'],
+    blurb: 'Clap push-up — explosive plyometric push-up with a clap at the top.', description: '+10% push-up XP',
+    test: { description: '5 clap push-ups in a row. Push explosively, hands leave the floor, clap, land soft.', safety: 'Master 20+ standard PU first. Use a soft surface. Land with bent elbows.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Dive Bomber Push-Up', branch: 'Push', tier: 'TIER_3', prereqs: ['Hindu Push-Up'],
+    blurb: 'Dive bomber — Hindu PU with a deeper scoop and reverse direction. Chest + shoulder.', description: '+10% push-up XP',
+    test: { description: '5 dive bomber push-ups in a row. Deep scoop through downward dog, push up backward through upward dog.', safety: 'Strong Hindu PU first. Stretch shoulders before testing.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Superman Push-Up', branch: 'Push', tier: 'TIER_4', prereqs: ['Clap Push-Up'],
+    blurb: 'Superman push-up — push up, hands leave the floor AND feet leave the floor (whole-body flight).', description: '+12% push-up XP',
+    test: { description: '5 superman push-ups. Push explosively so both hands and feet leave the floor.', safety: 'Strong clap PU first. Use a soft surface. Land with bent elbows.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Aztec Push-Up', branch: 'Push', tier: 'TIER_5', prereqs: ['Superman Push-Up'],
+    blurb: 'Aztec push-up — push up into a handstand, lower back down to PU position. Pure plyo + balance.', description: '+15% push-up XP',
+    test: { description: '5 Aztec push-ups in a row. Push up explosively into a handstand (or near-handstand), lower back down with control.', safety: 'Strong superman PU + solid handstand balance first. Spotter nearby. Soft surface.', metric: 'reps', threshold: { reps: 5 } } },
+
+  // Dip sub-chain — vertical pressing variation. T1 bench dips → T2
+  // PB dips → T3 strict straight-bar + forward lean (two parallel
+  // angles), T4 Korean + plyo + L-sit dip (advanced bar-dip angles;
+  // L-sit dip is a cross-branch with Holds).
+  { name: 'Bench Dip', branch: 'Push', tier: 'TIER_1', prereqs: [],
+    blurb: 'Bench dip — first vertical pressing bodyweight move.', description: '+5% push-up XP',
+    test: { description: '5 bench dips, hands on a bench behind you, feet on the floor, full ROM (arms to ~90°).', safety: 'Don\'t shrug. Master push-ups first. Keep shoulders down.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Parallel Bar Dip', branch: 'Push', tier: 'TIER_2', prereqs: ['Bench Dip'],
+    blurb: 'Parallel bar dip — the standard vertical press.', description: '+8% push-up XP',
+    test: { description: '5 parallel bar dips, full ROM, lockout at the top.', safety: 'Master bench dip first. Don\'t shrug. Don\'t go past shoulder comfort.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Straight Bar Dip', branch: 'Push', tier: 'TIER_3', prereqs: ['Parallel Bar Dip'],
+    blurb: 'Straight bar dip — wrists in line, harder grip.', description: '+10% push-up XP',
+    test: { description: '5 straight bar dips, wrists neutral, full ROM, lockout at the top.', safety: 'Strong PB dip first. Use chalk if grip is limiting. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Forward Lean Dip', branch: 'Push', tier: 'TIER_3', prereqs: ['Parallel Bar Dip'],
+    blurb: 'Forward-lean dip — chest-forward dip on PBs for chest emphasis.', description: '+10% push-up XP',
+    test: { description: '5 forward-lean parallel bar dips (chest comes forward over the bars as you descend).', safety: 'Strong PB dip first. Stretch pecs + shoulders before testing.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Korean Dip', branch: 'Push', tier: 'TIER_4', prereqs: ['Straight Bar Dip'],
+    blurb: 'Korean dip — deep dip on a straight bar, hands behind the body. Intense shoulder stretch.', description: '+12% push-up XP',
+    test: { description: '5 Korean dips, hands behind the body, deep ROM (below parallel).', safety: 'Strong straight-bar dip + shoulder mobility first. Stretch shoulders thoroughly. Stop if pain.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Plyo Dip', branch: 'Push', tier: 'TIER_4', prereqs: ['Straight Bar Dip'],
+    blurb: 'Plyo dip — explosive dip with hands leaving the bars.', description: '+12% push-up XP',
+    test: { description: '5 plyo parallel bar dips, push up so hands leave the bars momentarily.', safety: 'Strong straight-bar dip first. Spotter nearby. Soft surface.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'L-Sit Dip', branch: 'Push', tier: 'TIER_4', prereqs: ['Korean Dip', '30s L-Sit'],
+    blurb: 'L-sit dip — dip while holding an L-sit. Cross-branch with Holds.', description: '+12% push-up XP',
+    test: { description: '5 L-sit dips (legs straight and parallel to floor throughout the dip, full ROM).', safety: 'Strong Korean dip + 30s L-sit first. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+
+  // Push god-tier — Maltese push-up needs one-arm PU + straddle
+  // planche as prereqs (hardcore cross-branch work).
+  { name: 'Maltese Push-Up', branch: 'Push', tier: 'TIER_6', prereqs: ['One-Arm Push-Up (no knee)', '5s Straddle Planche'],
+    blurb: 'Push god-tier — Maltese push-up on parallettes. Insane shoulder + chest strength.', description: '+25% push-up XP',
+    test: { description: '3 Maltese push-ups on parallettes or rings (arms extended out to the sides at the top, body lowered between them).', safety: 'Strong 1-arm PU + straddle planche first. Work up over months. Spotter nearby. Stop immediately if shoulder/elbow pain.', metric: 'reps', threshold: { reps: 3 } } },
+
   // B. Pull (vertical pulling) — linear chain ending at the peak.
   // Order: Dead Hang → 1 strict PU → 5 PUs → 10 PUs → Weighted PU →
   // Muscle-Up → Pull-up to Waist (explosive) → One-Arm PU.
@@ -307,6 +375,71 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'One-arm bodyweight pull-up — vertical pulling god-tier.', description: '+20% pull-up XP',
     test: { description: '1 one-arm pull-up on each side at bodyweight. Full ROM, no kip. The off-arm can hold a towel on the bar for grip reference but must not pull.', safety: 'Strong explosive pull-ups (waist height) first. Use a spotter. Stop if elbow pain.', metric: 'reps', threshold: { reps: 1, sides: 'each' } } },
 
+  // Pull variants — grip variations, rows, and lever pulls. Two T1
+  // entries (scapular pull-up + inverted row) feed T2 rows + grip
+  // variations. Chin-up opens as a parallel T1 path to the strict
+  // pull-up. T3/T4 add grip, towel, and asymmetric variations;
+  // L-sit pull-up is a cross-branch with Holds. T5/T6 are god-tier
+  // holds and lever rows.
+  { name: 'Scapular Pull-Up', branch: 'Pull', tier: 'TIER_1', prereqs: [],
+    blurb: 'Scapular pull-up — pull the shoulders down without bending the arms. Scapula activation.', description: '+5% pull-up XP',
+    test: { description: '5 scapular pull-ups from a dead hang (depress scapula, don\'t bend elbows).', safety: 'Warm up the shoulders first. Don\'t yank.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Inverted Row', branch: 'Pull', tier: 'TIER_1', prereqs: [],
+    blurb: 'Inverted row (Australian pull-up) — horizontal pull, gateway to pull-ups.', description: '+5% pull-up XP',
+    test: { description: '10 inverted rows, body rigid, chest to bar (or rings), controlled eccentric.', safety: 'Use a low bar + elevated feet. Keep shoulders down.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Bar Pullover', branch: 'Pull', tier: 'TIER_2', prereqs: ['Dead Hang 30s Initiate'],
+    blurb: 'Bar pullover — pull knees-to-bar from a hang. First step to leg raises.', description: '+8% pull-up XP',
+    test: { description: '5 bar pullovers (from dead hang, pull legs up so they pass over the bar, then lower).', safety: 'Master dead hang first. Don\'t kip.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Chin-Up', branch: 'Pull', tier: 'TIER_1', prereqs: ['Dead Hang 30s Initiate'],
+    blurb: 'Chin-up — supinated grip pull-up, easier than strict PU for most.', description: '+5% pull-up XP',
+    test: { description: '5 chin-ups in a row, palms facing you, full ROM.', safety: 'Don\'t kip. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Wide-Grip Inverted Row', branch: 'Pull', tier: 'TIER_2', prereqs: ['Inverted Row'],
+    blurb: 'Wide-grip inverted row — upper-back width.', description: '+8% pull-up XP',
+    test: { description: '10 wide-grip inverted rows (hands wider than shoulders, chest to bar).', safety: 'Same as T1.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Wide-Grip Pull-Up', branch: 'Pull', tier: 'TIER_2', prereqs: ['5 Strict Pull-Ups'],
+    blurb: 'Wide-grip pull-up — lat-width emphasis.', description: '+8% pull-up XP',
+    test: { description: '5 wide-grip pull-ups, hands ~1.5× shoulder-width, full ROM.', safety: 'Don\'t kip. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Close-Grip Pull-Up', branch: 'Pull', tier: 'TIER_2', prereqs: ['5 Strict Pull-Ups'],
+    blurb: 'Close-grip pull-up — biceps + back emphasis.', description: '+8% pull-up XP',
+    test: { description: '5 close-grip pull-ups, hands a few inches apart, full ROM.', safety: 'Don\'t kip. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Neutral-Grip Pull-Up', branch: 'Pull', tier: 'TIER_2', prereqs: ['5 Strict Pull-Ups'],
+    blurb: 'Neutral-grip pull-up — palms facing each other. Shoulder-friendly grip.', description: '+8% pull-up XP',
+    test: { description: '5 neutral-grip pull-ups, full ROM.', safety: 'Don\'t kip. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Burpee Pull-Up', branch: 'Pull', tier: 'TIER_3', prereqs: ['5 Strict Pull-Ups'],
+    blurb: 'Burpee pull-up — burpee under a bar, then a pull-up. Conditioning + pull.', description: '+10% pull-up XP',
+    test: { description: '10 burpee pull-ups in a row (burpee under the bar, jump up and grab the bar, strict pull-up).', safety: 'Master 5 strict PU first. Use a sturdy bar. Soft surface for the burpee.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'One-Arm Inverted Row', branch: 'Pull', tier: 'TIER_3', prereqs: ['Wide-Grip Inverted Row'],
+    blurb: 'One-arm inverted row — single-arm horizontal pull.', description: '+10% pull-up XP',
+    test: { description: '5 one-arm inverted rows on each side. Body rigid, full ROM.', safety: 'Strong wide-grip row first. Use a low bar that allows full ROM.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Archer Pull-Up', branch: 'Pull', tier: 'TIER_3', prereqs: ['10 Pull-Ups in a Row'],
+    blurb: 'Archer pull-up — first step toward one-arm work. One arm bends, the other stays straight.', description: '+10% pull-up XP',
+    test: { description: '5 archer pull-ups on each side (most pulling on one arm, the other extends straight out).', safety: 'Master 10 strict PU first. Don\'t shrug. Spotter nearby.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Towel Pull-Up', branch: 'Pull', tier: 'TIER_3', prereqs: ['10 Pull-Ups in a Row'],
+    blurb: 'Towel pull-up — hang a towel over the bar and grip the ends. Grip + pull.', description: '+10% pull-up XP',
+    test: { description: '5 towel pull-ups (each hand grips one end of a towel draped over the bar), full ROM.', safety: 'Master 10 strict PU first. Use a sturdy towel. Wraps recommended for grip.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Commando Pull-Up', branch: 'Pull', tier: 'TIER_3', prereqs: ['Neutral-Grip Pull-Up'],
+    blurb: 'Commando pull-up — head passes one side, then the other.', description: '+10% pull-up XP',
+    test: { description: '5 commando pull-ups (head passes left side on one rep, right side on the next), full ROM.', safety: 'Strong neutral grip first. Don\'t kip.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Typewriter Pull-Up', branch: 'Pull', tier: 'TIER_4', prereqs: ['Archer Pull-Up'],
+    blurb: 'Typewriter pull-up — pull up, then shift side to side at the top.', description: '+12% pull-up XP',
+    test: { description: '5 typewriter pull-ups (pull up to archer position, shift chest side to side at the top).', safety: 'Strong archer PU first. Don\'t shrug. Spotter.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'L-Sit Pull-Up', branch: 'Pull', tier: 'TIER_4', prereqs: ['10 Pull-Ups in a Row', '30s L-Sit'],
+    blurb: 'L-sit pull-up — pull-up while holding an L-sit. Cross-branch with Holds.', description: '+12% pull-up XP',
+    test: { description: '5 L-sit pull-ups (legs straight and parallel to floor throughout, full ROM).', safety: 'Strong 10 strict PU + 30s L-sit first. Don\'t shrug.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Headbanger Pull-Up', branch: 'Pull', tier: 'TIER_4', prereqs: ['3 Muscle-Ups'],
+    blurb: 'Headbanger — muscle-up followed by aggressive kip swing. Dynamic power.', description: '+12% pull-up XP',
+    test: { description: '5 headbanger pull-ups (muscle-up + swing the body forward and back, controlled).', safety: 'Master muscle-up first. Use a spotter. Don\'t slam the neck into the bar.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Front Lever Row', branch: 'Pull', tier: 'TIER_5', prereqs: ['5s Front Lever'],
+    blurb: 'Front lever row — pull from a front lever position toward the bar.', description: '+15% pull-up XP',
+    test: { description: '5 front lever rows (start in a front lever, pull chest to bar, lower back to lever).', safety: 'Strong front lever first. Don\'t shrug. Use a spotter for first attempts.', metric: 'reps', threshold: { reps: 5 } } },
+  // Pull god-tier — true 10s+ versions of the lever holds.
+  { name: 'Full Front Lever', branch: 'Pull', tier: 'TIER_6', prereqs: ['5s Front Lever'],
+    blurb: 'Pull god-tier — 10s+ full front lever hold.', description: '+25% pull-up XP',
+    test: { description: '10s full front lever hold (body horizontal, arms straight, body and legs together).', safety: 'Master 5s front lever first. Warm up thoroughly. Stop if shoulder/elbow pain.', metric: 'duration', threshold: { duration_sec: 10 } } },
+  { name: 'Full Back Lever', branch: 'Pull', tier: 'TIER_6', prereqs: ['5s Back Lever'],
+    blurb: 'Pull god-tier — 10s+ full back lever hold.', description: '+25% pull-up XP',
+    test: { description: '10s full back lever hold (face-down, body horizontal, arms straight, shoulders externally rotated).', safety: 'Master 5s back lever first. Stretch shoulders thoroughly. Back lever is shoulder-stress-intense.', metric: 'duration', threshold: { duration_sec: 10 } } },
+
   // C. Holds (static) — linear chain. BACK LEVER added (user flagged
   // it missing). Front lever keeps its old threshold (5s god-tier
   // is the existing bar; user noted the 5s front lever is closer
@@ -337,6 +470,83 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'Back lever — the antagonist of the front lever (face-down, open shoulders).', description: '+15% core XP',
     test: { description: '5s back lever hold (face-down, body horizontal, arms straight, shoulders externally rotated).', safety: 'Master straddle L + strict pull-ups first. Stretch shoulders thoroughly. Stop if shoulder/elbow pain — back lever is shoulder-stress-intense.', metric: 'duration', threshold: { duration_sec: 5 } } },
 
+  // Holds variants — anti-rotation, anti-extension, oblique, prone
+  // back, hanging leg, and advanced god-tier holds. Five T1 entries
+  // (side plank, hollow body, dead bug, russian twist, bicycle
+  // crunch, bird dog, reverse crunch, mountain climber — eight T1s
+  // total) seed the variations. T2 ramps volume or angle. T3 is the
+  // first "real" challenge (ab wheel, pike compression, body saw).
+  // T4 windshield wiper. T5 dragon flag. T6 Manna.
+  { name: 'Side Plank', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Side plank — oblique + lateral core stability.', description: '+5% core XP',
+    test: { description: '30s side plank on each side (elbow under shoulder, hips up, body straight).', safety: 'Don\'t sag hips. Don\'t let the shoulder drift forward.', metric: 'duration', threshold: { duration_sec: 30, sides: 'each' } } },
+  { name: 'Hollow Body Hold', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Hollow body hold — supine, lower back pressed to floor. Anti-extension core.', description: '+5% core XP',
+    test: { description: '30s hollow body hold (lying on back, arms + legs raised, lower back pressed to floor).', safety: 'Don\'t let the lower back arch off the floor.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Dead Bug', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Dead bug — anti-extension core from a supine position.', description: '+5% core XP',
+    test: { description: '10 dead bugs on each side (lying on back, opposite arm + leg lower and return).', safety: 'Don\'t let the lower back arch.', metric: 'reps', threshold: { reps: 10, sides: 'each' } } },
+  { name: 'Hanging Knee Raise', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Hanging knee raise — knees to chest from a hang.', description: '+5% core XP',
+    test: { description: '10 hanging knee raises (from a dead hang, bring both knees to chest).', safety: 'Don\'t kip. Active shoulders.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Russian Twist', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Russian twist — seated, rotate side to side. Oblique + anti-rotation.', description: '+5% core XP',
+    test: { description: '20 Russian twists on each side (seated, knees bent, lean back slightly, rotate side to side).', safety: 'Keep the chest up. Don\'t yank the neck.', metric: 'reps', threshold: { reps: 20, sides: 'each' } } },
+  { name: 'Bicycle Crunch', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Bicycle crunch — supine, opposite elbow to knee. Oblique + rectus abdominis.', description: '+5% core XP',
+    test: { description: '30 bicycle crunches on each side (lying on back, opposite elbow to knee).', safety: 'Don\'t yank the neck. Lower back stays on the floor.', metric: 'reps', threshold: { reps: 30, sides: 'each' } } },
+  { name: 'Bird Dog', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Bird dog — opposite arm + leg extend. Anti-rotation, low-back-friendly.', description: '+5% core XP',
+    test: { description: '10 bird dogs on each side (hands + knees on floor, opposite arm + leg extend).', safety: 'Don\'t arch the lower back. Move slowly.', metric: 'reps', threshold: { reps: 10, sides: 'each' } } },
+  { name: 'Reverse Crunch', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Reverse crunch — supine, hips curl up. Lower-ab focus.', description: '+5% core XP',
+    test: { description: '15 reverse crunches (lying on back, knees bent, curl hips up off the floor).', safety: 'Don\'t yank the neck.', metric: 'reps', threshold: { reps: 15 } } },
+  { name: 'Mountain Climber', branch: 'Holds', tier: 'TIER_1', prereqs: [],
+    blurb: 'Mountain climber — plank position, alternating knees to chest.', description: '+5% core XP',
+    test: { description: '30 mountain climbers on each side (plank position, alternate knees to chest).', safety: 'Don\'t bounce the hips. Keep the plank tight.', metric: 'reps', threshold: { reps: 30, sides: 'each' } } },
+  { name: 'Side Plank with Rotation', branch: 'Holds', tier: 'TIER_2', prereqs: ['Side Plank'],
+    blurb: 'Side plank with rotation — reach under and rotate. Anti-rotation core.', description: '+8% core XP',
+    test: { description: '10 side plank rotations on each side (from side plank, reach the top arm under the body, then back up).', safety: 'Master side plank first. Move slowly.', metric: 'reps', threshold: { reps: 10, sides: 'each' } } },
+  { name: 'Hollow Body Rock', branch: 'Holds', tier: 'TIER_2', prereqs: ['Hollow Body Hold'],
+    blurb: 'Hollow body rock — rock forward and back. Gymnastics core control.', description: '+8% core XP',
+    test: { description: '10 hollow body rocks (from hollow body hold, rock forward to a seated V and back).', safety: 'Master hollow body hold first.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Superman Hold', branch: 'Holds', tier: 'TIER_2', prereqs: [],
+    blurb: 'Superman hold — prone, arms + legs raised. Lower-back + glute endurance.', description: '+8% core XP',
+    test: { description: '30s Superman hold (lying face-down, arms + legs raised, glutes squeezed).', safety: 'Don\'t yank the neck.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Arch Body Hold', branch: 'Holds', tier: 'TIER_2', prereqs: ['Superman Hold'],
+    blurb: 'Arch body hold — like a Superman but with hands by the ears, pulling back harder.', description: '+8% core XP',
+    test: { description: '30s arch body hold (face-down, hands by ears, squeeze shoulder blades together + raise).', safety: 'Master Superman hold first.', metric: 'duration', threshold: { duration_sec: 30 } } },
+  { name: 'Hanging Leg Raise', branch: 'Holds', tier: 'TIER_2', prereqs: ['Hanging Knee Raise'],
+    blurb: 'Hanging leg raise — legs to horizontal (L-position).', description: '+8% core XP',
+    test: { description: '10 hanging leg raises (legs straight, raise to horizontal).', safety: 'Master hanging knee raise first. Don\'t kip.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'V-Up', branch: 'Holds', tier: 'TIER_2', prereqs: ['Reverse Crunch'],
+    blurb: 'V-up — supine, body comes to a V. Full anterior core.', description: '+8% core XP',
+    test: { description: '10 V-ups (lying on back, simultaneously raise the upper body + legs to a V position).', safety: 'Master reverse crunch first. Keep the legs straight.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Lying Leg Raise', branch: 'Holds', tier: 'TIER_2', prereqs: [],
+    blurb: 'Lying leg raise — supine, legs raise to vertical. Lower-ab focus.', description: '+8% core XP',
+    test: { description: '15 lying leg raises (lying on back, raise both legs to vertical, lower slowly).', safety: 'Don\'t arch the lower back. Lower legs under control.', metric: 'reps', threshold: { reps: 15 } } },
+  { name: 'Plank Shoulder Tap', branch: 'Holds', tier: 'TIER_2', prereqs: ['60s Plank'],
+    blurb: 'Plank shoulder tap — plank position, tap the opposite shoulder. Anti-rotation.', description: '+8% core XP',
+    test: { description: '20 plank shoulder taps total (plank position, alternate tapping each shoulder with the opposite hand).', safety: 'Don\'t rock the hips. Move slowly.', metric: 'reps', threshold: { reps: 20 } } },
+  { name: 'Ab Wheel Rollout', branch: 'Holds', tier: 'TIER_3', prereqs: ['60s Plank'],
+    blurb: 'Ab wheel rollout — anti-extension core at the limit of ROM.', description: '+10% core XP',
+    test: { description: '10 ab wheel rollouts (knees on the floor, roll out to full extension, return).', safety: 'Master 60s plank first. Don\'t let the hips sag. Use a pad under the knees.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Pike Compression', branch: 'Holds', tier: 'TIER_3', prereqs: ['30s L-Sit'],
+    blurb: 'Pike compression — L-sit with legs together and compressed toward the chest. Compression strength.', description: '+10% core XP',
+    test: { description: '10s pike compression (hands on floor or parallettes, legs straight and pressed toward the chest, hips high).', safety: 'Master 30s L-sit first. Stretch hamstrings.', metric: 'duration', threshold: { duration_sec: 10 } } },
+  { name: 'Body Saw', branch: 'Holds', tier: 'TIER_3', prereqs: ['60s Plank'],
+    blurb: 'Body saw — plank on sliders, push forward and back. Anti-extension core.', description: '+10% core XP',
+    test: { description: '10 body saws (forearm plank on sliders, push the body forward and back).', safety: 'Master 60s plank first. Use sliders on a slick surface. Don\'t let the hips sag.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Windshield Wiper', branch: 'Holds', tier: 'TIER_4', prereqs: ['Hanging Leg Raise'],
+    blurb: 'Windshield wiper — at the top of a hanging leg raise, swing legs side to side. Oblique + core.', description: '+12% core XP',
+    test: { description: '5 windshield wipers on each side (from hanging leg raise top, swing legs to one side, then to the other).', safety: 'Master hanging leg raise first. Active shoulders. Move slowly.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Dragon Flag', branch: 'Holds', tier: 'TIER_5', prereqs: ['60s Plank', '30s V-Sit'],
+    blurb: 'Dragon flag — full body raises from a supine position. Holds god-tier.', description: '+20% core XP',
+    test: { description: '5 dragon flags (lying on back, grab a pole or bench behind your head, raise the entire body to a vertical position, lower back down under control).', safety: 'Master 60s plank + 30s V-sit first. Strong grip. Use a sturdy anchor.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Manna', branch: 'Holds', tier: 'TIER_6', prereqs: ['30s V-Sit'],
+    blurb: 'Holds god-tier — Manna (legs fully past parallel, hanging from bars). Insane flexibility + strength.', description: '+25% core XP',
+    test: { description: '5s Manna hold (legs fully past parallel toward the head, hanging from parallel bars or rings).', safety: 'Master 30s V-sit + significant shoulder mobility. Train for months. Stop if pain.', metric: 'duration', threshold: { duration_sec: 5 } } },
+
   // D. Rings — Rings Rows and Ring Dips both unlock from Rings Support
   // (parallel siblings, no prereq between them). 5 Ring Muscle-Ups
   // then requires BOTH (weaving merge point) before Iron Cross.
@@ -362,6 +572,37 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'Rings god-tier — the iron cross is the most iconic rings skill of all.', description: '+25% rings XP',
     test: { description: '3s iron cross support (arms straight out to the sides, body horizontal).', safety: 'Master rings support + dips + muscle-ups first. Work up to this over months. Spotter + band for safety. Stop immediately if shoulder/elbow pain.', metric: 'duration', threshold: { duration_sec: 3 } } },
 
+  // Rings variants — RTO progression, bicep work, and god-tier crosses.
+  // RTO (rings turned out) progression is the classic rings-specific
+  // path: support → RTO 45 → RTO 90, each progressively harder on
+  // the biceps. Ring bicep curl + face pull build auxiliary strength.
+  // Pelican curl is the first straight-arm-strength skill. The two
+  // T6 entries are god-tier crosses requiring planche or front lever.
+  { name: 'RTO 45 Hold', branch: 'Rings', tier: 'TIER_2', prereqs: ['Rings Support 5s'],
+    blurb: 'RTO 45° — rings turned out 45°. Shoulder + bicep stability.', description: '+8% rings XP',
+    test: { description: '10s rings turned-out 45° hold (top of support, rings rotated 45° outward).', safety: 'Master support first. Don\'t shrug. Stretch biceps between sets.', metric: 'duration', threshold: { duration_sec: 10 } } },
+  { name: 'Ring Face Pull', branch: 'Rings', tier: 'TIER_2', prereqs: ['Rings Support 5s'],
+    blurb: 'Ring face pull — high rows to the face. Rear delt + upper back.', description: '+8% rings XP',
+    test: { description: '10 ring face pulls (pull rings to the face, elbows high).', safety: 'Master support first.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Ring Bicep Curl', branch: 'Rings', tier: 'TIER_2', prereqs: ['Rings Support 5s'],
+    blurb: 'Ring bicep curl — supinated curl on rings. Bicep strength.', description: '+8% rings XP',
+    test: { description: '10 ring bicep curls (supinated grip, curl up to the forehead).', safety: 'Master support first. Stop if elbow pain.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Full RTO 90', branch: 'Rings', tier: 'TIER_3', prereqs: ['RTO 45 Hold'],
+    blurb: 'Full RTO 90° — rings perpendicular to the body. Bicep torture.', description: '+10% rings XP',
+    test: { description: '5s full RTO 90° hold (rings fully turned out, perpendicular to body).', safety: 'Master RTO 45 first. Stretch biceps thoroughly. Stop if elbow pain.', metric: 'duration', threshold: { duration_sec: 5 } } },
+  { name: 'Pelican Curl', branch: 'Rings', tier: 'TIER_3', prereqs: ['5 Ring Rows'],
+    blurb: 'Pelican curl — straight-arm lower from inverted to biceps curl. Bicep + shoulder.', description: '+10% rings XP',
+    test: { description: '5 pelican curls (start in an inverted hang, lower to a bicep curl position, return).', safety: 'Master ring rows first. Stretch shoulders thoroughly. Stop if elbow pain.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Ice Cream Maker', branch: 'Rings', tier: 'TIER_5', prereqs: ['5 Ring Muscle-Ups', '5s Straddle Planche'],
+    blurb: 'Ice cream maker — back lever to front lever on rings. Insane pulling + core.', description: '+15% rings XP',
+    test: { description: '5 ice cream makers (start in back lever, transition smoothly through a flag position to front lever, repeat).', safety: 'Strong muscle-ups + straddle planche first. Warm up thoroughly. Spotter nearby. Stop if shoulder/elbow pain.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Maltese Cross', branch: 'Rings', tier: 'TIER_6', prereqs: ['3s Iron Cross', '5s Straddle Planche'],
+    blurb: 'Rings god-tier — Maltese cross (iron cross with arms in front of the body).', description: '+25% rings XP',
+    test: { description: '3s Maltese cross (arms extended in front of the body, rings wide apart, body horizontal).', safety: 'Strong iron cross + straddle planche first. Train for months. Spotter + band. Stop if shoulder/elbow pain.', metric: 'duration', threshold: { duration_sec: 3 } } },
+  { name: 'Victorian Cross', branch: 'Rings', tier: 'TIER_6', prereqs: ['3s Iron Cross', '5s Front Lever'],
+    blurb: 'Rings god-tier — Victorian (iron cross with horizontal body, like a front lever).', description: '+25% rings XP',
+    test: { description: '3s Victorian cross (iron cross arms + horizontal body from a front lever).', safety: 'Strong iron cross + front lever first. Train for months. Spotter + band. Stop if shoulder/elbow pain.', metric: 'duration', threshold: { duration_sec: 3 } } },
+
   // E. Handstand — linear chain
   { name: '5 Pike Push-Ups Initiate', branch: 'Handstand', tier: 'TIER_1', prereqs: [],
     blurb: 'Pressing with a downward-dog pike — gateway to handstand work.', description: '+5% handstand XP',
@@ -385,6 +626,38 @@ const PHANTOM_SKILLS: Spec[] = [
     blurb: 'Vertical pressing god-tier — strict free HSPU hold.', description: '+20% handstand XP',
     test: { description: '1 strict freestanding handstand push-up, held 5 seconds at the top of the rep.', safety: 'Master free HSPUs first. Bail by rolling out. Spotter nearby.', metric: 'duration', threshold: { duration_sec: 5 } } },
 
+  // Handstand variants — arm balance, press work, and god-tier balances.
+  // Crow pose is the arm-balance gateway skill (T1, easier than pike
+  // PU for many beginners since it loads the wrist less). Elbow
+  // lever is the next compression step. Press to handstand is the
+  // first controlled handstand entry. Deficit / Japanese / Tiger
+  // bend are god-tier (T5). 90-degree HSPU + One-arm handstand are
+  // the two T6 god-tier entries.
+  { name: 'Crow Pose', branch: 'Handstand', tier: 'TIER_1', prereqs: [],
+    blurb: 'Crow pose — knees on the back of the upper arms, lean forward and balance. Arm-balance gateway.', description: '+5% handstand XP',
+    test: { description: '10s crow pose (hands on floor, knees resting on the back of the upper arms, feet off the floor).', safety: 'Use a pad or soft surface. Lean forward — don\'t lock the elbows.', metric: 'duration', threshold: { duration_sec: 10 } } },
+  { name: 'Elbow Lever', branch: 'Handstand', tier: 'TIER_2', prereqs: ['Crow Pose'],
+    blurb: 'Elbow lever — body horizontal, balanced on the elbows. Compression + balance.', description: '+8% handstand XP',
+    test: { description: '5s elbow lever (forearms on the floor, body horizontal, hands clasped, head off the floor).', safety: 'Master crow first. Use a soft surface.', metric: 'duration', threshold: { duration_sec: 5 } } },
+  { name: 'Press to Handstand', branch: 'Handstand', tier: 'TIER_4', prereqs: ['30s Free Handstand'],
+    blurb: 'Press to handstand — straddle or pike, legs come up smoothly without jumping. Pure balance + strength.', description: '+12% handstand XP',
+    test: { description: '3 strict presses to handstand in a row (straddle or pike press, smooth and controlled).', safety: 'Master 30s free HS first. Spotter nearby.', metric: 'reps', threshold: { reps: 3 } } },
+  { name: 'Deficit Handstand Push-Up', branch: 'Handstand', tier: 'TIER_5', prereqs: ['1 Strict Free HSPU 5s'],
+    blurb: 'Deficit HSPU — hands on parallettes, deeper ROM. Handstand god-tier.', description: '+20% handstand XP',
+    test: { description: '5 deficit HSPUs (hands on parallettes, lower head below the parallettes, press back up).', safety: 'Master strict free HSPU first. Use stable parallettes. Spotter.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Japanese Handstand', branch: 'Handstand', tier: 'TIER_5', prereqs: ['30s Free Handstand'],
+    blurb: 'Japanese handstand — back to wall, hold a single-arm handstand position with the other arm at the side. Control.', description: '+15% handstand XP',
+    test: { description: '10s Japanese handstand on each side (back to wall, one hand on the floor, the other arm extended to the side).', safety: 'Master 30s free HS first. Use a wall. Spotter nearby.', metric: 'duration', threshold: { duration_sec: 10, sides: 'each' } } },
+  { name: 'Tiger Bend Handstand Push-Up', branch: 'Handstand', tier: 'TIER_5', prereqs: ['5 Free HSPUs'],
+    blurb: 'Tiger bend HSPU — bend the elbows and lower the head all the way to the floor, then push back up. Handstand god-tier.', description: '+15% handstand XP',
+    test: { description: '5 tiger bend HSPUs in a row.', safety: 'Strong free HSPUs first. Use a soft surface. Spotter.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: '90-Degree Handstand Push-Up', branch: 'Handstand', tier: 'TIER_6', prereqs: ['Deficit Handstand Push-Up'],
+    blurb: '90-degree HSPU — push all the way through to a planche-like position at the bottom. Handstand god-tier.', description: '+25% handstand XP',
+    test: { description: '3 90-degree HSPUs in a row (lower all the way through to where the body is horizontal at the bottom, then press back up to handstand).', safety: 'Master deficit HSPU first. Strong horizontal pressing required. Spotter.', metric: 'reps', threshold: { reps: 3 } } },
+  { name: 'One-Arm Handstand', branch: 'Handstand', tier: 'TIER_6', prereqs: ['90-Degree Handstand Push-Up', 'Japanese Handstand'],
+    blurb: 'Handstand god-tier — one-arm freestanding handstand. The ultimate balance.', description: '+25% handstand XP',
+    test: { description: '5s one-arm freestanding handstand on each side.', safety: 'Master 90-degree HSPU + Japanese HS first. Strong single-arm balance. Spotter nearby. Bail safely.', metric: 'duration', threshold: { duration_sec: 5, sides: 'each' } } },
+
   // F. Planche — linear chain
   { name: 'Plank Foundation 30s', branch: 'Planche', tier: 'TIER_1', prereqs: [],
     blurb: 'Plank — the foundation for all planche work.', description: '+5% planche XP',
@@ -407,6 +680,27 @@ const PHANTOM_SKILLS: Spec[] = [
   { name: '5s Full Planche', branch: 'Planche', tier: 'TIER_6', prereqs: ['5s Straddle Planche'],
     blurb: 'Planche god-tier — the king of horizontal pushing.', description: '+25% planche XP',
     test: { description: '5s full planche (body horizontal, arms straight, legs together).', safety: 'Master straddle first. This is the hardest move in calisthenics — train for months. Spotter nearby. Stop if pain.', metric: 'duration', threshold: { duration_sec: 5 } } },
+
+  // Planche variants — push-up progressions through the planche
+  // shapes. Ring fly is the planche-lean-equivalent on rings (T2).
+  // T3 tuck planche push-up. T5 straddle planche push-up. T6 full
+  // planche push-up + straight-arm press (the latter is a cross-
+  // branch with Handstand).
+  { name: 'Ring Fly', branch: 'Planche', tier: 'TIER_2', prereqs: ['Plank Foundation 30s'],
+    blurb: 'Ring fly — planche lean on rings. Shoulder + chest.', description: '+8% planche XP',
+    test: { description: '5 ring flyes (start in a planche lean, lower the body between the rings, return).', safety: 'Master plank first. Stretch shoulders.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Tuck Planche Push-Up', branch: 'Planche', tier: 'TIER_3', prereqs: ['5s Tuck Planche'],
+    blurb: 'Tuck planche push-up — push-up while holding a tuck planche.', description: '+10% planche XP',
+    test: { description: '5 tuck planche push-ups (push up and down while maintaining a tuck planche).', safety: 'Master 5s tuck planche first. Stretch shoulders. Stop if pain.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Straddle Planche Push-Up', branch: 'Planche', tier: 'TIER_5', prereqs: ['5s Straddle Planche', 'Tuck Planche Push-Up'],
+    blurb: 'Straddle planche push-up — push-up while holding a straddle planche. Planche god-tier.', description: '+15% planche XP',
+    test: { description: '3 straddle planche push-ups.', safety: 'Master 5s straddle planche + tuck PP first. Stretch shoulders. Stop if pain.', metric: 'reps', threshold: { reps: 3 } } },
+  { name: 'Full Planche Push-Up', branch: 'Planche', tier: 'TIER_6', prereqs: ['5s Full Planche', 'Straddle Planche Push-Up'],
+    blurb: 'Full planche push-up — push-up while holding a full planche. The planche god-tier.', description: '+25% planche XP',
+    test: { description: '3 full planche push-ups in a row.', safety: 'Master 5s full planche + straddle PP first. This is the hardest push-up in the world. Train for months. Spotter.', metric: 'reps', threshold: { reps: 3 } } },
+  { name: 'Straight-Arm Press', branch: 'Planche', tier: 'TIER_6', prereqs: ['5s Full Planche', '10s Free Handstand'],
+    blurb: 'Planche god-tier — straight-arm press from a handstand down to a planche. Cross-branch with Handstand.', description: '+25% planche XP',
+    test: { description: '3 straight-arm presses in a row (from a handstand, lower under control to a planche, return).', safety: 'Master 5s full planche + 10s free HS first. Train for months. Spotter nearby.', metric: 'reps', threshold: { reps: 3 } } },
 
   // G. Legs (NEW — calitree has a dedicated Legs domain. We add it as
   // a 7th PHANTOM branch so bodyweight leg progressions sit alongside
@@ -432,6 +726,92 @@ const PHANTOM_SKILLS: Spec[] = [
   { name: 'Shrimp → Pistol Progression', branch: 'Legs', tier: 'TIER_5', prereqs: ['Shrimp Squat', 'Free Pistol Squat'],
     blurb: 'Legs god-tier — combining shrimp squat + pistol squat strength.', description: '+20% squat XP',
     test: { description: '5 shrimp squats followed immediately by 5 pistols, on each side. No rest between forms.', safety: 'Both prereqs mastered. Warm up thoroughly. Use a soft surface.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+
+  // Legs variants — single-leg, jump, hamstring, calf, lunge variants.
+  // The body of the branch (pistol/shrimp/dragon/shrimp→pistol) is the
+  // single-leg strength core; these variants add width (skater, archer,
+  // sissy, lateral), posterior-chain (RDL, leg curl, Nordic), glute
+  // accessories (bridge, hip thrust, donkey kick), step variants, calf
+  // + shin (tibialis), and plyo (jump squat family). Depth jump is the
+  // god-tier.
+  { name: 'Hindu Squat', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Hindu squat — heels-up squat with arms swinging forward. Mobility + squat volume.', description: '+5% squat XP',
+    test: { description: '20 Hindu squats in a row (heels together, rise onto toes as you descend, arms swing forward, stand up on the way up).', safety: 'Knees track over toes. Warm up first.', metric: 'reps', threshold: { reps: 20 } } },
+  { name: 'Donkey Kick', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Donkey kick — hands + knees on floor, kick one leg back. Glute activation.', description: '+5% squat XP',
+    test: { description: '10 donkey kicks on each side (hands + one knee on floor, kick the other leg back and up).', safety: 'Don\'t arch the lower back. Squeeze the glute at the top.', metric: 'reps', threshold: { reps: 10, sides: 'each' } } },
+  { name: 'Wall Sit', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Wall sit — back against the wall, knees at 90°. Quad endurance.', description: '+5% squat XP',
+    test: { description: '60s wall sit, back against the wall, knees at 90°, thighs parallel to the floor.', safety: 'Don\'t slide down. Keep knees over ankles.', metric: 'duration', threshold: { duration_sec: 60 } } },
+  { name: 'Forward Lunge', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Forward lunge — the classic. Step forward, drop the back knee.', description: '+5% squat XP',
+    test: { description: '10 forward lunges total (5 each side). Step forward, drop the back knee to just above the floor, return to standing.', safety: 'Front knee tracks over toes. Don\'t slam the back knee.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Glute Bridge', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Glute bridge — supine hip thrust. Glute activation.', description: '+5% squat XP',
+    test: { description: '10 glute bridges (lying on back, feet flat, hips rise to full extension, squeeze glutes at the top).', safety: 'Don\'t hyperextend the lower back.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Step-Up', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Step-up — first unilateral leg-strength move on a box.', description: '+5% squat XP',
+    test: { description: '10 step-ups total (5 each side), onto a knee-height box or bench.', safety: 'Drive through the heel. Don\'t push off the back leg.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Single-Leg Calf Raise', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Single-leg calf raise — bodyweight, on a step. Calf strength.', description: '+5% squat XP',
+    test: { description: '15 single-leg calf raises on each side, full ROM (heel below the step, rise to full extension).', safety: 'Use a wall for balance. Don\'t bounce.', metric: 'reps', threshold: { reps: 15, sides: 'each' } } },
+  { name: 'Tibialis Raise', branch: 'Legs', tier: 'TIER_1', prereqs: [],
+    blurb: 'Tibialis raise — back against a wall, toes pull up. Shin strength, runner\'s-knee prevention.', description: '+5% squat XP',
+    test: { description: '15 tibialis raises on each side (back to wall, lift the toes toward the shin).', safety: 'Slow controlled reps. Don\'t bounce.', metric: 'reps', threshold: { reps: 15, sides: 'each' } } },
+  { name: 'Sissy Squat', branch: 'Legs', tier: 'TIER_2', prereqs: ['Squat to Chair'],
+    blurb: 'Sissy squat — knees travel forward, lean back. Quad stretch + strength.', description: '+8% squat XP',
+    test: { description: '5 sissy squats (rise onto toes, knees travel forward, lean back, return to standing).', safety: 'Master squat first. Use a wall or pole for balance if needed. Stretch quads before testing.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Reverse Lunge', branch: 'Legs', tier: 'TIER_2', prereqs: ['Forward Lunge'],
+    blurb: 'Reverse lunge — step backward instead. Knee-friendly.', description: '+8% squat XP',
+    test: { description: '10 reverse lunges total (5 each side).', safety: 'Master forward lunge first.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Curtsy Lunge', branch: 'Legs', tier: 'TIER_2', prereqs: ['Forward Lunge'],
+    blurb: 'Curtsy lunge — cross behind. Glute emphasis.', description: '+8% squat XP',
+    test: { description: '10 curtsy lunges total (5 each side).', safety: 'Master forward lunge first.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Lateral Lunge', branch: 'Legs', tier: 'TIER_2', prereqs: ['Forward Lunge'],
+    blurb: 'Lateral lunge — step out to the side. Inner thigh + adductor.', description: '+8% squat XP',
+    test: { description: '10 lateral lunges total (5 each side).', safety: 'Master forward lunge first. Keep the stationary leg straight.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Hip Thrust', branch: 'Legs', tier: 'TIER_2', prereqs: ['Glute Bridge'],
+    blurb: 'Hip thrust — back on a bench, hips rise. Glute strength.', description: '+8% squat XP',
+    test: { description: '10 hip thrusts, bodyweight, upper back on a bench, hips rise to full extension.', safety: 'Master glute bridge first. Tuck pelvis at the top.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Step-Up with Knee Drive', branch: 'Legs', tier: 'TIER_2', prereqs: ['Step-Up'],
+    blurb: 'Step-up with knee drive — at the top, drive the knee up. Balance + power.', description: '+8% squat XP',
+    test: { description: '10 step-up with knee drive total (5 each side).', safety: 'Master step-up first. Don\'t lose balance.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Jump Squat', branch: 'Legs', tier: 'TIER_2', prereqs: ['Squat to Chair'],
+    blurb: 'Jump squat — squat then jump explosively. Plyo legs.', description: '+8% squat XP',
+    test: { description: '10 jump squats in a row. Land soft, knees bent.', safety: 'Master squat first. Soft surface. Land with bent knees.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Frog Jump', branch: 'Legs', tier: 'TIER_2', prereqs: ['Jump Squat'],
+    blurb: 'Frog jump — wide stance, jump forward. Power + mobility.', description: '+8% squat XP',
+    test: { description: '5 frog jumps for distance. Wide stance, jump forward, land in a wide squat.', safety: 'Master jump squat first. Soft surface. Warm up hips.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Skater Squat', branch: 'Legs', tier: 'TIER_3', prereqs: ['Free Pistol Squat'],
+    blurb: 'Skater squat — cross-behind single-leg squat. Similar to a rear-foot-elevated split squat but reversed.', description: '+10% squat XP',
+    test: { description: '5 skater squats on each side (cross one leg behind the other, squat down on the front leg, touch the back knee to the ground).', safety: 'Master free pistol first. Use a soft surface. Have a wall for balance.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Archer Squat', branch: 'Legs', tier: 'TIER_3', prereqs: ['Assisted Pistol Squat'],
+    blurb: 'Archer squat — like an archer push-up but for legs. Most weight on one leg, the other extends.', description: '+10% squat XP',
+    test: { description: '5 archer squats on each side (most weight on one leg, the other extends out for balance, full depth).', safety: 'Master assisted pistol first. Have a wall for balance.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Sliding Leg Curl', branch: 'Legs', tier: 'TIER_3', prereqs: ['Bulgarian Split Squat'],
+    blurb: 'Sliding leg curl — lie on back, slide heels out and in on a slippery surface. Hamstring + glute.', description: '+10% squat XP',
+    test: { description: '10 sliding leg curls (lying on back, slide heels out and back, hips stay elevated).', safety: 'Use a slick surface + socks or sliders. Master Bulgarian first.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Single-Leg Romanian Deadlift', branch: 'Legs', tier: 'TIER_3', prereqs: ['Bulgarian Split Squat'],
+    blurb: 'Single-leg RDL — hinge on one leg. Hamstring + balance.', description: '+10% squat XP',
+    test: { description: '5 single-leg RDLs on each side, bodyweight. Hinge at the hips, back leg rises as torso lowers.', safety: 'Master Bulgarian split squat first. Use a wall for balance if needed.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Deficit Step-Down', branch: 'Legs', tier: 'TIER_3', prereqs: ['Step-Up'],
+    blurb: 'Deficit step-down — step off a box under control. Eccentric single-leg strength.', description: '+10% squat XP',
+    test: { description: '5 deficit step-downs on each side (start standing on a box, slowly lower one foot to the floor below, return to standing).', safety: 'Master step-up first. Use a stable box. Soft surface below.', metric: 'reps', threshold: { reps: 5, sides: 'each' } } },
+  { name: 'Box Jump', branch: 'Legs', tier: 'TIER_3', prereqs: ['Jump Squat'],
+    blurb: 'Box jump — squat then jump onto a box. Pure lower-body power.', description: '+10% squat XP',
+    test: { description: '5 box jumps onto a knee-height box. Land soft, hips back.', safety: 'Master jump squat first. Stable box. Soft surface.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Lunge Jump', branch: 'Legs', tier: 'TIER_3', prereqs: ['Forward Lunge'],
+    blurb: 'Lunge jump — jump and switch legs in the air. Plyo lunge.', description: '+10% squat XP',
+    test: { description: '10 lunge jumps (5 each side, switching legs in the air).', safety: 'Master forward lunge first. Soft surface. Land with bent knees.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Skater Bound', branch: 'Legs', tier: 'TIER_3', prereqs: ['Skater Squat'],
+    blurb: 'Skater bound — lateral jump-and-stick. Power + balance.', description: '+10% squat XP',
+    test: { description: '10 skater bounds total (5 each side, lateral jump and stick the landing).', safety: 'Master skater squat first. Soft surface. Warm up ankles.', metric: 'reps', threshold: { reps: 10 } } },
+  { name: 'Nordic Hamstring Curl', branch: 'Legs', tier: 'TIER_4', prereqs: ['Bulgarian Split Squat'],
+    blurb: 'Nordic hamstring curl — eccentric hamstring strength. Knee-injury-prevention classic.', description: '+12% squat XP',
+    test: { description: '5 Nordic hamstring curls (knees anchored, lower the body forward slowly under hamstring control, push back up with the hands if needed).', safety: 'Strong Bulgarian split squat first. Warm up thoroughly. Use a pad under the knees.', metric: 'reps', threshold: { reps: 5 } } },
+  { name: 'Depth Jump', branch: 'Legs', tier: 'TIER_5', prereqs: ['Box Jump'],
+    blurb: 'Depth jump — drop from a box, immediately jump. Reactive strength god-tier.', description: '+15% squat XP',
+    test: { description: '5 depth jumps (drop from a 12-18" box, immediately max vertical jump upon landing).', safety: 'Master box jump first. Use a softer landing surface. Coach recommended.', metric: 'reps', threshold: { reps: 5 } } },
 ];
 
 // ---- 3. SCOUT (endurance) — 20 skills ----
