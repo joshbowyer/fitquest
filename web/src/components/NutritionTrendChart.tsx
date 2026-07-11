@@ -177,6 +177,7 @@ export function NutritionTrendChart({ system, height = 90 }: Props) {
                 showAxis={idx === DISPLAY_ORDER.length - 1}
                 height={height}
                 gridColor={colors.grid}
+                axisText={colors.axisText}
                 tooltipBg={colors.tooltipBg}
                 tooltipBorder={colors.tooltipBorder}
                 formatTick={formatTick}
@@ -208,6 +209,7 @@ function MetricRow({
   showAxis,
   height,
   gridColor,
+  axisText,
   tooltipBg,
   tooltipBorder,
   formatTick,
@@ -220,6 +222,7 @@ function MetricRow({
   showAxis: boolean;
   height: number;
   gridColor: string;
+  axisText: string;
   tooltipBg: string;
   tooltipBorder: string;
   formatTick: (ts: number) => string;
@@ -265,10 +268,27 @@ function MetricRow({
               domain={['dataMin', 'dataMax']}
               tickFormatter={formatTick}
               stroke={gridColor}
-              tick={{ fontSize: 9, fontFamily: 'monospace' }}
+              tick={{ fontSize: 9, fontFamily: 'monospace', fill: axisText }}
               interval="preserveStartEnd"
               minTickGap={20}
               hide={!showAxis}
+            />
+            {/* Y-axis with unit suffix on each tick so the user can
+                read the scale without hovering — e.g. "40 oz", "60
+                oz" on the water chart. width bumped from 32 → 40 to
+                fit the unit text without clipping. tickCount=4 keeps
+                it from getting too cluttered at narrow viewports.
+                tick fill uses axisText (--ink-300 → high-contrast
+                near-white in dark mode, near-black in light mode via
+                the existing CSS var) so the scale labels are always
+                legible on either theme. */}
+            <YAxis
+              stroke={gridColor}
+              tick={{ fontSize: 9, fontFamily: 'monospace', fill: axisText }}
+              width={40}
+              domain={[0, 'auto']}
+              tickCount={4}
+              tickFormatter={(v) => `${v} ${unit}`}
             />
             <Tooltip
               contentStyle={{
