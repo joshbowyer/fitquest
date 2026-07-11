@@ -204,19 +204,20 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement;
-      // Only exclude button-taps when this is the FIRST touch of a
-      // gesture — a second (or third) finger landing on one of the
-      // densely-packed skill circles is overwhelmingly a pinch, not
-      // an attempt to tap that specific node. Excluding it here
-      // used to silently drop that finger from pointersRef entirely,
-      // so pointersRef.size never reached 2 and pinch-zoom could
-      // never trigger whenever either finger happened to start over
-      // a node — which, given how densely nodes are packed, was
-      // most of the time. Only the very first pointer of a gesture
-      // gets the tap/click carve-out; anything after that is always
-      // tracked.
-      if (pointersRef.current.size === 0 && target.closest('button')) return;
+      // Deliberately NOT excluding button targets here (an earlier
+      // version bailed out entirely whenever the touch started on a
+      // SkillNode button). Since the skill circles fill almost the
+      // entire branches region, that bail meant a swipe starting
+      // anywhere on the node grid never even set up drag tracking —
+      // panning only worked from empty space below the last row.
+      // Tap-vs-drag is ALREADY correctly decided by DRAG_THRESHOLD
+      // in onPointerMove (only actually moves scrollLeft/scrollTop
+      // once the finger has traveled past 5px) — a genuine tap
+      // never moves that far, so the button's native onClick still
+      // fires normally; we don't call preventDefault anywhere in
+      // this handler, so nothing here interferes with it. Always
+      // tracking the pointer, regardless of what it started on, is
+      // both simpler and correct.
       // No setPointerCapture — WebView often drops the 2nd pointer when capture is active.
       pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -300,20 +301,28 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
         const t0 = e.touches[0];
         const t1 = e.touches[1];
         const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+        // rawScale is a TOTAL ratio relative to the gesture's FIXED
+        // start distance (lastPinchDistRef never changes during a
+        // gesture — only touchstart sets it). Damping softens how
+        // much of that deviation-from-1.0 actually applies.
         const rawScale = dist / lastPinchDistRef.current;
-        // Damping: applying the raw finger-distance ratio 1:1 to
-        // zoom meant a small, fast pinch motion (very common —
-        // fingers naturally move quickly at gesture start) blew
-        // straight through the entire zoom range in one frame, so
-        // the user couldn't settle on any particular level.
-        // PINCH_SENSITIVITY < 1 softens the effective rate: only
-        // ~45% of the raw distance-ratio's deviation from 1.0
-        // actually gets applied, so the same finger movement now
-        // needs roughly 2x the physical pinch distance to reach
-        // the same zoom change — giving much finer, stoppable
-        // control without capping the eventual reachable range
-        // (MIN_ZOOM/MAX_ZOOM clamp still applies as before).
         const scale = 1 + (rawScale - 1) * PINCH_SENSITIVITY;
+        // CRITICAL: always multiply against the FIXED gesture-start
+        // zoom (lastPinchZoomRef), never against the previous
+        // frame's already-computed target. The prior version
+        // reassigned lastPinchZoomRef.current = targetZoom on every
+        // touchmove — since `scale` is already a cumulative ratio
+        // from the gesture start (not a per-frame delta), that
+        // caused every frame to re-multiply an already-cumulative
+        // ratio on top of an already-scaled result: pure
+        // exponential compounding. More touchmove frames firing
+        // (i.e. a smoother/faster physical pinch) made it BLOW UP
+        // faster, which is exactly the "goes from 0 to 100 in an
+        // instant" symptom — no amount of per-frame damping alone
+        // could fix a structurally-compounding calculation. Now
+        // every frame computes fresh from the same fixed reference,
+        // so the result only ever depends on total finger travel
+        // since gesture start, never on how many frames fired.
         const targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, lastPinchZoomRef.current * scale));
 
         const midX = (t0.clientX + t1.clientX) / 2;
@@ -326,7 +335,6 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
         const newTop = cy * ratio - (midY - rect.top);
         pendingScrollRef.current = { left: newLeft, top: newTop };
         setZoom(targetZoom);
-        lastPinchZoomRef.current = targetZoom;
         e.preventDefault();
       }
     };
