@@ -246,21 +246,29 @@ function MetricRow({
               strokeDasharray="2 4"
               vertical={false}
             />
-            {showAxis && (
-              <XAxis
-                dataKey="ts"
-                tickFormatter={formatTick}
-                stroke={gridColor}
-                tick={{ fontSize: 9, fontFamily: 'monospace' }}
-                interval="preserveStartEnd"
-                minTickGap={20}
-              />
-            )}
-            <YAxis
+            {/* Always declare the XAxis with dataKey="ts" so Recharts
+                registers the numeric timestamp domain — even when
+                showAxis is false (the axis ticks/hide itself). Without
+                this, the tooltip's labelFormatter gets called with the
+                row INDEX (as a string) instead of the ms timestamp, and
+                `new Date(Number("3")).toISOString().slice(0,10)` returns
+                "1970-01-01" (unix epoch + 3 seconds = 1970-01-01). This is
+                why 4 of 5 charts showed "1970-01-01" while the carbs
+                chart (the only one rendered with showAxis=true) showed
+                the real date — it was the only one with the XAxis
+                properly registered, so it was the only one passing the
+                actual ms value through to labelFormatter.
+            */}
+            <XAxis
+              dataKey="ts"
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={formatTick}
               stroke={gridColor}
               tick={{ fontSize: 9, fontFamily: 'monospace' }}
-              width={32}
-              domain={[0, 'auto']}
+              interval="preserveStartEnd"
+              minTickGap={20}
+              hide={!showAxis}
             />
             <Tooltip
               contentStyle={{
@@ -269,9 +277,19 @@ function MetricRow({
                 fontFamily: 'monospace',
                 fontSize: 11,
               }}
-              labelFormatter={(ts) =>
-                new Date(Number(ts)).toISOString().slice(0, 10)
-              }
+              labelFormatter={(ts) => {
+                // Recharts passes the active "label" for the hovered
+                // point — which by default is the XAxis dataKey value
+                // for that row. In our data the XAxis dataKey is "ts"
+                // and it's a number (ms since epoch). Number(ts) is a
+                // defensive coercion in case Recharts ever hands us
+                // a string. NaN/Infinity guard returns '—' instead of
+                // the misleading "1970-01-01" that `new Date(NaN).toISOString()`
+                // would otherwise produce.
+                const ms = Number(ts);
+                if (!Number.isFinite(ms)) return '—';
+                return new Date(ms).toISOString().slice(0, 10);
+              }}
               formatter={(value: any) => [`${value} ${unit}`, label]}
             />
             <Line
