@@ -8,7 +8,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
 } from 'recharts';
 import { api } from '@/lib/api';
 import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
@@ -30,58 +29,53 @@ type TrendDay = {
 type MetricKey = 'calories' | 'proteinG' | 'carbG' | 'fatG' | 'waterMl';
 
 // Metric metadata: label, stored unit (null = render as-is, e.g.
-// calories/grams), line color, and which Y axis it plots against.
-// Calories (energy) plot on the LEFT axis. The macros (grams) +
-// water (ml) plot on the RIGHT — same scale as the macros per the
-// v1.0.38 user-feedback round, since water-vs-calories sharing
-// the LEFT axis was making the water line look like a flat line
-// at the bottom of the chart (a 20oz→80oz day is +1800ml of
-// variation but the LEFT axis was being dominated by the
-// calories line's 1500-3000 range, so the water variation was
-// ~5% of the chart height). Water is the dominant right-axis
-// value now (0-3000 vs macros 0-300); macros still show up as
-// a small line near the bottom but the per-day water variation
-// is the new headline.
+// calories/grams), and line color. Water is the only metric with a
+// unit system — converted via convertForDisplay at chart-build time so
+// each metric gets its own natural Y-axis range.
 type MetricMeta = {
   label: string;
   short: string;
   unit: string | null;
   color: string;
-  axis: 'left' | 'right';
 };
 
-// Static part of the metric metadata (label/unit/axis are constant);
+// Static part of the metric metadata (label/unit are constant);
 // the theme-aware `color` is filled in inside NutritionTrendChart.
 const METRICS_STATIC: Record<MetricKey, Omit<MetricMeta, 'color'>> = {
-  calories: { label: 'Calories', short: 'cal', unit: null, axis: 'left' },
-  waterMl:  { label: 'Water',    short: 'ml',  unit: 'ml', axis: 'right' },
-  proteinG: { label: 'Protein',  short: 'g',   unit: null, axis: 'right' },
-  carbG:    { label: 'Carbs',    short: 'g',   unit: null, axis: 'right' },
-  fatG:     { label: 'Fat',      short: 'g',   unit: null, axis: 'right' },
+  calories: { label: 'Calories', short: 'cal', unit: null },
+  waterMl:  { label: 'Water',    short: 'ml',  unit: 'ml' },
+  proteinG: { label: 'Protein',  short: 'g',   unit: null },
+  carbG:    { label: 'Carbs',    short: 'g',   unit: null },
+  fatG:     { label: 'Fat',      short: 'g',   unit: null },
 };
+
+// UI render order. Explicit (not Object.keys-derived) so the visual
+// stacking matches the user-requested sequence: water → calories →
+// protein → fat → carbs. All five keys are present, just ordered.
+const DISPLAY_ORDER: MetricKey[] = ['waterMl', 'calories', 'proteinG', 'fatG', 'carbG'];
 
 const DAY_OPTIONS = [7, 14, 30] as const;
 
 type Props = {
   system: UnitSystem;
-  /** Display height in px. */
+  /** Display height per mini-chart in px. */
   height?: number;
 };
+
+type ChartRow = Record<string, number | string>;
 
 /**
  * NutritionTrendChart — per-day nutrition totals over the last N days.
  *
  * Fetches GET /meals/trend?days=N (per-day rollups of the meal log +
  * WATER_ML measurements, timezone-aware and zero-filled so the x-axis
- * is contiguous). All metrics are shown as toggleable lines (all on by
- * default), mirroring the substance + activity-stream charts. Calories
- * plots on the LEFT Y axis (energy); water + the macros (protein /
- * carbs / fat) plot on the RIGHT — water was moved off the LEFT axis
- * in v1.0.38 because 20oz→80oz day-over-day variation was getting
- * crushed into a flat line at the bottom of the chart by the calories
- * line. Water is converted to the user's unit system for display.
+ * is contiguous). Renders five stacked mini-charts (water / calories /
+ * protein / fat / carbs), each with its own natural Y axis — replacing
+ * the previous single dual-axis chart, where the calorie range was
+ * crushing water day-over-day variation into a flat line. Water is
+ * converted to the user's unit system; calories + macros render as-is.
  */
-export function NutritionTrendChart({ system, height = 220 }: Props) {
+export function NutritionTrendChart({ system, height = 90 }: Props) {
   const colors = useChartColors();
   const METRICS: Record<MetricKey, MetricMeta> = {
     calories: { ...METRICS_STATIC.calories, color: colors.amber },
@@ -90,8 +84,6 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
     carbG:    { ...METRICS_STATIC.carbG,    color: colors.cyan },
     fatG:     { ...METRICS_STATIC.fatG,     color: colors.violet },
   };
-  const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
-  const [active, setActive] = useState<Set<MetricKey>>(new Set(METRIC_KEYS));
   const [days, setDays] = useState<number>(14);
 
   const q = useQuery({
@@ -103,13 +95,11 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
 
   const chart = useMemo(() => {
     const rows = q.data?.days ?? [];
-    const data = rows.map((r) => {
-      const row: Record<string, number | string> = {
+    const data: ChartRow[] = rows.map((r) => {
+      const row: ChartRow = {
         ts: new Date(`${r.day}T00:00:00Z`).getTime(),
-        label: r.day,
-        mealCount: r.mealCount,
       };
-      for (const k of METRIC_KEYS) {
+      for (const k of DISPLAY_ORDER) {
         const meta = METRICS[k];
         const raw = r[k];
         const shown =
@@ -122,23 +112,10 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
     });
     // Any nutrition logged in the window at all?
     const hasData = data.some((d) =>
-      METRIC_KEYS.some((k) => (d[k] as number) > 0),
+      DISPLAY_ORDER.some((k) => (d[k] as number) > 0),
     );
     return { data, hasData };
   }, [q.data, system]);
-
-  const unitLabelFor = (k: MetricKey) => {
-    const meta = METRICS[k];
-    return meta.unit != null ? displayUnit(meta.unit as any, system) : meta.short;
-  };
-
-  const toggle = (k: MetricKey) =>
-    setActive((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
 
   const formatTick = (ts: number) => {
     const d = new Date(ts);
@@ -146,48 +123,25 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
   };
 
   return (
-    <div className="space-y-2">
-      {/* Controls: metric toggles + day-range chips */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
-          {METRIC_KEYS.map((k) => {
-            const meta = METRICS[k];
-            const isOn = active.has(k);
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => toggle(k)}
-                className={classNames(
-                  'px-2 py-0.5 text-[9px] font-mono tracking-widest uppercase border transition-all',
-                  isOn
-                    ? 'border-current'
-                    : 'border-ink-500/30 text-ink-400 hover:text-ink-200',
-                )}
-                style={isOn ? { color: meta.color } : undefined}
-              >
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-1">
-          {DAY_OPTIONS.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => setDays(d)}
-              className={classNames(
-                'px-2 py-0.5 text-[9px] font-mono border transition-colors',
-                d === days
-                  ? 'text-neon-cyan border-neon-cyan/60'
-                  : 'text-ink-400 border-ink-500/30 hover:text-ink-200',
-              )}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
+    <div className="space-y-3">
+      {/* Day-range chips apply to all 5 mini-charts. Each metric has
+          its own chart now, so no per-metric show/hide buttons. */}
+      <div className="flex justify-end gap-1">
+        {DAY_OPTIONS.map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => setDays(d)}
+            className={classNames(
+              'px-2 py-0.5 text-[9px] font-mono border transition-colors',
+              d === days
+                ? 'text-neon-cyan border-neon-cyan/60'
+                : 'text-ink-400 border-ink-500/30 hover:text-ink-200',
+            )}
+          >
+            {d}d
+          </button>
+        ))}
       </div>
 
       {q.isLoading ? (
@@ -205,85 +159,132 @@ export function NutritionTrendChart({ system, height = 220 }: Props) {
           No meals logged in this window. Track food over time to see trends.
         </div>
       ) : (
-        <div style={{ width: '100%', height }}>
-          <ResponsiveContainer>
-            <LineChart
-              data={chart.data}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                stroke={colors.grid}
-                strokeDasharray="2 4"
-                vertical={false}
+        <div className="space-y-3">
+          {DISPLAY_ORDER.map((k, idx) => {
+            const meta = METRICS[k];
+            const unit =
+              meta.unit != null
+                ? displayUnit(meta.unit as any, system)
+                : meta.short;
+            return (
+              <MetricRow
+                key={k}
+                metric={k}
+                data={chart.data}
+                color={meta.color}
+                label={meta.label}
+                unit={unit}
+                showAxis={idx === DISPLAY_ORDER.length - 1}
+                height={height}
+                gridColor={colors.grid}
+                tooltipBg={colors.tooltipBg}
+                tooltipBorder={colors.tooltipBorder}
+                formatTick={formatTick}
               />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * MetricRow — one mini line chart for a single nutrition metric.
+ *
+ * Header shows the metric label (in its theme color) + unit. The
+ * chart below uses its own YAxis (so each metric scales naturally)
+ * and a shared grid. The XAxis date labels are only rendered on the
+ * bottom-most chart in the stack — the others still draw the line +
+ * YAxis so each reads as its own chart, just without redundant date
+ * labels stacked one on top of another.
+ */
+function MetricRow({
+  metric,
+  data,
+  color,
+  label,
+  unit,
+  showAxis,
+  height,
+  gridColor,
+  tooltipBg,
+  tooltipBorder,
+  formatTick,
+}: {
+  metric: MetricKey;
+  data: ChartRow[];
+  color: string;
+  label: string;
+  unit: string;
+  showAxis: boolean;
+  height: number;
+  gridColor: string;
+  tooltipBg: string;
+  tooltipBorder: string;
+  formatTick: (ts: number) => string;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <div
+          className="text-[10px] font-display tracking-widest uppercase"
+          style={{ color }}
+        >
+          {label}
+        </div>
+        <div className="text-[9px] font-mono text-ink-400">{unit}</div>
+      </div>
+      <div style={{ width: '100%', height }}>
+        <ResponsiveContainer>
+          <LineChart
+            data={data}
+            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+          >
+            <CartesianGrid
+              stroke={gridColor}
+              strokeDasharray="2 4"
+              vertical={false}
+            />
+            {showAxis && (
               <XAxis
                 dataKey="ts"
                 tickFormatter={formatTick}
-                stroke={colors.grid}
+                stroke={gridColor}
                 tick={{ fontSize: 9, fontFamily: 'monospace' }}
                 interval="preserveStartEnd"
                 minTickGap={20}
               />
-              {/* Left axis: calories (energy). */}
-              <YAxis
-                yAxisId="left"
-                stroke={colors.grid}
-                tick={{ fontSize: 9, fontFamily: 'monospace' }}
-                width={40}
-                domain={[0, 'auto']}
-              />
-              {/* Right axis: water + macros. Water is the dominant
-                  value (0-3000ml typical range); macros are smaller
-                  (0-300g). They share the right axis per the
-                  v1.0.38 feedback round so the water day-over-day
-                  variation is visible (it was getting flattened by
-                  the calories line when both were on the LEFT). */}
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke={colors.grid}
-                tick={{ fontSize: 9, fontFamily: 'monospace' }}
-                width={32}
-                domain={[0, 'auto']}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: colors.tooltipBg,
-                  border: `1px solid ${colors.tooltipBorder}`,
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                }}
-                labelFormatter={(ts) =>
-                  new Date(Number(ts)).toISOString().slice(0, 10)
-                }
-                formatter={(value: any, _name: string, entry: any) => {
-                  const k = entry?.dataKey as MetricKey;
-                  const unit = k ? unitLabelFor(k) : '';
-                  return [`${value} ${unit}`, METRICS[k]?.label ?? _name];
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 10, fontFamily: 'monospace' }} />
-              {METRIC_KEYS.map((k) => {
-                if (!active.has(k)) return null;
-                const meta = METRICS[k];
-                return (
-                  <Line
-                    key={k}
-                    type="monotone"
-                    dataKey={k}
-                    name={meta.label}
-                    stroke={meta.color}
-                    strokeWidth={1.5}
-                    dot={false}
-                    isAnimationActive={false}
-                    yAxisId={meta.axis}
-                  />
-                );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+            )}
+            <YAxis
+              stroke={gridColor}
+              tick={{ fontSize: 9, fontFamily: 'monospace' }}
+              width={32}
+              domain={[0, 'auto']}
+            />
+            <Tooltip
+              contentStyle={{
+                background: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
+                fontFamily: 'monospace',
+                fontSize: 11,
+              }}
+              labelFormatter={(ts) =>
+                new Date(Number(ts)).toISOString().slice(0, 10)
+              }
+              formatter={(value: any) => [`${value} ${unit}`, label]}
+            />
+            <Line
+              type="monotone"
+              dataKey={metric}
+              stroke={color}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

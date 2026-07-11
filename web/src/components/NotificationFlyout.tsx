@@ -153,11 +153,22 @@ export function NotificationFlyout({ open, onClose }: Props) {
         'top-[calc(60px+env(safe-area-inset-top))]',
         'right-[max(0.5rem,env(safe-area-inset-right))]',
         'sm:right-[max(1rem,env(safe-area-inset-right))]',
-        // Card chrome — matches Modal/Panel so the flyout reads as
-        // the same surface family. panel class already includes
-        // border-neon-cyan/20 + bg-bg-800/70 + backdrop-blur + the
-        // inset cyan glow. We round the corners and constrain size.
-        'panel rounded-lg shadow-panel',
+        // Card chrome — matches Modal/Panel's surface family for
+        // border + glow, but with a fully OPAQUE background
+        // (bg-bg-800/95 + backdrop-blur-none) instead of the usual
+        // .panel's bg-bg-800/70 + backdrop-blur-sm. The panel's
+        // default translucency reads as nearly invisible against
+        // busy page content below it — text was getting lost. This
+        // is the one place in the app that needs a solid surface
+        // (it's a small floating chrome element, not a full-width
+        // content area), so we override the background rather than
+        // changing the shared .panel class which other components
+        // (Modal, Panel itself, etc.) rely on.
+        'rounded-lg border border-neon-cyan/20 bg-bg-800/95',
+        // Inset cyan glow + outer drop-shadow, matching .panel's
+        // shadow-panel so the flyout reads as the same surface
+        // family visually even though the background is now solid.
+        'shadow-[inset_0_0_0_1px_rgb(var(--neon-cyan)/0.08),0_0_30px_rgb(var(--neon-cyan)/0.05)]',
         // Width: compact but readable; collapses on narrow phones
         // so we never overflow the viewport. max-h + overflow-y
         // keeps it non-full-height — the panel grows with content
