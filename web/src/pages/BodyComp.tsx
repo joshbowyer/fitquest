@@ -11,6 +11,7 @@ import { classNames } from '@/lib/format';
 import { METRICS, type MetricType } from '@/lib/types';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 type Window = 30 | 90 | 180 | 365;
 
 const WINDOWS: Array<{ days: Window; label: string }> = [
@@ -198,18 +199,10 @@ export function BodyCompPage() {
           }
           action={
             <>
-              {pulledPx > 4 && (
-                <span
-                  aria-hidden
-                  className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-                >
-                  {refreshing
-                    ? 'Refreshing…'
-                    : pulledPx > 0
-                      ? `Release to refresh (${Math.round(pulledPx)}px)`
-                      : 'Pull to refresh'}
-                </span>
-              )}
+              <PullToRefreshIndicator
+                pulledPx={pulledPx}
+                refreshing={refreshing}
+              />
               <Link
                 to="/check-ins"
                 className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"

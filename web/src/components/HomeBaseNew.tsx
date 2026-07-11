@@ -14,6 +14,7 @@ import type { PenanceEvent } from '@/lib/types';
 import type { World } from '@/lib/quest';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 type HomeBaseData = {
   shield: number;
   tier: string;
@@ -296,18 +297,10 @@ export function HomeBaseFullPage() {
       <PageHeader
         title="// Home base"
         subtitle="The shield that protects your engagement. Compromise it and the breach escalates."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
       <HomeBasePage />
     </Layout>

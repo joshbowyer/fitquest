@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { ExerciseAutocomplete } from '@/components/ExerciseAutocomplete';
 import { classNames } from '@/lib/format';
 
@@ -262,19 +263,10 @@ export function RoutinesPage() {
         title="// Routines"
         subtitle="Saved workout patterns. Pick one on /activities to prefill exercises + reps."
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4 items-start">

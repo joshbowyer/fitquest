@@ -8,6 +8,7 @@ import { BossCard } from '@/components/BossCard';
 import { BossUnlockModal, useBossUnlock } from '@/components/BossUnlockModal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import {
   type World,
   type WorldLevel,
@@ -105,19 +106,10 @@ export function QuestWorldPage() {
           </span>
         }
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 md:gap-6">

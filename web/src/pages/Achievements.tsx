@@ -9,6 +9,7 @@ import { classNames } from '@/lib/format';
 import { playSoundAndNotify } from '@/lib/soundBus';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
   CONSISTENCY:   { label: 'Consistency', color: '#ffc34d' },
   STRENGTH:      { label: 'Strength',    color: '#f55cc4' },
@@ -109,18 +110,10 @@ export function AchievementsPage() {
       <PageHeader
         title="// Achievements"
         subtitle="Witty callouts for showing up, doing the work, and being a person."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {/* Stats */}

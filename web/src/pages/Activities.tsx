@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { useLongPress } from '@/hooks/useLongPress';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 function kgToLb(kg: number): number { return kg * 2.20462; }
 function weightUnitLabel(units: UnitSystem): string {
   return units === 'IMPERIAL' ? 'lb' : 'kg';
@@ -175,19 +176,10 @@ export function ActivitiesPage() {
         title="// Activities"
         subtitle="Log a session. Auto-detect PRs. Gain XP."
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
 
       {/* Side-by-side layout: Log Session (left, ~66%) + History (right, ~33%).

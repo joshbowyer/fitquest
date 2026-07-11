@@ -10,7 +10,7 @@ import type { ShieldTier } from './prisma.js';
  *
  *   FORTIFIED    90-100   no monsters can enter
  *   STABLE       60-89    normal defense
- *   COMPROMISED  30-59    portal leaks possible (Phase 2)
+ *   COMPROMISED  30-59    portal leaks possible
  *   BREACHED     0-29     monsters trickle in + daily chip damage
  *
  * Penances are templates (system defaults + user-custom) that fire

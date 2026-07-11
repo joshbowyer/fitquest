@@ -16,6 +16,7 @@ import type {
 } from '@/lib/types';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // =============================================================================
 // /portal-leak — full leak management page. Same body component the
 // dashboard uses, plus the recent damage feed + history of resolved
@@ -105,18 +106,10 @@ export function PortalLeakPage() {
             ? `You have ${activeLeaks.length} leaks stacked. Each shield-drop rolled the dice. Pick one to fight — the others queue behind it.`
             : '1-shot home-base encounters. Match the leak\'s preferred muscles in your workouts to deal damage and claim loot.'
         }
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">

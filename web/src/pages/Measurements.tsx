@@ -9,6 +9,7 @@ import { classNames } from '@/lib/format';
 import { MetricDetailModal } from '@/components/MetricDetailModal';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // Metrics that are derived from other data and shouldn't be
 // user-enterable. LEAN_MASS = weight × (1 - bf%). FFMI is computed
 // from LBM and height in the Status panel. SHOULDER_WAIST_RATIO
@@ -90,19 +91,10 @@ export function MeasurementsPage() {
         title="// Measurements"
         subtitle="Pick a metric to log, view history, or override its genetic max."
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
 
       {/* Category sections. 2-col on md+, single col on smaller.

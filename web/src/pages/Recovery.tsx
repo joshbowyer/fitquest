@@ -14,6 +14,7 @@ import { convertForDisplay, convertForStorage, displayUnit, type UnitSystem } fr
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // Recovery-oriented metrics. Sleep (hours + quality) and HRV live here
 // instead of on the generic measurements picker, so the page is
 // focused on recovery rather than tracking every dimension.
@@ -96,18 +97,10 @@ export function RecoveryPage() {
         subtitle="Sleep, HRV, restoration. The opposite of training stress — and the engine of adaptation."
         action={
           <div className="flex items-center gap-3">
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <div className="font-mono text-sm">
               <span className="text-ink-300 text-xs uppercase tracking-widest">Today: </span>
               <span className={`text-xl ml-1 ${completedMetrics === RECOVERY_METRICS.length ? 'neon-text-lime' : 'neon-text-cyan'}`}>

@@ -8,6 +8,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { classNames } from '@/lib/format';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 
@@ -93,18 +94,10 @@ export function HabitsPage() {
         subtitle="User-defined behaviors. Positive habits reward gold + XP. Negative habits penalize."
         action={
           <div className="flex items-center gap-3">
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <NeonButton onClick={() => setCreating(true)} icon="+">
               New Habit
             </NeonButton>

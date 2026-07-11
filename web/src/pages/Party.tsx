@@ -13,6 +13,7 @@ import type { Raid } from '@/lib/types';
 import { formatRelative } from '@/lib/format';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // Raid bosses are loaded from the API via /raids/bosses.
 
 type RaidBoss = {
@@ -222,18 +223,10 @@ export function PartyPage() {
       <PageHeader
         title="// Party"
         subtitle="Co-op raids. Pool your gains."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {err && (

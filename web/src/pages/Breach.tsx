@@ -17,6 +17,7 @@ import { Modal } from '@/components/Modal';
 import { PetCombatCard } from '@/components/PetCombatCard';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { useValueChange, emitNotification } from '@/lib/notifyBus';
 import { randomUuid } from '@/lib/uuid';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -216,19 +217,10 @@ export function BreachPage() {
           title="The Breach"
           subtitle={`Sealed. Returns at level ${data.unlockLevel}. (Currently ${data.userLevel}.)`}
           action={
-            pulledPx > 4 ? (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            ) : null
-          }
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />}
         />
         <div className="space-y-4">
           <Panel title="SEALED" variant="default">
@@ -267,19 +259,10 @@ export function BreachPage() {
         title="The Breach"
         subtitle={`Boss #${progress.kills + 1} · ${progress.kills} killed · ${progress.soulstones} ◈ soulstones`}
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
       <div className="space-y-4">
         {/* Hero: black hole + boss info side by side on desktop, stacked on mobile */}

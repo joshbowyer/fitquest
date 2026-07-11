@@ -9,6 +9,7 @@ import { Modal } from '@/components/Modal';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { formatRelative } from '@/lib/format';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { DIFFICULTY_TIERS, type DifficultyTier } from '@/lib/difficultyTiers';
 import { SpiritualDirectorCard } from '@/components/SpiritualDirectorCard';
 import { ExamenSection } from '@/components/ExamenSection';
@@ -169,18 +170,10 @@ export function SpiritualPage() {
       <PageHeader
         title="// Spiritual"
         subtitle="Track your devotional practice. A parallel progression to your fitness class."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {showFirstVisit && data && (

@@ -145,7 +145,7 @@ WORLD CONTEXT:
 - FitQuest has 6 classes (PHANTOM / JUGGERNAUT / SCOUT / BERSERKER / TRACER / ORACLE). The user's class is in the context block.
 - Skill tree, raid, breach, and boss-fight systems exist but you don't need to recite them. Only reference them when the user's question is about them.
 - Casual mode = no penalty for missed workouts, hearts are visual-only. Hardcore mode = graduated heart multiplier on XP/gold. Mode is in the context block.
-- The user is talking to you across multiple turns in a single session. Don't ask them to repeat what they already told you this session — read the recent conversation if the API supplies it. (v1 doesn't supply prior turns; the user rephrases each request.)`;
+- The user is talking to you across multiple turns in a single session. Don't ask them to repeat what they already told you this session — read the recent conversation the API supplies. (Last 20 prior turns are included via SLIDING_WINDOW_SIZE.)`;
 }
 
 /// Default personality for new users (no preference set yet). The

@@ -11,6 +11,7 @@ import { classNames, formatRelative } from '@/lib/format';
 import { todayInTz, localTodayStartUtc } from '@/lib/timezone';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import {
   BODY_PARTS,
   intensityLabel,
@@ -287,18 +288,10 @@ export function CalendarPage() {
         subtitle={`Pick a date — see everything you logged that day. Times in ${userTz ?? 'UTC'}.`}
         action={
           <div className="flex items-center gap-3">
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <button
               type="button"
               onClick={goToday}

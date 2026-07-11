@@ -9,6 +9,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { DeleteButton } from '@/components/DeleteButton';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import type { TrackedItemCategory, TrackedItemUnit } from '@/lib/types';
 import { classNames } from '@/lib/format';
 import { convertForDisplay, type UnitSystem } from '@/lib/units';
@@ -72,19 +73,10 @@ export function NutritionPage() {
             : 'Track your food and water. Daily targets are in /settings.'
         }
         action={
-          pulledPx > 4 ? (
-            <span
-              aria-hidden
-              className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-            >
-              {refreshing
-                ? 'Refreshing…'
-                : pulledPx > 0
-                  ? `Release to refresh (${Math.round(pulledPx)}px)`
-                  : 'Pull to refresh'}
-            </span>
-          ) : null
-        }
+          <PullToRefreshIndicator
+            pulledPx={pulledPx}
+            refreshing={refreshing}
+          />}
       />
 
       {/* Daily totals summary — derived from meal log + water measurements */}

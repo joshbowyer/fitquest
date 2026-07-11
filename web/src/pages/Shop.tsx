@@ -8,6 +8,7 @@ import { Panel } from '@/components/Panel';
 import { NeonButton } from '@/components/NeonButton';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // =============================================================
 // Pet shop API types. /shop/pet-stock returns the breed list;
 // /shop/items returns the consumables catalog (Vital Tonic,
@@ -186,18 +187,10 @@ export function ShopPage() {
       <PageHeader
         title="Pet Shop"
         subtitle="Adopt a loyal companion. They grow with you."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {/* === BREEDS === */}

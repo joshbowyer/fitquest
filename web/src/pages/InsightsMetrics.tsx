@@ -11,6 +11,7 @@ import { convertForDisplay, type UnitSystem } from '@/lib/units';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { METRICS_BY_CATEGORY, METRICS, type MetricType } from '@/lib/types';
 
 type Factor = {
@@ -195,18 +196,10 @@ export function InsightsMetricsPage() {
           subtitle="Per-metric deep-dive. Windowed averages, deltas, and an LLM-written narrative for every measurable metric. Click 'Generate' on any metric to write its insight (cached for 7 days)."
           action={
             <div className="flex items-center gap-3">
-              {pulledPx > 4 && (
-                <span
-                  aria-hidden
-                  className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-                >
-                  {refreshing
-                    ? 'Refreshing…'
-                    : pulledPx > 0
-                      ? `Release to refresh (${Math.round(pulledPx)}px)`
-                      : 'Pull to refresh'}
-                </span>
-              )}
+              <PullToRefreshIndicator
+                pulledPx={pulledPx}
+                refreshing={refreshing}
+              />
               <Link
                 to="/insights"
                 className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"

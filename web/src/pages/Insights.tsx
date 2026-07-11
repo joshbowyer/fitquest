@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { RecoveryPanel } from '@/components/RecoveryPanel';
 import { useAuth } from '@/lib/auth';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { classNames } from '@/lib/format';
 import { OverlayTrendChart, type Series } from '@/components/OverlayTrendChart';
 import { WeeklyVolumeChart } from '@/components/WeeklyVolumeChart';
@@ -185,18 +186,10 @@ export function InsightsPage() {
         subtitle="Deep-dive trends, correlations, anti-staleness diagnostics."
         action={
           <div className="flex items-center gap-3">
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <Link
               to="/insights/metrics"
               className="text-[10px] font-mono uppercase tracking-widest text-neon-cyan hover:underline"

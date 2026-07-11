@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { api, ApiError } from '@/lib/api';
 import { Layout, PageHeader } from '@/components/Layout';
 import { Gauge } from '@/components/Gauge';
@@ -439,18 +440,10 @@ export function DashboardPage() {
         subtitle={`${user.classDisplay ?? cls?.label ?? 'Unclassed'} // ${user.username}`}
         action={(
           <>
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <div className="flex items-center gap-2">
               <Link to="/calendar" className="btn-ghost text-[10px]">
                 ◷ Calendar

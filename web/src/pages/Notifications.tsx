@@ -27,6 +27,7 @@ import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { classNames } from '@/lib/format';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 type NotificationCategory =
   | 'SKILL' | 'PENANCE' | 'SHOP' | 'SYSTEM' | 'ACHIEVEMENT' | 'LEVEL';
 
@@ -167,18 +168,10 @@ export default function NotificationsPage() {
       <PageHeader
         title="// Notifications"
         subtitle="Skill unlocks, level-ups, achievements, boss + raid + party events, and shield/penance changes — all in one place."
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       <Panel

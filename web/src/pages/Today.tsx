@@ -9,6 +9,7 @@ import { Modal } from '@/components/Modal';
 import { useAuth } from '@/lib/auth';
 import { useDelayedMutation } from '@/hooks/useDelayedMutation';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 import { DIFFICULTY_TIERS, tierForRewards, type DifficultyTier } from '@/lib/difficultyTiers';
 import { classNames } from '@/lib/format';
 import { TodayActions, OPEN_ACTIVITY_EVENT } from '@/components/TodayActions';
@@ -340,18 +341,10 @@ export function TodayPage() {
         subtitle={`Dailies for ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} — built-in + yours.`}
         action={
           <div className="flex items-center gap-3">
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <Link
               to="/calendar"
               className="text-[10px] font-mono uppercase tracking-widest border border-ink-500/40 text-ink-300 hover:border-neon-cyan hover:text-neon-cyan px-2 py-1"

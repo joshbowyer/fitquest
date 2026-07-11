@@ -7,6 +7,7 @@ import { Panel } from '@/components/Panel';
 import { classNames } from '@/lib/format';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 type Component = {
   metric: string;
   rawValue: number | null;
@@ -378,18 +379,10 @@ export function ForecastPage() {
         subtitle="Outdoor conditions + today's readiness, in one glance."
         action={
           <>
-            {pulledPx > 4 && (
-              <span
-                aria-hidden
-                className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-              >
-                {refreshing
-                  ? 'Refreshing…'
-                  : pulledPx > 0
-                    ? `Release to refresh (${Math.round(pulledPx)}px)`
-                    : 'Pull to refresh'}
-              </span>
-            )}
+            <PullToRefreshIndicator
+              pulledPx={pulledPx}
+              refreshing={refreshing}
+            />
             <button
               onClick={() => q.refetch()}
               className="text-[10px] font-mono uppercase tracking-widest text-ink-300 hover:text-neon-cyan border border-ink-500/30 px-2 py-1"

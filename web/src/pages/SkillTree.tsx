@@ -12,6 +12,7 @@ import { emitReward, nextRewardId } from '@/components/RewardOverlay';
 import { playSoundAndNotify } from '@/lib/soundBus';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 /**
  * SkillTree v1 — replaces the old /skills page.
  *
@@ -549,18 +550,10 @@ export function SkillTreePage() {
       <PageHeader
         title="// Skill Tree"
         subtitle={`${user.class} class · ${branches.length} branches · ${treeQ.data.items.length} skills · pass the test to unlock`}
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {/* Shared-coordinate-space tree canvas. All branches render

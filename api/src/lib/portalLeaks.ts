@@ -27,7 +27,6 @@ import { tierForShield } from './penance.js';
 // ============================================================
 
 export const LEAK_COOLDOWN_MS = 24 * 60 * 60 * 1000;       // 24h between leaks
-export const LEAK_TTL_MS = 48 * 60 * 60 * 1000;            // 48h soft hint — leaks no longer auto-expire
 // Max active leaks a user can have at once. Stacking already works
 // (existing active leaks don't block new spawns), but without a
 // cap the dashboard's leak card and the leak-queue UI become
@@ -768,10 +767,7 @@ export async function tickLeakGrowth(
   // of expiring (user feedback: leaks are the user's punishment
   // for slipping, expiring them softens that). The +8 HP/day
   // escalation already makes neglected leaks worse than fresh
-  // ones, which provides a soft self-balancing mechanism. The
-  // LEAK_TTL_MS constant is kept as a hint for future UI copy
-  // ("leaks grow stronger the longer you ignore them") but no
-  // longer drives any logic.
+  // ones, which provides a soft self-balancing mechanism.
   const activeLeaks = await prisma.portalLeak.findMany({
     where: { status: 'ACTIVE' },
   });

@@ -12,8 +12,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * the overscroll delta. When the user lets go past the threshold,
  * it calls onRefresh. Below the threshold, it resets.
  *
- * Visual feedback is left to the caller — typically a small
- * "Release to refresh" hint that animates as the user pulls.
+ * Visual feedback is left to the caller — typically the
+ * <PullToRefreshIndicator> component, which renders a rotating
+ * refresh icon that fades in / rotates as the user pulls and
+ * spins continuously while `onRefresh` is in flight.
  * This hook just fires the callback.
  */
 

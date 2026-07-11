@@ -259,7 +259,7 @@ export async function shopRoutes(app: FastifyInstance) {
 
   // POST /shop/buy-pet — adopt a pet.
   //   - debit User.gold (atomic with PetInstance insert)
-  //   - 409 if user already owns a pet (v1 = one per user)
+  //   - 409 if user is at the MAX_PETS_PER_USER cap (currently 6)
   //   - 402 if insufficient gold
   //   - 400 if colorVariant isn't on the breed
   //   - 404 if breedId is unknown

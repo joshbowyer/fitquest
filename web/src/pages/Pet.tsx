@@ -9,6 +9,7 @@ import { NeonButton } from '@/components/NeonButton';
 import { classNames } from '@/lib/format';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
+import { PullToRefreshIndicator } from '@/components/PullToRefreshIndicator';
 // =============================================================
 // Pet API types (mirror of api/src/lib/petStats.ts +
 // api/src/routes/pets.ts serializePet). Kept in sync by hand
@@ -338,18 +339,10 @@ export function PetPage() {
             'Your loyal companion'
           )
         }
-        action={pulledPx > 4 ? (
-          <span
-            aria-hidden
-            className="text-[10px] font-mono uppercase tracking-widest text-ink-300"
-          >
-            {refreshing
-              ? 'Refreshing…'
-              : pulledPx > 0
-                ? `Release to refresh (${Math.round(pulledPx)}px)`
-                : 'Pull to refresh'}
-          </span>
-        ) : null}
+        action={<PullToRefreshIndicator
+          pulledPx={pulledPx}
+          refreshing={refreshing}
+        />}
       />
 
       {/* Roster selector — one card per pet. Click to inspect. The
