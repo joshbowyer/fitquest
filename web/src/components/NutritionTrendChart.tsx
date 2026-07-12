@@ -275,9 +275,12 @@ function MetricRow({
             />
             {/* Y-axis with unit suffix on each tick so the user can
                 read the scale without hovering — e.g. "40 oz", "60
-                oz" on the water chart. width bumped from 32 → 40 to
-                fit the unit text without clipping. tickCount=4 keeps
-                it from getting too cluttered at narrow viewports.
+                oz" on the water chart. width bumped from 32 → 56 to
+                fit the unit text without clipping (40 was still
+                clipping two-digit values like "1500" + unit — e.g.
+                calories showed "50" then "00" then "50" because
+                the "15" / "20" prefix was getting cut). tickCount=4
+                keeps it from getting too cluttered at narrow viewports.
                 tick fill uses axisText (--ink-300 → high-contrast
                 near-white in dark mode, near-black in light mode via
                 the existing CSS var) so the scale labels are always
@@ -285,7 +288,14 @@ function MetricRow({
             <YAxis
               stroke={gridColor}
               tick={{ fontSize: 9, fontFamily: 'monospace', fill: axisText }}
-              width={40}
+              // Width sized to fit the longest realistic tick label —
+              // 4-digit metric values like "2100" + unit ("kcal",
+              // "cal" etc.) need ~72px at 9px monospace to render
+              // single-line. Smaller (32 → 40 → 56) was clipping the
+              // first digit of the largest tick (e.g. "1500" would
+              // become "|500|" or wrap to multiple lines), which
+              // made the scale unreadable at high daily totals.
+              width={72}
               domain={[0, 'auto']}
               tickCount={4}
               tickFormatter={(v) => `${v} ${unit}`}

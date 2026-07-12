@@ -2143,13 +2143,23 @@ function ManualEntryModal(props: {
 // ============================================================================
 
 function ModalPortal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  // Close on backdrop click
-  return (
+  // Close on backdrop click. createPortal sends the rendered DOM to
+  // document.body so the modal escapes the surrounding Panel's stacking
+  // context (Panel has `position: relative`, which creates a new stacking
+  // context — a child of it can never paint above a sibling of the panel
+  // regardless of its own z-index). Without the portal, the manual-entry
+  // modal's submit button would render trapped behind the
+  // NutritionTrendChart block on the nutrition page, even at z-[9999],
+  // because the trend chart is a sibling of the panel that contains the
+  // modal. Mirrors the pattern the other add-food / add-meal modals in
+  // this file (line 650, 919, 1079, 1513, 1878) use.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-bg-900/80 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div onClick={(e) => e.stopPropagation()}>{children}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
