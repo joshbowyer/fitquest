@@ -43,7 +43,15 @@ const h = vi.hoisted(() => {
     createdAt: Date;
   };
   const notifsByUser = new Map<string, NotifRow[]>();
-  const users = new Map<string, { id: string; timezone: string }>();
+  // User rows: id + timezone + the dedup column the cron writes
+  // (`shieldDigestLastDate`). Tests that want to simulate a
+  // re-run on the same day seed the date explicitly; the rest
+  // start unclaimed (undefined → matches the OR-NULL branch in
+  // the updateMany WHERE).
+  const users = new Map<
+    string,
+    { id: string; timezone: string; shieldDigestLastDate?: string | null }
+  >();
   let nextId = 1;
   return { penanceByUser, notifsByUser, users, nextId };
 });
@@ -52,6 +60,23 @@ vi.mock('../lib/prisma', () => ({
   prisma: {
     user: {
       findMany: vi.fn(async () => [...h.users.values()]),
+      // The shield-digest dedup: a conditional UPDATE that
+      // claims (user, yesterdayDate) atomically. Mimics the
+      // Postgres semantics — read + write is one atomic
+      // statement, so concurrent callers can't both succeed.
+      // Returns count = 1 on a fresh claim, count = 0 when the
+      // date is already claimed for this user.
+      updateMany: vi.fn(async ({ where, data }: any) => {
+        const u = h.users.get(where.id);
+        if (!u) return { count: 0 };
+        // Mirror the OR clause: (shieldDigestLastDate IS NULL OR
+        // shieldDigestLastDate != data.shieldDigestLastDate).
+        const claimed = u.shieldDigestLastDate == null
+          || u.shieldDigestLastDate !== data.shieldDigestLastDate;
+        if (!claimed) return { count: 0 };
+        u.shieldDigestLastDate = data.shieldDigestLastDate;
+        return { count: 1 };
+      }),
     },
     penanceEvent: {
       findMany: vi.fn(async ({ where }: any) => {
@@ -65,19 +90,6 @@ vi.mock('../lib/prisma', () => ({
       }),
     },
     notification: {
-      findFirst: vi.fn(async ({ where }: any) => {
-        const all = h.notifsByUser.get(where.userId) ?? [];
-        return (
-          all.find((n) => {
-            if (n.kind !== where.kind) return false;
-            if (where.payload?.path && where.payload?.equals) {
-              const key = where.payload.path[0];
-              return n.payload?.[key] === where.payload.equals;
-            }
-            return true;
-          }) ?? null
-        );
-      }),
       create: vi.fn(async ({ data }: any) => {
         const row: NotifRow = {
           id: `n-${h.nextId++}`,

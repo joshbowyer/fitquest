@@ -480,6 +480,19 @@ model User {
   /// accrued delta on every /users/me read so the UI stays honest
   /// about regen even if the user is offline for days.
   heartsLastRegenAt      DateTime?
+  /// Last local date (YYYY-MM-DD in the user's tz) the daily
+  /// shield-repair rollup was emitted for. Used by
+  /// `runShieldDigestForUser` to dedup the hourly cron — a
+  /// conditional `updateMany` against the User row itself (rather
+  /// than the Notification table) is the only dedup record that
+  /// survives the user's DELETE /notifications/:id (the previous
+  /// findFirst-by-payload approach got wiped when the user
+  /// dismissed the rollup, and the next hourly tick re-emitted
+  /// an identical notification). String (not timestamptz) matches
+  /// MorningPopupDismissal.date — we never do arithmetic on the
+  /// value, only equality, and a local YYYY-MM-DD has no tz of its
+  /// own to track.
+  shieldDigestLastDate   String?
   /// User-set baseline (TDEE-ish). The actual calorie target is
   /// this + goal offset (cut -250, maintain 0, bulk +250). Default
   /// 2200 is a reasonable placeholder; the user should set this to

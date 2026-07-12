@@ -43,13 +43,35 @@ import { todayInTz, localMidnightUtc } from './timezone.js';
  *     cheap DB queries per hour.
  *
  * Idempotency:
- *   - Dedup by querying `Notification.findFirst({ userId, kind,
- *     payload: { path: ['date'], equals: yesterday } })`. The
- *     `payload.date` is the user's local YYYY-MM-DD. No new
- *     model, no schema change, no unique index needed.
- *   - The hourly cron + dedup is correct across server restarts
- *     and clock drift: if the cron fires twice for the same user
- *     on the same day, the second call short-circuits.
+ *   - Dedup via a conditional `prisma.user.updateMany` that
+ *     atomically claims the (user, yesterdayDate) pair on the
+ *     `User.shieldDigestLastDate` column itself. The dedup
+ *     record is therefore part of the user row, which the user
+ *     CANNOT delete from the inbox UI — the previous
+ *     `Notification.findFirst({ payload: { path: ['date'],
+ *     equals: yesterdayDate } })` approach was destroyed by
+ *     DELETE /notifications/:id (the user's "dismiss" button
+ *     hard-deletes the notification row), and the next hourly
+ *     tick would re-emit an identical notification until the
+ *     user's local midnight advanced `yesterdayDate`. Moving the
+ *     dedup state onto the user row closes that hole permanently.
+ *   - The conditional WHERE is `shieldDigestLastDate IS NULL OR
+ *     shieldDigestLastDate != yesterdayDate`, so a single
+ *     atomic UPDATE handles both "never claimed" and "claimed
+ *     for a previous day" in one round trip. This is a Postgres
+ *     UPDATE statement, so it's atomic at the row level — no
+ *     TOCTOU race between the read and the emit (which the
+ *     prior findFirst → create sequence had). `claimed.count
+ *     === 0` means a prior run already wrote
+ *     `shieldDigestLastDate = yesterdayDate` and we short-circuit.
+ *   - Trade-off: if we crash between the claim and the emit
+ *     call, the next hour's tick will find the date already
+ *     claimed and skip the entire day. This is the correct
+ *     failure mode — skip a day rather than double-send the
+ *     rollup. Acceptable because (a) the per-day emit is one
+ *     cheap SELECT + one INSERT and the failure window is small,
+ *     and (b) "no rollup today" is far less harmful than "user
+ *     sees the same shield_repair_daily notification every hour".
  */
 
 const SHIELD_REPAIR_KINDS = new Set([
@@ -95,19 +117,26 @@ export async function runShieldDigestForUser(
   const yesterdayMidnight = new Date(todayMidnight.getTime() - 24 * 60 * 60 * 1000);
   const yesterdayDate = todayInTz(tz, yesterdayMidnight);
 
-  // Dedup: skip if a rollup for this (user, date) was already
-  // emitted. The payload.date is the local YYYY-MM-DD we're
-  // summarizing, NOT the date the row was written — the row may
-  // have been written an hour after the user's local midnight.
-  const existing = await prisma.notification.findFirst({
+  // Dedup: atomically claim (user, yesterdayDate) on the User row.
+  // The WHERE matches when the row is unclaimed (NULL) OR claimed
+  // for some other date — both cases need to proceed. When the
+  // claim succeeds (count === 1) we own the slot for this date;
+  // when it fails (count === 0) a prior run already wrote
+  // yesterdayDate and we short-circuit. Atomic in Postgres as a
+  // single conditional UPDATE — no TOCTOU race between the read
+  // and the later Notification.create (which was the hole in the
+  // old findFirst-then-create sequence).
+  const claimed = await prisma.user.updateMany({
     where: {
-      userId,
-      kind: 'shield_repair_daily',
-      payload: { path: ['date'], equals: yesterdayDate },
+      id: userId,
+      OR: [
+        { shieldDigestLastDate: null },
+        { shieldDigestLastDate: { not: yesterdayDate } },
+      ],
     },
-    select: { id: true },
+    data: { shieldDigestLastDate: yesterdayDate },
   });
-  if (existing) {
+  if (claimed.count === 0) {
     return { date: yesterdayDate, netDelta: 0, count: 0, emitted: false };
   }
 
@@ -192,7 +221,8 @@ export async function runShieldDigestForUser(
  * Iterate all users and run the daily rollup. Designed for an
  * hourly cron — the per-user dedup keeps it cheap (most users
  * are already-processed by the time the hourly tick fires again,
- * so the `findFirst` is the only query they incur).
+ * so the `updateMany` is the only query they incur, and it
+ * short-circuits to count=0 immediately).
  */
 export async function runShieldDigestForAllUsers(): Promise<{
   users: number;
