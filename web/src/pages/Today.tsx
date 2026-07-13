@@ -172,6 +172,14 @@ export function TodayPage() {
         <TodayActions />
       </div>
 
+      {/* Full-width CTA book-ending the quick-action grid (above) and Built-in section (below).
+          Matches the workout-day banner's horizontal padding, border treatment, and vertical rhythm. */}
+      <div className="mb-4 border border-ink-500/40 p-3 flex justify-center">
+        <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
+          +New Daily
+        </NeonButton>
+      </div>
+
       {isLoading ? (
         <Panel><div className="text-[10px] font-mono text-ink-300">loading…</div></Panel>
       ) : (
@@ -365,9 +373,6 @@ export function TodayPage() {
             >
               ▢ Wall mode
             </button>
-            <NeonButton onClick={() => setCreating(true)} icon="+" variant="cyan">
-              New Daily
-            </NeonButton>
           </div>
         }
       />

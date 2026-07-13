@@ -27,12 +27,14 @@ import { classNames } from '@/lib/format';
  *     warnings if over any cap.
  *
  * Auto-open rules:
- *   - Waits for the first pointerdown or keydown of the day
- *     (not a hard on-mount) so the popup greets the user when
- *     they actually start using the app, on whatever page they
- *     happen to be on. Previously it only fired on /today because
- *     the component was mounted there, and it fired on the first
- *     mount regardless of whether the user had interacted yet.
+ *   - Uses `visibilitychange` (document.visibilityState === 'visible')
+ *     + 1500ms setTimeout to trigger when the app comes to foreground
+ *     (addresses the mobile "wake from background swipe registers as
+ *     pointerdown and pops the modal too early" bug). Falls back to
+ *     the legacy first pointerdown/keydown listener for users who
+ *     keep the app open across midnight. The delay after visibility
+ *     gives the page a moment to settle so the popup doesn't land
+ *     over a half-loaded view.
  *   - Skipped entirely if the popup has been dismissed for today
  *     (checked via localStorage for the no-network case; the
  *     server's `dismissed` field on the payload is the source of
@@ -200,23 +202,43 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
     if (dismissedTodayLocal()) return;
 
     let triggered = false;
-    const trigger = () => {
+    const openNow = () => {
       if (triggered) return;
       triggered = true;
-      // Re-check the localStorage flag here in case the user
-      // dismissed between the initial check above and the first
-      // interaction (e.g. they opened a second tab in another
-      // window and dismissed it there first).
       if (dismissedTodayLocal()) return;
       setOpen(true);
-      window.removeEventListener('pointerdown', trigger);
-      window.removeEventListener('keydown', trigger);
+      window.removeEventListener('pointerdown', legacyTrigger);
+      window.removeEventListener('keydown', legacyTrigger);
+      document.removeEventListener('visibilitychange', visTrigger);
     };
-    window.addEventListener('pointerdown', trigger);
-    window.addEventListener('keydown', trigger);
+
+    // visibilitychange path: fires when app comes to foreground
+    // (mobile wake-up). 1500ms delay prevents showing over a
+    // still-settling page and avoids the swipe-up pointer event.
+    const visTrigger = () => {
+      if (document.visibilityState === 'visible') {
+        setTimeout(openNow, 1500);
+      }
+    };
+    document.addEventListener('visibilitychange', visTrigger);
+
+    // legacy first-interaction fallback (keeps app open across midnight)
+    const legacyTrigger = () => {
+      if (triggered) return;
+      triggered = true;
+      if (dismissedTodayLocal()) return;
+      setOpen(true);
+      window.removeEventListener('pointerdown', legacyTrigger);
+      window.removeEventListener('keydown', legacyTrigger);
+      document.removeEventListener('visibilitychange', visTrigger);
+    };
+    window.addEventListener('pointerdown', legacyTrigger);
+    window.addEventListener('keydown', legacyTrigger);
+
     return () => {
-      window.removeEventListener('pointerdown', trigger);
-      window.removeEventListener('keydown', trigger);
+      window.removeEventListener('pointerdown', legacyTrigger);
+      window.removeEventListener('keydown', legacyTrigger);
+      document.removeEventListener('visibilitychange', visTrigger);
     };
   }, [forceShow]);
 
@@ -337,6 +359,7 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
       onClose={dismiss}
       title={`Morning · ${q.data?.date ?? ''}`}
       width="max-w-lg"
+      disableBackdropClose
     >
       {q.isLoading && (
         <div className="text-sm text-ink-300 font-mono py-3">⏳ Loading your morning recap…</div>

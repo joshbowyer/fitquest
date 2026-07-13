@@ -18,6 +18,7 @@ export function Modal({
   // fire — those go through the parent-owned onClose, which is
   // the single source of truth for "user wants to leave".
   hideCloseButton = false,
+  disableBackdropClose = false,
   // Common override for destructive-action modals (delete/reset
   // confirmations) where the typed-input field is long enough to
   // squeeze the cancel button off the right edge. Modal callers
@@ -29,6 +30,7 @@ export function Modal({
   children: ReactNode;
   width?: string;
   hideCloseButton?: boolean;
+  disableBackdropClose?: boolean;
 }) {
   // Capture the latest onClose via ref so the effect can stay
   // scoped to `open` only. Without this, every parent re-render
@@ -60,7 +62,7 @@ export function Modal({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
+      if (e.key === 'Escape' && !disableBackdropClose) onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
@@ -136,7 +138,7 @@ export function Modal({
               size="sm"
               variant="cyan"
               className="w-full sm:w-auto sm:ml-auto"
-              onClick={onClose}
+      onClick={() => { if (!disableBackdropClose) onClose(); }}
             >
               Close
             </NeonButton>
