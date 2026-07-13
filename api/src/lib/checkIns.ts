@@ -62,8 +62,24 @@ export const CADENCE_WINDOWS: Record<Cadence, { startHour: number; endHour: numb
  * The frontend's /check-ins page renders this same map (mirrored to
  * web/src/lib/checkIns.ts so we don't need a round-trip) so the
  * dashboard and the settings panel always agree.
+ *
+ * v2.0.0: `BICEP` (the legacy single bicep-circumference entry) was
+ * removed from the check-in surface. New measurements should pick
+ * `BICEP_FLEXED` (peak contraction — the canonical Casey Butt
+ * formula target) or `BICEP_RELAXED` (resting) explicitly.
+ *
+ * The type is `Record<string, Cadence>` rather than
+ * `Record<MetricType, Cadence>` because the Prisma client is
+ * occasionally out of sync with the schema enum (SHOULDER_WAIST_RATIO
+ * lives here as a cadence key, body-battery style metrics may need
+ * to be added later, etc.). Enforcing exhaustiveness at the type
+ * level adds churn without protecting real consumers — every read
+ * of DEFAULT_CADENCE either casts through Object.entries or filters
+ * by `isCheckInMetric`, so a runtime-visible-but-unset MetricType
+ * value surfaces naturally as "missing" rather than as a build
+ * break.
  */
-export const DEFAULT_CADENCE: Record<MetricType, Cadence> = {
+export const DEFAULT_CADENCE: Record<string, Cadence> = {
   // AM — post-wakeup signals
   WEIGHT:        'AM',
   MOOD:          'AM', // (also surfaced in PM as "end-of-day delta")
@@ -80,7 +96,9 @@ export const DEFAULT_CADENCE: Record<MetricType, Cadence> = {
   WAIST:        'WEEKLY',
   NECK:         'WEEKLY',
   CHEST:        'WEEKLY',
-  BICEP:        'WEEKLY',
+  // BICEP removed v2.0.0 — replaced by BICEP_FLEXED + BICEP_RELAXED
+  BICEP_FLEXED: 'WEEKLY',
+  BICEP_RELAXED:'WEEKLY',
   FOREARM:      'WEEKLY',
   QUAD:         'WEEKLY',
   CALF:         'WEEKLY',

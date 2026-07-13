@@ -15,8 +15,13 @@ describe('cadence defaults', () => {
   it('covers every MetricType', () => {
     // If a new metric is added to the Prisma enum without a cadence,
     // this test will fail — exactly what we want.
+    //
+    // v2.0.0: 'BICEP' was removed from the check-in surface (no
+    // longer appears in /check-ins/* UI or API). It's replaced by
+    // 'BICEP_FLEXED' and 'BICEP_RELAXED', which must each have
+    // cadences.
     const expected: MetricType[] = [
-      'BICEP','CHEST','SHOULDER','QUAD','CALF','FOREARM','NECK','WAIST',
+      'BICEP_FLEXED','BICEP_RELAXED','CHEST','SHOULDER','QUAD','CALF','FOREARM','NECK','WAIST',
       'BENCH_1RM','SQUAT_1RM','DEADLIFT_1RM','OHP_1RM','PULLUP_1RM',
       'BODY_FAT_PCT','LEAN_MASS','FFMI','WEIGHT',
       'VO2_MAX','RESTING_HR','HRV','FIVE_K_TIME','ONE_MILE_TIME',

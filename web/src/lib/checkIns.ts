@@ -40,7 +40,20 @@ export const CADENCE_WINDOWS: Record<Cadence, { startHour: number; endHour: numb
   WEEKLY: { startHour: 0,  endHour: 24 },
 };
 
-export const DEFAULT_CADENCE: Record<MetricType, Cadence> = {
+/**
+ * v2.0.0: `BICEP` (the legacy single bicep-circumference entry) was
+ * removed from the check-in surface. New measurements should pick
+ * `BICEP_FLEXED` (peak contraction) or `BICEP_RELAXED` (resting)
+ * explicitly. The web's local `MetricType` still includes the
+ * legacy `BICEP` for the type-checker so historical server rows
+ * remain type-safe, but it has no cadence and therefore no
+ * check-in surface.
+ *
+ * The Record key set is `Exclude<MetricType, 'BICEP'>` so the
+ * `Record<>` exhaustiveness check stays exact — every other
+ * MetricType value gets exactly one cadence.
+ */
+export const DEFAULT_CADENCE: Record<Exclude<MetricType, 'BICEP'>, Cadence> = {
   WEIGHT:        'AM',
   MOOD:          'AM',
   ENERGY:        'AM',
@@ -52,7 +65,7 @@ export const DEFAULT_CADENCE: Record<MetricType, Cadence> = {
   WAIST:         'WEEKLY',
   NECK:          'WEEKLY',
   CHEST:         'WEEKLY',
-  BICEP:         'WEEKLY',
+  // BICEP removed v2.0.0
   BICEP_FLEXED:  'WEEKLY',
   BICEP_RELAXED: 'WEEKLY',
   FOREARM:       'WEEKLY',
