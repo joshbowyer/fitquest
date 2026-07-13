@@ -1457,6 +1457,13 @@ model PortalLeakDamageEvent {
   matchType   String
   createdAt   DateTime   @default(now())
 
+  /// Per-workout dedup safety net: each (leakId, workoutId) pair
+  /// can produce at most one event. This backs the runtime check
+  /// in applyLeakDamage() — without it, two concurrent requests
+  /// could both pass the findFirst check then both insert, leaving
+  /// HP doubled-down and the user able to grind a leak to 0 by
+  /// replaying POST /workouts/:id/leak-damage.
+  @@unique([leakId, workoutId])
   @@index([userId, createdAt])
   @@index([leakId, createdAt])
 }

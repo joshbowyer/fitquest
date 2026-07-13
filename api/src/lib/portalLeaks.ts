@@ -16,6 +16,49 @@
 //
 // Loot drops roll at spawn time (not claim time) so the prize
 // is stable. Rarity scales with user level.
+//
+// ------------------------------------------------------------
+// Spawn policy — IMPORTANT, do not regress.
+// ------------------------------------------------------------
+// Every routine shield-drop event that lands the user's tier in
+// BREACHED (≤29) or COMPROMISED (30-59) MUST call
+// maybeSpawnLeak(userId, shieldAfter) so the dice roll can fire.
+// The roll probability is tier-keyed (FORTIFIED=0, STABLE=5%,
+// COMPROMISED=20%, BREACHED=50%), but a tier drop with no spawn
+// check is just a free pass.
+//
+// Current call sites that roll the dice:
+//   - lib/penance.ts:firePenances (plural) — wraps every penance
+//     fire and spawns after each damaging delta. Used by:
+//       - routes/substances.ts (substance_overuse, -20)
+//       - routes/workouts.ts (logged_mobility / logged_cardio_30 /
+//         log_stretch are all repairs, so the spawn check inside
+//         firePenances is a no-op for them)
+//   - lib/morningReport.ts:fireMissedAllDailiesPenance — calls
+//     firePenances(['missed_all_dailies']) for the -20 daily-miss
+//     hit. Was singular firePenance before audit C7 — now rolls.
+//   - routes/habits.ts:POST /:id/log — NEGATIVE habits run an
+//     inline shield/tier write (delta is tier-scaled rather than
+//     template-driven) so they call maybeSpawnLeak() directly
+//     after the transaction commits. Was missing before audit C7.
+//   - routes/portalLeaks.ts:POST /check-spawn — dashboard's
+//     manual probe; reads HomeBase.shield from DB (NOT from the
+//     request body — see audit C6).
+//
+// Call sites that explicitly do NOT spawn:
+//   - lib/penance.ts:firePenance (singular) — used by repair
+//     penances only (meal_logged, completed_prayer, checkin_*,
+//     etc.) where shieldAfter > shieldBefore. The plural wrapper
+//     is the canonical "spawn after every drop" path; if you add
+//     a damaging singular call, migrate it to firePenances.
+//   - routes/homeBase.ts:POST /dev-tools/breach-shield — admin-
+//     only debug knob that bypasses the dice by design.
+//
+// If you add a new shield-drop surface, route it through
+// firePenances (plural) or follow it with a direct
+// maybeSpawnLeak(userId, shieldAfter) call inside a try/catch —
+// the spawn system is best-effort and must never fail the parent
+// write.
 // ============================================================
 
 import type { Prisma, PrismaClient } from './prisma.js';
@@ -492,9 +535,33 @@ export async function pickItemOfRarity(
 }
 
 // ============================================================
-// Apply workout damage to an active leak. Same match algorithm
-// as Breach but with leak-sized values. Returns null if no
-// active leak exists.
+// Apply workout damage to active portal leaks.
+//
+// Multi-target (C2 extension):
+//   A single workout may match the preferredTags / bonusTags of
+//   MULTIPLE active leaks at once — the user's HomeBase can
+//   stack up to MAX_ACTIVE_LEAKS leaks, and a wrist / shoulder
+//   day may legitimately hit several of them. Each leak that
+//   matches this workout's hitTags takes the FULL single-target
+//   damage (damageForMatch runs once per matched leak — same
+//   algorithm as Breach, just looped). Damage is NOT split
+//   across leaks: a workout damaging three leaks at 18 each
+//   removes 54 HP total, not 18/3.
+//
+// Dedup: per-(leakId, workoutId). The runtime findFirst
+// short-circuits clean replays; the @@unique([leakId, workoutId])
+// index is the concurrent-request safety net (P2002 on the
+// losing insert). See schema.prisma:1457-1469 and migration
+// 20260713000000_portal_leak_damage_event_unique.
+//
+// Targeting: callers can scope damage to ONE leak by passing
+// `options.targetLeakId`. The commit-hook in routes/workouts.ts
+// passes no target (cascade to every matching leak). The
+// AttackLeakModal in routes/portalLeaks.ts passes the leak id
+// it chose (single-target, no cascade). In the targeted case
+// leaks whose tags do NOT overlap still get `matched: 0` and
+// the caller surfaces 200 + matched=0 so the UI can
+// distinguish "no-op" from "no leaks exist."
 // ============================================================
 
 export type LeakDamageResult = {
@@ -505,141 +572,285 @@ export type LeakDamageResult = {
   leakId: string;
 };
 
+/**
+ * Summary returned from applyLeakDamage. Always non-null:
+ *  - `matched` is the number of active leaks that took damage
+ *    from this workout.
+ *  - `results` contains the per-leak outcome. Empty when
+ *    `matched === 0`.
+ *
+ * Convenience shape: callers that only care "did anything
+ * land?" should branch on `matched > 0`; per-leak consumers
+ * iterate `results`.
+ */
+export type ApplyLeakDamageSummary = {
+  matched: number;
+  results: LeakDamageResult[];
+};
+
 export async function applyLeakDamage(
   userId: string,
   workoutId: string,
   prisma: PrismaClient = defaultPrisma,
-): Promise<LeakDamageResult | null> {
-  const leak = await prisma.portalLeak.findFirst({
-    where: { userId, status: 'ACTIVE' },
-  });
-  if (!leak) return null;
-
+  options: { targetLeakId?: string } = {},
+): Promise<ApplyLeakDamageSummary> {
+  // 1) Fetch the workout ONCE so we can classify it once for all
+  //    candidate leaks. classifyWorkout + totalVolumeKg are pure
+  //    functions of the workout's exercises — no per-leak work
+  //    needed.
   const workout = await prisma.workout.findUnique({
     where: { id: workoutId },
     include: { exercises: { include: { sets: true } } },
   });
-  if (!workout) return null;
+  if (!workout) return { matched: 0, results: [] };
 
-  // Classify the workout using the same algorithm as Breach.
-  // Re-using the lib keeps the muscle mappings consistent.
   const breach = await import('./breach.js');
   const classification = breach.classifyWorkout({
     type: workout.type,
     exercises: workout.exercises.map((e) => ({
       name: e.name,
-      totalVolumeKg: e.sets.reduce((s, st) => s + (st.weight || 0) * st.reps, 0),
+      totalVolumeKg: e.sets.reduce(
+        (s, st) => s + ((st.completed ? (st.weight || 0) : 0) * st.reps),
+        0,
+      ),
     })),
   });
   const totalVolumeKg = workout.exercises.reduce(
-    (s, e) => s + e.sets.reduce((ss, st) => ss + (st.weight || 0) * st.reps, 0),
-    0
+    (s, e) =>
+      s +
+      e.sets.reduce(
+        (ss, st) => ss + ((st.completed ? (st.weight || 0) : 0) * st.reps),
+        0,
+      ),
+    0,
   );
-  const { delta, matchType } = breach.damageForMatch({
-    hitTags: classification.hitTags,
-    preferredTags: leak.preferredTags as string[],
-    bonusTags: leak.bonusTags as string[],
-    totalVolumeKg,
+
+  // 2) Candidate leaks. Default = all active leaks for this user
+  //    (the commit-hook path). When `targetLeakId` is provided
+  //    (the AttackLeakModal in routes/portalLeaks.ts), restrict
+  //    to a single id — the user explicitly picked a target. The
+  //    id filter composes with status: 'ACTIVE' so a resolved
+  //    leak can never receive damage through either path.
+  const candidateLeaks = await prisma.portalLeak.findMany({
+    where: {
+      userId,
+      status: 'ACTIVE',
+      ...(options.targetLeakId ? { id: options.targetLeakId } : {}),
+    },
   });
-
-  // Scale for leak-tier damage values.
-  // breach.damageForMatch returns delta in Breach-sized units.
-  // For leaks we want smaller absolute numbers — scale by 1/3.
-  let leakDelta = Math.round(delta / 3);
-  // Clamp to reasonable bounds for a 1-shot encounter.
-  leakDelta = Math.max(-12, Math.min(30, leakDelta));
-
-  // Apply overwhelm cap. Leak can grow up to 1.5x maxHp via feeds.
-  const overwhelmCap = Math.round(leak.maxHp * OVERWHELM_CAP_MULT);
-  const newHp = Math.max(0, Math.min(overwhelmCap, leak.hp - leakDelta));
-
-  let resolved: 'DEFEATED' | 'OVERWHELMED' | null = null;
-  let resolvedReason: string | null = null;
-  let resolvedAt: Date | null = null;
-  let newStatus: 'ACTIVE' | 'DEFEATED' | 'OVERWHELMED' | 'EXPIRED' = 'ACTIVE';
-
-  if (newHp === 0) {
-    resolved = 'DEFEATED';
-    resolvedReason = 'you sealed the leak';
-    resolvedAt = new Date();
-    newStatus = 'DEFEATED';
-  } else if (newHp >= overwhelmCap) {
-    resolved = 'OVERWHELMED';
-    resolvedReason = 'the leak overwhelmed your defenses';
-    resolvedAt = new Date();
-    newStatus = 'OVERWHELMED';
+  if (candidateLeaks.length === 0) {
+    return { matched: 0, results: [] };
   }
 
-  await prisma.$transaction([
-    prisma.portalLeak.update({
-      where: { id: leak.id },
-      data: {
-        hp: newHp,
-        status: newStatus,
-        ...(resolvedAt ? { resolvedAt } : {}),
-        ...(resolvedReason ? { resolvedReason } : {}),
-      },
-    }),
-    prisma.portalLeakDamageEvent.create({
-      data: {
-        userId,
-        leakId: leak.id,
-        workoutId,
-        damage: leakDelta,
-        leakHpAfter: newHp,
-        matchType,
-      },
-    }),
-  ]);
+  const results: LeakDamageResult[] = [];
+  let matched = 0;
 
-  // DEFEATED is a high-signal "you sealed it" moment — notify
-  // the user so they can come back to /homebase and claim the
-  // pre-rolled loot. OVERWHELMED is the opposite (a punishment),
-  // also worth surfacing. Other resolutions (no status change)
-  // stay silent — the user can see HP in the portal-leak card.
-  // Fire-and-forget; a failed emit must not block the damage
-  // return.
-  if (resolved) {
-    try {
-      const { emitNotification } = await import('./notify.js');
-      if (resolved === 'DEFEATED') {
-        await emitNotification({
-          userId,
-          category: 'PENANCE',
-          kind: 'leak_defeated',
-          title: `Leak sealed: ${leak.monsterName}`,
-          body: 'Visit /homebase to claim your loot.',
-          link: '/homebase',
-          payload: {
-            leakId: leak.id,
-            monsterName: leak.monsterName,
-            monsterEmoji: leak.monsterEmoji,
-            worldSource: leak.worldSource,
-          },
-        });
-      } else {
-        // OVERWHELMED
-        await emitNotification({
-          userId,
-          category: 'PENANCE',
-          kind: 'leak_overwhelmed',
-          title: `Leak overwhelmed your defenses: ${leak.monsterName}`,
-          body: 'Shield will need extra repair to recover.',
-          link: '/homebase',
-          payload: {
-            leakId: leak.id,
-            monsterName: leak.monsterName,
-            monsterEmoji: leak.monsterEmoji,
-            worldSource: leak.worldSource,
-          },
-        });
-      }
-    } catch (err) {
-      console.warn('[portalLeaks] leak resolution emit failed', { userId, leakId: leak.id, err });
+  for (const leak of candidateLeaks) {
+    // 3) Per-workout dedup (C2). The (leakId, workoutId)
+    //    uniqueness constraint is the safety net; the
+    //    findFirst is the fast-path so most replays never
+    //    even hit SQL. We look up by the workout's leakId,
+    //    not just workoutId, because the same workout could
+    //    in principle have hit a different earlier leak (now
+    //    resolved) — uniqueness is per-leak.
+    const existing = await prisma.portalLeakDamageEvent.findFirst({
+      where: { leakId: leak.id, workoutId },
+      select: { damage: true, leakHpAfter: true, matchType: true },
+    });
+
+    // 4) Tag-overlap filter. Without overlap, this leak is
+    //    untouched by this workout — no damage event, no HP
+    //    change, no notification. A workout that doesn't hit
+    //    a leak's preferredTags / bonusTags simply doesn't
+    //    interact with it.
+    const preferredTags = (leak.preferredTags ?? []) as string[];
+    const bonusTags = (leak.bonusTags ?? []) as string[];
+    const overlap = classification.hitTags.some(
+      (t) => preferredTags.includes(t) || bonusTags.includes(t),
+    );
+    if (!overlap) {
+      // matched only counts leaks whose tags overlapped
+      // the workout — non-matching leaks don't add to it
+      // (and don't appear in results either).
+      continue;
     }
+
+    // From here on this leak "matched" — push the result
+    // and increment matched so the UI can render the count.
+    // Replay (existing-event) hits and race-losers (P2002
+    // catch) each count as 1 match; the per-result `dealt`
+    // field carries the "did new damage land?" signal:
+    //   dealt > 0 → new damage applied this call
+    //   dealt < 0 → historical feed this call
+    //   dealt === 0 → P2002 race loser's no-op entry
+
+    if (existing) {
+      // Already applied — surface the historical event so
+      // the caller can still tell the user "this workout
+      // already counted" without double-decrementing HP.
+      // Note: historical negative damage (mismatched-feed)
+      // is no longer produced by this code path; the schema
+      // preserves it for back-compat but the helper only
+      // deals damage now.
+      results.push({
+        dealt: existing.damage,
+        matchType: existing.matchType as LeakDamageResult['matchType'],
+        leakHpAfter: leak.hp,
+        resolved: null,
+        leakId: leak.id,
+      });
+      matched++;
+      continue;
+    }
+
+    // 5) Damage computation — single-target for THIS leak.
+    //    Each matched leak takes the FULL damage value (NOT
+    //    split). damageForMatch is the same algorithm the
+    //    workout commit already used; we just loop it across
+    //    matched leaks.
+    const { delta, matchType } = breach.damageForMatch({
+      hitTags: classification.hitTags,
+      preferredTags,
+      bonusTags,
+      totalVolumeKg,
+    });
+    let leakDelta = Math.round(delta / 3);
+    // Clamp to reasonable bounds for a 1-shot encounter.
+    leakDelta = Math.max(-12, Math.min(30, leakDelta));
+
+    // 6) Apply overwhelm cap. Leak can grow up to 1.5x maxHp
+    //    via feeds.
+    const overwhelmCap = Math.round(leak.maxHp * OVERWHELM_CAP_MULT);
+    const newHp = Math.max(0, Math.min(overwhelmCap, leak.hp - leakDelta));
+
+    let resolved: 'DEFEATED' | 'OVERWHELMED' | null = null;
+    let resolvedReason: string | null = null;
+    let resolvedAt: Date | null = null;
+    let newStatus: 'ACTIVE' | 'DEFEATED' | 'OVERWHELMED' | 'EXPIRED' = 'ACTIVE';
+
+    if (newHp === 0) {
+      resolved = 'DEFEATED';
+      resolvedReason = 'you sealed the leak';
+      resolvedAt = new Date();
+      newStatus = 'DEFEATED';
+    } else if (newHp >= overwhelmCap) {
+      resolved = 'OVERWHELMED';
+      resolvedReason = 'the leak overwhelmed your defenses';
+      resolvedAt = new Date();
+      newStatus = 'OVERWHELMED';
+    }
+
+    // 7) $transaction: create the event row FIRST, then
+    //    update the leak. The create-first ordering is
+    //    deliberate — see C2 audit comments above. P2002
+    //    races (a concurrent request created the same
+    //    (leakId, workoutId) row first) are caught and
+    //    surface the current leak state without
+    //    double-decrementing HP.
+    try {
+      await prisma.$transaction([
+        prisma.portalLeakDamageEvent.create({
+          data: {
+            userId,
+            leakId: leak.id,
+            workoutId,
+            damage: leakDelta,
+            leakHpAfter: newHp,
+            matchType,
+          },
+        }),
+        prisma.portalLeak.update({
+          where: { id: leak.id },
+          data: {
+            hp: newHp,
+            status: newStatus,
+            ...(resolvedAt ? { resolvedAt } : {}),
+            ...(resolvedReason ? { resolvedReason } : {}),
+          },
+        }),
+      ]);
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        // Concurrent loser: the winning request already
+        // decremented HP and wrote the event row. Surface
+        // the leak's current state so the caller's UI can
+        // stay consistent without re-damaging.
+        const current = await prisma.portalLeak.findUnique({
+          where: { id: leak.id },
+          select: { hp: true, status: true },
+        });
+        results.push({
+          dealt: 0,
+          matchType,
+          leakHpAfter: current?.hp ?? leak.hp,
+          // Don't emit DEFEATED/OVERWHELMED from the loser —
+          // that would double-notify if both racers saw the
+          // threshold.
+          resolved: null,
+          leakId: leak.id,
+        });
+        matched++;
+        continue;
+      }
+      throw e;
+    }
+
+    // 8) Resolution notification. DEFEATED (you sealed it)
+    //    and OVERWHELMED (it broke through) are high-signal
+    //    — surface them. Other resolutions stay silent.
+    //    Fire-and-forget; a failed emit must not block the
+    //    damage return.
+    if (resolved) {
+      try {
+        const { emitNotification } = await import('./notify.js');
+        if (resolved === 'DEFEATED') {
+          await emitNotification({
+            userId,
+            category: 'PENANCE',
+            kind: 'leak_defeated',
+            title: `Leak sealed: ${leak.monsterName}`,
+            body: 'Visit /homebase to claim your loot.',
+            link: '/homebase',
+            payload: {
+              leakId: leak.id,
+              monsterName: leak.monsterName,
+              monsterEmoji: leak.monsterEmoji,
+              worldSource: leak.worldSource,
+            },
+          });
+        } else {
+          // OVERWHELMED
+          await emitNotification({
+            userId,
+            category: 'PENANCE',
+            kind: 'leak_overwhelmed',
+            title: `Leak overwhelmed your defenses: ${leak.monsterName}`,
+            body: 'Shield will need extra repair to recover.',
+            link: '/homebase',
+            payload: {
+              leakId: leak.id,
+              monsterName: leak.monsterName,
+              monsterEmoji: leak.monsterEmoji,
+              worldSource: leak.worldSource,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn('[portalLeaks] leak resolution emit failed', { userId, leakId: leak.id, err });
+      }
+    }
+
+    results.push({
+      dealt: leakDelta,
+      matchType,
+      leakHpAfter: newHp,
+      resolved,
+      leakId: leak.id,
+    });
+    matched++;
   }
 
-  return { dealt: leakDelta, matchType, leakHpAfter: newHp, resolved, leakId: leak.id };
+  return { matched, results };
 }
 
 // ============================================================

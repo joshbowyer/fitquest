@@ -32,7 +32,7 @@ import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
 import { computeRecovery } from './recovery.js';
 import { tickHearts, heartMultiplier, HARDCORE_SUBSTANCE_CAPS, MAX_HEARTS } from './mode.js';
 import { setVolumeKg } from './exerciseVolume.js';
-import { firePenance } from './penance.js';
+import { firePenances } from './penance.js';
 import { detectPlateaus, type Plateau } from './plateau.js';
 import { buildMacroNudges, type MacroNudgesResult } from './macroNudges.js';
 import {
@@ -1137,8 +1137,16 @@ export async function getOrGenerateToday(
 // Fires `missed_all_dailies` (default -20) if the user has at least
 // one configured daily and NONE of yesterday's dailies were
 // completed. Runs once per morning-report fetch (idempotent —
-// firePenance ignores re-fires of the same key on the same day).
-// Best-effort: a throw here doesn't block the report itself.
+// firePenances (and the singular firePenance it wraps) ignores
+// re-fires of the same key on the same day). Best-effort: a throw
+// here doesn't block the report itself.
+//
+// Routed through the PLURAL firePenances so the -20 hit rolls a
+// portal-leak spawn via maybeSpawnLeak, matching substance_overuse
+// (routes/substances.ts) and the workout-commit repair path
+// (routes/workouts.ts). missing_all_dailies is the biggest routine
+// hit and was previously the only large shield drop that bypassed
+// the spawn dice. See lib/portalLeaks.ts header for the spawn policy.
 // =============================================================================
 
 async function fireMissedAllDailiesPenance(
@@ -1210,7 +1218,13 @@ async function fireMissedAllDailiesPenance(
     const allMissed = [...expectedKeys].every((k) => !completed.has(k));
     if (!allMissed) return;
 
-    await firePenance(userId, 'missed_all_dailies', 'daily_missed');
+    // Route through firePenances (plural) so the shield drop rolls
+    // a leak spawn via maybeSpawnLeak, matching the substance_overuse
+    // path in routes/substances.ts and the workout-commit path in
+    // routes/workouts.ts. misssed_all_dailies is the largest routine
+    // hit (-20) and was previously the only big drop that bypassed
+    // the spawn dice.
+    await firePenances(userId, [{ key: 'missed_all_dailies', source: 'daily_missed' }]);
   } catch (err) {
     console.warn('[morning-report] missed_all_dailies penance check failed', err);
   }

@@ -192,6 +192,15 @@ export async function habitRoutes(app: FastifyInstance) {
     // does internally — transaction, tier re-derivation, PenanceEvent
     // insert — but lets us pass the tier-scaled delta rather than
     // looking it up from the penance template.
+    //
+    // Spawn policy: a NEGATIVE habit tick that drops the shield into
+    // BREACHED/COMPROMISED territory triggers a portal-leak spawn roll
+    // (mirror of the missed_all_dailies / substance_overuse paths).
+    // firePenance (plural) does this internally for the routine hits,
+    // but this code path uses a tier-scaled delta that doesn't map to
+    // a single template, so we replicate the side-effect inline by
+    // calling maybeSpawnLeak() ourselves. Best-effort — a spawn
+    // failure must not fail the habit log.
     let shieldEvent: { shieldBefore: number; shieldAfter: number; delta: number } | null = null;
     if (habit.direction === 'NEGATIVE') {
       const tierKey = tierKeyForGoldReward(habit.goldReward);
@@ -221,6 +230,18 @@ export async function habitRoutes(app: FastifyInstance) {
         });
         return { shieldBefore: base.shield, shieldAfter, delta: shieldDelta };
       });
+      // Shield dropped (negative delta) → roll the leak spawn dice.
+      // Wrapped in its own try so a spawn failure can't fail the habit
+      // log; the leak system is best-effort like every other spawn
+      // call site.
+      if (shieldEvent.delta < 0 && shieldEvent.shieldAfter < shieldEvent.shieldBefore) {
+        try {
+          const { maybeSpawnLeak } = await import('../lib/portalLeaks.js');
+          await maybeSpawnLeak(me.id, shieldEvent.shieldAfter);
+        } catch (err) {
+          console.warn('[habits] maybeSpawnLeak after NEGATIVE habit failed', { userId: me.id, err });
+        }
+      }
     }
 
     await checkAchievements(me.id);

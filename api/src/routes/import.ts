@@ -8,6 +8,12 @@ import { checkAchievements } from '../lib/achievements.js';
 import { checkRoutineProgress } from './routine.js';
 import { activityTitle } from '../lib/geo.js';
 import { importExport, ImportError, validatePayload } from '../lib/import.js';
+import { awardXpGold } from '../lib/award.js';
+import { tickHearts, heartMultiplier } from '../lib/mode.js';
+import { levelFromXp, xpFromWorkout, goldFromWorkout } from '../lib/xp.js';
+import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
+import { computeRaidDamage } from '../lib/raidDamage.js';
+import { getEquippedBonus } from '../lib/equipment.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
@@ -35,7 +41,39 @@ type FileResult = {
 };
 
 // Helper that actually performs the persistence for one parsed FIT.
-async function persist(
+//
+// Persistence mirrors the manual POST /workouts pipeline (see
+// routes/workouts.ts around lines 217-823). For each ParsedActivity
+// from the FIT decoder we run the same command sequence:
+//
+//   1. Upsert the Workout row keyed on (userId, performedAt).
+//   2. PR detection (over the workout's exercises.sets — for FIT
+//      imports, the parser only emits top-level activity metrics,
+//      no nested sets, so PR detection is naturally a no-op; we
+//      still run the loop for parity).
+//   3. Award XP + gold via the centralized awardXpGold path
+//      (applies the heart multiplier and recomputes level).
+//   4. DailyLog: idempotent per-day WORKOUT log row.
+//
+// All four live in one prisma.$transaction block so a partial
+// failure rolls back the workout. The post-commit side effects
+// (checkAchievements / checkRoutineProgress / skill matching /
+// penances / raid damage / breach damage / portal-leak damage)
+// fire OUTSIDE the transaction, best-effort. Each is gated by
+// `!wasUpdate` so re-importing the same FIT file does not double
+// credit XP/gold or re-run combat math.
+//
+// `wasUpdate` is detected by pre-checking the (userId, performedAt)
+// unique key BEFORE the upsert — Prisma's upsert doesn't return
+// a "was this a create or update" flag, and the previous
+// "<5s createdAt" heuristic was unreliable (a re-import within 5s
+// of the original would double-credit). The pre-check is robust
+// against any time gap.
+// Exported only so the unit test in src/__tests__/import.test.ts can
+// exercise the persist() pipeline without going through the
+// full HTTP route. The route handlers in this file are the only
+// production callers; tests import this directly.
+export async function persist(
   userId: string,
   fit: FitImportResult,
   importSource: WorkoutSource = WorkoutSource.WEB,
@@ -51,6 +89,38 @@ async function persist(
     orderBy: { createdAt: 'asc' },
     select: { id: true },
   });
+
+  // User state we need throughout the pipeline. Fetched once so we
+  // don't round-trip per callback. Mirrors the workouts.ts pattern
+  // of hoisting user scalars out of the transaction.
+  const userRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { xp: true, gold: true, level: true, class: true, mode: true, weightKg: true },
+  });
+  if (!userRow) {
+    // No-op safety: caller should have already 401'd. Keep
+    // behavior of not crashing.
+    return created;
+  }
+
+  // Heart multiplier is read once and reused inside (XP / gold)
+  // and outside (raid damage). Hoisted out so the post-commit
+  // raid math doesn't ReferenceError when we reference `mult`
+  // outside the transaction scope — same pattern workouts.ts
+  // uses (see routes/workouts.ts:251-252).
+  const currentHearts = await tickHearts(userId);
+  const mult = heartMultiplier(currentHearts, userRow.mode ?? 'CASUAL');
+
+  // TZ-aware "today" lower bound for the DailyLog idempotency check.
+  // Matches the dailies.ts /complete endpoint pattern so a NYC user
+  // doesn't see the same WORKOUT daily double-logged across the UTC
+  // vs. local midnight boundary.
+  const userTzRow = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const userTz = userTzRow?.timezone ?? null;
+  const todayLocal = localMidnightUtc(todayInTz(userTz), userTz ?? 'UTC');
 
   if (fit.workouts && fit.workouts.length > 0) {
     for (const w of fit.workouts) {
@@ -82,88 +152,415 @@ async function persist(
           : w.sport === 'yoga' || w.sport === 'pilates'
           ? 'MOBILITY'
           : 'OTHER';
-      // Upsert keyed on the (userId, performedAt) unique index.
-      // Previously this was a `create` call — but the recent
-      // migration added the unique constraint, so a re-import
-      // of the same .fit would fail with P2002 and roll back
-      // the whole transaction. Use upsert so re-imports
-      // dedupe cleanly. On update, only touch the mutable
-      // fields (notes, name, trackJson, sourceFilename,
-      // durationSec). The user's other Workout fields (importSource,
-      // type) shouldn't change on re-import.
-      const created_row = await prisma.workout.upsert({
-        where: {
-          userId_performedAt: {
+
+      // Resolve the activity title once. The previous code called
+      // activityTitle twice (create + update blocks) — wasteful
+      // because each call may issue a Nominatim reverse-geocode.
+      const title = await activityTitle(w.sport, w.trackpoints);
+
+      // ============================================================
+      // Atomic block: workout upsert + PR detection + XP/gold +
+      // idempotent DailyLog. Either all land or none do. Mirrors
+      // routes/workouts.ts:254-448 (the inner $transaction block).
+      // ============================================================
+      const result = await prisma.$transaction(async (tx) => {
+        // Detect re-import BEFORE the upsert. The previous design
+        // used a "<5s createdAt" heuristic on the post-upsert row,
+        // which was unreliable (any re-import within 5s double-paid
+        // rewards). The unique (userId, performedAt) index lets us
+        // do this with a single pre-check that is robust against
+        // any time gap.
+        const existing = await tx.workout.findUnique({
+          where: { userId_performedAt: { userId, performedAt: w.startTime } },
+          select: { id: true },
+        });
+        const wasUpdate = !!existing;
+
+        // Upsert keyed on the (userId, performedAt) unique index.
+        // Update path is restricted to mutable fields (notes, name,
+        // trackJson, sourceFilename, durationSec). Top-level scalars
+        // (type, importSource) shouldn't change on re-import.
+        const workoutRow = await tx.workout.upsert({
+          where: { userId_performedAt: { userId, performedAt: w.startTime } },
+          create: {
             userId,
+            type: type as any,
+            name: title,
+            durationSec,
+            notes: `[FIT] ${notes}`,
+            importSource,
+            sourceFilename,
             performedAt: w.startTime,
+            trackJson: (w.trackpoints ?? []) as any,
           },
-        },
-        create: {
-          userId,
-          type: type as any,
-          // Auto-name from location + sport when the track has
-          // lat/lng points; falls back to "<Sport>" otherwise.
-          // Cached reverse-geocode keeps a 26-file bulk import
-          // to 1-2 Nominatim calls when the activities cluster
-          // in the same metro area.
-          name: await activityTitle(w.sport, w.trackpoints),
-          durationSec,
-          notes: `[FIT] ${notes}`,
-          importSource,
-          sourceFilename,
-          performedAt: w.startTime,
-          trackJson: (w.trackpoints ?? []) as any,
-        },
-        update: {
-          name: await activityTitle(w.sport, w.trackpoints),
-          durationSec,
-          notes: `[FIT] ${notes}`,
-          sourceFilename,
-          trackJson: (w.trackpoints ?? []) as any,
-        },
-      });
-      // Detect "this is a fresh insert" vs "an update" so the
-      // downstream WORKOUT daily log + race-time inference don't
-      // re-run for re-imports. Prisma's upsert doesn't return
-      // a flag, so we use a createdAt-vs-now heuristic. A re-import
-      // of a workout from a few seconds ago would re-run the
-      // side effects (harmless but slightly wasteful); anything
-      // older counts as a re-import and skips them.
-      const ageMs = Date.now() - created_row.createdAt.getTime();
-      const isFreshInsert = ageMs < 5000;
-      // Mark today's WORKOUT daily complete (if applicable)
-      if (fallbackDaily) {
-        const daily = await prisma.dailyLog.create({
-          data: {
-            userId,
-            dailyId: fallbackDaily.id,
-            dailyKey: 'WORKOUT',
-            goldDelta: 10,
-            xpDelta: 15,
-            loggedAt: w.startTime,
+          update: {
+            name: title,
+            durationSec,
+            notes: `[FIT] ${notes}`,
+            sourceFilename,
+            trackJson: (w.trackpoints ?? []) as any,
           },
         });
+
+        // PR detection. The FIT parser only emits top-level
+        // activity metrics (no nested exercise/set rows), so the
+        // workout.exercises list comes back empty from the upsert
+        // include and the loop body naturally doesn't run. Loop
+        // kept here for parity with workouts.ts — if a future FIT
+        // parser starts surfacing structured sets, the PR pipeline
+        // just works.
+        const prs: Array<{ exercise: string; value: number; previousValue: number | null; type: 'ONE_RM' | 'HOLD' }> = [];
+        const workoutForPrs = await tx.workout.findUnique({
+          where: { id: workoutRow.id },
+          include: { exercises: { include: { sets: true } } },
+        });
+        if (workoutForPrs && workoutForPrs.exercises.length > 0) {
+          const prLib = await import('../lib/pr.js');
+          for (const ex of workoutForPrs.exercises) {
+            if (!ex.sets.length) continue;
+            // ---- HOLD PR (static holds: Dead Hang, Plank, L-Sit, ...) ----
+            if (prLib.isStaticHoldExercise(ex.name)) {
+              const bestHold = prLib.bestHoldDurationSec(ex.sets);
+              if (bestHold != null) {
+                const prevHold = await tx.pr.findFirst({
+                  where: { userId, exercise: ex.name, type: 'HOLD' },
+                  orderBy: { value: 'desc' },
+                });
+                if (prLib.isPrCandidate(ex.name, bestHold, prevHold?.value)) {
+                  const pr = await tx.pr.create({
+                    data: {
+                      userId,
+                      type: 'HOLD',
+                      exercise: ex.name,
+                      value: bestHold,
+                      previousValue: prevHold?.value ?? null,
+                      workoutId: workoutRow.id,
+                    },
+                  });
+                  prs.push({ exercise: ex.name, value: pr.value, previousValue: pr.previousValue, type: 'HOLD' });
+                }
+              }
+            }
+            // ---- ONE_RM PR (weight×reps sets) ----
+            const bestSet = ex.sets
+              .filter((s) => s.completed && !s.skipped && (s.weight ?? 0) > 0 && s.reps > 0)
+              .reduce<{ value: number; weight: number; reps: number } | null>((acc, s) => {
+                const v = prLib.bestEstimatedOneRm(s.weight ?? 0, s.reps);
+                if (acc == null || v > acc.value) return { value: v, weight: s.weight ?? 0, reps: s.reps };
+                return acc;
+              }, null);
+            if (!bestSet) continue;
+            const prev = await tx.pr.findFirst({
+              where: { userId, exercise: ex.name, type: 'ONE_RM' },
+              orderBy: { value: 'desc' },
+            });
+            if (prLib.isPrCandidate(ex.name, bestSet.value, prev?.value)) {
+              const pr = await tx.pr.create({
+                data: {
+                  userId,
+                  type: 'ONE_RM',
+                  exercise: ex.name,
+                  value: bestSet.value,
+                  previousValue: prev?.value ?? null,
+                  workoutId: workoutRow.id,
+                },
+              });
+              prs.push({ exercise: ex.name, value: pr.value, previousValue: pr.previousValue, type: 'ONE_RM' });
+            }
+          }
+        }
+
+        // XP / gold. Apply the graduated Hardcore heart multiplier.
+        // Skipped on re-uploads (`wasUpdate`) — the original
+        // upload already paid out (matches workouts.ts).
+        const previousLevel = userRow.level;
+        let xp = 0;
+        let gold = 0;
+        let newXp = userRow.xp;
+        let newGold = userRow.gold;
+        let newLevel = userRow.level;
+        let dailyXpDelta = 0;
+        let dailyGoldDelta = 0;
+        let dailyLogId: string | null = null;
+        if (!wasUpdate) {
+          const baseXp = xpFromWorkout({
+            type: workoutRow.type as any,
+            totalVolumeKg: 0, // FIT imports don't surface per-set volume
+            durationMin: durationSec / 60,
+            prCount: prs.length,
+          });
+          const baseGold = goldFromWorkout({
+            type: workoutRow.type,
+            prCount: prs.length,
+            durationMin: durationSec / 60,
+          });
+          xp = Math.round(baseXp * mult);
+          gold = Math.round(baseGold * mult);
+          newXp = userRow.xp + xp;
+          newGold = userRow.gold + gold;
+          newLevel = Math.max(userRow.level, levelFromXp(newXp));
+          await tx.user.update({
+            where: { id: userId },
+            data: { xp: newXp, gold: newGold, level: newLevel },
+          });
+
+          // DailyLog: replaced the old hardcoded goldDelta:10 /
+          // xpDelta:15 insert (which bypassed the heart multiplier
+          // and never matched what awardXpGold actually credits)
+          // with the day-key idempotency the /dailies/:id/complete
+          // endpoint uses (find-or-skip keyed on the local midnight
+          // in the user's tz). The WORKOUT built-in's documented
+          // reward is 10g / 15xp (see routes/dailies.ts:76-77); we
+          // apply the heart mult and write a DailyLog with the
+          // ACTUAL deltas so the audit row reflects what really
+          // happened — matches the dailies.ts pattern.
+          if (fallbackDaily) {
+            const todaysLog = await tx.dailyLog.findFirst({
+              where: {
+                userId,
+                dailyKey: 'WORKOUT',
+                loggedAt: { gte: todayLocal },
+              },
+            });
+            if (!todaysLog) {
+              const baseDailyXp = 15;
+              const baseDailyGold = 10;
+              dailyXpDelta = Math.round(baseDailyXp * mult);
+              dailyGoldDelta = Math.round(baseDailyGold * mult);
+              const logRow = await tx.dailyLog.create({
+                data: {
+                  userId,
+                  dailyId: fallbackDaily.id,
+                  dailyKey: 'WORKOUT',
+                  goldDelta: dailyGoldDelta,
+                  xpDelta: dailyXpDelta,
+                  loggedAt: w.startTime,
+                  sourceFilename,
+                },
+              });
+              dailyLogId = logRow.id;
+            }
+          }
+        }
+
+        return {
+          workout: workoutRow,
+          xp,
+          gold,
+          totalXp: newXp,
+          totalGold: newGold,
+          level: newLevel,
+          previousLevel,
+          leveledUp: newLevel > previousLevel,
+          wasUpdate,
+          dailyXpDelta,
+          dailyGoldDelta,
+          dailyLogId,
+        };
+      });
+
+      created.push({
+        kind: 'workout',
+        id: result.workout.id,
+        summary: `${w.sport} · ${Math.round(durationSec / 60)}m`,
+      });
+      if (result.dailyLogId) {
         created.push({
           kind: 'daily_log',
-          id: daily.id,
+          id: result.dailyLogId,
           dailyKey: 'WORKOUT',
         });
       }
-      created.push({
-        kind: 'workout',
-        id: created_row.id,
-        summary: `${w.sport} · ${Math.round(durationSec / 60)}m`,
-      });
 
-      // Infer standard race distances from CARDIO activities. We only
-      // log when the activity is plausibly a 1mi or 5K effort (by
-      // duration) AND the distance is within a margin of the target.
-      // Margin = ±20% by default so a 1.05mi run isn't dismissed but a
-      // 1.5mi run doesn't get logged as a mile.
-      await maybeInferStandardDistance(userId, w, created_row.id);
+      // ============================================================
+      // Post-commit pipeline. Mirrors routes/workouts.ts:450-823 —
+      // ALL of these fire per-workout post-transaction and are
+      // gated by `!wasUpdate` so re-imports don't double-credit.
+      // Each is wrapped best-effort (try/catch + log) so a single
+      // failure can't roll back the workout commit (matches
+      // workouts.ts:486-487 / 762-764 / 784-785).
+      // ============================================================
+
+      // 4. Activity → skill matching pass. Same shape as
+      //    workouts.ts:461-488. Falls through silently when the
+      //    user has no class (locked out of skills entirely).
+      if (!result.wasUpdate) try {
+        const skillLib = await import('../lib/skillMatching.js');
+        const eligible = await skillLib.findEligibleSkillUnlocks(
+          userId,
+          userRow.weightKg ?? 0,
+        );
+        for (const e of eligible) {
+          try {
+            await prisma.pendingSkillUnlock.create({
+              data: {
+                userId,
+                skillId: e.skillId,
+                workoutId: e.matchedSet.workoutId,
+                matchedSetId: e.matchedSet.setId,
+                setReps: e.matchedSet.reps,
+                setWeight: e.matchedSet.weight,
+                setDuration: e.matchedSet.duration,
+                exerciseName: e.matchedSet.exerciseName,
+                workoutDate: e.matchedSet.workoutDate,
+              },
+            });
+          } catch (err: any) {
+            if (err?.code !== 'P2002') throw err;
+          }
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[import] skill matching failed', err);
+      }
+
+      // 5. Penances. The two big workout-commit repair events fire
+      //    here (matching workouts.ts:500-522):
+      //      - MOBILITY workouts → +6 shield (logged_mobility)
+      //      - CARDIO ≥30 min    → +8 shield (logged_cardio_30)
+      //    Stretch-keyword detection is skipped for FIT imports
+      //    because no exercise names are carried in the parse
+      //    (only the top-level type field).
+      if (!result.wasUpdate) try {
+        const penanceLib = await import('../lib/penance.js');
+        const fires: Array<{ key: 'logged_mobility' | 'logged_cardio_30'; source: 'workout_commit' }> = [];
+        if (type === 'MOBILITY') {
+          fires.push({ key: 'logged_mobility', source: 'workout_commit' });
+        }
+        if (type === 'CARDIO' && durationSec >= 30 * 60) {
+          fires.push({ key: 'logged_cardio_30', source: 'workout_commit' });
+        }
+        if (fires.length > 0) {
+          await penanceLib.firePenances(userId, fires);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[import] penance fire failed', err);
+      }
+
+      // 6. Raid damage. Compute from workout (returns total=0 for
+      //    FIT imports because they have no per-set contribution
+      //    data), apply class multiplier, contribute to the active
+      //    raid for the user's party. Skipped on re-uploads.
+      //    Mirrors workouts.ts:524-695. The victory / XP-share
+      //    block is retained for completeness even though it
+      //    won't fire in practice (FIT imports yield total=0).
+      if (!result.wasUpdate) try {
+        const { equip } = await getEquippedBonus(userId);
+        const raidDamage = computeRaidDamage(
+          {
+            type: type as any,
+            durationMin: durationSec / 60,
+            exercises: [], // FIT imports don't surface per-set data
+          },
+          userRow.class,
+          equip,
+        );
+        if (userRow.class && raidDamage.total > 0) {
+          const membership = await prisma.partyMember.findUnique({ where: { userId } });
+          if (membership) {
+            const raid = await prisma.raid.findFirst({
+              where: { partyId: membership.partyId, status: 'ACTIVE' },
+            });
+            if (raid) {
+              const buff = await prisma.partyBuff.findUnique({
+                where: { partyId: membership.partyId },
+              });
+              const buffActive = buff && buff.expiresAt > new Date();
+              const buffedDamage = buffActive
+                ? Math.round(raidDamage.total * mult * (1 + (buff?.raidDmgBonusPct ?? 0) / 100))
+                : Math.round(raidDamage.total * mult);
+              const [contribution] = await prisma.$transaction([
+                prisma.raidContribution.create({
+                  data: {
+                    raidId: raid.id,
+                    userId,
+                    damage: buffedDamage,
+                    source: 'workout',
+                  },
+                }),
+                prisma.raid.update({
+                  where: { id: raid.id },
+                  data: { bossHp: { decrement: buffedDamage } },
+                }),
+              ]);
+              const claimed = await prisma.raid.updateMany({
+                where: { id: raid.id, status: 'ACTIVE', bossHp: { lte: 0 } },
+                data: { status: 'VICTORY', endedAt: new Date(), bossHp: 0 },
+              });
+              if (claimed.count === 1) {
+                // On victory, distribute XP + gold to all members
+                // via the centralized awardXpGold path (applies
+                // each member's own heart multiplier + recomputes
+                // their level — matches workouts.ts:603-654).
+                const members = await prisma.partyMember.findMany({ where: { partyId: raid.partyId } });
+                const totalAgg = await prisma.raidContribution.aggregate({
+                  where: { raidId: raid.id },
+                  _sum: { damage: true },
+                });
+                const totalDamage = totalAgg._sum.damage ?? raidDamage.total;
+                for (const m of members) {
+                  const myAgg = await prisma.raidContribution.aggregate({
+                    where: { raidId: raid.id, userId: m.userId },
+                    _sum: { damage: true },
+                  });
+                  const my = myAgg._sum.damage ?? 0;
+                  const share = Math.round((my / totalDamage) * 200) + 50;
+                  await awardXpGold(m.userId, { xp: share, gold: Math.floor(share / 4) });
+                }
+              }
+              // (raidContribution intentionally not surfaced to the
+              // batch response — see workouts.ts for the
+              // single-commit response shape; imports are
+              // batch-shaped.)
+              void contribution;
+            }
+          }
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[import] raid damage hook failed', err);
+      }
+
+      // 7. Breach damage. Lazy-unlocks at level 10; below that
+      //    the function is a no-op. Mirrors workouts.ts:697-765.
+      if (!result.wasUpdate) try {
+        const breachLib = await import('../lib/breach.js');
+        await breachLib.unlockBreachIfReady(userId, result.level);
+        await breachLib.tickCooldown(userId);
+        await breachLib.applyWorkoutDamage(userId, result.workout.id);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[import] breach damage hook failed', err);
+      }
+
+      // 8. Portal-leak damage. Same auto-apply pattern as
+      //    workouts.ts:767-786. dedup is by workoutId inside the
+      //    lib so re-imports won't double-damage (the C2 dup fix
+      //    lives in the lib, not here).
+      if (!result.wasUpdate) try {
+        const leakLib = await import('../lib/portalLeaks.js');
+        await leakLib.applyLeakDamage(userId, result.workout.id);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[import] leak damage hook failed', err);
+      }
+
+      // 9. Per-workout post-commit: achievements + routine
+      //    progress. Both fire best-effort and re-uploads skip
+      //    the achievements pass. Matches workouts.ts:450 + 493.
+      if (!result.wasUpdate) {
+        await checkAchievements(userId);
+      }
+      await checkRoutineProgress(userId);
+
+      // 10. Race-time inference: infer a 1-mile or 5K time from
+      //     CARDIO FIT activities when plausible. Runs regardless
+      //     of wasUpdate (it's idempotent in itself — findFirst
+      //     against an existing measurement, only writes if
+      //     faster). Preserved verbatim from the original.
+      await maybeInferStandardDistance(userId, w, result.workout.id);
     }
-    await checkAchievements(userId);
-    await checkRoutineProgress(userId);
   }
 
   if (fit.measurements && fit.measurements.length > 0) {

@@ -711,14 +711,24 @@ export async function workoutRoutes(app: FastifyInstance) {
     // commit (not just from the AttackLeakModal). The previous
     // design only fired it from a dedicated UI flow, which meant
     // logging a matching workout via the regular /workouts page
-    // left the leak untouched -- confusing for the user. The
-    // dedup semantics are preserved: a workout already in the
-    // leak-damage-event table for this leak won't double-damage.
+    // left the leak untouched -- confusing for the user.
+    //
+    // Per-workout dedup: a (leakId, workoutId) pair can only ever
+    // produce one PortalLeakDamageEvent row. The check + safety
+    // net live inside applyLeakDamage() — both the runtime
+    // findFirst and the database-level @@unique([leakId,
+    // workoutId]) index. Without that, the inline commit-damage
+    // here plus an explicit POST /workouts/:id/leak-damage
+    // (AttackLeakModal) would double-fire on the same workout.
     let leakDamage: {
       dealt: number;
       matchType: string;
       leakHpAfter: number;
       resolved: string | null;
+      // Multi-leak fan-out — the workout may have damaged more
+      // than one active leak. Surfaced so the dashboard can
+      // refresh all of them, not just the first.
+      matched: number;
     } | null = null;
     // Both damage hooks skipped on re-uploads (each dedupes by
     // workoutId internally, but skipping keeps re-POSTs a true
@@ -770,15 +780,27 @@ export async function workoutRoutes(app: FastifyInstance) {
     // workout log fires the damage. Mismatched workouts feed the
     // leak (negative delta); matched ones deal damage. Best-effort:
     // a leak bug doesn't fail the workout save.
+    //
+    // Multi-target: applyLeakDamage cascades to every active leak
+    // whose preferredTags / bonusTags overlap this workout's
+    // hitTags. Each matched leak takes the FULL single-target
+    // damage (no splitting). The response shape aggregates the
+    // per-leak results — `dealt` is the sum across matched leaks,
+    // `leakHpAfter` is the first matched leak's HP (the homebase
+    // card surfaces a single value), and `resolved` becomes
+    // non-null if ANY leak crossed the DEFEATED / OVERWHELMED
+    // threshold.
     if (!result.wasUpdate) try {
       const leakLib = await import('../lib/portalLeaks.js');
-      const leakResult = await leakLib.applyLeakDamage(me.id, result.workout.id);
-      if (leakResult) {
+      const leakSummary = await leakLib.applyLeakDamage(me.id, result.workout.id);
+      if (leakSummary && leakSummary.matched > 0) {
+        const firstResult = leakSummary.results[0]!;
         leakDamage = {
-          dealt: leakResult.dealt,
-          matchType: leakResult.matchType,
-          leakHpAfter: leakResult.leakHpAfter,
-          resolved: leakResult.resolved,
+          dealt: leakSummary.results.reduce((s, r) => s + r.dealt, 0),
+          matchType: firstResult.matchType,
+          leakHpAfter: firstResult.leakHpAfter,
+          resolved: leakSummary.results.find((r) => r.resolved)?.resolved ?? null,
+          matched: leakSummary.matched,
         };
       }
     } catch (err) {
