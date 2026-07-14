@@ -28,6 +28,20 @@ RUN npm ci --workspaces --include-workspace-root
 
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
+# npm workspaces doesn't hoist every package to the root
+# node_modules — packages whose resolved version conflicts
+# across workspaces (or that only one workspace depends on,
+# like api's test-only deps: vitest + its transitive chai/
+# pathe/std-env/tinyexec/tinyrainbow) get installed nested at
+# api/node_modules instead (confirmed via package-lock.json).
+# Without this second COPY, tsc can't resolve `vitest` from
+# src/__tests__/*.test.ts (TS2307), which the `|| true` in the
+# old tsc step silently swallowed — this is why flipping that
+# gate to hard-fail (2026-07-14) broke the image build even
+# though `tsc -p tsconfig.json` was clean in every local/dev
+# checkout (where api/node_modules already sits right next to
+# src/ with no COPY step splitting them apart).
+COPY --from=deps /app/api/node_modules ./api/node_modules
 # Only api's source files + its own tsconfig — there is no root
 # tsconfig.json in this repo.
 COPY api/tsconfig.json ./api/tsconfig.json

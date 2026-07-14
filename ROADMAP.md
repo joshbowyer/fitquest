@@ -518,6 +518,42 @@ work captured in the "Outstanding" note above.)_
 
 ## Recently Fixed / Resolved
 
+### 2026-07-14 session — Docker image build broke right after the tsc gate flip
+
+The api image's "Build + push images" CI run failed on the very
+next 2 pushes after the tsc gate was hard-flipped (see below) —
+`tsc -p tsconfig.json` reported `TS2307: Cannot find module
+'vitest'` across every `src/__tests__/*.test.ts` file inside the
+Docker build, despite `tsc -p tsconfig.json` being verified clean
+(0 errors) in every local/dev checkout beforehand.
+
+Root cause, confirmed via `package-lock.json`: npm workspaces
+doesn't hoist every package to the root `node_modules` — `vitest`
+and its test-only transitive deps (`chai`, `pathe`, `std-env`,
+`tinyexec`, `tinyrainbow`) are installed nested at
+`api/node_modules/` instead (a version-conflict / workspace-scoping
+decision npm makes at lockfile-generation time, not something
+either Dockerfile controls). `api/Dockerfile`'s `build` stage only
+ever did `COPY --from=deps /app/node_modules ./node_modules` — the
+ROOT node_modules — and never copied the nested
+`/app/api/node_modules`, so `tsc` couldn't resolve `vitest` from
+any test file once the `|| true` that used to swallow this exact
+error was removed. Every local checkout "just worked" because
+`api/node_modules` sits right next to `api/src` with no COPY step
+splitting them apart — this divergence only exists inside the
+multi-stage Docker build, so no amount of local `tsc` re-verification
+would have caught it.
+
+Fixed: added `COPY --from=deps /app/api/node_modules ./api/node_modules`
+right after the existing root-node_modules copy in the `build`
+stage. Verified (since Docker isn't available in this environment)
+by physically reproducing the exact build-stage directory layout
+in a scratch dir (root `node_modules` + `api/node_modules` + `api/src`
++ `api/tsconfig.json` + `api/prisma`, no `web/` present — matching
+what the Dockerfile actually assembles) and running `tsc` from
+inside it: 0 errors. Pushed as its own commit; the next CI run is
+the real end-to-end confirmation.
+
 ### 2026-07-14 session — skill-tree zoom, recovery-graph gap bridging, tsc backlog → 0
 
 Not yet committed as of this write-up; uncommitted local session
