@@ -2643,6 +2643,19 @@ model SubstanceLog {
   /// correlation engine.
   context  String?
   loggedAt DateTime          @default(now())
+  /// Origin of the row — distinguishes SubstanceLog entries the user
+  /// logged themselves by tapping a substance chip from rows that
+  /// were auto-created as a side effect of some other action (e.g.
+  /// POST /meals running inferSubstanceLinks() on a food name like
+  /// "coffee" → CAFFEINE). Backed by an enum-ish free-form string
+  /// so we can add more sources later (e.g. "IMPORT", "WEARABLE")
+  /// without a schema migration. Defaults to "MANUAL" so any
+  /// pre-existing / unscoped create sites keep working.
+  ///   MANUAL          — user tapped a substance chip
+  ///                     (POST /substances direct)
+  ///   FOOD_AUTOLINK   — auto-created from a food name match
+  ///                     (POST /meals → inferSubstanceLinks)
+  source   String?           @default("MANUAL")
 
   @@index([userId, loggedAt])
   @@index([userId, category, loggedAt])

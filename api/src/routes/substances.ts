@@ -104,6 +104,14 @@ export async function substanceRoutes(app: FastifyInstance) {
         unit: body.unit ?? null,
         context: body.context ?? null,
         loggedAt: body.loggedAt ? new Date(body.loggedAt) : new Date(),
+        // Direct POST /substances is always a user-initiated tap
+        // on a substance chip — tag it MANUAL explicitly. The
+        // schema has @default("MANUAL") so this is technically
+        // redundant for storage, but it future-proofs against the
+        // default ever changing (e.g. if we ever add a non-MANUAL
+        // default for some bulk-import path) and makes the intent
+        // obvious at the call site.
+        source: 'MANUAL',
       },
     });
     // Fire home-base penances on every substance log:

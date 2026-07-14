@@ -182,6 +182,13 @@ export function FoodPanel() {
       qc.invalidateQueries({ queryKey: ['meals', 'today'] });
       qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
       qc.invalidateQueries({ queryKey: ['foods', 'saved'] });
+      // Defensive: invalidate substances so that if a future
+      // change to /foods/saved/:id/log adds substance auto-link
+      // (the POST /meals handler already calls
+      // inferSubstanceLinks() — see api/src/routes/meals.ts ~256),
+      // the Nutrition page's substance list will pick up the new
+      // row immediately rather than waiting for the 60s poll.
+      qc.invalidateQueries({ queryKey: ['substances'] });
     },
   }, 300);
 
@@ -394,6 +401,16 @@ export function FoodPanel() {
             setAskResults(null);
             qc.invalidateQueries({ queryKey: ['meals', 'today'] });
             qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
+            // The POST /meals handler runs inferSubstanceLinks()
+            // on the food name (see api/src/routes/meals.ts ~256)
+            // — e.g. logging "coffee" via Ask AI auto-creates a
+            // SubstanceLog row. Invalidate so the Nutrition page's
+            // substance list picks up the auto-link immediately
+            // instead of waiting for the 60s refetch or until the
+            // user happens to tap a manual substance chip (which
+            // previously surfaced BOTH the auto-link and the
+            // manual entry together, reading as a duplicate).
+            qc.invalidateQueries({ queryKey: ['substances'] });
           }}
         />
       )}
@@ -406,6 +423,14 @@ export function FoodPanel() {
             setLogFood(null);
             qc.invalidateQueries({ queryKey: ['meals', 'today'] });
             qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
+            // POST /meals runs inferSubstanceLinks() on the food
+            // name (see api/src/routes/meals.ts ~256) — logging
+            // "coffee" auto-creates a SubstanceLog row. Invalidate
+            // so the Nutrition page's substance list shows the
+            // auto-linked row immediately rather than waiting for
+            // the 60s poll or for some unrelated mutation to
+            // surface it (which previously looked like a duplicate).
+            qc.invalidateQueries({ queryKey: ['substances'] });
           }}
         />
       )}
@@ -637,6 +662,16 @@ function AskAiModal({
       qc.invalidateQueries({ queryKey: ['meals', 'today'] });
       qc.invalidateQueries({ queryKey: ['meals', 'recent'] });
       qc.invalidateQueries({ queryKey: ['nutrition', 'meals', 'today'] });
+      // POST /meals runs inferSubstanceLinks() on the food name
+      // (see api/src/routes/meals.ts ~256) — e.g. describing
+      // "espresso with kefir" via Ask AI can auto-create both a
+      // CAFFEINE and (kefir is not matched, but the same path
+      // applies for beer/coffee/etc) SubstanceLog row. Invalidate
+      // so the Nutrition page's substance list reflects the
+      // auto-link immediately. Mirrors the onLogged() parent
+      // callback invalidation below — both fire, which is fine
+      // (React Query dedups refetches with same key).
+      qc.invalidateQueries({ queryKey: ['substances'] });
       onLogged();
     },
   });

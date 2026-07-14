@@ -1,0 +1,33 @@
+-- Tag every SubstanceLog row with its origin so the UI can
+-- distinguish rows the user tapped manually from rows the server
+-- auto-created as a side effect of some other action (e.g.
+-- POST /meals running inferSubstanceLinks() on a food name like
+-- "coffee" → CAFFEINE).
+--
+-- Without this column, the auto-link rows look indistinguishable
+-- from manual ones, which previously caused a stale-cache bug on
+-- the Nutrition page: after logging "coffee" via the food tracker,
+-- the auto-linked SubstanceLog row sat in the DB invisible until
+-- some unrelated mutation happened to invalidate ['substances'],
+-- at which point BOTH the auto-linked row AND a freshly-tapped
+-- manual row surfaced together, reading to the user as a duplicate.
+--
+-- Nullable with @default("MANUAL") in schema.prisma — every
+-- existing row gets the default applied by Postgres on the ALTER
+-- below, so no backfill is needed. The default is also the
+-- natural semantic for any explicit /substances POST (the only
+-- direct user action today), and the api/src/routes/substances.ts
+-- handler sets source: 'MANUAL' explicitly for clarity /
+-- future-proofing.
+--
+-- New 'FOOD_AUTOLINK' value is set by api/src/routes/meals.ts in
+-- the auto-link loop (~line 266) so the UI can render a small
+-- "auto" badge on those entries (web/src/pages/Nutrition.tsx,
+-- SubstancesPanel rendering of the recent list).
+--
+-- Existing index structure is unchanged: the @@index on
+-- (userId, loggedAt) and @@index on (userId, category, loggedAt)
+-- already cover the existing GET /substances query patterns,
+-- and the recent-7d UI listing filters in JS after the query.
+
+ALTER TABLE "SubstanceLog" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'MANUAL';

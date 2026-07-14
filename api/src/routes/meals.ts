@@ -272,6 +272,14 @@ export async function mealRoutes(app: FastifyInstance) {
             amount: link.amount,
             unit: link.unit,
             loggedAt: entry.loggedAt,
+            // Tag auto-linked rows so the UI can distinguish them
+            // from manually-tapped substance entries. The schema
+            // has @default("MANUAL") so this is technically
+            // redundant for storage, but explicit is clearer at
+            // the call site and future-proof against the default
+            // ever changing. See web/src/pages/Nutrition.tsx for
+            // the matching 'auto' badge in the recent list.
+            source: 'FOOD_AUTOLINK',
           },
         });
       }

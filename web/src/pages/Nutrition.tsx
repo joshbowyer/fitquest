@@ -521,6 +521,13 @@ type SubstanceLog = {
   unit: string | null;
   context: string | null;
   loggedAt: string;
+  /// Origin of the row. 'FOOD_AUTOLINK' = auto-created server-side
+  /// by the meal → inferSubstanceLinks path (api/src/routes/meals.ts
+  /// ~266); 'MANUAL' (or undefined, pre-column) = user tapped a
+  /// substance chip directly. The field is optional so older
+  /// in-cache rows from before the migration still typecheck; the
+  /// UI treats undefined as MANUAL.
+  source?: 'MANUAL' | 'FOOD_AUTOLINK' | string;
 };
 type SubstanceSummary = {
   items: Array<{ category: string; form: string; count: number; lastLoggedAt: string }>;
@@ -640,6 +647,25 @@ function SubstancesPanel() {
                     {l.amount != null ? ` · ${l.amount}${l.unit ?? ''}` : ''}
                   </span>
                   {l.context && <span className="text-ink-400 text-[10px] italic truncate">— {l.context}</span>}
+                  {/* Auto-link badge — distinguishes rows the server
+                      created as a side effect of POST /meals running
+                      inferSubstanceLinks() (e.g. logging "coffee"
+                      auto-ticks CAFFEINE/coffee) from rows the user
+                      tapped themselves by clicking a substance chip.
+                      Same visual vocabulary as the other small pills
+                      in this panel (the `text-[10px] font-mono
+                      uppercase tracking-wider` + bordered style), but
+                      intentionally muted (no neon accent) so it reads
+                      as metadata rather than a CTA. Hidden on MANUAL
+                      rows. */}
+                  {l.source === 'FOOD_AUTOLINK' && (
+                    <span
+                      className="shrink-0 px-1.5 py-px text-[9px] font-mono uppercase tracking-wider border border-ink-500/30 text-ink-400 bg-bg-800/40 rounded"
+                      title="Auto-linked from a logged food (e.g. logging coffee ticks caffeine). Tap × to remove if unwanted."
+                    >
+                      auto
+                    </span>
+                  )}
                 </div>
                 <DeleteButton
                   onClick={() => delM.run({ id: l.id })}
