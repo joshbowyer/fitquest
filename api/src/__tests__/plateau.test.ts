@@ -165,12 +165,13 @@ describe('detectPlateaus', () => {
     const b: Plateau = { kind: 'NO_PR_RECENT', label: 'PR', severity: 'scold', note: 'y' };
     const c: Plateau = { kind: 'ONE_RM_REGRESSION', label: 'Bench Press', severity: 'scold', note: 'z' };
     const sorted = [a, b, c].sort(sortOrder);
-    expect(sorted[0].severity).toBe('scold');
-    expect(sorted[1].severity).toBe('scold');
-    expect(sorted[2].severity).toBe('warn');
+    // sorted is 3 elements by construction (sort is in-place over [a,b,c]).
+    expect(sorted[0]!.severity).toBe('scold');
+    expect(sorted[1]!.severity).toBe('scold');
+    expect(sorted[2]!.severity).toBe('warn');
     // Within scolds, label-sorted: 'Bench Press' < 'PR'.
-    expect(sorted[0].label).toBe('Bench Press');
-    expect(sorted[1].label).toBe('PR');
+    expect(sorted[0]!.label).toBe('Bench Press');
+    expect(sorted[1]!.label).toBe('PR');
   });
 });
 

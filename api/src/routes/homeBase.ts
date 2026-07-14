@@ -66,7 +66,11 @@ export async function homeBaseRoutes(app: FastifyInstance) {
     const me = await requireUser(req);
     const penanceLib = await import('../lib/penance.js');
     const { PENANCE_DELTAS, PENANCE_LABELS, PENANCE_FLAVORS } = penanceLib;
-    const systemKeys = Object.keys(PENANCE_DELTAS) as Array<PenanceKey>;
+    // Narrow the keys to the ones actually present in PENANCE_DELTAS
+    // (which excludes 'custom'). Without this, indexing the records
+    // below with noUncheckedIndexedAccess produces "possibly undefined"
+    // / "Property 'custom' does not exist" errors.
+    const systemKeys = Object.keys(PENANCE_DELTAS) as Array<Exclude<PenanceKey, 'custom'>>;
     const userOverrides = await prisma.penanceTemplate.findMany({
       where: { userId: me.id },
       orderBy: { key: 'asc' },
@@ -121,7 +125,10 @@ export async function homeBaseRoutes(app: FastifyInstance) {
     const body = z.object({ enabled: z.boolean() }).parse(req.body);
 
     const { PENANCE_DELTAS, PENANCE_LABELS, PENANCE_FLAVORS } = await import('../lib/penance.js');
-    const sysDelta = PENANCE_DELTAS[key];
+    // 'custom' isn't in the records below (they're keyed by the
+    // non-custom PenanceKey subset). Look up the delta as the
+    // narrower type so the indexing isn't an error.
+    const sysDelta = key === 'custom' ? undefined : PENANCE_DELTAS[key as Exclude<PenanceKey, 'custom'>];
     if (sysDelta == null && key !== 'custom') {
       return reply.code(404).send({ error: `No penance template for key '${key}'` });
     }
@@ -142,8 +149,8 @@ export async function homeBaseRoutes(app: FastifyInstance) {
       data: {
         userId: me.id,
         key,
-        label: PENANCE_LABELS[key],
-        flavor: PENANCE_FLAVORS[key] ?? null,
+        label: key === 'custom' ? '' : PENANCE_LABELS[key as Exclude<PenanceKey, 'custom'>],
+        flavor: key === 'custom' ? null : PENANCE_FLAVORS[key as Exclude<PenanceKey, 'custom'>],
         shieldDelta: sysDelta ?? 0,
         enabled: body.enabled,
       },

@@ -143,7 +143,8 @@ describe('claimKill — soulstone drop fix', () => {
     expect(h.mockPrisma.$transaction).toHaveBeenCalledTimes(1);
     // User gold/xp increment + soulstone.createMany + breachDamageEvent.create
     // — all bundled into the same atomic block.
-    const ops = h.mockPrisma.$transaction.mock.calls[0][0];
+    // toHaveBeenCalledTimes(1) above guarantees the first call exists.
+    const ops = h.mockPrisma.$transaction.mock.calls[0]![0]!;
     expect(ops.length).toBe(3);
   });
 });

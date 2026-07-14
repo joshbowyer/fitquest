@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { Prisma, SkipReason, WorkoutType } from '../lib/prisma.js';
+import { Prisma, PrismaRuntime, SkipReason, WorkoutType } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { bestEstimatedOneRm, bestHoldDurationSec, isPrCandidate, isStaticHoldExercise } from '../lib/pr.js';
@@ -63,7 +63,11 @@ function flagSuspectSets(
           field: 'weight',
           value: weightKg,
           reason: verdict.reason ?? 'implausible',
-          severity: verdict.severity,
+          // LimitSeverity is 'soft' | 'flag' | 'block'; the wire
+          // shape only carries the actionable 'flag' / 'block'
+          // tiers (a 'soft' verdict is informational — surface
+          // it as no severity so the client can ignore it).
+          severity: verdict.severity === 'soft' ? undefined : verdict.severity,
         });
       }
       // Old blanket cap (kept as a final safety net — anything above
@@ -242,7 +246,7 @@ export async function workoutRoutes(app: FastifyInstance) {
       }, 0);
     }, 0);
     const durationSec = body.durationSec ?? 0;
-    const prs: Array<{ exercise: string; value: number; previousValue: number | null; type: 'ONE_RM' }> = [];
+    const prs: Array<{ exercise: string; value: number; previousValue: number | null; type: 'ONE_RM' | 'HOLD' }> = [];
 
     // Heart multiplier is read once and reused both inside the
     // transaction (XP / gold) and after it (raid damage). Hoisted
@@ -277,14 +281,22 @@ export async function workoutRoutes(app: FastifyInstance) {
         select: { id: true },
       });
       const wasUpdate = !!existingWorkout;
+      // Both `cardio` and `validityFlags` are Json? columns. Prisma only
+      // accepts the PrismaRuntime.JsonNull sentinel for the NULL case
+      // (a bare `null` throws PrismaClientValidationError at runtime).
+      // The casts on the non-null branches tell the type-checker that
+      // a plain JS object (CardioInput / ValidityFlag[]) is assignable
+      // to InputJsonValue.
       const sharedTopLevel = {
         type: body.type,
         name: body.name,
         durationSec,
         notes: body.notes,
         postNotes: body.postNotes ?? null,
-        cardio: body.cardio ?? null,
-        validityFlags: validityFlags.length > 0 ? (validityFlags as any) : null,
+        cardio: body.cardio ? (body.cardio as Prisma.InputJsonValue) : PrismaRuntime.JsonNull,
+        validityFlags: validityFlags.length > 0
+          ? (validityFlags as unknown as Prisma.InputJsonValue)
+          : PrismaRuntime.JsonNull,
       };
       const workout = await tx.workout.upsert({
         where: { userId_performedAt: { userId: me.id, performedAt } },
@@ -706,6 +718,10 @@ export async function workoutRoutes(app: FastifyInstance) {
       killed: boolean;
       pendingReward: any;
       unlocked: boolean;
+      /** Shield-tier multiplier applied to this hit (0.5×..2.0×). */
+      shieldMult: number;
+      /** Tier name (FORTIFIED / STABLE / COMPROMISED / BREACHED). */
+      shieldTier: string;
     } | null = null;
     // Portal-leak damage is now auto-applied on every workout
     // commit (not just from the AttackLeakModal). The previous

@@ -433,7 +433,7 @@ export function toCsv(rows: unknown[]): string {
   return out.join('\n');
 }
 
-function csvEscape(value: unknown): string {
+export function csvEscape(value: unknown): string {
   if (value == null) return '';
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') return csvEscape(JSON.stringify(value));
@@ -534,7 +534,10 @@ const CRC_TABLE: number[] = (() => {
 function crc32(buf: Buffer): number {
   let c = 0xFFFFFFFF;
   for (let i = 0; i < buf.length; i++) {
-    c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    // Both indices are provably in-range (i < buf.length; the table
+    // is a fixed 256-entry lookup and (x & 0xFF) is always 0-255) —
+    // `noUncheckedIndexedAccess` can't see that, hence the asserts.
+    c = CRC_TABLE[(c ^ buf[i]!) & 0xFF]! ^ (c >>> 8);
   }
   return (c ^ 0xFFFFFFFF) >>> 0;
 }

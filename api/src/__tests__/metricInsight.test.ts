@@ -128,7 +128,8 @@ describe('offlineMetricInsight', () => {
     const p = offlineMetricInsight(makeCtx({ lastValue: null, coverageDays7: 0, coverageDays30: 0, coverageDays90: 0 }));
     expect(p.summary.toLowerCase()).toContain('no data');
     expect(p.factors).toHaveLength(1);
-    expect(p.factors[0].label).toBe('Coverage');
+    const first = p.factors[0]!; // length just asserted above
+    expect(first.label).toBe('Coverage');
   });
 
   it('says "steady" when delta < 5%', () => {

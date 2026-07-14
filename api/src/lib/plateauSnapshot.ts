@@ -21,6 +21,9 @@ export function sundayOfWeek(now: Date, timezone: string | null): string {
   }).format(now);
   // Get day-of-week for that local date.
   const [y, m, d] = localKey.split('-').map(Number);
+  if (y === undefined || m === undefined || d === undefined) {
+    throw new Error(`Invalid local date key: ${localKey}`);
+  }
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = dt.getUTCDay(); // 0 = Sun
   // Walk back to the most recent Sunday.

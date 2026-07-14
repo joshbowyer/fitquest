@@ -123,28 +123,6 @@ vi.mock('../lib/prisma', () => ({
         }
         return out;
       }),
-      findMany: vi.fn(async ({ where, orderBy, take, select }: any) => {
-        const wantedUser = where?.userId;
-        const wantedMetric = where?.metric;
-        const since = where?.recordedAt?.gte;
-        const all: any[] = [];
-        for (const m of h.measurements.values()) {
-          if (wantedUser && m.userId !== wantedUser) continue;
-          if (wantedMetric && m.metric !== wantedMetric) continue;
-          if (since && m.recordedAt.getTime() < since.getTime()) continue;
-          all.push(m);
-        }
-        all.sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
-        const out = all.slice(0, take ?? all.length);
-        if (select) {
-          return out.map((m) => {
-            const r: any = {};
-            for (const k of Object.keys(select)) r[k] = m[k];
-            return r;
-          });
-        }
-        return out;
-      }),
     },
   },
 }));

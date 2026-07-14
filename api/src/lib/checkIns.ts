@@ -140,8 +140,15 @@ export const DEFAULT_CADENCE: Record<string, Cadence> = {
  * Metrics that the check-in UI should NEVER surface, even though
  * they have a cadence. These are daily aggregates / derived metrics
  * that are logged elsewhere (Recovery, Nutrition, derived displays).
+ *
+ * `ReadonlySet<string>` (not `<MetricType>`) for the same reason as
+ * `DEFAULT_CADENCE` above: SHOULDER_WAIST_RATIO isn't in the schema
+ * enum (it's a leftover from the out-of-scope 3D-avatar V-taper
+ * work — never added as a real MetricType) but call sites still
+ * reference the string, so this needs to compile without forcing
+ * an enum addition for dead code.
  */
-export const NEVER_SURFACED: ReadonlySet<MetricType> = new Set([
+export const NEVER_SURFACED: ReadonlySet<string> = new Set([
   'CALORIES',
   'PROTEIN_G',
   'WATER_ML',
@@ -151,8 +158,13 @@ export const NEVER_SURFACED: ReadonlySet<MetricType> = new Set([
   'SLEEP_HOURS',
 ]);
 
-/** True if the metric should appear on the dashboard / check-ins page. */
-export function isCheckInMetric(m: MetricType): boolean {
+/**
+ * True if the metric should appear on the dashboard / check-ins
+ * page. Accepts `string` (not just `MetricType`) for the same
+ * reason as `NEVER_SURFACED` above — SHOULDER_WAIST_RATIO isn't a
+ * real enum member but call sites still probe it.
+ */
+export function isCheckInMetric(m: string): boolean {
   return !NEVER_SURFACED.has(m);
 }
 
@@ -229,6 +241,9 @@ export function localMidnightUtc(daysAgo: number, now: Date, timezone: string | 
 
 function shiftDateKey(key: string, deltaDays: number): string {
   const [y, m, d] = key.split('-').map(Number);
+  if (y === undefined || m === undefined || d === undefined) {
+    throw new Error(`shiftDateKey: invalid date key "${key}"`);
+  }
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + deltaDays);
   return dt.toISOString().slice(0, 10);

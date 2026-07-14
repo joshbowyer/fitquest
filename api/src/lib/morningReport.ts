@@ -236,6 +236,9 @@ async function examenTrendDomain(
   const now = new Date();
   const thisSunday = sundayOfWeek(now, timezone);
   const [y, m, d] = thisSunday.split('-').map(Number);
+  if (y === undefined || m === undefined || d === undefined) {
+    throw new Error(`Invalid Sunday date key: ${thisSunday}`);
+  }
   const cutoffDt = new Date(Date.UTC(y, m - 1, d));
   cutoffDt.setUTCDate(cutoffDt.getUTCDate() - (weeks - 1) * 7);
   const cutoff = cutoffDt.toISOString().slice(0, 10);

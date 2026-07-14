@@ -400,15 +400,16 @@ export function offlineMetricInsight(ctx: GatheredMetric): MetricInsightPayload 
     };
   }
 
-  if (pickWindow.deltaPct != null) {
-    const sign = pickWindow.delta > 0 ? 'up' : 'down';
-    const pct = Math.abs(pickWindow.deltaPct * 100).toFixed(0);
-    if (Math.abs(pickWindow.deltaPct) > 0.05) {
+  const { delta, deltaPct } = pickWindow;
+  if (deltaPct != null && delta != null) {
+    const sign = delta > 0 ? 'up' : 'down';
+    const pct = Math.abs(deltaPct * 100).toFixed(0);
+    if (Math.abs(deltaPct) > 0.05) {
       parts.push(`Average ${ctx.metric} is ${sign} ${pct}% vs the prior window`);
     } else {
       parts.push(`${ctx.metric} is steady`);
     }
-    if (pickWindow.delta > 0) {
+    if (delta > 0) {
       factors.push({
         label: 'Trend',
         signal: 'neutral',
@@ -461,8 +462,9 @@ export function extractJson(text: string): any | null {
   const trimmed = text.trim();
   if (!trimmed) return null;
   const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  if (fence) {
-    try { return JSON.parse(fence[1]); } catch { /* fall through */ }
+  const fencedJson = fence?.[1];
+  if (fencedJson !== undefined) {
+    try { return JSON.parse(fencedJson); } catch { /* fall through */ }
   }
   const first = trimmed.indexOf('{');
   const last = trimmed.lastIndexOf('}');

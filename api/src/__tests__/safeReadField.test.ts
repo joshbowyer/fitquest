@@ -63,7 +63,8 @@ describe('safeReadField — migration-resilience helper', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     // The warning should mention prisma migrate deploy so the
     // on-call engineer knows the runbook step.
-    expect(warn.mock.calls[0][0]).toMatch(/migrate deploy/);
+    // toHaveBeenCalledTimes(1) above guarantees the first call exists.
+    expect(warn.mock.calls[0]![0]).toMatch(/migrate deploy/);
 
     warn.mockRestore();
   });

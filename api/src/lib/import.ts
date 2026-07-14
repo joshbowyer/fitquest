@@ -282,7 +282,7 @@ export async function importExport(
         const newId = randomUuid();
         idMap.set(oldId, newId);
         const w = stripUnknown(wRaw, ['id', 'userId']);
-        await prisma.workout.create({ data: { ...w, id: newId, userId } });
+        await prisma.workout.create({ data: { ...w, id: newId, userId } as Prisma.WorkoutUncheckedCreateInput });
         bump('workouts', 1);
 
         // Match exercises whose workoutId maps to this oldId.
@@ -294,7 +294,7 @@ export async function importExport(
           const newExId = randomUuid();
           exerciseIdMap.set(oldExId, newExId);
           const e = stripUnknown(eRaw, ['id', 'workoutId']);
-          await prisma.exercise.create({ data: { ...e, id: newExId, workoutId: newId } });
+          await prisma.exercise.create({ data: { ...e, id: newExId, workoutId: newId } as Prisma.ExerciseUncheckedCreateInput });
           bump('exercises', 1);
 
           const matchingSets = (t.sets as Array<Record<string, unknown>>).filter(
@@ -306,7 +306,7 @@ export async function importExport(
               const newSetId = randomUuid();
               setIdMap.set(oldSetId, newSetId);
               const s = stripUnknown(sRaw, ['id', 'exerciseId']);
-              await prisma.set.create({ data: { ...s, id: newSetId, exerciseId: newExId } });
+              await prisma.set.create({ data: { ...s, id: newSetId, exerciseId: newExId } as Prisma.SetUncheckedCreateInput });
               bump('sets', 1);
             } catch (e: any) {
               fail('sets', String(sRaw.id ?? ''), e?.message ?? 'unknown');
@@ -324,7 +324,7 @@ export async function importExport(
     for (const m of t.measurements as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(m, ['id', 'userId']);
-        await prisma.measurement.create({ data: { ...data, userId } });
+        await prisma.measurement.create({ data: { ...data, userId } as Prisma.MeasurementUncheckedCreateInput });
         bump('measurements', 1);
       } catch (e: any) {
         if (isDuplicate(e)) { skip('measurements'); continue; }
@@ -338,7 +338,7 @@ export async function importExport(
     for (const g of t.geneticMax as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(g, ['id', 'userId']);
-        await prisma.geneticMax.create({ data: { ...data, userId } });
+        await prisma.geneticMax.create({ data: { ...data, userId } as Prisma.GeneticMaxUncheckedCreateInput });
         bump('geneticMax', 1);
       } catch (e: any) {
         if (isDuplicate(e)) { skip('geneticMax'); continue; }
@@ -352,7 +352,7 @@ export async function importExport(
     for (const p of t.prs as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(p, ['id', 'userId']);
-        await prisma.pr.create({ data: { ...data, userId } });
+        await prisma.pr.create({ data: { ...data, userId } as Prisma.PrUncheckedCreateInput });
         bump('prs', 1);
       } catch (e: any) {
         fail('prs', String(p.id ?? ''), e?.message ?? 'unknown');
@@ -365,7 +365,7 @@ export async function importExport(
     for (const us of t.userSkills as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(us, ['id', 'userId']);
-        await prisma.userSkill.create({ data: { ...data, userId } });
+        await prisma.userSkill.create({ data: { ...data, userId } as Prisma.UserSkillUncheckedCreateInput });
         bump('userSkills', 1);
       } catch (e: any) {
         fail('userSkills', String(us.id ?? ''), e?.message ?? 'unknown');
@@ -393,7 +393,7 @@ export async function importExport(
     for (const pt of t.penanceTemplates as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(pt, ['id', 'userId']);
-        await prisma.penanceTemplate.create({ data: { ...data, userId } });
+        await prisma.penanceTemplate.create({ data: { ...data, userId } as Prisma.PenanceTemplateUncheckedCreateInput });
         bump('penanceTemplates', 1);
       } catch (e: any) {
         fail('penanceTemplates', String(pt.id ?? ''), e?.message ?? 'unknown');
@@ -404,7 +404,7 @@ export async function importExport(
     for (const pe of t.penanceEvents as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(pe, ['id', 'userId']);
-        await prisma.penanceEvent.create({ data: { ...data, userId } });
+        await prisma.penanceEvent.create({ data: { ...data, userId } as Prisma.PenanceEventUncheckedCreateInput });
         bump('penanceEvents', 1);
       } catch (e: any) {
         fail('penanceEvents', String(pe.id ?? ''), e?.message ?? 'unknown');
@@ -456,7 +456,7 @@ export async function importExport(
           const boss = await prisma.breachBoss.findUnique({ where: { id: bossId } });
           if (!boss) { skip('breachDamageEvents'); continue; }
         }
-        await prisma.breachDamageEvent.create({ data: { ...data, userId } });
+        await prisma.breachDamageEvent.create({ data: { ...data, userId } as Prisma.BreachDamageEventUncheckedCreateInput });
         bump('breachDamageEvents', 1);
       } catch (e: any) {
         fail('breachDamageEvents', String(de.id ?? ''), e?.message ?? 'unknown');
@@ -473,7 +473,7 @@ export async function importExport(
     if (a.key) achIdByKey.set(a.key, a.id);
   }
   if (Array.isArray(t.userAchievements)) {
-    for (const ua of t.userAchievements) {
+    for (const ua of t.userAchievements as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(ua, ['id', 'userId', 'achievementId', 'achievementKey']);
         const key = (ua as Record<string, unknown>).achievementKey as string | undefined;
@@ -492,11 +492,12 @@ export async function importExport(
         }
         if (!newAchId && key) newAchId = achIdByKey.get(key);
         if (!newAchId) { skip('userAchievements'); continue; }
-        await prisma.userAchievement.create({ data: { ...data, userId, achievementId: newAchId } });
+        await prisma.userAchievement.create({
+          data: { ...data, userId, achievementId: newAchId } as Prisma.UserAchievementUncheckedCreateInput,
+        });
         bump('userAchievements', 1);
       } catch (e: any) {
         if (isDuplicate(e)) { skip('userAchievements'); continue; }
-        fail('userAchievements', String(ua.id ?? ''), e?.message ?? 'unknown');
         fail('userAchievements', String(ua.id ?? ''), e?.message ?? 'unknown');
       }
     }
@@ -507,7 +508,7 @@ export async function importExport(
     for (const ps of t.plateauSnapshots as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(ps, ['id', 'userId']);
-        await prisma.plateauSnapshot.create({ data: { ...data, userId } });
+        await prisma.plateauSnapshot.create({ data: { ...data, userId } as Prisma.PlateauSnapshotUncheckedCreateInput });
         bump('plateauSnapshots', 1);
       } catch (e: any) {
         fail('plateauSnapshots', String(ps.id ?? ''), e?.message ?? 'unknown');
@@ -518,7 +519,7 @@ export async function importExport(
     for (const pp of t.plateauPauses as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(pp, ['id', 'userId']);
-        await prisma.plateauPause.create({ data: { ...data, userId } });
+        await prisma.plateauPause.create({ data: { ...data, userId } as Prisma.PlateauPauseUncheckedCreateInput });
         bump('plateauPauses', 1);
       } catch (e: any) {
         fail('plateauPauses', String(pp.id ?? ''), e?.message ?? 'unknown');
@@ -531,7 +532,7 @@ export async function importExport(
     for (const er of t.examenResponses as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(er, ['id', 'userId']);
-        await prisma.examenResponse.create({ data: { ...data, userId } });
+        await prisma.examenResponse.create({ data: { ...data, userId } as Prisma.ExamenResponseUncheckedCreateInput });
         bump('examenResponses', 1);
       } catch (e: any) {
         fail('examenResponses', String(er.id ?? ''), e?.message ?? 'unknown');
@@ -544,7 +545,7 @@ export async function importExport(
     for (const uwp of t.userWorldProgress as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(uwp, ['id', 'userId']);
-        await prisma.userWorldProgress.create({ data: { ...data, userId } });
+        await prisma.userWorldProgress.create({ data: { ...data, userId } as Prisma.UserWorldProgressUncheckedCreateInput });
         bump('userWorldProgress', 1);
       } catch (e: any) {
         fail('userWorldProgress', String(uwp.id ?? ''), e?.message ?? 'unknown');
@@ -557,7 +558,7 @@ export async function importExport(
     for (const p of t.painLogs as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(p, ['id', 'userId']);
-        await prisma.painLog.create({ data: { ...data, userId } });
+        await prisma.painLog.create({ data: { ...data, userId } as Prisma.PainLogUncheckedCreateInput });
         bump('painLogs', 1);
       } catch (e: any) {
         fail('painLogs', String(p.id ?? ''), e?.message ?? 'unknown');
@@ -570,10 +571,10 @@ export async function importExport(
   // — it uses `userId` as the FK directly. So routineDays are flat
   // per-user; we import them as-is. Skip the nested grouping.
   if (Array.isArray(t.routines)) {
-    for (const r of t.routines) {
+    for (const r of t.routines as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(r, ['id', 'userId']);
-        await prisma.routine.create({ data: { ...data, userId } });
+        await prisma.routine.create({ data: { ...data, userId } as Prisma.RoutineUncheckedCreateInput });
         bump('routines', 1);
       } catch (e: any) {
         fail('routines', String(r.id ?? ''), e?.message ?? 'unknown');
@@ -584,7 +585,7 @@ export async function importExport(
     for (const d of t.routineDays as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(d, ['id', 'userId']);
-        await prisma.routineDay.create({ data: { ...data, userId } });
+        await prisma.routineDay.create({ data: { ...data, userId } as Prisma.RoutineDayUncheckedCreateInput });
         bump('routineDays', 1);
       } catch (e: any) {
         if (isDuplicate(e)) { skip('routineDays'); continue; }
@@ -608,7 +609,7 @@ export async function importExport(
         const newId = randomUuid();
         tplIdMap.set(oldId, newId);
         const data = stripUnknown(tpl, ['id', 'userId', 'createdAt', 'updatedAt']);
-        await prisma.workoutTemplate.create({ data: { ...data, id: newId, userId } });
+        await prisma.workoutTemplate.create({ data: { ...data, id: newId, userId } as Prisma.WorkoutTemplateUncheckedCreateInput });
         bump('workoutTemplates', 1);
       } catch (e: any) {
         fail('workoutTemplates', String(tpl.id ?? ''), e?.message ?? 'unknown');
@@ -633,7 +634,7 @@ export async function importExport(
         }
         const data = stripUnknown(ex, ['id', 'templateId']);
         await prisma.workoutTemplateExercise.create({
-          data: { ...data, id: newExId, templateId: newTplId },
+          data: { ...data, id: newExId, templateId: newTplId } as Prisma.WorkoutTemplateExerciseUncheckedCreateInput,
         });
         bump('workoutTemplateExercises', 1);
       } catch (e: any) {
@@ -653,7 +654,7 @@ export async function importExport(
         }
         const data = stripUnknown(set, ['id', 'exerciseId']);
         await prisma.workoutTemplateSet.create({
-          data: { ...data, exerciseId: newExId },
+          data: { ...data, exerciseId: newExId } as Prisma.WorkoutTemplateSetUncheckedCreateInput,
         });
         bump('workoutTemplateSets', 1);
       } catch (e: any) {
@@ -683,14 +684,14 @@ export async function importExport(
         const newId = randomUuid();
         idMap.set(oldId, newId);
         const data = stripUnknown(d, ['id', 'userId']);
-        await prisma.daily.create({ data: { ...data, id: newId, userId } });
+        await prisma.daily.create({ data: { ...data, id: newId, userId } as Prisma.DailyUncheckedCreateInput });
         bump('dailies', 1);
 
         const logs = (t.dailyLogs as Array<Record<string, unknown>>).filter((l) => l.dailyId === oldId);
         for (const lRaw of logs) {
           try {
             const l = stripUnknown(lRaw, ['id', 'dailyId', 'userId']);
-            await prisma.dailyLog.create({ data: { ...l, dailyId: newId, userId } });
+            await prisma.dailyLog.create({ data: { ...l, dailyId: newId, userId } as Prisma.DailyLogUncheckedCreateInput });
             bump('dailyLogs', 1);
           } catch (e: any) {
             fail('dailyLogs', String(lRaw.id ?? ''), e?.message ?? 'unknown');
@@ -707,7 +708,7 @@ export async function importExport(
     for (const s of t.supplementLogs as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(s, ['id', 'userId']);
-        await prisma.supplementLog.create({ data: { ...data, userId } });
+        await prisma.supplementLog.create({ data: { ...data, userId } as Prisma.SupplementLogUncheckedCreateInput });
         bump('supplementLogs', 1);
       } catch (e: any) {
         fail('supplementLogs', String(s.id ?? ''), e?.message ?? 'unknown');
@@ -723,14 +724,14 @@ export async function importExport(
         const newId = randomUuid();
         idMap.set(oldId, newId);
         const data = stripUnknown(h, ['id', 'userId']);
-        await prisma.habit.create({ data: { ...data, id: newId, userId } });
+        await prisma.habit.create({ data: { ...data, id: newId, userId } as Prisma.HabitUncheckedCreateInput });
         bump('habits', 1);
 
         const logs = (t.habitLogs as Array<Record<string, unknown>>).filter((l) => l.habitId === oldId);
         for (const lRaw of logs) {
           try {
             const l = stripUnknown(lRaw, ['id', 'habitId', 'userId']);
-            await prisma.habitLog.create({ data: { ...l, habitId: newId, userId } });
+            await prisma.habitLog.create({ data: { ...l, habitId: newId, userId } as Prisma.HabitLogUncheckedCreateInput });
             bump('habitLogs', 1);
           } catch (e: any) {
             fail('habitLogs', String(lRaw.id ?? ''), e?.message ?? 'unknown');
@@ -752,7 +753,7 @@ export async function importExport(
           const exists = await prisma.itemDef.findUnique({ where: { id: itemDefId } });
           if (!exists) { skip('inventoryItems'); continue; }
         }
-        await prisma.inventoryItem.create({ data: { ...data, userId } });
+        await prisma.inventoryItem.create({ data: { ...data, userId } as Prisma.InventoryItemUncheckedCreateInput });
         bump('inventoryItems', 1);
       } catch (e: any) {
         fail('inventoryItems', String(inv.id ?? ''), e?.message ?? 'unknown');
@@ -765,7 +766,7 @@ export async function importExport(
     for (const mr of t.morningReports as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(mr, ['id', 'userId']);
-        await prisma.morningReport.create({ data: { ...data, userId } });
+        await prisma.morningReport.create({ data: { ...data, userId } as Prisma.MorningReportUncheckedCreateInput });
         bump('morningReports', 1);
       } catch (e: any) {
         fail('morningReports', String(mr.id ?? ''), e?.message ?? 'unknown');
@@ -778,7 +779,7 @@ export async function importExport(
     for (const sr of t.spiritualReflections as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(sr, ['id', 'userId']);
-        await prisma.spiritualReflection.create({ data: { ...data, userId } });
+        await prisma.spiritualReflection.create({ data: { ...data, userId } as Prisma.SpiritualReflectionUncheckedCreateInput });
         bump('spiritualReflections', 1);
       } catch (e: any) {
         fail('spiritualReflections', String(sr.id ?? ''), e?.message ?? 'unknown');
@@ -790,20 +791,24 @@ export async function importExport(
   // Note: DailyTrackedItem uses `itemId` (string FK), not `userItemId`.
   // The old ID→new ID remap is required, but keyed by itemId.
   if (Array.isArray(t.userTrackedItems)) {
-    for (const ut of t.userTrackedItems) {
+    for (const ut of t.userTrackedItems as Array<Record<string, unknown>>) {
       try {
         const oldId = String(ut.id ?? '');
         const newId = randomUuid();
         idMap.set(oldId, newId);
         const data = stripUnknown(ut, ['id', 'userId']);
-        await prisma.userTrackedItem.create({ data: { ...data, id: newId, userId } });
+        await prisma.userTrackedItem.create({
+          data: { ...data, id: newId, userId } as Prisma.UserTrackedItemUncheckedCreateInput,
+        });
         bump('userTrackedItems', 1);
 
         const dailyLogs = (t.dailyTrackedItems as Array<Record<string, unknown>>).filter((d) => d.itemId === oldId);
         for (const dRaw of dailyLogs) {
           try {
             const d = stripUnknown(dRaw, ['id', 'itemId', 'userId']);
-            await prisma.dailyTrackedItem.create({ data: { ...d, itemId: newId, userId } });
+            await prisma.dailyTrackedItem.create({
+              data: { ...d, itemId: newId, userId } as Prisma.DailyTrackedItemUncheckedCreateInput,
+            });
             bump('dailyTrackedItems', 1);
           } catch (e: any) {
             fail('dailyTrackedItems', String(dRaw.id ?? ''), e?.message ?? 'unknown');
@@ -820,7 +825,7 @@ export async function importExport(
     for (const s of t.substanceLogs as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(s, ['id', 'userId']);
-        await prisma.substanceLog.create({ data: { ...data, userId } });
+        await prisma.substanceLog.create({ data: { ...data, userId } as Prisma.SubstanceLogUncheckedCreateInput });
         bump('substanceLogs', 1);
       } catch (e: any) {
         fail('substanceLogs', String(s.id ?? ''), e?.message ?? 'unknown');
@@ -880,7 +885,7 @@ export async function importExport(
     for (const s of t.savedFoods as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(s, ['id', 'userId']);
-        await prisma.savedFood.create({ data: { ...data, userId } });
+        await prisma.savedFood.create({ data: { ...data, userId } as Prisma.SavedFoodUncheckedCreateInput });
         bump('savedFoods', 1);
       } catch (e: any) {
         fail('savedFoods', String(s.id ?? ''), e?.message ?? 'unknown');
@@ -893,7 +898,7 @@ export async function importExport(
     for (const c of t.correlationSnapshots as Array<Record<string, unknown>>) {
       try {
         const data = stripUnknown(c, ['id', 'userId']);
-        await prisma.correlationSnapshot.create({ data: { ...data, userId } });
+        await prisma.correlationSnapshot.create({ data: { ...data, userId } as Prisma.CorrelationSnapshotUncheckedCreateInput });
         bump('correlationSnapshots', 1);
       } catch (e: any) {
         fail('correlationSnapshots', String(c.id ?? ''), e?.message ?? 'unknown');
@@ -916,7 +921,7 @@ export async function importExport(
           if (exists) { skip('metricInsights'); continue; }
         }
         const data = stripUnknown(mi, ['id', 'userId']);
-        await prisma.metricInsight.create({ data: { ...data, userId } });
+        await prisma.metricInsight.create({ data: { ...data, userId } as Prisma.MetricInsightUncheckedCreateInput });
         bump('metricInsights', 1);
       } catch (e: any) {
         fail('metricInsights', String(mi.id ?? ''), e?.message ?? 'unknown');
@@ -934,7 +939,7 @@ export async function importExport(
         if (oldWid && !newWid) { skip('activityInsights'); continue; }
         const data = stripUnknown(ai, ['id', 'userId', 'workoutId']);
         await prisma.activityInsight.create({
-          data: { ...data, userId, workoutId: newWid ?? oldWid ?? '' },
+          data: { ...data, userId, workoutId: newWid ?? oldWid ?? '' } as Prisma.ActivityInsightUncheckedCreateInput,
         });
         bump('activityInsights', 1);
       } catch (e: any) {

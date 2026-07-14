@@ -127,7 +127,15 @@ export async function examenRoutes(app: FastifyInstance) {
 function weeksAgoSunday(timezone: string | null, weeks: number): string {
   const now = new Date();
   const thisSunday = sundayOfWeek(now, timezone);
-  const [y, m, d] = thisSunday.split('-').map(Number);
+  const parts = thisSunday.split('-').map(Number);
+  // Validate the YYYY-MM-DD parts — sundayOfWeek is supposed to
+  // produce a well-formed date but defense in depth keeps tsc's
+  // noUncheckedIndexedAccess happy AND catches a regression where
+  // sundayOfWeek returns something unexpected.
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) {
+    throw new Error(`Invalid sundayOfWeek output: ${thisSunday}`);
+  }
+  const [y, m, d] = parts as [number, number, number];
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() - weeks * 7);
   return dt.toISOString().slice(0, 10);

@@ -15,33 +15,38 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// Module-scoped (not declared inside vi.hoisted's callback) so
+// they're visible to the vi.mock factory below too — type
+// declarations follow normal lexical block scoping, they aren't
+// hoisted the way vi.hoisted's runtime values are.
+type PenanceRow = {
+  id: string;
+  userId: string;
+  penanceKey: string;
+  label: string;
+  shieldDelta: number;
+  shieldAfter: number;
+  tierAfter: string;
+  source: string;
+  createdAt: Date;
+};
+type NotifRow = {
+  id: string;
+  userId: string;
+  category: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  payload: any;
+  readAt: Date | null;
+  createdAt: Date;
+};
+
 const h = vi.hoisted(() => {
   // Per-user PenanceEvent log + Notification log. Both keyed
   // by the same shared userId the test will use.
-  type PenanceRow = {
-    id: string;
-    userId: string;
-    penanceKey: string;
-    label: string;
-    shieldDelta: number;
-    shieldAfter: number;
-    tierAfter: string;
-    source: string;
-    createdAt: Date;
-  };
   const penanceByUser = new Map<string, PenanceRow[]>();
-  type NotifRow = {
-    id: string;
-    userId: string;
-    category: string;
-    kind: string;
-    title: string;
-    body: string | null;
-    link: string | null;
-    payload: any;
-    readAt: Date | null;
-    createdAt: Date;
-  };
   const notifsByUser = new Map<string, NotifRow[]>();
   // User rows: id + timezone + the dedup column the cron writes
   // (`shieldDigestLastDate`). Tests that want to simulate a
@@ -194,11 +199,12 @@ describe('runShieldDigestForUser', () => {
 
     const notifs = h.notifsByUser.get('u1') ?? [];
     expect(notifs).toHaveLength(1);
-    expect(notifs[0].kind).toBe('shield_repair_daily');
-    expect(notifs[0].category).toBe('PENANCE');
-    expect(notifs[0].title).toContain('+11');
+    const notif = notifs[0]!; // length just asserted above
+    expect(notif.kind).toBe('shield_repair_daily');
+    expect(notif.category).toBe('PENANCE');
+    expect(notif.title).toContain('+11');
     // Top contributor should be the +8 mobility
-    expect(notifs[0].body).toContain('Mobility logged');
+    expect(notif.body).toContain('Mobility logged');
   });
 
   it('is a no-op when there are zero repair events yesterday', async () => {
@@ -250,7 +256,7 @@ describe('runShieldDigestForUser', () => {
     seedUser('u1', 'UTC');
     seedRepair('u1', 'logged_mobility', 'Mobility logged', 8, -1);
     await runShieldDigestForUser('u1', 'UTC');
-    const notif = (h.notifsByUser.get('u1') ?? [])[0];
+    const notif = (h.notifsByUser.get('u1') ?? [])[0]!;
     expect(notif.payload.date).toBe('2026-07-07');
   });
 
@@ -265,7 +271,7 @@ describe('runShieldDigestForUser', () => {
     seedRepair('u1', 'checkin_am', 'Morning check-in', 3, -1);
     seedRepair('u1', 'checkin_pm', 'Evening check-in', 3, -1);
     await runShieldDigestForUser('u1', 'UTC');
-    const notif = (h.notifsByUser.get('u1') ?? [])[0];
+    const notif = (h.notifsByUser.get('u1') ?? [])[0]!;
     expect(notif.payload.topContributors).toEqual([
       'Mobility logged +8',
       'Meal logged +4',

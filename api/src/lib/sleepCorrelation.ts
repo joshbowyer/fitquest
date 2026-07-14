@@ -155,6 +155,12 @@ function dayKeyDiff(a: string, b: string): number {
   // Returns a - b in days.
   const [ay, am, ad] = a.split('-').map(Number);
   const [by, bm, bd] = b.split('-').map(Number);
+  if (
+    ay === undefined || am === undefined || ad === undefined ||
+    by === undefined || bm === undefined || bd === undefined
+  ) {
+    throw new Error(`Invalid day key: ${a} or ${b}`);
+  }
   const aMs = Date.UTC(ay, am - 1, ad);
   const bMs = Date.UTC(by, bm - 1, bd);
   return Math.round((aMs - bMs) / (24 * 60 * 60 * 1000));
@@ -164,9 +170,12 @@ function median(xs: number[]): number | null {
   if (xs.length === 0) return null;
   const sorted = [...xs].sort((a, b) => a - b);
   const m = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? Math.round(((sorted[m - 1] + sorted[m]) / 2) * 100) / 100
-    : sorted[m];
+  const upper = sorted[m];
+  if (upper === undefined) return null;
+  if (sorted.length % 2 !== 0) return upper;
+  const lower = sorted[m - 1];
+  if (lower === undefined) return null;
+  return Math.round(((lower + upper) / 2) * 100) / 100;
 }
 
 // ---- Orchestrator ----
@@ -326,8 +335,9 @@ export async function buildSleepOverlapReport(
   const sortedOnsets = [...onsetByDay.entries()]
     .sort((a, b) => b[1].date.getTime() - a[1].date.getTime())
     .slice(0, 7);
-  if (sortedOnsets.length > 0) {
-    const [_, lastInfo] = sortedOnsets[0];
+  const latestOnset = sortedOnsets[0];
+  if (latestOnset) {
+    const [, lastInfo] = latestOnset;
     for (const category of ['CAFFEINE', 'ALCOHOL', 'NICOTINE'] as Category[]) {
       let lastHrs: number | null = null;
       for (const s of substance) {

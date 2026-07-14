@@ -274,7 +274,9 @@ export async function statusRoutes(app: FastifyInstance) {
           topSet: ex.sets.length > 0
             ? ex.sets.reduce(
                 (best, st) => ((st.weight ?? 0) > (best.weight ?? 0) ? st : best),
-                ex.sets[0],
+                // length > 0 just checked, so the seed is safe — tsc's
+                // noUncheckedIndexedAccess doesn't track that.
+                ex.sets[0]!,
               )
             : null,
         })),

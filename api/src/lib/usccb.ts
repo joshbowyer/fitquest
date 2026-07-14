@@ -795,6 +795,13 @@ export async function getDailyReading(date: string): Promise<DailyReading | null
  */
 export type ReadingSourceStatus =
   | { source: 'cache'; ok: true; fetchedAt: Date; readingSource: string }
+  | {
+      source: 'cache';
+      ok: false;
+      reason: string;
+      fetchedAt?: Date;
+      readingSource?: string;
+    }
   | { source: 'ewtn' | 'rss' | 'wayback'; ok: boolean; reason?: string };
 
 export async function getReadingsStatus(date: string): Promise<{
@@ -814,13 +821,22 @@ export async function getReadingsStatus(date: string): Promise<{
   });
   if (cached) {
     const hasContent = (cached.gospel ?? '').trim().length > 0;
-    sources.push({
-      source: 'cache',
-      ok: hasContent,
-      fetchedAt: cached.fetchedAt,
-      readingSource: cached.source,
-      ...(hasContent ? {} : { reason: 'cached row has empty gospel (stub from a half-baked fetch)' }),
-    });
+    if (hasContent) {
+      sources.push({
+        source: 'cache',
+        ok: true,
+        fetchedAt: cached.fetchedAt,
+        readingSource: cached.source,
+      });
+    } else {
+      sources.push({
+        source: 'cache',
+        ok: false,
+        fetchedAt: cached.fetchedAt,
+        readingSource: cached.source,
+        reason: 'cached row has empty gospel (stub from a half-baked fetch)',
+      });
+    }
   } else {
     sources.push({ source: 'cache', ok: false, reason: 'not cached yet' });
   }

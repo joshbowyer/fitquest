@@ -34,7 +34,10 @@ describe('buildRoundRobinOrder — un-paired exercises', () => {
   it('walks three singletons linearly in array order', () => {
     const plan = [ex('A', null, 3), ex('B', null, 2), ex('C', null, 1)];
     const order = buildRoundRobinOrder(plan);
-    expect(order.map((e) => ({ ex: plan[e.exerciseIndex].name, set: e.setIndex }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { ex: ex.name, set: e.setIndex };
+    })).toEqual([
       { ex: 'A', set: 0 },
       { ex: 'A', set: 1 },
       { ex: 'A', set: 2 },
@@ -51,7 +54,10 @@ describe('buildRoundRobinOrder — paired exercises', () => {
   it('alternates A and B when both have 3 sets', () => {
     const plan = [ex('A', 1, 3), ex('B', 1, 3)];
     const order = buildRoundRobinOrder(plan);
-    expect(order.map((e) => ({ ex: plan[e.exerciseIndex].name, set: e.setIndex, label: e.label }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { ex: ex.name, set: e.setIndex, label: e.label };
+    })).toEqual([
       { ex: 'A', set: 0, label: '1A' },
       { ex: 'B', set: 0, label: '1B' },
       { ex: 'A', set: 1, label: '1A' },
@@ -65,7 +71,10 @@ describe('buildRoundRobinOrder — paired exercises', () => {
     const plan = [ex('A', 1, 3), ex('B', 1, 2)];
     const order = buildRoundRobinOrder(plan);
     // A1, B1, A2, B2, A3 — B has no 3rd set so the walk ends there
-    expect(order.map((e) => ({ ex: plan[e.exerciseIndex].name, set: e.setIndex }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { ex: ex.name, set: e.setIndex };
+    })).toEqual([
       { ex: 'A', set: 0 },
       { ex: 'B', set: 0 },
       { ex: 'A', set: 1 },
@@ -86,7 +95,10 @@ describe('buildRoundRobinOrder — paired exercises', () => {
       ex('C', 2, 2), ex('D', 2, 2),  // pair 2
     ];
     const order = buildRoundRobinOrder(plan);
-    expect(order.map((e) => ({ name: plan[e.exerciseIndex].name, label: e.label }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { name: ex.name, label: e.label };
+    })).toEqual([
       { name: 'A', label: '1A' },
       { name: 'B', label: '1B' },
       { name: 'A', label: '1A' },
@@ -105,7 +117,10 @@ describe('buildRoundRobinOrder — paired exercises', () => {
       ex('D', 2, 2), ex('E', 2, 2),
     ];
     const order = buildRoundRobinOrder(plan);
-    expect(order.map((e) => ({ name: plan[e.exerciseIndex].name, label: e.label }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { name: ex.name, label: e.label };
+    })).toEqual([
       { name: 'A', label: '1A' },
       { name: 'B', label: '1B' },
       { name: 'A', label: '1A' },
@@ -125,7 +140,10 @@ describe('buildRoundRobinOrder — single-pair edge cases', () => {
     const plan = [ex('A', 1, 0), ex('B', 1, 2)];
     const order = buildRoundRobinOrder(plan);
     // A contributes nothing; only B's sets are walked.
-    expect(order.map((e) => ({ name: plan[e.exerciseIndex].name, set: e.setIndex }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { name: ex.name, set: e.setIndex };
+    })).toEqual([
       { name: 'B', set: 0 },
       { name: 'B', set: 1 },
     ]);
@@ -137,7 +155,10 @@ describe('buildRoundRobinOrder — single-pair edge cases', () => {
     // this shape but the API accepts it.
     const plan = [ex('A', 1, 2)];
     const order = buildRoundRobinOrder(plan);
-    expect(order.map((e) => ({ name: plan[e.exerciseIndex].name, set: e.setIndex, label: e.label }))).toEqual([
+    expect(order.map((e) => {
+      const ex = plan[e.exerciseIndex]!; // exerciseIndex is bounded by the buildRoundRobinOrder output contract
+      return { name: ex.name, set: e.setIndex, label: e.label };
+    })).toEqual([
       { name: 'A', set: 0, label: null },
       { name: 'A', set: 1, label: null },
     ]);

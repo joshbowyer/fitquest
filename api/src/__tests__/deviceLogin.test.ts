@@ -243,8 +243,12 @@ async function buildApp() {
   // registered in the test app — auth.ts calls these in the
   // logout / logout-everywhere paths.
   app.decorateRequest('cookies', { getter: () => ({}) });
-  app.decorateReply('clearCookie', () => undefined);
-  app.decorateReply('setCookie', () => undefined);
+  // These simulate internal @fastify/cookie plugin hooks; the real
+  // signature is a (this: FastifyReply, ...) => FastifyReply function.
+  // We don't exercise the return value in tests — cast the no-op
+  // stubs to any so tsc stops complaining without weakening assertions.
+  app.decorateReply('clearCookie', (() => undefined) as any);
+  app.decorateReply('setCookie', (() => undefined) as any);
   app.decorateReply('unsignCookie', () => ({ valid: false, value: null, renew: false }));
   await app.register(authRoutes);
   return app;

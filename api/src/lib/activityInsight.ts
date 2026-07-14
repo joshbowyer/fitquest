@@ -190,14 +190,16 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
     });
     for (const s of priorSets) {
       const name = s.exercise.name;
-      if (!exerciseHistory[name]) {
-        exerciseHistory[name] = { bestWeight: 0, bestReps: 0, sessions: 0 };
+      const history = exerciseHistory[name] ??= {
+        bestWeight: 0,
+        bestReps: 0,
+        sessions: 0,
+      };
+      if ((s.weight ?? 0) > history.bestWeight) {
+        history.bestWeight = s.weight ?? 0;
       }
-      if ((s.weight ?? 0) > exerciseHistory[name].bestWeight) {
-        exerciseHistory[name].bestWeight = s.weight ?? 0;
-      }
-      if ((s.reps ?? 0) > exerciseHistory[name].bestReps) {
-        exerciseHistory[name].bestReps = s.reps ?? 0;
+      if ((s.reps ?? 0) > history.bestReps) {
+        history.bestReps = s.reps ?? 0;
       }
     }
     // Session count: distinct workout ids per exercise.
@@ -205,7 +207,9 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
       const ids = new Set(
         priorSets.filter((s) => s.exercise.name === name).map((s) => s.exercise.workout.id),
       );
-      exerciseHistory[name].sessions = ids.size;
+      const history = exerciseHistory[name];
+      if (!history) continue;
+      history.sessions = ids.size;
     }
   }
 
@@ -226,10 +230,10 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
   }
 
   const avg = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
-  const lastOf = <T extends { recordedAt: Date }>(xs: T[]): number | null => {
-    if (xs.length === 0) return null;
+  const lastOf = <T extends { recordedAt: Date; value: number }>(xs: T[]): number | null => {
     // already ordered desc by recordedAt
-    return xs[0].value;
+    const latest = xs[0];
+    return latest?.value ?? null;
   };
   const daysSinceLastSession = lastSession
     ? Math.round((w.performedAt.getTime() - lastSession.performedAt.getTime()) / (24 * 60 * 60 * 1000))
@@ -564,8 +568,9 @@ export function extractJson(text: string): any | null {
   if (!trimmed) return null;
   // Strip ```json fences if present
   const fence = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  if (fence) {
-    try { return JSON.parse(fence[1]); } catch { /* fall through */ }
+  const fencedJson = fence?.[1];
+  if (fencedJson !== undefined) {
+    try { return JSON.parse(fencedJson); } catch { /* fall through */ }
   }
   // Strip leading "Here is the JSON:" prose
   const first = trimmed.indexOf('{');

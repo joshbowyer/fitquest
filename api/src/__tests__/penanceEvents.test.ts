@@ -11,7 +11,13 @@ import {
   type PenanceKey,
 } from '../lib/penance.js';
 
-const NEW_KEYS: PenanceKey[] = [
+// PENANCE_DELTAS / PENANCE_LABELS / PENANCE_FLAVORS are typed
+// `Record<Exclude<PenanceKey, 'custom'>, ...>` — 'custom' penances
+// intentionally have no static lookup entry (they carry their
+// delta/label inline at the call site). None of the keys we test
+// below are 'custom', so narrow the array's element type so TS
+// knows the indexed access is safe.
+const NEW_KEYS: Exclude<PenanceKey, 'custom'>[] = [
   'missed_spiritual_week',
   'missed_examen',
   'completed_spiritual_day',

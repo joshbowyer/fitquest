@@ -57,7 +57,9 @@ export function buildRoundRobinOrder(
   // defined them in the Routines page.
   const groups: Array<{ groupIndex: number | null; exIndices: number[] }> = [];
   for (let i = 0; i < exercises.length; i++) {
-    const gi = exercises[i].groupIndex;
+    const exercise = exercises[i];
+    if (!exercise) continue;
+    const gi = exercise.groupIndex;
     if (gi == null) {
       groups.push({ groupIndex: null, exIndices: [i] });
       continue;
@@ -76,7 +78,10 @@ export function buildRoundRobinOrder(
     const isPaired = group.exIndices.length > 1;
     if (!isPaired) {
       const exIdx = group.exIndices[0];
-      for (let s = 0; s < exercises[exIdx].sets.length; s++) {
+      if (exIdx === undefined) continue;
+      const exercise = exercises[exIdx];
+      if (!exercise) continue;
+      for (let s = 0; s < exercise.sets.length; s++) {
         order.push({ exerciseIndex: exIdx, setIndex: s, label: null });
       }
       continue;
@@ -85,12 +90,15 @@ export function buildRoundRobinOrder(
     // how many rounds we walk. Members with fewer sets get skipped
     // once they're out of sets.
     const maxSets = Math.max(
-      ...group.exIndices.map((i) => exercises[i].sets.length),
+      ...group.exIndices.map((i) => exercises[i]?.sets.length ?? 0),
     );
     for (let s = 0; s < maxSets; s++) {
       for (let pos = 0; pos < group.exIndices.length; pos++) {
         const exIdx = group.exIndices[pos];
-        if (s < exercises[exIdx].sets.length) {
+        if (exIdx === undefined) continue;
+        const exercise = exercises[exIdx];
+        if (!exercise) continue;
+        if (s < exercise.sets.length) {
           order.push({
             exerciseIndex: exIdx,
             setIndex: s,

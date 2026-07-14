@@ -20,7 +20,10 @@ describe('cadence defaults', () => {
     // longer appears in /check-ins/* UI or API). It's replaced by
     // 'BICEP_FLEXED' and 'BICEP_RELAXED', which must each have
     // cadences.
-    const expected: MetricType[] = [
+    // string[], not MetricType[] — SHOULDER_WAIST_RATIO is
+    // intentionally not a real Prisma enum member (see the
+    // DEFAULT_CADENCE/NEVER_SURFACED comments in lib/checkIns.ts).
+    const expected: string[] = [
       'BICEP_FLEXED','BICEP_RELAXED','CHEST','SHOULDER','QUAD','CALF','FOREARM','NECK','WAIST',
       'BENCH_1RM','SQUAT_1RM','DEADLIFT_1RM','OHP_1RM','PULLUP_1RM',
       'BODY_FAT_PCT','LEAN_MASS','FFMI','WEIGHT',

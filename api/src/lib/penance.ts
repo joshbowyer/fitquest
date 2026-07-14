@@ -244,6 +244,9 @@ export async function resolvePenance(
       isUserOverride: true,
     };
   }
+  // Custom penances only exist as user templates; there is no system
+  // default entry for them in the static lookup maps.
+  if (key === 'custom') return null;
   // System default from constants.
   const delta = PENANCE_DELTAS[key];
   if (delta == null) return null;

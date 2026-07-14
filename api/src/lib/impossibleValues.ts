@@ -1,4 +1,4 @@
-import { prisma } from './prisma.js';
+import { PrismaRuntime, prisma } from './prisma.js';
 
 /**
  * Shape mirrors the ValidityFlag type in workouts.ts. Re-declared
@@ -26,6 +26,22 @@ export type ImpossibleValueItem = {
   severity: 'flag' | 'block';
   occurredAt: string; // ISO
 };
+
+function isStoredValidityFlag(value: unknown): value is StoredValidityFlag {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!('exercise' in value) || typeof value.exercise !== 'string') return false;
+  if (!('setIndex' in value) || typeof value.setIndex !== 'number') return false;
+  if (!('field' in value) || (value.field !== 'weight' && value.field !== 'reps')) return false;
+  if (!('value' in value) || typeof value.value !== 'number') return false;
+  if ('reason' in value && value.reason !== undefined && typeof value.reason !== 'string') return false;
+  if (
+    'severity' in value &&
+    value.severity !== undefined &&
+    value.severity !== 'flag' &&
+    value.severity !== 'block'
+  ) return false;
+  return true;
+}
 
 /**
  * Aggregate flagged sets from the user's last N hours of workouts.
@@ -59,7 +75,7 @@ export async function impossibleValuesDomain(
       // where validityFlags is NOT NULL. The `not: null` form works
       // in Prisma 5+ for nullable JSON columns. The previous
       // `equals: undefined` was a no-op and matched everything.
-      validityFlags: { not: null },
+      validityFlags: { not: PrismaRuntime.AnyNull },
     },
     select: {
       id: true,
@@ -75,10 +91,7 @@ export async function impossibleValuesDomain(
     try {
       const parsed = w.validityFlags;
       if (Array.isArray(parsed)) {
-        flags = parsed.filter((f) =>
-          f && typeof f.exercise === 'string' && typeof f.setIndex === 'number' &&
-          (f.field === 'weight' || f.field === 'reps') && typeof f.value === 'number'
-        );
+        flags = parsed.filter(isStoredValidityFlag);
       }
     } catch {
       continue;

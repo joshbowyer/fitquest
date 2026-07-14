@@ -16,7 +16,9 @@ describe('toCsv', () => {
   it('unions keys across rows', () => {
     const out = toCsv([{ a: 1 }, { b: 2 }, { a: 3, c: 4 }]);
     const lines = out.split('\n');
-    expect(lines[0].split(',').sort()).toEqual(['a', 'b', 'c']);
+    // split always returns at least one element (empty string for '' input);
+    // here we have a header line, so the first line is the header.
+    expect(lines[0]!.split(',').sort()).toEqual(['a', 'b', 'c']);
   });
 
   it('escapes commas, quotes, and newlines', () => {

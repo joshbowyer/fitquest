@@ -17,19 +17,24 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+// Module-scoped (not declared inside vi.hoisted's callback) so it's
+// visible to the vi.mock factory below too — type declarations
+// follow normal lexical block scoping, they aren't hoisted the way
+// vi.hoisted's runtime values are.
+type Row = {
+  id: string;
+  userId: string;
+  category: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  payload: any;
+  readAt: Date | null;
+  createdAt: Date;
+};
+
 const h = vi.hoisted(() => {
-  type Row = {
-    id: string;
-    userId: string;
-    category: string;
-    kind: string;
-    title: string;
-    body: string | null;
-    link: string | null;
-    payload: any;
-    readAt: Date | null;
-    createdAt: Date;
-  };
   const rows: Row[] = [];
   let nextId = 1;
   return { rows, nextId };
@@ -92,7 +97,7 @@ vi.mock('../lib/prisma', () => ({
       deleteMany: vi.fn(async ({ where }: any) => {
         const before = h.rows.length;
         for (let i = h.rows.length - 1; i >= 0; i--) {
-          if (h.rows[i].userId === where.userId) h.rows.splice(i, 1);
+          if (h.rows[i]!.userId === where.userId) h.rows.splice(i, 1);
         }
         return { count: before - h.rows.length };
       }),

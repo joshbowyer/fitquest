@@ -58,7 +58,10 @@ vi.mock('./auth.js', () => ({
 import Fastify from 'fastify';
 import { adminRoutes } from '../routes/admin';
 
-const store: any = (await import('../lib/prisma')).__store;
+// `__store` is a test-only escape hatch exposed by the prisma mock
+// (above) but the real `lib/prisma` module's type doesn't declare
+// it, so cast the import to access it.
+const store: any = (await import('../lib/prisma') as any).__store;
 
 beforeEach(() => {
   store.inventoryItems = [

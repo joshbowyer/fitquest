@@ -13,9 +13,10 @@ describe('impossibleValuesDomain', () => {
     const b = { workoutId: 'b', occurredAt: '2026-06-24T10:00:00.000Z' };
     const c = { workoutId: 'c', occurredAt: '2026-06-22T10:00:00.000Z' };
     const sorted = [a, b, c].sort((x, y) => y.occurredAt.localeCompare(x.occurredAt));
-    expect(sorted[0].workoutId).toBe('b');
-    expect(sorted[1].workoutId).toBe('a');
-    expect(sorted[2].workoutId).toBe('c');
+    // sorted is 3 elements by construction (sort is in-place over [a,b,c]).
+    expect(sorted[0]!.workoutId).toBe('b');
+    expect(sorted[1]!.workoutId).toBe('a');
+    expect(sorted[2]!.workoutId).toBe('c');
   });
 
   it('normalizes weight values to kg unit', () => {

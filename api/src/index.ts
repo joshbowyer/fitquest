@@ -186,7 +186,7 @@ async function build() {
     // ZodError — thrown when a route does `schema.parse(req.body)`.
     // Fastify 5 does NOT wrap this; the raw ZodError reaches the
     // error handler with `name === 'ZodError'`. Convert to 400.
-    if (err?.name === 'ZodError' || Array.isArray((err as any).issues)) {
+    if ((err as any)?.name === 'ZodError' || Array.isArray((err as any).issues)) {
       const issues = (err as any).issues ?? [];
       return reply.code(400).send({
         error: 'Invalid request',

@@ -284,7 +284,8 @@ describe('buildPromptMessages', () => {
       role: 'system',
       content: expect.stringContaining('SUMMARY OF EARLIER CONVERSATION'),
     });
-    expect(out[0].content).toContain('User asked about squat form last week.');
+    const first = out[0]!; // toEqual just asserted it exists
+    expect(first.content).toContain('User asked about squat form last week.');
   });
 
   it('skips the summary block when null', () => {
@@ -368,8 +369,9 @@ describe('maybeGetCompactionBatch', () => {
     });
     expect(batch).not.toBeNull();
     expect(batch!.messages).toHaveLength(COMPACTION_BATCH_SIZE);
-    expect(batch!.messages[0].content).toBe('user 0');
-    expect(batch!.messages[batch!.messages.length - 1].content).toBe('asst 4');
+    const batchMsgs = batch!.messages; // length just asserted above
+    expect(batchMsgs[0]!.content).toBe('user 0');
+    expect(batchMsgs[batchMsgs.length - 1]!.content).toBe('asst 4');
   });
 
   it('summaryUpTo is the timestamp of the LAST message in the batch (not the conversation)', async () => {
@@ -444,8 +446,9 @@ describe('appendTurn', () => {
     });
     const reloaded = await listMessages({ userId: 'u-order' });
     expect(reloaded!.messages).toHaveLength(2);
-    expect(reloaded!.messages[0].role).toBe('user');
-    expect(reloaded!.messages[1].role).toBe('assistant');
+    const msgs = reloaded!.messages; // length just asserted above
+    expect(msgs[0]!.role).toBe('user');
+    expect(msgs[1]!.role).toBe('assistant');
   });
 });
 
@@ -491,8 +494,9 @@ describe('listMessages', () => {
     const loaded = await listMessages({ userId: 'u-list' });
     expect(loaded).not.toBeNull();
     expect(loaded!.messages).toHaveLength(6);
-    expect(loaded!.messages[0].content).toBe('u0');
-    expect(loaded!.messages[5].content).toBe('a2');
+    const loadedMsgs = loaded!.messages; // length just asserted above
+    expect(loadedMsgs[0]!.content).toBe('u0');
+    expect(loadedMsgs[5]!.content).toBe('a2');
     expect(loaded!.messageCount).toBe(6);
   });
 });

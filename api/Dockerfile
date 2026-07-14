@@ -38,14 +38,12 @@ COPY api/prisma ./api/prisma
 # resolves correctly.
 WORKDIR /app/api
 RUN npx prisma generate
-# tsc runs in strict mode and surfaces pre-existing implicit-any
-# / null-mismatch errors (see src/routes/workouts.ts, homeBase.ts,
-# status.ts, users.ts). These don't affect runtime but block
-# the build. The `|| true` lets the build proceed so we can
-# deploy; a follow-up PR should fix the underlying typing.
-# (noEmitOnError is already false in the tsconfig, so dist/
-# is still written despite the errors.)
-RUN npx tsc -p tsconfig.json || true
+# Hard gate as of 2026-07-14 — the pre-existing 170-error backlog
+# (src/lib/import.ts, routes/workouts.ts, homeBase.ts, status.ts,
+# users.ts, and ~19 test files) has been paid down to 0. Matches
+# the web image's tsc gate, which is what caught the Dashboard-crash
+# class of bug — this is the same protection for the api.
+RUN npx tsc -p tsconfig.json
 
 FROM base AS prod-deps
 COPY package.json package-lock.json* ./

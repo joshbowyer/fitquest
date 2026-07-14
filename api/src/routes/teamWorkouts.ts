@@ -61,7 +61,9 @@ export async function teamWorkoutRoutes(app: FastifyInstance) {
             { userId: me.id, status: 'ACCEPTED', respondedAt: new Date() },
             ...body.participantIds
               .filter((id) => id !== me.id)
-              .map((id) => ({ userId: id, status: 'INVITED' })),
+              // 'as const' so the literal isn't widened to `string`
+              // (Prisma's enum field rejects `string` here).
+              .map((id) => ({ userId: id, status: 'INVITED' as const })),
           ],
         },
       },

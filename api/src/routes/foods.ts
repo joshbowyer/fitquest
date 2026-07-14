@@ -265,7 +265,12 @@ export async function foodRoutes(app: FastifyInstance) {
       });
     }
 
-    return { items: rankResults(trimmed, allHits).slice(0, 10) };
+    // The two FoodMatch shapes differ only in their `source` literal
+    // ('OPENFOODFACTS' vs 'USDA'); rankResults only reads the common
+    // fields (name/brand/macros) so the union is safe to flatten to
+    // the OFF-side FoodMatch type. Narrow cast — not `as any` — so
+    // the shape difference stays visible to readers.
+    return { items: rankResults(trimmed, allHits as OffMatch[]).slice(0, 10) };
   });
 
   // GET /foods/barcode/:code

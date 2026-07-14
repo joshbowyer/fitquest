@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { CalorieGoal, CalorieSource, ClassName } from '../lib/prisma.js';
+import { CalorieGoal, CalorieSource, ClassName, PrismaRuntime } from '../lib/prisma.js';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { computeAllGeneticMaxes } from '../lib/geneticMax.js';
@@ -347,7 +347,10 @@ export async function userRoutes(app: FastifyInstance) {
       .slice(0, 100);
     if (cleaned.length === 0) {
       // Empty array = "use default" — clear the column.
-      await prisma.user.update({ where: { id: me.id }, data: { navOrder: null } });
+      // navOrder is a Json? column, so the only spelling Prisma
+      // accepts for "set to NULL" is PrismaRuntime.JsonNull — a
+      // bare `null` throws PrismaClientValidationError at runtime.
+      await prisma.user.update({ where: { id: me.id }, data: { navOrder: PrismaRuntime.JsonNull } });
       return { ok: true, order: null };
     }
     await prisma.user.update({

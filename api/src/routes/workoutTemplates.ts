@@ -288,7 +288,13 @@ export async function workoutTemplateRoutes(app: FastifyInstance) {
           create: source.exercises.map((ex) => ({
             name: ex.name,
             order: ex.order,
-            groupIndex: ex.groupIndex,
+            // groupIndex isn't part of includeShape's select (we
+            // deliberately exclude it for migration-safety reasons
+            // — see the comment at the top of includeShape). The
+            // duplicate endpoint still wants to preserve it when
+            // present, so we cast narrowly: this single field on
+            // this single element, not a blanket `as any`.
+            groupIndex: (ex as { groupIndex?: number | null }).groupIndex ?? null,
             sets: {
               create: ex.sets.map((s) => ({
                 order: s.order,

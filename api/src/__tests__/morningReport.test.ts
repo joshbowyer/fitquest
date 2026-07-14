@@ -76,6 +76,11 @@ function makePayload(overrides: Partial<{
     },
     bodyFatSources: [],
     heartLossEvents: overrides.heartLossEvents ?? [],
+    // The two newer engines wired into the gather payload. Default
+    // to empty so existing penalty tests don't have to care about
+    // them — they only assert on `buildPenalties` output.
+    impossibleValues: [],
+    examenTrend: { loggedCount: 0, totalWeeks: 0, latestWeekStart: null },
   };
 }
 

@@ -134,8 +134,9 @@ describe('tickLeakGrowth — no longer expires leaks', () => {
     }
     // HP for the ancient leak = 50 + 8 = 58 (under 150% cap of 150).
     // HP for the recent leak = 90 + 8 = 98 (under cap).
-    expect(updateCalls[0][0].data.hp).toBe(58);
-    expect(updateCalls[1][0].data.hp).toBe(98);
+    // toHaveBeenCalledTimes(2) above guarantees both updateCalls entries exist.
+    expect(updateCalls[0]![0]!.data.hp).toBe(58);
+    expect(updateCalls[1]![0]!.data.hp).toBe(98);
   });
 
   it('returns ticked=0 when no active leaks', async () => {
@@ -160,7 +161,9 @@ describe('getLeakForUser — stacking', () => {
 
     const result = await getLeakForUser('user-1');
     expect(result.leaks).toHaveLength(3);
-    const ids = result.leaks.map((e) => e.leak.id);
+    // The mock wires each row's `leak` field to the same object, so it's
+    // non-null for every row in this test.
+    const ids = result.leaks.map((e) => e.leak!.id);
     expect(ids).toContain('leak-1');
     expect(ids).toContain('leak-2');
     expect(ids).toContain('leak-3');

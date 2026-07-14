@@ -99,9 +99,12 @@ function median(xs: number[]): number | null {
   if (xs.length === 0) return null;
   const sorted = [...xs].sort((a, b) => a - b);
   const m = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? Math.round(((sorted[m - 1] + sorted[m]) / 2) * 100) / 100
-    : sorted[m];
+  const upper = sorted[m];
+  if (upper === undefined) return null;
+  if (sorted.length % 2 !== 0) return upper;
+  const lower = sorted[m - 1];
+  if (lower === undefined) return null;
+  return Math.round(((lower + upper) / 2) * 100) / 100;
 }
 
 // ---- Orchestrator ----
@@ -200,6 +203,12 @@ export async function buildBodyBatteryReport(
   function dayDiff(a: string, b: string): number {
     const [ay, am, ad] = a.split('-').map(Number);
     const [by, bm, bd] = b.split('-').map(Number);
+    if (
+      ay === undefined || am === undefined || ad === undefined ||
+      by === undefined || bm === undefined || bd === undefined
+    ) {
+      throw new Error(`Invalid day key: ${a} or ${b}`);
+    }
     return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(by, bm - 1, bd)) / 86400000);
   }
 

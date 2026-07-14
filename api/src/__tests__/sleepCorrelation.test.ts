@@ -87,10 +87,14 @@ describe('substanceSleepOverlapRule', () => {
       return { value: 23.5, recordedAt: d };
     });
     // 5 of those nights: caffeine logged at 9pm local (2.5h before onset)
-    const substances = Array.from({ length: 5 }, (_, i) => ({
-      category: 'CAFFEINE' as const,
-      loggedAt: new Date(onsets[i].recordedAt.getTime() - 2.5 * 60 * 60 * 1000),
-    }));
+    const substances = Array.from({ length: 5 }, (_, i) => {
+      // i is bounded 0..4 against the 7-element onsets array built above.
+      const onset = onsets[i]!;
+      return {
+        category: 'CAFFEINE' as const,
+        loggedAt: new Date(onset.recordedAt.getTime() - 2.5 * 60 * 60 * 1000),
+      };
+    });
     const result = substanceSleepOverlapRule(onsets, substances, 'CAFFEINE', tz);
     expect(result).toBeTruthy();
     expect(result!.nightsWith).toBeGreaterThanOrEqual(3);
@@ -107,10 +111,14 @@ describe('substanceSleepOverlapRule', () => {
       return { value: 23.5, recordedAt: d };
     });
     // 12h before each onset = ~11:30am same day — too early
-    const substances = Array.from({ length: 5 }, (_, i) => ({
-      category: 'CAFFEINE' as const,
-      loggedAt: new Date(onsets[i].recordedAt.getTime() - 12 * 60 * 60 * 1000),
-    }));
+    const substances = Array.from({ length: 5 }, (_, i) => {
+      // i is bounded 0..4 against the 7-element onsets array built above.
+      const onset = onsets[i]!;
+      return {
+        category: 'CAFFEINE' as const,
+        loggedAt: new Date(onset.recordedAt.getTime() - 12 * 60 * 60 * 1000),
+      };
+    });
     expect(substanceSleepOverlapRule(onsets, substances, 'CAFFEINE', tz)).toBe(null);
   });
 
@@ -124,10 +132,14 @@ describe('substanceSleepOverlapRule', () => {
       return { value: 23.5, recordedAt: d };
     });
     // 5 alcohols pre-sleep, 0 caffeine — caffeine rule should not fire.
-    const substances = Array.from({ length: 5 }, (_, i) => ({
-      category: 'ALCOHOL' as const,
-      loggedAt: new Date(onsets[i].recordedAt.getTime() - 2 * 60 * 60 * 1000),
-    }));
+    const substances = Array.from({ length: 5 }, (_, i) => {
+      // i is bounded 0..4 against the 7-element onsets array built above.
+      const onset = onsets[i]!;
+      return {
+        category: 'ALCOHOL' as const,
+        loggedAt: new Date(onset.recordedAt.getTime() - 2 * 60 * 60 * 1000),
+      };
+    });
     expect(substanceSleepOverlapRule(onsets, substances, 'CAFFEINE', tz)).toBe(null);
   });
 });
