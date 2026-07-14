@@ -4,11 +4,11 @@
 > working code reachable via a URL. "Outstanding" items are sized
 > + scoped for the next session.
 >
-> **Reconciled and deduplicated on 2026-07-09.** "Outstanding"
-> below is the single source of truth — section + tier ordering
-> reflects priorities as of this audit, file:line hints are the
-> entry points for sizing, and no re-derivation is needed on
-> the next pass.
+> **Reconciled and deduplicated on 2026-07-14** (supersedes the
+> 2026-07-09 pass). "Outstanding" below is the single source of
+> truth — section + tier ordering reflects priorities as of this
+> audit, file:line hints are the entry points for sizing, and no
+> re-derivation is needed on the next pass.
 
 ## Operations
 
@@ -71,26 +71,44 @@ shipped.
 
 ### P0 — quick wins
 
-- **API type-error backlog → 0, then flip the api Dockerfile
-  typecheck gate.** `api/Dockerfile:48` — remove the `|| true`
-  from the `tsc -b` step. ~167 tsc errors remaining (verified
-  annotation noise: import.ts ~42, sleepCorrelation,
-  impossibleValues, supersetRoundRobin, homeBase / skills /
-  workouts routes, ~42 in tests). Highest-leverage hygiene
-  item left — the web-side equivalent is what caught the
-  Dashboard-crash class of bug.
-- **Trivial stale-comment fixes:**
-  - `api/src/lib/penance.ts:13` — "COMPROMISED 30-59 portal
-    leaks possible (Phase 2)" actually shipped (in
-    `portalLeaks.ts:310-330`).
-  - `api/src/lib/coach.ts:144` — "v1 doesn't supply prior
-    turns" is misleading; the route already passes the last
-    20 turns via `SLIDING_WINDOW_SIZE=20`.
-  - `api/src/routes/shop.ts:262` — pet cap comment says 1,
-    actual cap is `MAX_PETS_PER_USER = 6`.
-- **Delete dead `LEAK_TTL_MS` constant.** `api/src/routes/
-  portalLeaks.ts:771-774` — kept as a UI-copy hint but no
-  longer drives any logic. Trivial.
+~~API type-error backlog → 0, then flip the api Dockerfile
+typecheck gate~~ — **closed 2026-07-14.** The 170-error backlog
+(re-verified count, not the unmeasured "345" some commit
+messages had claimed) was paid down to a confirmed 0 across
+`src/lib/import.ts` (42), `routes/workouts.ts` (9),
+`lib/sleepCorrelation.ts` (8), 8 more `lib/*.ts` files, 8
+`routes/*.ts` files, and ~19 test files — real type-narrowing
+throughout (guards before array/date-component indexing, a
+handful of narrow `Prisma.XUncheckedCreateInput` casts on
+`import.ts`'s account-restore path, a couple of genuinely-wrong
+Prisma JSON-null spellings), no blanket `as any` suppression.
+`api/Dockerfile:48`'s `tsc -p tsconfig.json` step no longer has
+`|| true` — matches the web image's existing hard gate. Verified
+via a from-scratch `tsc -p tsconfig.json` (0 errors) and
+`vitest run` (790/791, only the pre-existing unrelated failure
+below) before flipping the gate.
+
+~~Trivial stale-comment fixes~~ and ~~delete dead `LEAK_TTL_MS`
+constant~~ — **both shipped 2026-07-11** (`f64715d`), see
+Recently Fixed below.
+
+- **NEW (found 2026-07-14, during the tsc paydown): `DailyLog`
+  idempotency test fails on a local-day boundary.**
+  `api/src/__tests__/import.test.ts:412`
+  ("DailyLog idempotency per-local-day — three imports of
+  different FITs on the same day produce one log") asserts 3
+  same-local-day FIT imports produce exactly 1 `DailyLog` row,
+  but gets 2. Two of the fixture's `startTime`s
+  (`2026-07-13T08:00:00Z` and `2026-07-13T18:00:00Z`) land on
+  *different* local calendar days in most US timezones —
+  contradicting the "same local day" premise the test itself
+  is checking. Not yet fixed; not clear yet whether this is a
+  bad fixture (wrong UTC timestamps that don't actually share a
+  local day) or a genuine bug in `import.ts`'s `persist()`
+  local-day-bucketing logic. Needs a dedicated look — this is
+  the one pre-existing test failure the tsc-paydown session
+  intentionally left alone (out of scope for a compile-only
+  pass).
 
 ### P1 — feature work
 
@@ -164,11 +182,16 @@ shipped.
 - **Workout template `groupIndex` type-safety debt.**
   `api/src/routes/workoutTemplates.ts:45-47` — `as any` cast
   pending migration-applied version tracking. Hours.
-- **Dead `BICEP` enum value in schema.** `api/prisma/
-  schema.prisma:53` — legacy alias, nothing in client code
-  emits it. Postgres can't drop enum values without
-  recreating the type, so this is a migration that swaps
-  the type out. Hours.
+- ◐ **Dead `BICEP` enum value in schema (PARTIAL).** `api/prisma/
+  schema.prisma:53` — the *active* check-in surface no longer
+  emits it: shipped 2026-07-12 (`0a23717`, "v2.0.0"), the weekly
+  check-in flow now uses `BICEP_FLEXED`/`BICEP_RELAXED` instead
+  of the single legacy `BICEP` metric. The enum value itself,
+  the `METRICS` metadata entry, the `geneticMax` formula case,
+  and `MetricDetailModal`'s BICEP branch are all **retained**
+  for historical rows — Postgres still can't drop enum values
+  without recreating the type, so the actual schema cleanup
+  remains outstanding. Hours (migration to recreate the enum).
 - **Full synthwave synth pass.** `web/src/lib/soundBus.ts:
   7-15` — current audio mixes Kenney CC0 MP3s with an
   older, less-polished synth for ~4 of ~10 events. ~1-2
@@ -228,6 +251,18 @@ Implementations" below; the changelog of what shipped is in
   skillTest.ts:191-195` — same fragility. Maintenance contract.
 - **More /tools page additions.** BPM calculator, rep-max calc,
   body-fat-% calc. Rest-timer card already shipped on /tools.
+- **3D avatar canvas background is hardcoded, not theme-aware.**
+  `web/src/components/*avatar*` (fixed 2026-07-09, `a7b54f4`) —
+  a `useChartColors()`-driven attempt to make the canvas
+  background follow the dark/light toggle "didn't behave
+  correctly in practice", so it's now a deliberate hardcoded
+  light-blue for both themes. Revisit if/when the avatar gets
+  more theming attention.
+- (was: Skill-tree mobile zoom default only reviewed for
+  PHANTOM — shipped 2026-07-14. BERSERKER was reported too
+  zoomed-in at the 100% default; `SkillTreeCanvas.tsx` now
+  defaults every class to 50% zoom on mobile, not just
+  PHANTOM.)
 
 ## Stopped Short / Partial Implementations
 
@@ -293,9 +328,9 @@ Grouped by area, ordered by "ease of fixing" within each group
 - **No "PC" box for off-roster pets** — `web/src/pages/Pet.tsx:700`:
   release = hard delete. With 6-pet cap this is small.
   1-2 days (PC model + storage UI).
-- **Stale "v1 = one per user" comment** — `api/src/routes/shop.ts:262`:
-  `MAX_PETS_PER_USER = 6` is the actual cap, but the comment
-  says 1. Trivial doc fix.
+- (was: Stale "v1 = one per user" comment — shipped 2026-07-11
+  session (`f64715d`). `api/src/routes/shop.ts:262` now says
+  `MAX_PETS_PER_USER = 6`.)
 
 ### Quests / Worlds
 - (was: Separate breach-levels-reissuance endpoint — NOT
@@ -427,11 +462,10 @@ Grouped by area, ordered by "ease of fixing" within each group
   user actually wants them surfaced.)
 
 ### Misc stale comments to fix (low-effort cleanup)
-- `api/src/lib/penance.ts:13` — "COMPROMISED 30-59 portal leaks
-  possible (Phase 2)" actually shipped (in `portalLeaks.ts:310-330`).
-- `api/src/lib/coach.ts:144` — "v1 doesn't supply prior turns"
-  is misleading; the route already passes the last 20 turns to
-  the LLM (`SLIDING_WINDOW_SIZE=20`).
+- (was: `api/src/lib/penance.ts:13` "COMPROMISED 30-59 portal
+  leaks possible (Phase 2)" and `api/src/lib/coach.ts:144`
+  "v1 doesn't supply prior turns" — both shipped 2026-07-11
+  session (`f64715d`).)
 
 ### CLEAN (no deferred work in these areas)
 For completeness — the following areas are fully built with no
@@ -485,6 +519,290 @@ work captured in the "Outstanding" note above.)_
   mail provider is wired).
 
 ## Recently Fixed / Resolved
+
+### 2026-07-14 session — skill-tree zoom, recovery-graph gap bridging, tsc backlog → 0
+
+Not yet committed as of this write-up; uncommitted local session
+work (web + api). Tests 790/791 (1 pre-existing unrelated failure
+in `import.test.ts`, see the P0 note above — intentionally not
+fixed this session).
+
+- ✅ **Skill-tree mobile zoom, all classes** (closes the Backlog
+  item). BERSERKER was reported too zoomed-in at the prior 100%
+  default; `SkillTreeCanvas.tsx` now defaults every class to the
+  50% mobile zoom that was previously PHANTOM-only.
+- ✅ **Recovery-graph line breaks on missing days, now bridged +
+  dashed.** If a day of sleep/HRV/body-battery data is missing
+  (an upstream data gap, tracked separately) and the next day has
+  data again, `MetricTrendChart`, `SleepOverviewChart`, and
+  `BodyBatteryChart` used to render a hard break (recharts
+  `connectNulls={false}`) across the whole gap. New shared
+  `web/src/lib/chartGaps.ts` (`computeGapBridges`) computes the
+  last-point-before/first-point-after pair for every gap; each
+  chart now renders an extra dashed, dimmer (`strokeOpacity: 0.6`)
+  `<Line>` using Recharts' per-line `data` override to connect
+  straight across just that gap. Real back-to-back days are
+  untouched; a gap at the very start/end of the window (e.g.
+  today not logged yet) is correctly left unbridged since there's
+  nothing on the other side.
+- ✅ **API tsc backlog: 170 → 0, Dockerfile gate flipped.** See
+  the closed P0 item above for the full breakdown — the backlog
+  spanned `lib/import.ts` (42, an account-restore path spreading
+  loosely-typed JSON into ~36 Prisma create/upsert calls, fixed
+  with narrow `Prisma.XUncheckedCreateInput` casts per call site),
+  9 more `lib/*.ts` files, 8 `routes/*.ts` files, and ~19 test
+  files — all fixed with real type-narrowing (guards before
+  array/date-component indexing, a couple of genuinely-wrong
+  Prisma JSON-null spellings caught along the way in `users.ts`),
+  not blanket `as any` suppression. `api/Dockerfile:48` no longer
+  has `|| true` on its `tsc -p tsconfig.json` step — matches the
+  web image's existing hard gate. Also fixed in passing: a
+  duplicate `fail('userAchievements', ...)` call in `import.ts`'s
+  catch block, and confirmed `SHOULDER_WAIST_RATIO` in
+  `checkIns.ts` was dead code (not a real Prisma `MetricType`)
+  left over from the explicitly-out-of-scope 3D-avatar
+  V-taper/shoulder-waist-ratio work.
+  **New finding, not yet fixed:** a real `import.test.ts` local-day
+  bucketing test failure was uncovered during this paydown — see
+  the new P0 entry above.
+
+### 2026-07-14 session — substance auto-link cache bug
+
+Commit `91313d1`. Tests 790/791 (1 pre-existing unrelated failure
+in `import.test.ts`).
+
+- ✅ **Substance auto-link rows went invisible until an unrelated
+  refetch.** Logging e.g. "coffee" via `FoodPanel` silently
+  auto-linked a `SubstanceLog` row server-side, but `/nutrition`'s
+  substance list had no `['substances', 'recent']` invalidation
+  on any of the 4 meal-create success paths, so the row stayed
+  stale until an unrelated mutation happened to invalidate
+  `['substances']` — at which point the auto-link and a
+  since-added manual entry would both appear at once, reading as
+  a duplicate. Fixed: all 4 `FoodPanel.tsx` onSuccess/onLogged
+  callbacks now invalidate `'substances'`. New nullable
+  `SubstanceLog.source` column (`@default("MANUAL")`,
+  migration) distinguishes `MANUAL` vs `FOOD_AUTOLINK` rows;
+  Nutrition.tsx renders a small "auto" pill on autolinked rows
+  so the user can tell them apart on sight.
+
+### 2026-07-13 session — combat audit fixes (v2.0.2) + mobile UX
+
+Commits `9c65c67` (combat audit), `51fb50b` (mobile morning-recap
++ layout). Tests 791/61 files (was 786).
+
+- ✅ **C1 — FIT-import bypassed the entire combat pipeline.**
+  `routes/import.ts` + `lib/portalLeaks.ts` — bridge-first users
+  got zero XP/gold/breach-damage/leak-damage/shield-repair/PR-
+  detection/skill-matching for imported workouts; the FIT-import
+  path now fires the exact same pipeline as manual workout
+  logging.
+- ✅ **C2 — leak-damage double-fire + replay exploit.**
+  Per-workout dedup for leak damage: a helper-level `findFirst`
+  gate plus a new DB unique index
+  (migration `..._portal_leak_damage_event_unique`). Closes both
+  the `AttackLeakModal` double-fire (workout-commit fires inline,
+  then a separate leak-damage POST fires again) and the
+  "replay any old workoutId against any active leak indefinitely"
+  exploit (no daily cap existed).
+- ✅ **C7 — negative-habit / missed-dailies shield drops never
+  rolled leak spawn dice.** `missed_all_dailies` (-20) and
+  negative-habit shield drops can now push a user to BREACHED
+  without ever spawning a leak — contradicted the module header
+  in `portalLeaks.ts`. Also fixed: the `check-spawn` endpoint was
+  trusting a client-supplied `shieldScore:0` instead of the
+  DB-authoritative shield value (dashboard was sending
+  `shieldScore:0` → guaranteed 50% spawn chance on every mount).
+- ✅ **Multi-target leak damage** (user-requested, layered on the
+  audit fixes). `applyLeakDamage` now fans out **full** damage
+  (not split) to every active leak whose tags overlap the
+  workout's muscle tags — the user's explicit call: "let's not
+  split the damage, just do the full damage to each."
+  `POST /portal-leak/:id/attack` now actually honors its `:id`
+  (targeted-only, no cascade to other leaks in the stack). 5 new
+  helper tests.
+- ✅ **Morning-recap popup timing race.** `MorningPopup` no
+  longer fires on the first `pointerdown`/`keydown` of the day
+  (was racing the wake-from-background swipe + refetch delay).
+  Now `visibilitychange` + a 1500ms settle delay, with the old
+  listener kept as a fallback for users who leave the tab open
+  overnight.
+- ✅ **Morning popup backdrop/Escape dismissal.** New `Modal`
+  prop `disableBackdropClose` (default `false`, so ~40 other
+  modal callers are unaffected) — `MorningPopup` now only closes
+  via the explicit Close button or "Start your day" CTA.
+- ✅ **Today's "+New Daily" button mobile overflow.** Moved out
+  of `PageHeader` (was overflowing horizontally on mobile) into
+  a full-width banner between the block grid and the built-in
+  section header, matching the existing "today is a workout day"
+  banner's rhythm.
+
+### 2026-07-12 session — shield-digest dedup fix + BICEP check-in refactor
+
+Commits `030029a` (shield digest), `0a23717` (BICEP → "v2.0.0").
+Tests 775 passing both commits.
+
+- ✅ **Shield-digest duplicate notification — real fix (was
+  cosmetic-only).** Oracle-investigated: `dismiss`/`clear-all`
+  delete the very `shield_repair_daily` `Notification` row the
+  old dedup query checked against, so the hourly cron re-emitted
+  a byte-identical notification every time a user cleared their
+  inbox — the earlier date-in-title fix only made duplicates
+  easier to *spot*, not stopped. Real fix: claim-before-emit via
+  a new nullable `User.shieldDigestLastDate` column (a single
+  atomic conditional `updateMany`, closing a `findFirst`/`create`
+  TOCTOU race as a side benefit). Migration adds one nullable
+  TEXT column.
+- ✅ **BICEP weekly check-in metric replaced ("v2.0.0" cleanup).**
+  The single legacy "Bicep Circumference (legacy)" metric is
+  dropped from the *active* weekly check-in surface, replaced
+  with the two metrics the user actually measures:
+  `BICEP_FLEXED` + `BICEP_RELAXED` (both existing enum values,
+  now WEEKLY cadence on the api side to match the web side).
+  The `BICEP` enum value itself, its `METRICS` metadata, the
+  `geneticMax` case, and `MetricDetailModal`'s branch are all
+  retained for historical rows (see the Outstanding P2 note on
+  the dead-enum cleanup, still not done).
+
+### 2026-07-11 session — PHANTOM skill-tree expansion + mobile/nutrition bug-hunt
+
+Commits `9e32581` (PHANTOM expansion + canvas rendering),
+`c36f9d0`/`edec14e` (pinch-zoom + pull-to-refresh), `f64715d`
+(P0 closure), `34eeda5`/`67e6716`/`359b8eb`/`d65470f` (nutrition
+chart bugs).
+
+- ✅ **PHANTOM deluxe skill-tree expansion.** 107 new PHANTOM
+  skills across Push/Pull/Legs/Holds/Rings/Handstand/Planche
+  (51 → 158 total), curated from the Martjn/calisthenics_exercises
+  HF dataset, including 8 cross-branch prerequisite junctures
+  (L-Sit Dip, L-Sit Pull-Up, Maltese Push-Up, Ice Cream Maker,
+  Maltese Cross, Victorian Cross, One-Arm Handstand,
+  Straight-Arm Press) that require skills from a *different*
+  branch than their own.
+- ✅ **Shared-canvas skill-tree rendering** (new
+  `web/src/lib/skillTreeLayout.ts` +
+  `web/src/components/SkillTreeCanvas.tsx`). Replaced
+  independently-scrolling per-branch rows with one shared
+  coordinate space so cross-branch prereq lines draw as clean
+  SVG beziers; topological-depth column assignment guarantees
+  every skill renders strictly right of its dependencies;
+  isolated pinch-zoom + mouse drag-pan + ctrl+wheel zoom +
+  discrete +/- buttons; fixed viewport height (was
+  shrinking `max-height` on zoom-out); restored a silently-missing
+  "Legs" branch to `BRANCH_ORDER_BY_CLASS.PHANTOM`.
+- ✅ **Pinch-zoom exponential compounding fixed.** The zoom
+  reference ref was being reassigned to the *current* target
+  zoom on every `touchmove` frame while the scale factor was
+  already a cumulative ratio from the gesture's fixed start
+  distance — a real compounding bug (more frames = more
+  compounding), not just a tuning issue. Also restored panning
+  from the node-grid area (an earlier fix had bailed out of
+  drag-tracking entirely when a touch started on a `SkillNode`
+  button).
+- ✅ **Pull-to-refresh scoped + polished.** Gated gesture-start
+  on the touch beginning inside the top bar / page-header
+  (was: anywhere on the page, so any vertical scroll-top swipe
+  triggered it). New rotating-icon `PullToRefreshIndicator`
+  (inline SVG, no new dep) replaces the old text hint across
+  all 29 consumers.
+- ✅ **Closed the P0 stale-comment + dead-constant cleanup.**
+  `penance.ts:13`, `coach.ts:144`/`148`, `shop.ts:262` comments
+  corrected; dead `LEAK_TTL_MS` constant deleted from
+  `portalLeaks.ts`.
+- ✅ **Notification flyout was nearly invisible.** Swapped the
+  shared translucent `.panel` background for an inline opaque
+  one (`bg-bg-800/95`) on `NotificationFlyout` specifically,
+  keeping the panel's visual family (border/glow) without
+  touching the shared `.panel` class other components use.
+- ✅ **Nutrition trend chart split into 5 per-metric mini-charts**
+  (water/calories/protein/fat/carbs), each with its own natural
+  Y-axis — replaces one dual-axis chart that crammed 5
+  different-magnitude metrics together. Fixed 3 related bugs in
+  the same area: 4 of 5 mini-charts showed "1970-01-01" in
+  tooltips (missing `<XAxis dataKey="ts">` meant Recharts fell
+  back to row-index as the x-domain); axis tick text was
+  unreadable in one theme (now uses the theme-aware
+  `colors.axisText`); the food-log modal was trapped behind
+  sibling elements like the chart (wasn't using `createPortal`
+  like the file's other 5 modals) and the Y-axis clipped
+  4-digit values like "2100 kcal" (width 56 → 72).
+
+### 2026-07-10 session — workout-duration unit bug + food/scanner fixes
+
+Commits `9b791d8`, `e683127`, `f5355ff`, `ee14545`, `d3c442e`.
+Tests 692 (238 suites) after the duration-unit fix.
+
+- ✅ **`Workout.duration` was silently stored in minutes, not
+  seconds — real bug, not just a display glitch.** Root-caused
+  from a "3m23s jump-rope shows as 3s duration" report: the
+  column was minutes the whole time (fine for long activities,
+  wrong by 11%+ for short ones), while `insights.ts`,
+  `morningReport.ts`, `Calendar.tsx`, and `Import.tsx` already
+  assumed the field was *seconds* and divided by 60 — silently
+  under-reporting workout time by 60x in those call sites the
+  whole time. Fixed by **renaming** (not just reinterpreting)
+  the column to `durationSec` via migration (backfills ×60 for
+  existing rows), so every stale consumer becomes a compile
+  error instead of a repeat of the same silent-unit-bug class.
+  FIT import now stores whole-second precision; `LiveWorkoutLogger`
+  sends true elapsed seconds instead of lossily rounding to
+  minutes first. Verified: 58 rows backfilled, max 85920s
+  (~23.87hr, sane); 692 tests green; zero new tsc errors either
+  side.
+- ✅ **Barcode-lookup 500 crash (P2002).** `GET
+  /foods/barcode/:code` used a bare `create()` after a
+  `findUnique` cache-check; any concurrent request/race hit
+  `PrismaClientKnownRequestError P2002` on the
+  `(source, sourceId)` unique constraint instead of gracefully
+  resolving. Converted to `upsert` matching every other
+  food-caching call site in the file — confirmed live via
+  production docker logs. Also backfills `servingSizeG` on
+  previously-cached barcodes.
+- ✅ **Scanner silently closed on empty decode.** `NativeScanner`
+  called `onCancel()` on any empty/non-numeric ML Kit result,
+  closing the whole scan modal with no feedback. Now surfaces
+  a "No barcode detected" error and keeps the scanner open for
+  retry.
+- ✅ **Log-meal unit defaulted to per-100g even with real
+  serving data.** `servingSizeG` was hardcoded `null` for
+  OFF/USDA sources even though the schema and conversion math
+  already supported it (e.g. a milk jug defaulted to ~20 cal
+  instead of the real ~140 cal/serving). `openfoodfacts.ts` and
+  `usda.ts` now extract the real serving size; `FoodPanel`
+  defaults to per-serving whenever it's present.
+- ✅ **README license mismatch.** Said MIT; the repo's actual
+  `LICENSE` has always been GPL-3.0-or-later. Fixed across all
+  3 repos (main + `fitquest-android` + `fitquest-bridge`) as
+  part of F-Droid submission prep.
+
+### 2026-07-09 session — mobile pull-to-refresh rollout + Android compositing fix
+
+Commits `0255850`, `3da0996`, `a7b54f4`, `237ca59` (same day as
+the prior roadmap reconciliation, `eef0a5f`).
+
+- ✅ **Android "ghost block" WebView compositing bug.** Fixed-
+  position overlays using `backdrop-filter`/`backdrop-blur`
+  (Modal, RewardOverlay, FoodPanel, GalaxyMapOverlay,
+  BossUnlockModal, 13+ components total) left stale compositor
+  layers behind on unmount, Android-WebView-only. Centralized
+  fix: detect native Android via Capacitor and override
+  `backdrop-filter` to `none` on that platform only, compensating
+  with higher background opacity. Desktop/web keeps the blur.
+  Zero changes needed to the affected components themselves.
+- ✅ **Pull-to-refresh rolled out to 28 remaining pages**
+  (previously Dashboard-only), each wired to its own actual
+  react-query invalidation keys. `/tools` intentionally skipped
+  (localStorage-only, no server data to refetch).
+- ✅ **3D avatar canvas background hardcoded (light-blue, both
+  themes).** A theme-aware `useChartColors()`-driven attempt
+  didn't behave correctly in practice; deliberately hardcoded
+  instead (tracked as a backlog item above).
+- ✅ **CI: arm64 image build retries once on transient QEMU
+  crash.** QEMU user-mode emulation (no free native arm64 GHA
+  runner) occasionally SIGILLs mid-build during npm ci's
+  JIT-heavy steps — an emulator flake, not a real failure. First
+  attempt now continues-on-error; a second identical attempt
+  runs only if the first failed.
 
 ### 2026-07-08 session — v1.0.39 polish + bug-hunt round 3
 
