@@ -92,23 +92,21 @@ below) before flipping the gate.
 constant~~ — **both shipped 2026-07-11** (`f64715d`), see
 Recently Fixed below.
 
-- **NEW (found 2026-07-14, during the tsc paydown): `DailyLog`
-  idempotency test fails on a local-day boundary.**
-  `api/src/__tests__/import.test.ts:412`
-  ("DailyLog idempotency per-local-day — three imports of
-  different FITs on the same day produce one log") asserts 3
-  same-local-day FIT imports produce exactly 1 `DailyLog` row,
-  but gets 2. Two of the fixture's `startTime`s
-  (`2026-07-13T08:00:00Z` and `2026-07-13T18:00:00Z`) land on
-  *different* local calendar days in most US timezones —
-  contradicting the "same local day" premise the test itself
-  is checking. Not yet fixed; not clear yet whether this is a
-  bad fixture (wrong UTC timestamps that don't actually share a
-  local day) or a genuine bug in `import.ts`'s `persist()`
-  local-day-bucketing logic. Needs a dedicated look — this is
-  the one pre-existing test failure the tsc-paydown session
-  intentionally left alone (out of scope for a compile-only
-  pass).
+~~`DailyLog` idempotency test failed on a local-day boundary~~ —
+**fixed 2026-07-14.** Root cause found: `routes/import.ts`'s
+`persist()` computed its DailyLog dedup window (`todayLocal`)
+ONCE, from real wall-clock "now", instead of per-workout from
+each `w.startTime`. FIT imports are routinely backdated (a user
+importing last month's rides), so the dedup check could never
+find the log a historical import had already created for its
+own day — every re-import of old data minted a fresh duplicate
+WORKOUT `DailyLog` (double/triple XP+gold for the same
+historical day). Fixed: the day-bucket bounds are now computed
+per-workout from `w.startTime`, with both a `gte` AND `lt`
+bound (matches the `dailies.ts` `/complete` endpoint's existing
+day-bucketing convention) instead of the prior open-ended
+`gte`-only real-"today" check. `api/src/__tests__/import.test.ts:412`
+now passes; full suite 791/791.
 
 ### P1 — feature work
 
@@ -562,9 +560,27 @@ fixed this session).
   `checkIns.ts` was dead code (not a real Prisma `MetricType`)
   left over from the explicitly-out-of-scope 3D-avatar
   V-taper/shoulder-waist-ratio work.
-  **New finding, not yet fixed:** a real `import.test.ts` local-day
-  bucketing test failure was uncovered during this paydown — see
-  the new P0 entry above.
+  A real `import.test.ts` local-day bucketing test failure was
+  uncovered during this paydown (out of scope for the
+  compile-only pass) — fixed in the follow-up session directly
+  below.
+
+### 2026-07-14 session (cont'd) — FIT-import DailyLog duplicate-reward bug
+
+- ✅ **Backdated FIT imports could double/triple-award the
+  WORKOUT daily.** `routes/import.ts`'s `persist()` computed its
+  DailyLog dedup window once, from real wall-clock "now", instead
+  of per-workout from each `w.startTime`. Since FIT imports are
+  routinely backdated (importing last month's rides), the dedup
+  check could never find the log a historical import had already
+  created for its own day — every re-import of old data minted a
+  fresh duplicate WORKOUT `DailyLog` (double XP+gold for the same
+  historical day). Fixed: day-bucket bounds now computed
+  per-workout from `w.startTime`, with both `gte` AND `lt` bounds
+  (matches `dailies.ts`'s `/complete` endpoint's existing
+  day-bucketing convention) instead of the prior open-ended
+  `gte`-only real-"today" check. `import.test.ts:412` now passes;
+  full suite 791/791, 0 tsc errors.
 
 ### 2026-07-14 session — substance auto-link cache bug
 

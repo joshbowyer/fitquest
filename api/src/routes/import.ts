@@ -111,16 +111,22 @@ export async function persist(
   const currentHearts = await tickHearts(userId);
   const mult = heartMultiplier(currentHearts, userRow.mode ?? 'CASUAL');
 
-  // TZ-aware "today" lower bound for the DailyLog idempotency check.
-  // Matches the dailies.ts /complete endpoint pattern so a NYC user
-  // doesn't see the same WORKOUT daily double-logged across the UTC
-  // vs. local midnight boundary.
+  // TZ-aware bounds for the DailyLog idempotency check, computed
+  // PER WORKOUT below (not once here against real wall-clock "now")
+  // — FIT imports are routinely backdated (a user importing last
+  // month's rides), so anchoring the dedup window to "today" meant
+  // it could never find the log a historical import had already
+  // created for its own day, and every re-import of old data minted
+  // a fresh duplicate DailyLog. Matches the dailies.ts /complete
+  // endpoint's day-bucketing pattern (gte start-of-day, lt
+  // start-of-next-day) so a NYC user doesn't see the same WORKOUT
+  // daily double-logged across the UTC vs. local midnight boundary
+  // either.
   const userTzRow = await prisma.user.findUnique({
     where: { id: userId },
     select: { timezone: true },
   });
   const userTz = userTzRow?.timezone ?? null;
-  const todayLocal = localMidnightUtc(todayInTz(userTz), userTz ?? 'UTC');
 
   if (fit.workouts && fit.workouts.length > 0) {
     for (const w of fit.workouts) {
@@ -315,11 +321,16 @@ export async function persist(
           // ACTUAL deltas so the audit row reflects what really
           // happened — matches the dailies.ts pattern.
           if (fallbackDaily) {
+            // Bucket by the LOCAL DAY THIS WORKOUT ACTUALLY HAPPENED
+            // ON (w.startTime), not real "today" — see the comment
+            // above userTzRow for why.
+            const workoutDayStart = localMidnightUtc(todayInTz(userTz, w.startTime), userTz ?? 'UTC');
+            const workoutDayEnd = new Date(workoutDayStart.getTime() + 24 * 60 * 60 * 1000);
             const todaysLog = await tx.dailyLog.findFirst({
               where: {
                 userId,
                 dailyKey: 'WORKOUT',
-                loggedAt: { gte: todayLocal },
+                loggedAt: { gte: workoutDayStart, lt: workoutDayEnd },
               },
             });
             if (!todaysLog) {
