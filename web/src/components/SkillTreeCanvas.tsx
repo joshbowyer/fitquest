@@ -97,16 +97,17 @@ export function SkillTreeCanvas<T extends LayoutSkill>({
    */
   unlockedNames: Set<string>;
 }) {
-  // Default zoom: 50% on mobile for PHANTOM specifically (its tree
-  // is the densest right now — 158 skills across 7 branches — so a
-  // full-scale initial view is mostly off-screen on a phone). Other
-  // classes haven't been reviewed for this yet, so they keep the
-  // prior 100% default. `768` matches this codebase's existing
-  // Tailwind `md:` breakpoint convention used elsewhere (Layout.tsx).
+  // Default zoom: 50% on mobile for every class. Originally PHANTOM-only
+  // (158 skills across 7 branches made a full-scale initial view mostly
+  // off-screen on a phone), but BERSERKER was reported too zoomed-in at
+  // 100% as well — every class's tree is dense enough on a phone screen
+  // that 50% is the better default across the board. `768` matches this
+  // codebase's existing Tailwind `md:` breakpoint convention used
+  // elsewhere (Layout.tsx).
   const [zoom, setZoom] = useState<number>(() => {
     if (typeof window === 'undefined') return 1;
     const isMobile = window.innerWidth < 768;
-    return isMobile && className === 'PHANTOM' ? 0.5 : 1;
+    return isMobile ? 0.5 : 1;
   });
   const { nodes, edges, width, height } = useMemo(
     () => computeLayout(items, className),
