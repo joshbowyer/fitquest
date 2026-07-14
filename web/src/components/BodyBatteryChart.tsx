@@ -17,6 +17,7 @@ import {
 import { api } from '@/lib/api';
 import { formatAbsolute, formatDate } from '@/lib/format';
 import { useChartColors } from '@/hooks/useChartColors';
+import { computeGapBridges } from '@/lib/chartGaps';
 
 type Measurement = {
   id: string;
@@ -302,46 +303,123 @@ export function BodyBatteryChart({ days = 30, variant = 'overview' }: Props) {
             connectNulls={false}
             style={{ filter: colors.dropShadow('lime', 3) }}
           />
+          {/* Dashed bridge across missing days — connects straight
+              through instead of leaving a gap, but stays visually
+              distinct (extra-dashed / dimmer) from real logged days. */}
+          {computeGapBridges(chart, 'bb').map(([a, b]) => (
+            <Line
+              key={`bb-gap-${a.day}`}
+              yAxisId="bb"
+              type="linear"
+              data={[a, b]}
+              dataKey="bb"
+              name="BB"
+              stroke={colors.lime}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              strokeOpacity={0.6}
+              dot={false}
+              legendType="none"
+              tooltipType="none"
+            />
+          ))}
 
           {/* Overlay line per variant */}
           {variant === 'onset' && (
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="onset"
-              name="Onset"
-              stroke={colors.cyan}
-              strokeWidth={1.5}
-              dot={false}
-              strokeDasharray="4 2"
-              connectNulls={false}
-            />
+            <>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="onset"
+                name="Onset"
+                stroke={colors.cyan}
+                strokeWidth={1.5}
+                dot={false}
+                strokeDasharray="4 2"
+                connectNulls={false}
+              />
+              {computeGapBridges(chart, 'onset').map(([a, b]) => (
+                <Line
+                  key={`onset-gap-${a.day}`}
+                  yAxisId="right"
+                  type="linear"
+                  data={[a, b]}
+                  dataKey="onset"
+                  name="Onset"
+                  stroke={colors.cyan}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 2"
+                  strokeOpacity={0.6}
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                />
+              ))}
+            </>
           )}
           {variant === 'duration' && (
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="hours"
-              name="Hours"
-              stroke={colors.cyan}
-              strokeWidth={1.5}
-              dot={false}
-              strokeDasharray="4 2"
-              connectNulls={false}
-            />
+            <>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="hours"
+                name="Hours"
+                stroke={colors.cyan}
+                strokeWidth={1.5}
+                dot={false}
+                strokeDasharray="4 2"
+                connectNulls={false}
+              />
+              {computeGapBridges(chart, 'hours').map(([a, b]) => (
+                <Line
+                  key={`hours-gap-${a.day}`}
+                  yAxisId="right"
+                  type="linear"
+                  data={[a, b]}
+                  dataKey="hours"
+                  name="Hours"
+                  stroke={colors.cyan}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 2"
+                  strokeOpacity={0.6}
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                />
+              ))}
+            </>
           )}
           {variant === 'quality' && (
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="quality"
-              name="Quality"
-              stroke={colors.amber}
-              strokeWidth={1.5}
-              dot={false}
-              strokeDasharray="4 2"
-              connectNulls={false}
-            />
+            <>
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="quality"
+                name="Quality"
+                stroke={colors.amber}
+                strokeWidth={1.5}
+                dot={false}
+                strokeDasharray="4 2"
+                connectNulls={false}
+              />
+              {computeGapBridges(chart, 'quality').map(([a, b]) => (
+                <Line
+                  key={`quality-gap-${a.day}`}
+                  yAxisId="right"
+                  type="linear"
+                  data={[a, b]}
+                  dataKey="quality"
+                  name="Quality"
+                  stroke={colors.amber}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 2"
+                  strokeOpacity={0.6}
+                  dot={false}
+                  legendType="none"
+                  tooltipType="none"
+                />
+              ))}
+            </>
           )}
           {variant === 'substances' && (
             <>

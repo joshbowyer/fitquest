@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { formatSleepOnset } from '@/lib/units';
 import { formatAbsolute } from '@/lib/format';
 import { useChartColors } from '@/hooks/useChartColors';
+import { computeGapBridges } from '@/lib/chartGaps';
 
 type Measurement = {
   id: string;
@@ -208,6 +209,26 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
             connectNulls={false}
             style={{ filter: colors.dropShadow('lime', 3) }}
           />
+          {/* Dashed bridge across missing days (e.g. a skipped sleep
+              log) — connects straight through instead of leaving a
+              gap, but stays visually distinct from real logged days. */}
+          {computeGapBridges(chart, 'onset').map(([a, b]) => (
+            <Line
+              key={`onset-gap-${a.day}`}
+              yAxisId="onset"
+              type="linear"
+              data={[a, b]}
+              dataKey="onset"
+              name="Onset"
+              stroke={colors.lime}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              strokeOpacity={0.6}
+              dot={false}
+              legendType="none"
+              tooltipType="none"
+            />
+          ))}
           <Line
             yAxisId="quality"
             type="monotone"
@@ -219,6 +240,23 @@ export function SleepOverviewChart({ days = 30 }: { days?: number }) {
             connectNulls={false}
             style={{ filter: colors.dropShadow('amber', 3) }}
           />
+          {computeGapBridges(chart, 'quality').map(([a, b]) => (
+            <Line
+              key={`quality-gap-${a.day}`}
+              yAxisId="quality"
+              type="linear"
+              data={[a, b]}
+              dataKey="quality"
+              name="Quality"
+              stroke={colors.amber}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              strokeOpacity={0.6}
+              dot={false}
+              legendType="none"
+              tooltipType="none"
+            />
+          ))}
         </ComposedChart>
       </ResponsiveContainer>
     </div>

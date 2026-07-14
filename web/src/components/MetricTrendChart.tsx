@@ -16,6 +16,7 @@ import { convertForDisplay, displayUnit, type UnitSystem } from '@/lib/units';
 import { formatAbsolute } from '@/lib/format';
 import { useAuth } from '@/lib/auth';
 import { useChartColors } from '@/hooks/useChartColors';
+import { computeGapBridges } from '@/lib/chartGaps';
 
 type Measurement = {
   id: string;
@@ -208,6 +209,25 @@ export function MetricTrendChart({
                 isAnimationActive={false}
                 connectNulls={false}
               />
+              {/* Dashed bridge across missing days (e.g. a skipped
+                  sleep log) — connects straight from the last real
+                  point to the next one instead of leaving a gap. */}
+              {computeGapBridges(chart.data, 'disp').map(([a, b]) => (
+                <Line
+                  key={`gap-${a.ts}`}
+                  type="linear"
+                  data={[a, b]}
+                  dataKey="disp"
+                  stroke={lineColor}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  strokeOpacity={0.6}
+                  dot={false}
+                  isAnimationActive={false}
+                  legendType="none"
+                  tooltipType="none"
+                />
+              ))}
             </AreaChart>
           ) : (
             <LineChart data={chart.data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
@@ -230,6 +250,22 @@ export function MetricTrendChart({
                 labelFormatter={(ts) => new Date(Number(ts)).toISOString().slice(0, 10)}
               />
               <Line type="monotone" dataKey="disp" stroke={lineColor} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />
+              {computeGapBridges(chart.data, 'disp').map(([a, b]) => (
+                <Line
+                  key={`gap-${a.ts}`}
+                  type="linear"
+                  data={[a, b]}
+                  dataKey="disp"
+                  stroke={lineColor}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  strokeOpacity={0.6}
+                  dot={false}
+                  isAnimationActive={false}
+                  legendType="none"
+                  tooltipType="none"
+                />
+              ))}
             </LineChart>
           )}
         </ResponsiveContainer>
