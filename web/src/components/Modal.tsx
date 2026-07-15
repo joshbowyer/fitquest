@@ -138,7 +138,14 @@ export function Modal({
               size="sm"
               variant="cyan"
               className="w-full sm:w-auto sm:ml-auto"
-      onClick={() => { if (!disableBackdropClose) onClose(); }}
+              // Always calls onClose regardless of disableBackdropClose —
+              // that flag only suppresses the backdrop-click and Escape
+              // shortcuts (see the Escape handler above). This is the
+              // explicit "I want to leave" affordance and must always
+              // work, otherwise callers that set disableBackdropClose
+              // (e.g. MorningPopup) end up with a Close button that
+              // silently does nothing.
+              onClick={onClose}
             >
               Close
             </NeonButton>

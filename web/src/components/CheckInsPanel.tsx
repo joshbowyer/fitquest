@@ -256,6 +256,7 @@ export function QuickLogModal({
   const unitLabel = meta ? (meta.unit || '') : '';
 
   const [value, setValue] = useState('');
+  const [score, setScore] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -264,6 +265,7 @@ export function QuickLogModal({
   // Reset whenever a new metric is opened.
   useEffect(() => {
     setValue('');
+    setScore(null);
     setNotes('');
     setErr(null);
     setSaved(false);
@@ -319,7 +321,10 @@ export function QuickLogModal({
   // Build smart input affordance based on metric type.
   function renderInput() {
     if (isScore) {
-      // 1-10 scale: render 10 quick-buttons + free input.
+      // 1-10 scale: tapping a number just selects it (highlighted) —
+      // it does NOT submit. The user still needs to hit "Log" below,
+      // same as every other metric type, so there's time to add
+      // notes before the entry is actually saved.
       return (
         <div>
           <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400 mb-1.5">
@@ -330,12 +335,14 @@ export function QuickLogModal({
               <button
                 key={n}
                 type="button"
-                onClick={() => submit(n)}
+                onClick={() => { onTap(); setScore(n); }}
                 disabled={logM.isPending}
                 className={classNames(
                   DOPA_TAP_CLASS,
                   'h-10 text-sm font-mono border rounded transition-colors',
-                  'border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan hover:bg-neon-cyan/10',
+                  n === score
+                    ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/15'
+                    : 'border-ink-500/40 text-ink-200 hover:border-neon-cyan hover:text-neon-cyan hover:bg-neon-cyan/10',
                   logM.isPending && 'opacity-50 cursor-not-allowed',
                 )}
               >
@@ -343,6 +350,20 @@ export function QuickLogModal({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => score !== null && submit(score)}
+            disabled={score === null || logM.isPending}
+            className={classNames(
+              DOPA_TAP_CLASS,
+              'w-full px-3 py-1.5 text-sm border rounded',
+              score !== null && !logM.isPending
+                ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
+                : 'border-ink-500/40 text-ink-500 cursor-not-allowed',
+            )}
+          >
+            Log
+          </button>
         </div>
       );
     }

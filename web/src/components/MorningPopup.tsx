@@ -27,14 +27,19 @@ import { classNames } from '@/lib/format';
  *     warnings if over any cap.
  *
  * Auto-open rules:
- *   - Uses `visibilitychange` (document.visibilityState === 'visible')
- *     + 1500ms setTimeout to trigger when the app comes to foreground
- *     (addresses the mobile "wake from background swipe registers as
- *     pointerdown and pops the modal too early" bug). Falls back to
- *     the legacy first pointerdown/keydown listener for users who
- *     keep the app open across midnight. The delay after visibility
- *     gives the page a moment to settle so the popup doesn't land
- *     over a half-loaded view.
+ *   - Fires on page load: a 900ms setTimeout after mount, so it
+ *     shows up shortly after the app finishes its first paint
+ *     instead of ambushing the user's next click/tap. Previously
+ *     this waited for the first pointerdown/keydown anywhere in
+ *     the app, which meant it could fire on whatever the user
+ *     happened to be tapping next (e.g. the sidebar or a mobile
+ *     nav item) — confusing, and made the popup feel like it was
+ *     "stealing" that tap.
+ *   - Also re-fires on `visibilitychange` (document.visibilityState
+ *     === 'visible') with the same delay, so a user who leaves the
+ *     app open across midnight and later brings it back to the
+ *     foreground still gets the popup without needing a fresh page
+ *     load.
  *   - Skipped entirely if the popup has been dismissed for today
  *     (checked via localStorage for the no-network case; the
  *     server's `dismissed` field on the payload is the source of
@@ -178,20 +183,14 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
   const [revealedCount, setRevealedCount] = useState(0);
   const [heartsAnim, setHeartsAnim] = useState<number | null>(null);
 
-  // Auto-open: wait for the first user interaction of the day,
-  // then show the popup unless it's been dismissed (locally OR
-  // server-side). The localStorage check is the fast path so the
-  // first paint doesn't briefly flash the popup. The server's
-  // `dismissed` field (read from the payload below) is the source
-  // of truth — the post-fetch effect below closes the modal if
-  // the server says "dismissed=true" even when localStorage says
-  // nothing.
-  //
-  // Previously this fired on mount, which made the popup appear
-  // even if the user hadn't clicked anything yet, and only on
-  // /today because the component was mounted there. The
-  // pointerdown/keydown listeners make it fire on the user's
-  // FIRST click anywhere in the app, on any page.
+  // Auto-open on page load, after a brief settle delay — not on
+  // the user's first click/tap. Show it unless it's been dismissed
+  // (locally OR server-side). The localStorage check is the fast
+  // path so we skip scheduling the popup at all when we already
+  // know today's dismissed. The server's `dismissed` field (read
+  // from the payload below) is the source of truth — the
+  // post-fetch effect below closes the modal if the server says
+  // "dismissed=true" even when localStorage says nothing.
   useEffect(() => {
     cleanupOldDismissedKeys();
 
@@ -207,37 +206,26 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
       triggered = true;
       if (dismissedTodayLocal()) return;
       setOpen(true);
-      window.removeEventListener('pointerdown', legacyTrigger);
-      window.removeEventListener('keydown', legacyTrigger);
-      document.removeEventListener('visibilitychange', visTrigger);
     };
 
-    // visibilitychange path: fires when app comes to foreground
-    // (mobile wake-up). 1500ms delay prevents showing over a
-    // still-settling page and avoids the swipe-up pointer event.
+    // Mount path: shows shortly after first paint so it doesn't
+    // land over a half-loaded view.
+    const mountTimer = window.setTimeout(openNow, 900);
+
+    // visibilitychange path: re-arms the same trigger when the app
+    // comes back to the foreground (mobile wake-up / tab left open
+    // across midnight), with the same settle delay.
+    let visTimer: number | undefined;
     const visTrigger = () => {
       if (document.visibilityState === 'visible') {
-        setTimeout(openNow, 1500);
+        visTimer = window.setTimeout(openNow, 900);
       }
     };
     document.addEventListener('visibilitychange', visTrigger);
 
-    // legacy first-interaction fallback (keeps app open across midnight)
-    const legacyTrigger = () => {
-      if (triggered) return;
-      triggered = true;
-      if (dismissedTodayLocal()) return;
-      setOpen(true);
-      window.removeEventListener('pointerdown', legacyTrigger);
-      window.removeEventListener('keydown', legacyTrigger);
-      document.removeEventListener('visibilitychange', visTrigger);
-    };
-    window.addEventListener('pointerdown', legacyTrigger);
-    window.addEventListener('keydown', legacyTrigger);
-
     return () => {
-      window.removeEventListener('pointerdown', legacyTrigger);
-      window.removeEventListener('keydown', legacyTrigger);
+      window.clearTimeout(mountTimer);
+      if (visTimer !== undefined) window.clearTimeout(visTimer);
       document.removeEventListener('visibilitychange', visTrigger);
     };
   }, [forceShow]);
