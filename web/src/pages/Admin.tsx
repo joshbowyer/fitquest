@@ -1541,6 +1541,27 @@ function DevToolsPanel() {
     },
   }, 600);
 
+  // Flat 50 damage to every ACTIVE portal leak (ONLY portal leaks —
+  // never Breach bosses or world bosses). Remediation knob for the
+  // tag-mismatch bug (singular vs plural muscle tags, e.g.
+  // 'bicep'/'tricep' vs the classifier's 'biceps'/'triceps') that
+  // left some leaks under-damaged or completely undamaged by
+  // otherwise-matching workouts.
+  const damageLeaksM = useDelayedMutation<
+    { affected: number; results: Array<{ leakId: string; leakHpAfter: number; resolved: string | null }> },
+    void
+  >({
+    mutationFn: () => api('/portal-leak/dev-tools/damage-all', {
+      method: 'POST',
+      body: { amount: 50 },
+    }),
+    onError: (e) => alert(e instanceof ApiError ? e.message : 'Damage failed'),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-leak'] });
+      alert(`Applied 50 damage to ${res.affected} active leak(s).`);
+    },
+  }, 600);
+
   return (
     <Panel title="Dev tools" variant="amber" className="mt-4">
       <div className="text-[10px] font-mono text-ink-400 mb-3 italic">
@@ -1549,7 +1570,7 @@ function DevToolsPanel() {
         clickable.
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         {/* Grant item */}
         <div className="space-y-1">
           <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
@@ -1622,9 +1643,32 @@ function DevToolsPanel() {
             Breach shield
           </NeonButton>
         </div>
+
+        {/* Damage all portal leaks */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-ink-400">
+            Damage all portal leaks
+          </div>
+          <div className="text-[10px] font-mono text-ink-500 leading-snug">
+            Applies 50 flat damage to every ACTIVE portal leak.
+            Portal leaks ONLY — never touches Breach bosses or
+            world bosses. One-off correction for the tag-mismatch
+            bug that under-damaged some leaks.
+          </div>
+          <NeonButton
+            size="sm"
+            variant="amber"
+            onClick={() => damageLeaksM.run(undefined)}
+            disabled={damageLeaksM.isPending}
+            loading={damageLeaksM.isPending}
+            loadingText="Damaging…"
+          >
+            Damage all leaks (-50)
+          </NeonButton>
+        </div>
       </div>
 
-      {(grantM.data || spawnM.data || breachM.data) && (
+      {(grantM.data || spawnM.data || breachM.data || damageLeaksM.data) && (
         <div className="mt-3 text-[10px] font-mono text-ink-400 border-t border-ink-700/30 pt-2">
           {grantM.data && <div>✓ Granted: {grantM.data.item?.name}</div>}
           {spawnM.data && (
@@ -1632,6 +1676,12 @@ function DevToolsPanel() {
           )}
           {breachM.data && (
             <div>✓ Shield: {breachM.data.shield} ({breachM.data.tier})</div>
+          )}
+          {damageLeaksM.data && (
+            <div>
+              ✓ Damaged {damageLeaksM.data.affected} leak(s)
+              {damageLeaksM.data.results.some((r) => r.resolved) && ' — some were sealed!'}
+            </div>
           )}
         </div>
       )}

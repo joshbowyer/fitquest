@@ -2,19 +2,23 @@
 // Portal leak routes
 // ============================================================
 //
-// GET  /portal-leak             — current active leak + recent damage
-// POST /portal-leak/check-spawn — evaluate shield; spawn leak if conditions met
-// POST /portal-leak/:id/attack  — apply workout damage to an active leak
-// POST /portal-leak/:id/claim   — claim loot on a defeated leak
+// GET  /portal-leak                    — current active leak + recent damage
+// POST /portal-leak/check-spawn        — evaluate shield; spawn leak if conditions met
+// POST /portal-leak/:id/attack         — apply workout damage to an active leak
+// POST /portal-leak/:id/claim          — claim loot on a defeated leak
+// POST /portal-leak/dev-tools/damage-all — admin-only: flat damage to ALL of
+//                                          the caller's active leaks
 //
-// All routes scope to req.user.id.
+// All routes scope to req.user.id (damage-all additionally requires isAdmin).
 // ============================================================
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { requireUser } from '../lib/auth.js';
+import { requireAdmin, requireUser } from '../lib/auth.js';
 import {
+  ADMIN_FLAT_DAMAGE_DEFAULT,
+  applyFlatDamageToAllLeaks,
   applyLeakDamage,
   claimLeakLoot,
   getLeakForUser,
@@ -167,6 +171,24 @@ export async function portalLeakRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const result = await claimLeakLoot(me.id, id);
     if (!result) return reply.code(400).send({ error: 'cannot_claim', reason: 'leak_not_defeated_or_already_claimed' });
+    return result;
+  });
+
+  // POST /portal-leak/dev-tools/damage-all — admin-only correction
+  // knob. Applies flat damage to every ACTIVE portal leak the
+  // calling admin has, ignoring tag-matching entirely. Scoped ONLY
+  // to portal leaks — never touches Breach bosses or world bosses.
+  // Body: { amount?: number } — defaults to ADMIN_FLAT_DAMAGE_DEFAULT
+  // (50). Requires isAdmin (requireAdmin), same gate as /admin/*.
+  app.post('/dev-tools/damage-all', async (req) => {
+    const me = await requireAdmin(req);
+    const body = z.object({
+      amount: z.number().int().min(1).max(1000).optional(),
+    }).parse(req.body ?? {});
+    const result = await applyFlatDamageToAllLeaks(
+      me.id,
+      body.amount ?? ADMIN_FLAT_DAMAGE_DEFAULT,
+    );
     return result;
   });
 

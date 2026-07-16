@@ -143,7 +143,7 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     emoji: '◤',
     color: '#f97316',
     intro: 'Half-formed. Twitching. It wants your shoulders and arms.',
-    preferredTags: ['shoulder', 'bicep', 'tricep'],
+    preferredTags: ['shoulder', 'biceps', 'triceps'],
     bonusTags: [],
   },
   {
@@ -175,7 +175,7 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     emoji: '◍',
     color: '#f59e0b',
     intro: 'A mirror that turns and finds what you avoided last week.',
-    preferredTags: ['chest', 'shoulder', 'tricep'],
+    preferredTags: ['chest', 'shoulder', 'triceps'],
     bonusTags: [],
   },
   {
@@ -183,7 +183,7 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     emoji: '◯',
     color: '#84cc16',
     intro: 'A bead of sweat that learned to want. It climbs your back.',
-    preferredTags: ['back', 'bicep'],
+    preferredTags: ['back', 'biceps'],
     bonusTags: [],
   },
   {
@@ -239,7 +239,7 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     emoji: '✦',
     color: '#84cc16',
     intro: 'A small, cackling green thing that hovers near your equipment rack. It only wants one thing: gains. It will not stop until you have more of them than yesterday. If you beat it, it drops a small piece of loot. If it beats you, it steals a single stat point and laughs. The lore says it cannot be killed — only out-trained. The lore is wrong.',
-    preferredTags: ['chest', 'bicep', 'tricep', 'shoulder'],
+    preferredTags: ['chest', 'biceps', 'triceps', 'shoulder'],
     bonusTags: ['PR', 'BODY_COMP'],
   },
   {
@@ -248,7 +248,7 @@ export const LEAK_MONSTERS: LeakMonster[] = [
     color: '#fb7185',
     intro: 'A small bright splinter. It hates the way you grip.',
     bonusTags: ['grip'],
-    preferredTags: ['forearm', 'bicep'],
+    preferredTags: ['forearm', 'biceps'],
   },
 ];
 
@@ -854,6 +854,94 @@ export async function applyLeakDamage(
 }
 
 // ============================================================
+// Admin correction — flat damage to ALL of a user's ACTIVE portal
+// leaks, bypassing tag-matching entirely. NOT tied to a workout
+// (workoutId is null on the resulting event rows). Scope is
+// portal leaks ONLY — this never touches Breach bosses or world
+// bosses, which live in separate tables (BreachBoss / world
+// progress) untouched by this function.
+//
+// Added as a one-off remediation knob: the tag-mismatch bug (fixed
+// above — singular vs plural muscle tags) meant some leaks took
+// zero or near-zero damage from workouts that should have hit
+// them. This lets an admin manually apply the damage that should
+// have landed, without needing a matching workout on file.
+// ============================================================
+
+export const ADMIN_FLAT_DAMAGE_DEFAULT = 50;
+
+export async function applyFlatDamageToAllLeaks(
+  userId: string,
+  amount: number = ADMIN_FLAT_DAMAGE_DEFAULT,
+  prisma: PrismaClient = defaultPrisma,
+): Promise<{ affected: number; results: LeakDamageResult[] }> {
+  const activeLeaks = await prisma.portalLeak.findMany({
+    where: { userId, status: 'ACTIVE' },
+  });
+
+  const results: LeakDamageResult[] = [];
+
+  for (const leak of activeLeaks) {
+    const newHp = Math.max(0, leak.hp - amount);
+    const resolved: 'DEFEATED' | null = newHp === 0 ? 'DEFEATED' : null;
+
+    await prisma.$transaction([
+      prisma.portalLeakDamageEvent.create({
+        data: {
+          userId,
+          leakId: leak.id,
+          workoutId: null,
+          damage: amount,
+          leakHpAfter: newHp,
+          matchType: 'admin_correction',
+        },
+      }),
+      prisma.portalLeak.update({
+        where: { id: leak.id },
+        data: {
+          hp: newHp,
+          ...(resolved
+            ? { status: 'DEFEATED', resolvedAt: new Date(), resolvedReason: 'admin correction' }
+            : {}),
+        },
+      }),
+    ]);
+
+    if (resolved) {
+      try {
+        const { emitNotification } = await import('./notify.js');
+        await emitNotification({
+          userId,
+          category: 'PENANCE',
+          kind: 'leak_defeated',
+          title: `Leak sealed: ${leak.monsterName}`,
+          body: 'Visit /homebase to claim your loot.',
+          link: '/homebase',
+          payload: {
+            leakId: leak.id,
+            monsterName: leak.monsterName,
+            monsterEmoji: leak.monsterEmoji,
+            worldSource: leak.worldSource,
+          },
+        });
+      } catch (err) {
+        console.warn('[portalLeaks] admin-correction leak_defeated emit failed', { userId, leakId: leak.id, err });
+      }
+    }
+
+    results.push({
+      dealt: amount,
+      matchType: 'matched',
+      leakHpAfter: newHp,
+      resolved,
+      leakId: leak.id,
+    });
+  }
+
+  return { affected: results.length, results };
+}
+
+// ============================================================
 // Claim loot on DEFEATED leak. Creates an InventoryItem from the
 // pre-rolled itemDrop id (set at spawn). Returns null if the
 // leak wasn't defeated, was already claimed, or has no loot.
@@ -986,9 +1074,16 @@ export async function tickLeakGrowth(
   let ticked = 0;
 
   for (const leak of activeLeaks) {
-    // Daily growth: +8 HP, capped at overwhelm threshold.
-    const overwhelmCap = Math.round(leak.maxHp * OVERWHELM_CAP_MULT);
-    const newHp = Math.min(overwhelmCap, leak.hp + LEAK_DAILY_GROWTH);
+    // Daily growth: +8 HP, capped at maxHp. Growth is passive
+    // regen for an untouched leak, not a punishment mechanic — it
+    // should never push the leak's HP bar past 100% full. The
+    // OVERWHELM_CAP_MULT (1.5x) threshold still exists for the
+    // OVERWHELMED status check inside applyLeakDamage, but combat
+    // damage is never negative anymore (see the "no more mismatch
+    // heal" note above applyLeakDamage), so in practice OVERWHELMED
+    // is now effectively unreachable — growth alone should not be
+    // the thing that puts a leak over its cap.
+    const newHp = Math.min(leak.maxHp, leak.hp + LEAK_DAILY_GROWTH);
     await prisma.portalLeak.update({
       where: { id: leak.id },
       data: { hp: newHp },
