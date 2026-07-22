@@ -44,6 +44,10 @@ export const BODYWEIGHT_COEFFICIENTS: Record<string, number> = {
   'glute bridge': 0.65,
   'single-leg rdl': 0.55,
   'single leg rdl': 0.55,
+  'planche push-up': 1.0,
+  'planche push-ups': 1.0,
+  'weighted planche push-up': 1.0,
+  'weighted planche push-ups': 1.0,
 };
 
 export function isBodyweightSet(set: { weight: number | null | undefined }, userWeightKg: number): boolean {
@@ -110,6 +114,8 @@ export const EXERCISE_LIMITS: Record<string, ExerciseLimit> = {
   'Weighted Dips':        { flagOneRmKg: 200, blockOneRmKg: 280, maxReps: 30 },
   'Weighted Push-Up':     { flagOneRmKg: 175, blockOneRmKg: 250, maxReps: 50 },
   'Weighted Push-Ups':    { flagOneRmKg: 175, blockOneRmKg: 250, maxReps: 50 },
+  'Weighted Planche Push-Up':  { flagOneRmKg: 100, blockOneRmKg: 160, maxReps: 20 },
+  'Weighted Planche Push-Ups': { flagOneRmKg: 100, blockOneRmKg: 160, maxReps: 20 },
   'Pull-Up':              { bodyweightCoefficient: 1.0,  flagOneRmKg: 200, blockOneRmKg: 300, maxReps: 100 },
   'Pull-Ups':             { bodyweightCoefficient: 1.0,  flagOneRmKg: 200, blockOneRmKg: 300, maxReps: 100 },
   'Chin-Up':              { bodyweightCoefficient: 1.0,  flagOneRmKg: 200, blockOneRmKg: 300, maxReps: 100 },
@@ -128,6 +134,8 @@ export const EXERCISE_LIMITS: Record<string, ExerciseLimit> = {
   'Nordic Curl':          { bodyweightCoefficient: 0.85, flagOneRmKg: 100, blockOneRmKg: 150, maxReps: 30 },
   'Single Leg RDL':       { flagOneRmKg: 100, blockOneRmKg: 200, maxReps: 30 },
   'Glute Bridge':         { bodyweightCoefficient: 0.65, flagOneRmKg: 130, blockOneRmKg: 200, maxReps: 50 },
+  'Planche Push-Up':      { bodyweightCoefficient: 1.0,  flagOneRmKg: 150, blockOneRmKg: 220, maxReps: 20 },
+  'Planche Push-Ups':     { bodyweightCoefficient: 1.0,  flagOneRmKg: 150, blockOneRmKg: 220, maxReps: 20 },
   'Plank':                { bodyweightCoefficient: 0.5,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
   'L-Sit':                { bodyweightCoefficient: 0.6,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },
   'Side Plank':           { bodyweightCoefficient: 0.5,  flagOneRmKg: 9998, blockOneRmKg: 9999, maxReps: 1, bodyweightMultiplierBlock: 1.0 },

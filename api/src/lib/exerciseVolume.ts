@@ -85,6 +85,11 @@ export const BODYWEIGHT_COEFFICIENTS: Record<string, number> = {
   'glute bridge': 0.65,
   'single-leg rdl': 0.55,
   'single leg rdl': 0.55,
+  // Planche push-up variants — full-body horizontal lever, near 100% bodyweight
+  'planche push-up': 1.0,
+  'planche push-ups': 1.0,
+  'weighted planche push-up': 1.0,
+  'weighted planche push-ups': 1.0,
 };
 
 /**

@@ -30,6 +30,8 @@ export async function exerciseRoutes(app: FastifyInstance) {
       { name: 'Dragon Flag', category: 'CALISTHENICS' },
       { name: 'Muscle-Up', category: 'CALISTHENICS' },
       { name: 'Push-up', category: 'CALISTHENICS' },
+      { name: 'Planche Push-Up', category: 'CALISTHENICS' },
+      { name: 'Weighted Planche Push-Up', category: 'CALISTHENICS' },
       { name: 'Dip', category: 'CALISTHENICS' },
       { name: 'Pistol Squat', category: 'CALISTHENICS' },
       { name: 'Run', category: 'CARDIO' },

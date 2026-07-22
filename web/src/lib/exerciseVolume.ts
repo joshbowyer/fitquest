@@ -46,6 +46,10 @@ export const BODYWEIGHT_COEFFICIENTS: Record<string, number> = {
   'glute bridge': 0.65,
   'single-leg rdl': 0.55,
   'single leg rdl': 0.55,
+  'planche push-up': 1.0,
+  'planche push-ups': 1.0,
+  'weighted planche push-up': 1.0,
+  'weighted planche push-ups': 1.0,
 };
 
 export function isBodyweightSet(set: { weight: number | null | undefined }, userWeightKg: number): boolean {
