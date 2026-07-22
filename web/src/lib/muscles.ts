@@ -83,6 +83,22 @@ export function categoryForRule(rule: ExerciseMuscles): 'STRENGTH' | 'HYPERTROPH
 const EXERCISE_DB: ExerciseMuscles[] = [
   // ───────── Bodyweight chest / push ─────────
   // Weighted variants must come BEFORE bodyweight variants.
+  // Planche push-up variants must come BEFORE both the generic
+  // weighted-push and push-up rules — "planche push-up" is a
+  // substring match of "push-up", and "weighted planche push-up"
+  // is a substring match of "planche push" (but NOT of "weighted
+  // push", since that substring isn't contiguous). Order here:
+  // weighted planche before plain planche before generic push-up.
+  { matches: ['weighted planche push', 'weighted planche pushup', 'planche push up weighted'],
+    primary: [{ part: 'PECTORAL', priority: 100 }, { part: 'SHOULDER_L', priority: 90 }, { part: 'SHOULDER_R', priority: 90 }, { part: 'TRICEP_L', priority: 80 }, { part: 'TRICEP_R', priority: 80 }],
+    secondary: [{ part: 'ABS', priority: 60 }],
+    stabilizers: [{ part: 'OBLIQUE_L', priority: 30 }, { part: 'OBLIQUE_R', priority: 30 }],
+    load: 'WEIGHTED_BODYWEIGHT', displayName: 'Weighted Planche Push-Up', group: 'chest' },
+  { matches: ['planche push', 'planche pushup'],
+    primary: [{ part: 'PECTORAL', priority: 95 }, { part: 'SHOULDER_L', priority: 85 }, { part: 'SHOULDER_R', priority: 85 }, { part: 'TRICEP_L', priority: 75 }, { part: 'TRICEP_R', priority: 75 }],
+    secondary: [{ part: 'ABS', priority: 55 }],
+    stabilizers: [{ part: 'OBLIQUE_L', priority: 25 }, { part: 'OBLIQUE_R', priority: 25 }],
+    load: 'BODYWEIGHT', displayName: 'Planche Push-Up', group: 'chest' },
   { matches: ['weighted push', 'push up weighted', 'weighted pushup'],
     primary: [{ part: 'PECTORAL', priority: 90 }, { part: 'TRICEP_L', priority: 70 }, { part: 'TRICEP_R', priority: 70 }],
     secondary: [{ part: 'SHOULDER_L', priority: 60 }, { part: 'SHOULDER_R', priority: 60 }, { part: 'ABS', priority: 60 }],
