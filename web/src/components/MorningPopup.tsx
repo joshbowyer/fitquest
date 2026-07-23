@@ -313,7 +313,10 @@ export function MorningPopup({ forceShow = false, onDismiss }: Props) {
   // completed counter increments and the row gets the ✓ badge.
   const completeM = useMutation({
     mutationFn: (dailyId: string) =>
-      api(`/dailies/${encodeURIComponent(dailyId)}/complete`, { method: 'POST' }),
+      api(`/dailies/${encodeURIComponent(dailyId)}/complete`, {
+        method: 'POST',
+        body: { date: q.data?.date },
+      }),
     onSuccess: (_, dailyId) => {
       // Flip the local lock first so the row turns green + becomes
       // unclickable before the refetch lands. The refetch below

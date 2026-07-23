@@ -61,6 +61,16 @@ type GatheredContext = {
     }>;
     setVolume: number;
     avgRpe: number | null;
+    /**
+     * Activity-level metrics for cardio-type workouts (distance, pace,
+     * elevation, avg/max HR). Populated from `Workout.cardio` (the
+     * JSONB block) and (as a lightweight fallback) from `Workout.trackJson`
+     * when the cardio block is missing HR samples — FIT imports currently
+     * only write the per-second trackpoint stream and skip the cardio
+     * block, so this fallback keeps FIT-imported runs from silently
+     * dropping HR context. Null for pure strength sessions.
+     */
+    activityMetrics: ActivityMetrics | null;
   };
   context: {
     sleepHours7d: number | null;
@@ -77,6 +87,108 @@ type GatheredContext = {
     exerciseHistory: Record<string, { bestWeight: number; bestReps: number; sessions: number }>;
   };
 };
+
+/**
+ * Narrows of the workout's own performance metrics (distance, pace,
+ * elevation, avg/max HR) for cardio-type workouts. Built from the
+ * `Workout.cardio` JSONB block (see schema.prisma:610-630) with a
+ * lightweight fallback to `Workout.trackJson` for HR when the
+ * cardio block is missing it. Null when no metrics are available.
+ */
+export type ActivityMetrics = {
+  distanceKm: number | null;
+  elevationGainM: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  avgPaceSecPerKm: number | null;
+  pace: string | null;
+};
+
+/**
+ * Narrow the Prisma `cardio` JSONB column (typed as `JsonValue` when
+ * selected) into the public `ActivityMetrics` shape. Each numeric
+ * field is `typeof`-checked so a bad value just falls through to
+ * null. The pace label is taken as a string verbatim — we trust
+ * the writer to have used one of the documented enum values.
+ */
+function narrowCardioBlock(cardio: unknown): Omit<ActivityMetrics, never> | null {
+  if (cardio == null) return null;
+  if (typeof cardio !== 'object') return null;
+  const o = cardio as Record<string, unknown>;
+  const num = (k: string): number | null => (typeof o[k] === 'number' ? (o[k] as number) : null);
+  const distanceKm = num('distanceKm');
+  const elevationGainM = num('elevationGainM');
+  const avgHr = num('avgHr');
+  const maxHr = num('maxHr');
+  const avgPaceSecPerKm = num('avgPaceSecPerKm');
+  const pace = typeof o.pace === 'string' ? (o.pace as string) : null;
+  if (
+    distanceKm == null &&
+    elevationGainM == null &&
+    avgHr == null &&
+    maxHr == null &&
+    avgPaceSecPerKm == null &&
+    pace == null
+  ) {
+    return null;
+  }
+  return { distanceKm, elevationGainM, avgHr, maxHr, avgPaceSecPerKm, pace };
+}
+
+/**
+ * Lightweight HR fallback from `trackJson` (per-second records with
+ * an `hr` field — see `parseFit` / `extractTrackpoints` in fit.ts).
+ * Only used when the `cardio` block is missing avgHr / maxHr.
+ * Iterates once: O(n) over per-workout points, which is a few
+ * thousand at most for a 1Hz stream.
+ */
+function narrowTrackJsonHr(trackJson: unknown): { avgHr: number | null; maxHr: number | null } | null {
+  if (!Array.isArray(trackJson) || trackJson.length === 0) return null;
+  let sum = 0;
+  let count = 0;
+  let max = 0;
+  for (const p of trackJson) {
+    if (!p || typeof p !== 'object') continue;
+    const hr = (p as Record<string, unknown>).hr;
+    if (typeof hr !== 'number' || !Number.isFinite(hr) || hr <= 0 || hr > 300) continue;
+    sum += hr;
+    count += 1;
+    if (hr > max) max = hr;
+  }
+  if (count === 0) return null;
+  return { avgHr: Math.round(sum / count), maxHr: max };
+}
+
+/**
+ * Build the `activityMetrics` block for a workout from its `cardio`
+ * JSONB + (optionally) the `trackJson` fallback. Pure / testable —
+ * no DB. Returns null when no usable metrics exist (pure strength
+ * session, empty cardio block, etc).
+ */
+export function extractActivityMetrics(cardio: unknown, trackJson?: unknown): ActivityMetrics | null {
+  const c = narrowCardioBlock(cardio);
+  const trkHr = narrowTrackJsonHr(trackJson);
+  const avgHr = c?.avgHr ?? trkHr?.avgHr ?? null;
+  const maxHr = c?.maxHr ?? trkHr?.maxHr ?? null;
+  // If the cardio block is empty/missing AND the trackJson fallback
+  // produced nothing, return null rather than an all-null object —
+  // keeps the public type honest about whether the workout had any
+  // activity metrics at all.
+  if (
+    c == null &&
+    trkHr == null
+  ) {
+    return null;
+  }
+  return {
+    distanceKm: c?.distanceKm ?? null,
+    elevationGainM: c?.elevationGainM ?? null,
+    avgHr,
+    maxHr,
+    avgPaceSecPerKm: c?.avgPaceSecPerKm ?? null,
+    pace: c?.pace ?? null,
+  };
+}
 
 /**
  * Gather the data the LLM will see. Pulls from the workout + the
@@ -256,6 +368,11 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
       })),
       setVolume,
       avgRpe: rpeCount > 0 ? rpeSum / rpeCount : null,
+      // Cardio metrics live on the workout-level `cardio` JSONB
+      // block. We also pass `trackJson` as a fallback so FIT
+      // imports (which populate only the per-second stream, not
+      // the cardio block) can still surface HR for the LLM.
+      activityMetrics: extractActivityMetrics(w.cardio, w.trackJson),
     },
     context: {
       sleepHours7d: avg(sleepRows.map((r) => r.value)),
@@ -277,15 +394,15 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
 const SYSTEM_PROMPT = `You are a calm, evidence-minded training coach reading a single workout log plus the user's recent recovery context. You write like a thoughtful trainer, not a hype bot or a doctor. Never use em-dashes. Never start with "Great" or "Looks like". No emojis. No exclamation marks.
 
 Inputs you'll see:
-- workout: type, duration, exercises with sets/reps/weight/RPE, total set-volume, average RPE
+- workout: type, duration, exercises with sets/reps/weight/RPE, total set-volume, average RPE. For cardio-type workouts (type = CARDIO, or any workout with no exercises but a populated activityMetrics block) you'll also see an activityMetrics object with distance (km), avg pace (sec per km), pace label (WALK_CASUAL / WALK_BRISK / JOG / RUN / SPRINT / CRUISE / INTERVALS), elevation gain (m), and avg + max heart rate (bpm). Either exercises or activityMetrics will be populated, not both — strength sessions have exercises, cardio sessions have activityMetrics.
 - context: last 7d sleep hours + quality, HRV (last 7d vs prior 7d), most recent soreness/mood/energy/stress (1-10), how many weigh-ins in the last 7d, how many other workouts, days since last session, history on each exercise (best weight/reps/sessions)
 
 Your job: score this session and explain why in structured JSON.
 
 Quality score (1-10):
-- 8-10: high-output session with good context (sleep ≥7h, HRV stable or rising, low soreness) AND average RPE 7-9 (not a grinder). Volume is reasonable for the user's recent frequency.
-- 5-7: solid but with at least one yellow flag — sleep <6.5h, HRV dropped ≥10% vs prior 7d, soreness ≥6, RPE ≥9.5 average (CNS grind), or unusually high volume vs history.
-- 1-4: red flags stacked — poor sleep + HRV crash + high soreness + RPE grind, OR volume so high it suggests poor planning.
+- 8-10: high-output session with good context (sleep ≥7h, HRV stable or rising, low soreness) AND (for strength) average RPE 7-9 (not a grinder) OR (for cardio) avgHR is reasonable for the effort — e.g. an easy run with avgHR in a typical easy zone, or a hard session with avgHR trending high but matched to a sprint / interval pace. Volume / distance is reasonable for the user's recent frequency.
+- 5-7: solid but with at least one yellow flag — sleep <6.5h, HRV dropped ≥10% vs prior 7d, soreness ≥6, RPE ≥9.5 average (CNS grind), unusually high volume / distance vs history, OR (for cardio) avgHR is "screaming" relative to the pace — e.g. avgHR ≥170 for a moderate easy / jog pace, or avgHR within 10 bpm of maxHR for a sustained aerobic effort (treat this like a grind-RPE flag).
+- 1-4: red flags stacked — poor sleep + HRV crash + high soreness + RPE grind, OR volume / distance so high it suggests poor planning, OR an HR-vs-effort mismatch so severe it suggests under-recovery / over-reaching.
 
 Recovery load recommendation:
 - "rest": next session should be skipped or replaced with walking/mobility. Use when score ≤4 OR two or more red flags stack.
@@ -298,7 +415,7 @@ Confidence:
 - "low": only the workout itself. Acknowledge the limits in summary.
 
 Factors: array of 2-6 items, each {label, signal: positive|negative|neutral, weight: 0..1, note}.
-- label: short, e.g. "Sleep", "HRV trend", "RPE", "Volume vs history", "Soreness", "Days since last session"
+- label: short, e.g. "Sleep", "HRV trend", "RPE", "Volume vs history", "Soreness", "Days since last session", "Cardio effort", "Heart rate", "Pace", "Elevation", "Distance"
 - signal: positive = supports a good session, negative = risk, neutral = context
 - weight: 0..1 importance
 - note: ≤ 140 chars, concrete number when possible
@@ -510,6 +627,34 @@ export function offlineFallback(ctx: GatheredContext): InsightPayload {
     });
   }
 
+  // Cardio effort heuristic. We don't have the user's HR zones /
+  // max-HR here (that's a separate table), so we use a conservative
+  // absolute threshold (avgHR ≥ 170) and a "sustained near-max"
+  // check (avgHR within 10 bpm of maxHR). This is intentionally
+  // rough — the LLM path has full context to be smarter; the
+  // offline fallback just needs to avoid a blank panel when the
+  // LLM is down and the user ran a 5-mile "screamer".
+  if (workout.activityMetrics != null) {
+    const { avgHr, maxHr } = workout.activityMetrics;
+    if (avgHr != null && maxHr != null && maxHr > 0 && avgHr >= maxHr - 10) {
+      score -= 1;
+      factors.push({
+        label: 'Heart rate',
+        signal: 'negative',
+        weight: 0.3,
+        note: `Average HR ${avgHr} within 10 bpm of max HR ${maxHr} — sustained near-max.`,
+      });
+    } else if (avgHr != null && avgHr >= 170) {
+      score -= 1;
+      factors.push({
+        label: 'Heart rate',
+        signal: 'negative',
+        weight: 0.3,
+        note: `Average HR ${avgHr} bpm — high for sustained effort.`,
+      });
+    }
+  }
+
   if (context.sorenessLatest != null && context.sorenessLatest >= 7) {
     score -= 1;
     factors.push({
@@ -551,7 +696,12 @@ function offlineSummary(workout: GatheredContext['workout']): string {
   const durStr = dur != null && dur > 0 ? `${dur}min ` : '';
   const type = (workout.type || '').toUpperCase();
   if (type === 'CARDIO') {
-    return `Offline analysis: ${durStr}cardio session.`;
+    const am = workout.activityMetrics;
+    const parts: string[] = [];
+    if (am?.distanceKm != null && am.distanceKm > 0) parts.push(`${am.distanceKm.toFixed(1)}km`);
+    if (am?.avgHr != null) parts.push(`avg HR ${am.avgHr}`);
+    const extras = parts.length > 0 ? `, ${parts.join(', ')}` : '';
+    return `Offline analysis: ${durStr}cardio session${extras}.`;
   }
   if (type === 'MOBILITY' || type === 'OTHER') {
     return `Offline analysis: ${durStr}${type.toLowerCase()} session.`;

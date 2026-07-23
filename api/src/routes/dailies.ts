@@ -30,6 +30,10 @@ const updateSchema = createSchema.partial().extend({
   archived: z.boolean().optional(),
 });
 
+const completeSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
 // Day-of-week index for JavaScript getDay() (0=Sun..6=Sat).
 // We use the same enum values on both sides so this lookup is direct.
 // TZ-aware: compute today's date in the user's tz (DST-safe noon
@@ -452,13 +456,18 @@ app.get('/today', async (req) => {
   app.post<{ Params: { id: string } }>('/:id/complete', async (req, reply) => {
     const me = await requireUser(req);
     const id = (req.params as any).id;
-    // Idempotency lower bound = local midnight in the user's tz.
+    const body = completeSchema.parse(req.body ?? {});
+    // An explicit date is used by the morning popup to backdate a missed
+    // daily to the recap day. Omitting it preserves the normal Today-page
+    // behavior of completing the instance for today.
+    const tz = me.timezone ?? null;
+    const targetDate = body.date ?? todayInTz(tz);
+    // Idempotency lower bound = local midnight in the target day's tz.
     // Was previously `new Date(); .setHours(0,0,0,0)` which is the
     // server's local midnight (UTC in Docker) — a NYC user could
     // complete the same daily twice in the 4h between UTC midnight
     // and local midnight the next day.
-    const tz = me.timezone ?? null;
-    const today = localMidnightUtc(todayInTz(tz), tz ?? 'UTC');
+    const dayStart = localMidnightUtc(targetDate, tz ?? 'UTC');
 
     // Resolve to a Daily row + dailyKey. Built-ins don't have rows but
     // we still log them via the synthetic dailyKey.
@@ -477,7 +486,7 @@ app.get('/today', async (req) => {
 
     // Idempotency: only one log per dailyKey per day
     const existing = await prisma.dailyLog.findFirst({
-      where: { userId: me.id, dailyKey, loggedAt: { gte: today } },
+      where: { userId: me.id, dailyKey, loggedAt: { gte: dayStart } },
     });
     if (existing) return { ok: true, alreadyDone: true };
 
@@ -521,6 +530,7 @@ app.get('/today', async (req) => {
         userId: me.id,
         dailyId,
         dailyKey,
+        loggedAt: dayStart,
         goldDelta,
         xpDelta,
       },
