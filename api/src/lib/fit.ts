@@ -262,15 +262,22 @@ function extractTrackpoints(
     // ~1 Hz downsample: skip if within 0.9s of last point
     if (t - lastT < 0.9) continue;
     lastT = t;
+    // Prefer the "enhanced" altitude/speed fields (higher precision,
+    // wider range) when present — many modern Garmin devices only
+    // populate these and leave the legacy plain fields undefined.
+    // Mirrors the same enhanced-first fallback already used for the
+    // session-level avgSpeedMps above (s.enhancedAvgSpeed ?? s.avgSpeed).
+    const altitude = typeof r.enhancedAltitude === 'number' ? r.enhancedAltitude : r.altitude;
+    const speed = typeof r.enhancedSpeed === 'number' ? r.enhancedSpeed : r.speed;
     out.push({
       t: Math.round(t * 10) / 10,
       lat: semicirclesToDeg(r.positionLat),
       lon: semicirclesToDeg(r.positionLong),
-      ele: typeof r.altitude === 'number' ? Math.round(r.altitude * 10) / 10 : null,
+      ele: typeof altitude === 'number' ? Math.round(altitude * 10) / 10 : null,
       hr: typeof r.heartRate === 'number' ? r.heartRate : null,
       cad: typeof r.cadence === 'number' ? r.cadence : null,
       pwr: typeof r.power === 'number' ? r.power : null,
-      spd: typeof r.speed === 'number' ? Math.round(r.speed * 100) / 100 : null,
+      spd: typeof speed === 'number' ? Math.round(speed * 100) / 100 : null,
       dist: typeof r.distance === 'number' ? Math.round(r.distance * 10) / 10 : null,
     });
   }
