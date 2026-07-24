@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -7,9 +7,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
 } from 'recharts';
-import { classNames } from '@/lib/format';
 import { useChartColors } from '@/hooks/useChartColors';
 
 export type StreamPoint = {
@@ -29,68 +27,54 @@ type StreamKey = 'pace' | 'hr' | 'ele' | 'cad' | 'pwr';
 type Props = {
   points: StreamPoint[];
   system: 'METRIC' | 'IMPERIAL';
-  /** Default series to highlight. */
-  defaultSeries?: StreamKey;
+  /** Display height per mini-chart in px. */
+  height?: number;
 };
 
-type SeriesMeta = { label: string; color: string; unit: (s: 'METRIC' | 'IMPERIAL') => string };
+type SeriesMeta = { label: string; color: string; unit: string };
 
-// Series colors are resolved from the theme via useChartColors() below —
-// the static labels and units stay at module scope.
 const SERIES_META_STATIC: Record<StreamKey, Omit<SeriesMeta, 'color'>> = {
-  pace: { label: 'Pace',       unit: () => 'min/mi' },
-  hr:   { label: 'Heart Rate', unit: () => 'bpm' },
-  ele:  { label: 'Elevation',  unit: (s) => s === 'IMPERIAL' ? 'ft' : 'm' },
-  cad:  { label: 'Cadence',    unit: () => 'spm' },
-  pwr:  { label: 'Power',      unit: () => 'W' },
+  pace: { label: 'Pace',       unit: 'min/mi' },
+  hr:   { label: 'Heart Rate', unit: 'bpm' },
+  ele:  { label: 'Elevation',  unit: 'm' }, // adjusted per system at render time
+  cad:  { label: 'Cadence',    unit: 'spm' },
+  pwr:  { label: 'Power',      unit: 'W' },
 };
 
-/**
- * Multi-series line chart of a workout's trackpoint streams. User can
- * pick which series to show via pills (defaults to HR + pace + ele).
- *
- * For METRIC, pace is computed as 1000 / (avg speed in m/s over a
- * 10s window), expressed as seconds-per-km (or per-mi in IMPERIAL).
- * For workouts without speed samples, pace falls back to "—".
- */
-export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
+const DISPLAY_ORDER: StreamKey[] = ['pace', 'hr', 'ele', 'cad', 'pwr'];
+
+type ChartRow = Record<string, number | null | number>;
+
+export function ActivityStreamsChart({ points, system, height = 100 }: Props) {
   const colors = useChartColors();
+
   const SERIES_META: Record<StreamKey, SeriesMeta> = {
-    pace: { ...SERIES_META_STATIC.pace, color: colors.cyan },
+    pace: { ...SERIES_META_STATIC.pace, color: colors.cyan, unit: system === 'IMPERIAL' ? 'min/mi' : 'min/km' },
     hr:   { ...SERIES_META_STATIC.hr,   color: colors.magenta },
-    ele:  { ...SERIES_META_STATIC.ele,  color: colors.lime },
+    ele:  { ...SERIES_META_STATIC.ele,  color: colors.lime, unit: system === 'IMPERIAL' ? 'ft' : 'm' },
     cad:  { ...SERIES_META_STATIC.cad,  color: colors.amber },
     pwr:  { ...SERIES_META_STATIC.pwr,  color: colors.periwinkle },
   };
-  // Default to all five streams turned on.
-  const [active, setActive] = useState<Set<StreamKey>>(
-    new Set(
-      defaultSeries
-        ? new Set<StreamKey>([defaultSeries, 'pace', 'ele', 'cad', 'pwr'])
-        : (['pace', 'hr', 'ele', 'cad', 'pwr'] as StreamKey[]),
-    ),
-  );
 
-  const data = useMemo(() => {
-    if (points.length === 0) return [];
-    // Smooth speed over a 5-sample window for stable pace
+  const { data, renderedKeys } = useMemo(() => {
+    if (points.length === 0) return { data: [], renderedKeys: [] as StreamKey[] };
+
     const speeds = points.map((p) => p.spd ?? null);
-    return points.map((p, i) => {
+    const rows: ChartRow[] = points.map((p, i) => {
       let paceSecPerKm: number | null = null;
       const win = speeds.slice(Math.max(0, i - 2), i + 3).filter((s) => s != null) as number[];
       if (win.length > 0) {
         const avg = win.reduce((s, v) => s + v, 0) / win.length;
         if (avg > 0.1) {
-          // seconds per km = 1000 / avg(m/s)
           paceSecPerKm = 1000 / avg;
           if (system === 'IMPERIAL') {
-            // convert to sec/mile
             paceSecPerKm = paceSecPerKm * 1.609344;
           }
         }
       }
       let eleDisp: number | null = p.ele;
       if (eleDisp != null && system === 'IMPERIAL') eleDisp = eleDisp * 3.28084;
+
       return {
         t: p.t,
         hr: p.hr,
@@ -98,9 +82,14 @@ export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
         cad: p.cad,
         pwr: p.pwr,
         pace: paceSecPerKm != null ? Math.round(paceSecPerKm) : null,
-        spd: p.spd,
       };
     });
+
+    // Determine which metrics have at least one non-null value
+    const hasNonNull = (k: StreamKey) => rows.some((r) => r[k] != null);
+    const rendered = DISPLAY_ORDER.filter(hasNonNull);
+
+    return { data: rows, renderedKeys: rendered };
   }, [points, system]);
 
   if (points.length < 2) {
@@ -117,112 +106,151 @@ export function ActivityStreamsChart({ points, system, defaultSeries }: Props) {
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
-  function toggleSeries(k: StreamKey) {
-    setActive((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
-  }
+  const isLastRendered = (k: StreamKey, idx: number) => {
+    return idx === renderedKeys.length - 1;
+  };
 
   return (
-    <div className="space-y-2">
-      {/* Series toggles */}
-      <div className="flex flex-wrap gap-1">
-        {(Object.keys(SERIES_META) as StreamKey[]).map((k) => {
-          const meta = SERIES_META[k];
-          const isOn = active.has(k);
-          return (
-            <button
-              key={k}
-              type="button"
-              onClick={() => toggleSeries(k)}
-              className={classNames(
-                'px-2 py-0.5 text-[9px] font-mono tracking-widest uppercase border transition-all',
-                isOn
-                  ? 'border-current'
-                  : 'border-ink-500/30 text-ink-400 hover:text-ink-200',
-              )}
-              style={isOn ? { color: meta.color } : undefined}
-            >
-              {meta.label}
-            </button>
-          );
-        })}
+    <div className="space-y-3">
+      {renderedKeys.length === 0 ? (
+        <div className="text-[10px] font-mono text-ink-400 italic text-center py-4 border border-dashed border-ink-700/30">
+          No stream data available.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {renderedKeys.map((k, idx) => {
+            const meta = SERIES_META[k];
+            const showAxis = isLastRendered(k, idx);
+            return (
+              <MetricRow
+                key={k}
+                metric={k}
+                data={data}
+                color={meta.color}
+                label={meta.label}
+                unit={meta.unit}
+                showAxis={showAxis}
+                height={height}
+                gridColor={colors.grid}
+                axisText={colors.axisText}
+                tooltipBg={colors.tooltipBg}
+                tooltipBorder={colors.tooltipBorder}
+                formatTick={fmtTimeLabel}
+                system={system}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricRow({
+  metric,
+  data,
+  color,
+  label,
+  unit,
+  showAxis,
+  height,
+  gridColor,
+  axisText,
+  tooltipBg,
+  tooltipBorder,
+  formatTick,
+  system,
+}: {
+  metric: StreamKey;
+  data: ChartRow[];
+  color: string;
+  label: string;
+  unit: string;
+  showAxis: boolean;
+  height: number;
+  gridColor: string;
+  axisText: string;
+  tooltipBg: string;
+  tooltipBorder: string;
+  formatTick: (seconds: number) => string;
+  system: 'METRIC' | 'IMPERIAL';
+}) {
+  // Per-metric domain choice: pace/hr/ele benefit from dataMin/dataMax (variation matters more than absolute 0)
+  const yDomain: [string | number, string | number] = metric === 'pace' || metric === 'hr' || metric === 'ele'
+    ? ['dataMin', 'dataMax']
+    : [0, 'auto'];
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1">
+        <div
+          className="text-[10px] font-display tracking-widest uppercase"
+          style={{ color }}
+        >
+          {label}
+        </div>
+        <div className="text-[9px] font-mono text-ink-400">{unit}</div>
       </div>
-      <div style={{ width: '100%', height: 240 }}>
+      <div style={{ width: '100%', height }}>
         <ResponsiveContainer>
-          <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke={colors.grid} strokeDasharray="2 4" />
+          <LineChart
+            data={data}
+            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+          >
+            <CartesianGrid
+              stroke={gridColor}
+              strokeDasharray="2 4"
+              vertical={false}
+            />
             <XAxis
               dataKey="t"
-              tickFormatter={fmtTimeLabel}
-              stroke={colors.grid}
-              tick={{ fontSize: 9, fontFamily: 'monospace' }}
-              label={{ value: 'time', position: 'insideBottom', offset: -2, fill: colors.axisText, fontSize: 9, fontFamily: 'monospace' }}
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={formatTick}
+              stroke={gridColor}
+              tick={{ fontSize: 9, fontFamily: 'monospace', fill: axisText }}
+              interval="preserveStartEnd"
+              minTickGap={20}
+              hide={!showAxis}
             />
-            {/* Left Y axis: HR / Cadence / Power (bpm, spm, W) */}
             <YAxis
-              yAxisId="left"
-              stroke={colors.grid}
-              tick={{ fontSize: 9, fontFamily: 'monospace' }}
-              width={36}
-              domain={['auto', 'auto']}
-            />
-            {/* Right Y axis: Elevation / Pace */}
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              stroke={colors.grid}
-              tick={{ fontSize: 9, fontFamily: 'monospace' }}
-              width={42}
-              domain={['auto', 'auto']}
-              tickFormatter={(v) => {
-                if (active.has('pace') && active.has('ele')) return String(Math.round(v));
-                return String(Math.round(v));
-              }}
+              stroke={gridColor}
+              tick={{ fontSize: 9, fontFamily: 'monospace', fill: axisText }}
+              width={72}
+              domain={yDomain}
+              tickCount={4}
+              tickFormatter={(v) => `${v} ${unit}`}
             />
             <Tooltip
               contentStyle={{
-                background: colors.tooltipBg,
-                border: `1px solid ${colors.tooltipBorder}`,
+                background: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
                 fontFamily: 'monospace',
                 fontSize: 11,
               }}
-              labelFormatter={(t) => `t = ${fmtTimeLabel(Number(t))}`}
-              formatter={(value: any, name: string) => {
-                if (value == null) return ['—', name];
-                if (name === 'Pace' && typeof value === 'number') {
+              labelFormatter={(t) => `t = ${formatTick(Number(t))}`}
+              formatter={(value: any) => {
+                if (value == null) return ['—', label];
+                if (metric === 'pace' && typeof value === 'number') {
                   const m = Math.floor(value / 60);
                   const s = Math.floor(value % 60);
-                  return [`${m}:${s.toString().padStart(2, '0')} /${system === 'IMPERIAL' ? 'mi' : 'km'}`, name];
+                  return [`${m}:${s.toString().padStart(2, '0')} /${system === 'IMPERIAL' ? 'mi' : 'km'}`, label];
                 }
-                if (name === 'Elevation' && typeof value === 'number') {
-                  return [`${Math.round(value)} ${system === 'IMPERIAL' ? 'ft' : 'm'}`, name];
+                if (metric === 'ele' && typeof value === 'number') {
+                  return [`${Math.round(value)} ${unit}`, label];
                 }
-                return [value, name];
+                return [value, label];
               }}
             />
-            {(Object.keys(SERIES_META) as StreamKey[]).map((k) => {
-              if (!active.has(k)) return null;
-              const meta = SERIES_META[k];
-              const axis = (k === 'ele' || k === 'pace') ? 'right' : 'left';
-              return (
-                <Line
-                  key={k}
-                  type="monotone"
-                  dataKey={k}
-                  name={meta.label}
-                  stroke={meta.color}
-                  strokeWidth={1.5}
-                  dot={false}
-                  isAnimationActive={false}
-                  connectNulls
-                  yAxisId={axis}
-                />
-              );
-            })}
+            <Line
+              type="monotone"
+              dataKey={metric}
+              stroke={color}
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+              connectNulls
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
