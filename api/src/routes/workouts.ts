@@ -12,6 +12,7 @@ import { checkRoutineProgress } from './routine.js';
 import { tickHearts, heartMultiplier } from '../lib/mode.js';
 import { setVolumeKg } from '../lib/exerciseVolume.js';
 import { checkSetPlausibility } from '../lib/exerciseLimits.js';
+import { captureActivityWeather } from '../lib/forecast.js';
 
 /**
  * Per-exercise absolute caps for "this value is almost certainly
@@ -458,6 +459,25 @@ export async function workoutRoutes(app: FastifyInstance) {
         wasUpdate,
       };
     });
+
+    // Manual workouts have no GPS track, so this normally resolves to the
+    // user's Profile location. Persist best-effort after the main transaction:
+    // weather/network failures must never roll back the workout or rewards.
+    const weather = await captureActivityWeather(
+      result.workout.trackJson,
+      me.id,
+      result.workout.performedAt.toISOString(),
+    );
+    if (weather) {
+      try {
+        await prisma.workout.update({
+          where: { id: result.workout.id },
+          data: { weather: weather as unknown as Prisma.InputJsonValue },
+        });
+      } catch (err) {
+        req.log.warn({ err: String(err) }, '[workouts] weather persistence failed');
+      }
+    }
 
     if (!result.wasUpdate) await checkAchievements(me.id);
 

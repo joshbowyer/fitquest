@@ -628,6 +628,16 @@ model Workout {
   ///   elevationGainM?: number, avgHr?: number, maxHr?: number,
   ///   avgPaceSecPerKm?: number, source?: 'MANUAL'|'GPS' }
   cardio                 Json?
+  /// Weather at the time/location of the activity. Location is the
+  /// workout's own GPS (first valid trackJson point) when available,
+  /// else the user's configured home location (User.latitude/longitude
+  /// set via Profile). Null when neither location source is available,
+  /// or the upstream historical-weather fetch failed.
+  /// Shape: { temperatureF: number, apparentTemperatureF: number,
+  ///   humidity: number, windSpeedMph: number, windGustsMph: number,
+  ///   precipitationMm: number, weatherCode: number, isDay: boolean,
+  ///   locationSource: 'gps' | 'user', source: 'historical', fetchedAt: string (ISO) }
+  weather                Json?
   /// Implausible set values flagged by the per-exercise plausibility
   /// detector (Bench 500kg, Squat 1000 reps, blanket > 500kg,
   /// etc.). Stored as JSONB so the morning report aggregator can

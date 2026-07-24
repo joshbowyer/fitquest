@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import { prisma } from './prisma.js';
 import { callLlm, getActiveLlmConfig, type LlmConfig } from './llm.js';
+import { weatherCodeMeta } from './forecast.js';
 
 export type RecoveryLoad = 'light' | 'normal' | 'rest';
 export type Confidence = 'low' | 'medium' | 'high';
@@ -71,6 +72,17 @@ type GatheredContext = {
      * dropping HR context. Null for pure strength sessions.
      */
     activityMetrics: ActivityMetrics | null;
+    /**
+     * Weather snapshot at the activity's time/location, persisted
+     * onto `Workout.weather` at FIT-import time. Only populated
+     * for FIT imports with a valid GPS fix (manual / no-GPS
+     * workouts leave the column null). `conditions` is a
+     * human-readable translation of the raw `weatherCode` via
+     * `weatherCodeMeta()` — the LLM should reason about
+     * `temperatureF` / `apparentTemperatureF` / `humidity`
+     * numerically and use `conditions` for prose.
+     */
+    weather: WorkoutWeather | null;
   };
   context: {
     sleepHours7d: number | null;
@@ -187,6 +199,57 @@ export function extractActivityMetrics(cardio: unknown, trackJson?: unknown): Ac
     maxHr,
     avgPaceSecPerKm: c?.avgPaceSecPerKm ?? null,
     pace: c?.pace ?? null,
+  };
+}
+
+/**
+ * Weather snapshot, narrowed from the `Workout.weather` JSONB column
+ * (shape documented in schema.prisma around `weather Json?`). The
+ * `conditions` field is a human-readable translation of the raw
+ * `weatherCode` via `weatherCodeMeta()` — included so the LLM can
+ * reference "Clear" / "Rain" in prose without having to map the
+ * WMO code itself.
+ */
+export type WorkoutWeather = {
+  temperatureF: number;
+  apparentTemperatureF: number;
+  humidity: number;
+  windSpeedMph: number;
+  windGustsMph: number;
+  precipitationMm: number;
+  conditions: string;
+  isDay: boolean;
+  locationSource: 'gps' | 'user';
+};
+
+/**
+ * Narrow the Prisma `Workout.weather` JSONB column into the public
+ * `WorkoutWeather` shape. Each numeric field is `typeof`-checked so
+ * a bad value falls through to 0. Returns null when the column is
+ * null (the common case for manual / no-GPS workouts).
+ */
+export function narrowWeather(weather: unknown): WorkoutWeather | null {
+  if (weather == null) return null;
+  if (typeof weather !== 'object') return null;
+  const o = weather as Record<string, unknown>;
+  const num = (k: string): number => {
+    const v = o[k];
+    return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  };
+  const code = num('weatherCode');
+  const locationSource = o.locationSource;
+  if (locationSource !== 'gps' && locationSource !== 'user') return null;
+  const { label } = weatherCodeMeta(code);
+  return {
+    temperatureF: num('temperatureF'),
+    apparentTemperatureF: num('apparentTemperatureF'),
+    humidity: num('humidity'),
+    windSpeedMph: num('windSpeedMph'),
+    windGustsMph: num('windGustsMph'),
+    precipitationMm: num('precipitationMm'),
+    conditions: label,
+    isDay: o.isDay === true,
+    locationSource,
   };
 }
 
@@ -373,6 +436,10 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
       // imports (which populate only the per-second stream, not
       // the cardio block) can still surface HR for the LLM.
       activityMetrics: extractActivityMetrics(w.cardio, w.trackJson),
+      // Weather snapshot persisted onto `Workout.weather` at FIT
+      // import time. Null for manual / no-GPS workouts and for any
+      // FIT import where the upstream fetch failed.
+      weather: narrowWeather(w.weather),
     },
     context: {
       sleepHours7d: avg(sleepRows.map((r) => r.value)),
@@ -394,7 +461,7 @@ export async function gatherInsightContext(userId: string, workoutId: string): P
 const SYSTEM_PROMPT = `You are a calm, evidence-minded training coach reading a single workout log plus the user's recent recovery context. You write like a thoughtful trainer, not a hype bot or a doctor. Never use em-dashes. Never start with "Great" or "Looks like". No emojis. No exclamation marks.
 
 Inputs you'll see:
-- workout: type, duration, exercises with sets/reps/weight/RPE, total set-volume, average RPE. For cardio-type workouts (type = CARDIO, or any workout with no exercises but a populated activityMetrics block) you'll also see an activityMetrics object with distance (km), avg pace (sec per km), pace label (WALK_CASUAL / WALK_BRISK / JOG / RUN / SPRINT / CRUISE / INTERVALS), elevation gain (m), and avg + max heart rate (bpm). Either exercises or activityMetrics will be populated, not both — strength sessions have exercises, cardio sessions have activityMetrics.
+- workout: type, duration, exercises with sets/reps/weight/RPE, total set-volume, average RPE. For cardio-type workouts (type = CARDIO, or any workout with no exercises but a populated activityMetrics block) you'll also see an activityMetrics object with distance (km), avg pace (sec per km), pace label (WALK_CASUAL / WALK_BRISK / JOG / RUN / SPRINT / CRUISE / INTERVALS), elevation gain (m), and avg + max heart rate (bpm). Either exercises or activityMetrics will be populated, not both. You may also see weather with temperatureF, apparentTemperatureF, humidity, windSpeedMph, windGustsMph, precipitationMm, isDay, conditions, and locationSource. A gps locationSource is activity-local; user is an approximate home-location fallback.
 - context: last 7d sleep hours + quality, HRV (last 7d vs prior 7d), most recent soreness/mood/energy/stress (1-10), how many weigh-ins in the last 7d, how many other workouts, days since last session, history on each exercise (best weight/reps/sessions)
 
 Your job: score this session and explain why in structured JSON.
@@ -403,6 +470,8 @@ Quality score (1-10):
 - 8-10: high-output session with good context (sleep ≥7h, HRV stable or rising, low soreness) AND (for strength) average RPE 7-9 (not a grinder) OR (for cardio) avgHR is reasonable for the effort — e.g. an easy run with avgHR in a typical easy zone, or a hard session with avgHR trending high but matched to a sprint / interval pace. Volume / distance is reasonable for the user's recent frequency.
 - 5-7: solid but with at least one yellow flag — sleep <6.5h, HRV dropped ≥10% vs prior 7d, soreness ≥6, RPE ≥9.5 average (CNS grind), unusually high volume / distance vs history, OR (for cardio) avgHR is "screaming" relative to the pace — e.g. avgHR ≥170 for a moderate easy / jog pace, or avgHR within 10 bpm of maxHR for a sustained aerobic effort (treat this like a grind-RPE flag).
 - 1-4: red flags stacked — poor sleep + HRV crash + high soreness + RPE grind, OR volume / distance so high it suggests poor planning, OR an HR-vs-effort mismatch so severe it suggests under-recovery / over-reaching.
+
+Weather context: heat raises HR independent of fitness, so elevated HR in hot/humid conditions deserves context rather than a flat penalty. Only weight weather meaningfully for outdoor/cardio-type activities. When locationSource is "user", treat it as lower-confidence home-location context because the activity may have happened elsewhere; for indoor activities such as gym strength sessions, outdoor weather is irrelevant.
 
 Recovery load recommendation:
 - "rest": next session should be skipped or replaced with walking/mobility. Use when score ≤4 OR two or more red flags stack.
@@ -415,7 +484,7 @@ Confidence:
 - "low": only the workout itself. Acknowledge the limits in summary.
 
 Factors: array of 2-6 items, each {label, signal: positive|negative|neutral, weight: 0..1, note}.
-- label: short, e.g. "Sleep", "HRV trend", "RPE", "Volume vs history", "Soreness", "Days since last session", "Cardio effort", "Heart rate", "Pace", "Elevation", "Distance"
+- label: short, e.g. "Sleep", "HRV trend", "RPE", "Volume vs history", "Soreness", "Days since last session", "Cardio effort", "Heart rate", "Pace", "Elevation", "Distance", "Weather"
 - signal: positive = supports a good session, negative = risk, neutral = context
 - weight: 0..1 importance
 - note: ≤ 140 chars, concrete number when possible
@@ -701,7 +770,20 @@ function offlineSummary(workout: GatheredContext['workout']): string {
     if (am?.distanceKm != null && am.distanceKm > 0) parts.push(`${am.distanceKm.toFixed(1)}km`);
     if (am?.avgHr != null) parts.push(`avg HR ${am.avgHr}`);
     const extras = parts.length > 0 ? `, ${parts.join(', ')}` : '';
-    return `Offline analysis: ${durStr}cardio session${extras}.`;
+    // Purely descriptive weather aside — no numeric scoring
+    // adjustment here. Heat-stress is a complex topic and we
+    // don't have the user's HR zones in this path, so the
+    // offlineFallback scoring stays weather-blind and we just
+    // mention it in prose when present.
+    const w = workout.weather;
+    const weatherAside = w?.locationSource === 'gps'
+      ? w.temperatureF >= 80
+        ? ` in ${Math.round(w.temperatureF)}°F heat`
+        : w.temperatureF <= 40
+        ? ` in ${Math.round(w.temperatureF)}°F cold`
+        : null
+      : null;
+    return `Offline analysis: ${durStr}cardio session${extras}${weatherAside ?? ''}.`;
   }
   if (type === 'MOBILITY' || type === 'OTHER') {
     return `Offline analysis: ${durStr}${type.toLowerCase()} session.`;

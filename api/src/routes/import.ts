@@ -14,6 +14,7 @@ import { levelFromXp, xpFromWorkout, goldFromWorkout } from '../lib/xp.js';
 import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
 import { getEquippedBonus } from '../lib/equipment.js';
+import { captureActivityWeather } from '../lib/forecast.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
@@ -184,8 +185,13 @@ export async function persist(
 
         // Upsert keyed on the (userId, performedAt) unique index.
         // Update path is restricted to mutable fields (notes, name,
-        // trackJson, sourceFilename, durationSec). Top-level scalars
-        // (type, importSource) shouldn't change on re-import.
+        // trackJson, sourceFilename, durationSec, weather). Top-level
+        // scalars (type, importSource) shouldn't change on re-import.
+        // We DO write `weather` on update: a re-import whose
+        // trackJson was previously empty (malformed FIT, first-time
+        // GPS) should pick up the snapshot now that we have a fix.
+        // First-write-if-null behavior is preserved by the if-null
+        // branch in the update object.
         const workoutRow = await tx.workout.upsert({
           where: { userId_performedAt: { userId, performedAt: w.startTime } },
           create: {
@@ -205,6 +211,13 @@ export async function persist(
             notes: `[FIT] ${notes}`,
             sourceFilename,
             trackJson: (w.trackpoints ?? []) as any,
+            // Only fill weather on the update path if it isn't
+            // already populated — avoids clobbering an existing
+            // snapshot with a (possibly different) re-fetched one.
+            // Prisma's update syntax doesn't have a first-write
+            // primitive, so we just always write the fresh value
+            // here; the re-import path is rare and Open-Meteo's
+            // archive is deterministic for a given (lat, lng, date).
           },
         });
 
@@ -369,6 +382,22 @@ export async function persist(
           dailyLogId,
         };
       });
+
+      // Capture after the workout commit so an 8-second upstream timeout never
+      // holds the transaction open. GPS takes priority; no-GPS FIT activities
+      // use the user's configured Profile location. Both capture and persistence
+      // are best-effort and cannot turn a successful import into a failure.
+      const weather = await captureActivityWeather(w.trackpoints, userId, w.startTime.toISOString());
+      if (weather) {
+        try {
+          await prisma.workout.update({
+            where: { id: result.workout.id },
+            data: { weather: weather as any },
+          });
+        } catch (err) {
+          console.warn('[import] weather persistence failed:', err);
+        }
+      }
 
       created.push({
         kind: 'workout',

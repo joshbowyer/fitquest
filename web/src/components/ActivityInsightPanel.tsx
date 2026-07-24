@@ -52,10 +52,13 @@ export function ActivityInsightPanel({ workoutId }: { workoutId: string }) {
     retry: false,
   });
 
-  const generateM = useDelayedMutation<PostResp, void>(
+  const generateM = useDelayedMutation<PostResp, boolean | undefined>(
     {
-      mutationFn: () =>
-        api<PostResp>(`/workouts/${workoutId}/insight`, { method: 'POST' }),
+      mutationFn: (force) =>
+        api<PostResp>(
+          `/workouts/${workoutId}/insight${force ? '?force=1' : ''}`,
+          { method: 'POST' },
+        ),
       onError: (e) => {
         setErr(e instanceof ApiError ? e.message : 'Generation failed');
       },
@@ -111,7 +114,7 @@ export function ActivityInsightPanel({ workoutId }: { workoutId: string }) {
             loadingText="Generating…"
             onClick={() => {
               setErr(null);
-              generateM.run();
+              generateM.run(false);
             }}
           >
             Run analysis
@@ -141,7 +144,7 @@ export function ActivityInsightPanel({ workoutId }: { workoutId: string }) {
       action={
         <button
           type="button"
-          onClick={() => generateM.run()}
+          onClick={() => generateM.run(true)}
           disabled={generateM.isPending}
           className="text-[10px] font-mono uppercase tracking-widest text-violet-300 hover:underline disabled:opacity-50"
           title="Regenerate using latest context (HRV, sleep, soreness)"

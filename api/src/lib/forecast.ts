@@ -24,6 +24,10 @@ import { prisma } from './prisma.js';
 
 const FORECAST_ENDPOINT = 'https://api.open-meteo.com/v1/forecast';
 const AIR_QUALITY_ENDPOINT = 'https://air-quality-api.open-meteo.com/v1/air-quality';
+// Historical archive. Same provider as the forecast endpoint but a
+// separate host. Used by getHistoricalWeather() to fetch the weather
+// at the time/location of a finished activity.
+const HISTORICAL_ENDPOINT = 'https://archive-api.open-meteo.com/v1/archive';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export type CurrentWeather = {
@@ -795,4 +799,214 @@ export async function getWeatherBundle(lat: number, lng: number): Promise<Combin
     update: { payload: combined as any, fetchedAt: new Date() },
   });
   return combined;
+}
+
+/**
+ * Weather snapshot at the time/location of a finished activity.
+ * Captured once at FIT-import time from the activity's first valid
+ * GPS point and persisted onto `Workout.weather` so the per-activity
+ * AI insight can reference it without a fresh upstream call.
+ *
+ * Currently a value-only struct (no `cached` / `time` fields like
+ * the live `Forecast.current`) because there's no live caching layer
+ * here — the FIT import is the only producer and it just persists
+ * the result. `source: 'historical'` is hard-coded so the insight
+ * reader can tell the data is from the archive API and not a live
+ * forecast.
+ */
+export type HistoricalWeather = {
+  temperatureF: number;
+  apparentTemperatureF: number;
+  humidity: number;
+  windSpeedMph: number;
+  windGustsMph: number;
+  precipitationMm: number;
+  weatherCode: number;
+  isDay: boolean;
+  source: 'historical';
+  fetchedAt: string; // ISO, wall-clock when fetched
+};
+
+/**
+ * Pick the index in an Open-Meteo hourly array whose `time` is
+ * closest to the target ISO timestamp. Pure (no I/O) so this is
+ * easy to unit-test in isolation.
+ *
+ * Matching strategy: exact-local-hour first. Open-Meteo's hourly
+ * samples are on the local clock hour (timezone=auto), and the
+ * activity's `performedAt` is in UTC. We compare on the local
+ * "YYYY-MM-DDTHH" prefix so "2026-07-23T19:00:00Z" matches
+ * "2026-07-23T19:00" for a sample in the same hour. If no hour
+ * matches (rare — DST bounds, midnight wrap), fall back to the
+ * nearest sample by absolute time delta.
+ */
+export function pickClosestHourlyIndex(
+  hourlyTimes: string[],
+  targetIso: string,
+): number {
+  if (!Array.isArray(hourlyTimes) || hourlyTimes.length === 0) return -1;
+  const target = new Date(targetIso);
+  if (!Number.isFinite(target.getTime())) return -1;
+  const targetLocal = `${targetIso.slice(0, 13)}`; // YYYY-MM-DDTHH
+  // Pass 1: exact local-hour string match.
+  for (let i = 0; i < hourlyTimes.length; i++) {
+    const t = hourlyTimes[i];
+    if (typeof t === 'string' && t.startsWith(targetLocal)) return i;
+  }
+  // Pass 2: nearest by absolute time delta (handles DST / wrap).
+  let bestIdx = 0;
+  let bestDelta = Infinity;
+  for (let i = 0; i < hourlyTimes.length; i++) {
+    const t = hourlyTimes[i];
+    if (typeof t !== 'string') continue;
+    const ts = new Date(t).getTime();
+    if (!Number.isFinite(ts)) continue;
+    const delta = Math.abs(ts - target.getTime());
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+export type ActivityWeather = HistoricalWeather & {
+  locationSource: 'gps' | 'user';
+};
+
+/**
+ * Resolve an activity location (first valid track point, then the user's
+ * configured location) and capture its historical weather. This helper is
+ * deliberately failure-safe so weather can never prevent workout creation.
+ */
+export async function captureActivityWeather(
+  trackJson: unknown,
+  userId: string,
+  atIso: string,
+  fetchWeather: typeof getHistoricalWeather = getHistoricalWeather,
+): Promise<ActivityWeather | null> {
+  try {
+    let location: { lat: number; lng: number; source: 'gps' | 'user' } | null = null;
+    if (Array.isArray(trackJson)) {
+      for (const point of trackJson) {
+        if (!point || typeof point !== 'object') continue;
+        const record = point as Record<string, unknown>;
+        const lat = record.lat;
+        // Current FIT records use `lon`; accept `lng` as documented too.
+        const lng = record.lng ?? record.lon;
+        if (
+          typeof lat === 'number' && Number.isFinite(lat) && Math.abs(lat) <= 90 &&
+          typeof lng === 'number' && Number.isFinite(lng) && Math.abs(lng) <= 180 &&
+          !(lat === 0 && lng === 0)
+        ) {
+          location = { lat, lng, source: 'gps' };
+          break;
+        }
+      }
+    }
+
+    if (!location) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { latitude: true, longitude: true },
+      });
+      if (
+        typeof user?.latitude === 'number' && Number.isFinite(user.latitude) && Math.abs(user.latitude) <= 90 &&
+        typeof user?.longitude === 'number' && Number.isFinite(user.longitude) && Math.abs(user.longitude) <= 180
+      ) {
+        location = { lat: user.latitude, lng: user.longitude, source: 'user' };
+      }
+    }
+
+    if (!location) return null;
+    const weather = await fetchWeather(location.lat, location.lng, atIso);
+    return weather ? { ...weather, locationSource: location.source } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the historical weather at (lat, lng) for the date of
+ * `atIso` (an ISO timestamp, usually the activity's `performedAt`).
+ * Returns the sample whose hour is closest to `atIso`, or null on
+ * any upstream / parse failure — never throws.
+ *
+ * No caching: this is called once per FIT import and the result is
+ * persisted directly onto `Workout.weather`. The /forecast page has
+ * its own `WeatherCache` table; this path doesn't need one because
+ * (a) we're not re-running the same query inside the same hour and
+ * (b) the activity location is precise enough that the (lat, lng)
+ * cache key in WeatherCache would have too low a hit rate to be
+ * worth the schema weight.
+ */
+export async function getHistoricalWeather(
+  lat: number,
+  lng: number,
+  atIso: string,
+): Promise<HistoricalWeather | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const target = new Date(atIso);
+  if (!Number.isFinite(target.getTime())) return null;
+  const date = atIso.slice(0, 10); // YYYY-MM-DD
+  const params = new URLSearchParams({
+    latitude: lat + '',
+    longitude: lng + '',
+    start_date: date,
+    end_date: date,
+    hourly: [
+      'temperature_2m',
+      'apparent_temperature',
+      'relative_humidity_2m',
+      'precipitation',
+      'weather_code',
+      'wind_speed_10m',
+      'wind_gusts_10m',
+      'is_day',
+    ].join(','),
+    temperature_unit: 'fahrenheit',
+    wind_speed_unit: 'mph',
+    timezone: 'auto',
+  });
+  const url = `${HISTORICAL_ENDPOINT}?${params.toString()}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'FitQuest/1.0 (+https://github.com/joshbowyer/fitquest)',
+        'Accept': 'application/json',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const raw: any = await res.json();
+    const times: string[] = Array.isArray(raw.hourly?.time) ? raw.hourly.time : [];
+    if (times.length === 0) return null;
+    const idx = pickClosestHourlyIndex(times, atIso);
+    if (idx < 0) return null;
+    const temperature = raw.hourly?.temperature_2m?.[idx];
+    if (typeof temperature !== 'number' || !Number.isFinite(temperature)) return null;
+    const num = (k: string): number => {
+      const v = raw.hourly?.[k]?.[idx];
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+    };
+    const weatherCode = num('weather_code');
+    // Open-Meteo's archive is_day is 1/0 — coerce to boolean.
+    const isDayRaw = raw.hourly?.is_day?.[idx];
+    const isDay = isDayRaw === 1 || isDayRaw === true;
+    return {
+      temperatureF: temperature,
+      apparentTemperatureF: num('apparent_temperature') || temperature,
+      humidity: num('relative_humidity_2m'),
+      windSpeedMph: num('wind_speed_10m'),
+      windGustsMph: num('wind_gusts_10m'),
+      precipitationMm: num('precipitation'),
+      weatherCode,
+      isDay,
+      source: 'historical',
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
 }

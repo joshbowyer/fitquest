@@ -12,10 +12,12 @@ import {
   offlineFallback,
   extractJson,
   extractActivityMetrics,
+  narrowWeather,
   clamp,
   clampInt,
   type InsightPayload,
   type ActivityMetrics,
+  type WorkoutWeather,
 } from '../lib/activityInsight';
 
 describe('CURRENT_PROMPT_VERSION', () => {
@@ -187,6 +189,7 @@ describe('offlineFallback', () => {
     exercises: number;
     setVolume: number;
     activityMetrics: ActivityMetrics | null;
+    weather: WorkoutWeather | null;
     type: string;
     durationMin: number | null;
   }> = {}) {
@@ -203,6 +206,7 @@ describe('offlineFallback', () => {
         setVolume: overrides.setVolume ?? 1500,
         avgRpe: overrides.avgRpe ?? null,
         activityMetrics: overrides.activityMetrics ?? null,
+        weather: overrides.weather ?? null,
       },
       context: {
         sleepHours7d: overrides.sleepHours7d ?? null,
@@ -464,5 +468,33 @@ describe('extractActivityMetrics', () => {
     expect(m!.avgHr).toBe(172);
     expect(m!.maxHr).toBe(184);
     expect(m!.pace).toBeNull();
+  });
+});
+
+describe('narrowWeather', () => {
+  it('returns weather with translated conditions and location source', () => {
+    expect(narrowWeather({
+      temperatureF: 88,
+      apparentTemperatureF: 94,
+      humidity: 72,
+      windSpeedMph: 8,
+      windGustsMph: 14,
+      precipitationMm: 1.2,
+      weatherCode: 61,
+      isDay: true,
+      locationSource: 'gps',
+      source: 'historical',
+      fetchedAt: '2026-07-23T12:00:00.000Z',
+    })).toEqual({
+      temperatureF: 88,
+      apparentTemperatureF: 94,
+      humidity: 72,
+      windSpeedMph: 8,
+      windGustsMph: 14,
+      precipitationMm: 1.2,
+      conditions: 'Rain',
+      isDay: true,
+      locationSource: 'gps',
+    });
   });
 });
