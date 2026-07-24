@@ -65,8 +65,22 @@ export function ActivityStreamsChart({ points, system, height = 100 }: Props) {
       const win = speeds.slice(Math.max(0, i - 2), i + 3).filter((s) => s != null) as number[];
       if (win.length > 0) {
         const avg = win.reduce((s, v) => s + v, 0) / win.length;
-        if (avg > 0.1) {
+        // Require a realistic minimum moving speed (~0.3 m/s, a slow
+        // stroll) before computing a pace value. GPS noise or a
+        // not-yet-moving sample right at activity start can report a
+        // tiny nonzero speed (e.g. 0.02 m/s), which produces an
+        // extreme pace (hours per mile) that crushes the rest of the
+        // chart's Y-axis into a flat line with one sharp spike.
+        // Below this floor we just treat pace as unavailable for
+        // that sample instead of graphing the spike.
+        const MIN_MOVING_SPEED_MPS = 0.3;
+        if (avg > MIN_MOVING_SPEED_MPS) {
           paceSecPerKm = 1000 / avg;
+          // Belt-and-suspenders cap: even a real (not pure-noise) very
+          // slow pace beyond ~1hr/mile is more useful rendered capped
+          // than left to stretch the axis (e.g. a brief walk break).
+          const MAX_PACE_SEC_PER_KM = 3600 / 1.609344; // 1hr/mi in sec/km
+          if (paceSecPerKm > MAX_PACE_SEC_PER_KM) paceSecPerKm = MAX_PACE_SEC_PER_KM;
           if (system === 'IMPERIAL') {
             paceSecPerKm = paceSecPerKm * 1.609344;
           }
