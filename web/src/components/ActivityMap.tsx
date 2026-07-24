@@ -186,7 +186,15 @@ export function ActivityMap({ points, height = 360 }: { points: TrackPoint[]; he
   }
 
   return (
-    <div className="relative">
+    // isolation: isolate traps every Leaflet-internal z-index (tile/
+    // overlay/marker/popup panes at 200-700, plus .leaflet-top/
+    // .leaflet-bottom zoom+attribution controls at 1000 via the
+    // CDN leaflet.css we don't control) inside this wrapper's own
+    // stacking context. The wrapper itself then participates in the
+    // page's root stacking context at z-index: auto, which always
+    // loses to the sticky header — permanently, regardless of what
+    // z-index future Leaflet versions use internally.
+    <div className="relative isolate">
       <div
         ref={mapRef}
         className="border border-ink-500/30"
