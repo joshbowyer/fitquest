@@ -117,7 +117,7 @@ export function Layout({ children }: Props) {
           right; mobile shows hamburger left, FIT//QUEST centered,
           and a condensed status pill on the right. */}
       <header
-        className="app-topbar md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800 z-[500]
+        className="app-topbar md:col-span-2 md:border-b md:border-neon-cyan/15 bg-bg-800 z-[800]
                    sticky top-0 border-b border-neon-cyan/15"
         style={{ paddingTop: 'env(safe-area-inset-top)' }}
       >
