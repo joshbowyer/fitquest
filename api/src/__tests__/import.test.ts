@@ -277,6 +277,7 @@ beforeEach(() => {
 // A fabricated 1mi-equivalent run.
 function makeFit(overrides: Partial<{
   sport: string; durationSec: number; distanceMeters: number; startTime: Date;
+  avgHeartRate: number; maxHeartRate: number; totalAscent: number; avgSpeedMps: number;
 }> = {}) {
   const startTime = overrides.startTime ?? new Date('2026-07-13T15:00:00Z');
   return {
@@ -288,10 +289,14 @@ function makeFit(overrides: Partial<{
         durationSec: overrides.durationSec ?? 30 * 60, // 30 min
         sport: overrides.sport ?? 'running',
         subSport: undefined,
-        distanceMeters: overrides.distanceMeters ?? 5000,
-        avgHeartRate: 150,
-        maxHeartRate: 175,
-        totalCalories: 320,
+         distanceMeters: overrides.distanceMeters ?? 5000,
+         avgHeartRate: overrides.avgHeartRate ?? 150,
+         maxHeartRate: overrides.maxHeartRate ?? 175,
+         totalAscent: overrides.totalAscent ?? 42,
+         avgSpeedMps: overrides.avgSpeedMps ?? (5000 / (30 * 60)),
+         totalCalories: 320,
+
+
         avgPower: undefined,
         normalizedPower: undefined,
         rpe: undefined,
@@ -303,6 +308,50 @@ function makeFit(overrides: Partial<{
 }
 
 describe('persist() — import reward pipeline (audit C1/C4/C5)', () => {
+  it('persists FIT cardio metrics on both create and re-import update', async () => {
+    const fit = makeFit({
+      sport: 'running',
+      durationSec: 30 * 60,
+      distanceMeters: 5000,
+      avgHeartRate: 150,
+      maxHeartRate: 175,
+      totalAscent: 42,
+      avgSpeedMps: 2.7777,
+    });
+
+    await persist('u1', fit, WorkoutSource.WEB, 'run.fit');
+    const firstUpsert = (h.txMock.workout.upsert as any).mock.calls[0][0];
+    expect(firstUpsert.create.cardio).toEqual({
+      distanceKm: 5,
+      durationSec: 1800,
+      elevationGainM: 42,
+      avgHr: 150,
+      maxHr: 175,
+      avgPaceSecPerKm: 360,
+      pace: 'RUN',
+      source: 'GPS',
+    });
+
+    await persist('u1', fit, WorkoutSource.WEB, 'run.fit');
+    const secondUpsert = (h.txMock.workout.upsert as any).mock.calls[1][0];
+    expect(secondUpsert.update.cardio).toEqual(firstUpsert.create.cardio);
+  });
+
+  it('leaves cardio undefined for FIT activities with no distance, HR, or ascent', async () => {
+    const fit = makeFit({ sport: 'training' });
+    const activity: any = fit.workouts![0]!;
+    activity.distanceMeters = undefined;
+    activity.avgHeartRate = undefined;
+    activity.maxHeartRate = undefined;
+    activity.totalAscent = undefined;
+    activity.avgSpeedMps = undefined;
+
+    await persist('u1', fit, WorkoutSource.WEB, 'indoor.fit');
+    const upsert = (h.txMock.workout.upsert as any).mock.calls[0][0];
+    expect(upsert.create.cardio).toBeUndefined();
+    expect(upsert.update.cardio).toBeUndefined();
+  });
+
   it('credits XP + gold on a fresh import and writes a DailyLog row with the actual deltas', async () => {
     const fit = makeFit({ sport: 'running', durationSec: 30 * 60, distanceMeters: 5000 });
     const before = { xp: h.user.xp, gold: h.user.gold };

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireUser } from '../lib/auth.js';
 import { WorkoutSource } from '../lib/prisma.js';
-import { parseFit, isFitBuffer, type FitImportResult, type FitKind } from '../lib/fit.js';
+import { parseFit, isFitBuffer, type FitImportResult, type FitKind, type ParsedActivity } from '../lib/fit.js';
 import { checkAchievements } from '../lib/achievements.js';
 import { checkRoutineProgress } from './routine.js';
 import { activityTitle } from '../lib/geo.js';
@@ -15,10 +15,49 @@ import { todayInTz, localMidnightUtc } from '../lib/timezone.js';
 import { computeRaidDamage } from '../lib/raidDamage.js';
 import { getEquippedBonus } from '../lib/equipment.js';
 import { captureActivityWeather } from '../lib/forecast.js';
+import type { Prisma } from '../lib/prisma.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB — well above any FIT we'll see
 
 const bodyLimit = 60 * 1024 * 1024; // Fastify body limit; pair with our 50MB cap
+
+// FIT has no pace label matching Workout.cardio's coarse enum, so use
+// typical average-speed bands for the activities where pace is meaningful.
+// Cycling is intentionally excluded: its speed does not map cleanly to a
+// walk/jog/run label.
+type CardioPace = 'WALK_CASUAL' | 'WALK_BRISK' | 'JOG' | 'RUN' | 'SPRINT';
+
+function paceForFitActivity(sport: string, avgSpeedMps: number | undefined): CardioPace | undefined {
+  if (avgSpeedMps == null || !Number.isFinite(avgSpeedMps) || avgSpeedMps <= 0) return undefined;
+
+  if (sport === 'walking' || sport === 'hiking') {
+    return avgSpeedMps < 1.4 ? 'WALK_CASUAL' : 'WALK_BRISK';
+  }
+  if (sport !== 'running') return undefined;
+
+  // Approximately <9 km/h = jog, <16 km/h = run, and faster = sprint.
+  if (avgSpeedMps < 2.5) return 'JOG';
+  if (avgSpeedMps < 4.5) return 'RUN';
+  return 'SPRINT';
+}
+
+function buildCardioBlock(w: ParsedActivity): Prisma.InputJsonValue | undefined {
+  if (w.distanceMeters == null && w.avgHeartRate == null && w.totalAscent == null) return undefined;
+
+  const cardio: Record<string, number | string> = { source: 'GPS' };
+  if (w.distanceMeters != null) cardio.distanceKm = w.distanceMeters / 1000;
+  if (w.durationSec != null) cardio.durationSec = w.durationSec;
+  if (w.totalAscent != null) cardio.elevationGainM = w.totalAscent;
+  if (w.avgHeartRate != null) cardio.avgHr = w.avgHeartRate;
+  if (w.maxHeartRate != null) cardio.maxHr = w.maxHeartRate;
+  if (w.avgSpeedMps != null && Number.isFinite(w.avgSpeedMps) && w.avgSpeedMps > 0) {
+    cardio.avgPaceSecPerKm = Math.round(1000 / w.avgSpeedMps);
+  }
+  const pace = paceForFitActivity(w.sport, w.avgSpeedMps);
+  if (pace != null) cardio.pace = pace;
+
+  return cardio as Prisma.InputJsonValue;
+}
 
 // Source for a FIT ingest. Mirrors the WorkoutSource enum on the
 // Workout row. The FitQuestBridge APK sets `source: 'BRIDGE'` in
@@ -164,6 +203,7 @@ export async function persist(
       // activityTitle twice (create + update blocks) — wasteful
       // because each call may issue a Nominatim reverse-geocode.
       const title = await activityTitle(w.sport, w.trackpoints);
+      const cardio = buildCardioBlock(w);
 
       // ============================================================
       // Atomic block: workout upsert + PR detection + XP/gold +
@@ -185,13 +225,12 @@ export async function persist(
 
         // Upsert keyed on the (userId, performedAt) unique index.
         // Update path is restricted to mutable fields (notes, name,
-        // trackJson, sourceFilename, durationSec, weather). Top-level
-        // scalars (type, importSource) shouldn't change on re-import.
+        // trackJson, cardio, sourceFilename, durationSec, weather).
+        // Top-level scalars (type, importSource) shouldn't change on re-import.
+        //
         // We DO write `weather` on update: a re-import whose
         // trackJson was previously empty (malformed FIT, first-time
         // GPS) should pick up the snapshot now that we have a fix.
-        // First-write-if-null behavior is preserved by the if-null
-        // branch in the update object.
         const workoutRow = await tx.workout.upsert({
           where: { userId_performedAt: { userId, performedAt: w.startTime } },
           create: {
@@ -204,6 +243,7 @@ export async function persist(
             sourceFilename,
             performedAt: w.startTime,
             trackJson: (w.trackpoints ?? []) as any,
+            cardio,
           },
           update: {
             name: title,
@@ -211,6 +251,7 @@ export async function persist(
             notes: `[FIT] ${notes}`,
             sourceFilename,
             trackJson: (w.trackpoints ?? []) as any,
+            cardio,
             // Only fill weather on the update path if it isn't
             // already populated — avoids clobbering an existing
             // snapshot with a (possibly different) re-fetched one.
